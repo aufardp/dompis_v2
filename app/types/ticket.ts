@@ -1,0 +1,32 @@
+export interface Ticket {
+  idTicket: number;
+  ticket: string;
+  summary: string;
+  reportedDate: string;
+  ownerGroup?: string;
+  serviceType?: string;
+  customerType?: string;
+  serviceNo: string;
+  contactName: string;
+  contactPhone: string;
+  deviceName?: string;
+  status: string;
+  hasilVisit?: string;
+  bookingDate?: string;
+  symptom?: string;
+  descriptionActualSolution?: string;
+  workzone?: string;
+  customerSegment?: string;
+  sourceTicket?: string;
+  jenisTiket?: string;
+  teknisiUserId?: number | null;
+  technicianName?: string | null;
+  maxTtrReguler?: string | null;
+  maxTtrGold?: string | null;
+  maxTtrPlatinum?: string | null;
+  maxTtrDiamond?: string | null;
+  rca: string | null;
+  subRca: string | null;
+  alamat?: string | null;
+  closedAt: string | null;
+}

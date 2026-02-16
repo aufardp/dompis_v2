@@ -1,0 +1,65 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: dompis_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: dompis_db
+      MYSQL_USER: dompis_user
+      MYSQL_PASSWORD: dompis_password
+    ports:
+      - '3307:3306'
+    volumes:
+      - dompis_mysql_data:/var/lib/mysql
+    networks:
+      - dompis-network
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      timeout: 20s
+      retries: 10
+
+  # Redis for Caching and Queue
+  redis:
+    image: redis:latest
+    container_name: dompis_redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    volumes:
+      - dompis_redis_data:/data
+    networks:
+      - dompis-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # phpMyAdmin (Optional - MySQL GUI)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: dompis_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: dompis_user
+      PMA_PASSWORD: dompis_password
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - '8081:80'
+    depends_on:
+      - mysql
+    networks:
+      - dompis-network
+
+volumes:
+  dompis_mysql_data:
+    driver: local
+  dompis_redis_data:
+    driver: local
+
+networks:
+  dompis-network:
+    driver: bridge
