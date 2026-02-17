@@ -1,25 +1,31 @@
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
+import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    await protectApi(['admin', 'teknisi', 'helpdesk', 'superadmin']);
+    const user = await protectApi([
+      'admin',
+      'teknisi',
+      'helpdesk',
+      'superadmin',
+    ]);
 
-    const stats = await TicketService.getStats();
+    const stats = await TicketService.getStats(user.role, user.id_user);
 
-    return Response.json({
+    return NextResponse.json({
       success: true,
       data: {
-        total: stats.total || 0,
-        open: stats.open || 0,
-        assigned: stats.assigned || 0,
-        closed: stats.closed || 0,
+        total: Number(stats?.total || 0),
+        unassigned: Number(stats?.unassigned || 0),
+        open: Number(stats?.open || 0),
+        assigned: Number(stats?.assigned || 0),
+        closed: Number(stats?.closed || 0),
       },
     });
-  } catch (error: any) {
-    return Response.json(
-      { success: false, message: error.message },
-      { status: 400 },
-    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to load stats';
+    return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }

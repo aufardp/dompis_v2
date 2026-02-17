@@ -1,97 +1,58 @@
-import { NextResponse } from 'next/server';
-import {
-  getAllUsers,
-  getUserById,
-  createUser,
-  deleteUser,
-} from '@/app/libs/services/users.service';
-import { createUserSchema } from '@/app/libs/validations/users.schema';
-import { protectApi } from '@/app/libs/protectApi';
+export const runtime = 'nodejs';
 
-export async function GET(request: Request) {
+import { NextRequest, NextResponse } from 'next/server';
+import { protectApi } from '@/app/libs/protectApi';
+import { getAllUsers, createUser } from '@/app/libs/services/users.service';
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return 'Unexpected error';
+}
+
+export async function GET(req: NextRequest) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search');
-    const role_id = searchParams.get('role_id');
+    const { searchParams } = new URL(req.url);
 
-    const data = await getAllUsers({
-      role_id: role_id || undefined,
-      search: search || undefined,
-    });
+    const roleIdParam = searchParams.get('role_id');
+    const role_id = roleIdParam ? Number(roleIdParam) : undefined;
+    const search = searchParams.get('search') || undefined;
 
-    return NextResponse.json({ success: true, data, total: data.length });
-  } catch (error: any) {
-    console.error(error);
-    return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    await protectApi(['admin', 'superadmin']);
-
-    const body = await request.json();
-    const validated = createUserSchema.parse({
-      ...body,
-      role_id: Number(body.role_id),
-      area_id: Number(body.area_id),
-      sa_id: Number(body.sa_id),
-    });
-
-    const id = await createUser(validated);
-
-    return NextResponse.json({
-      success: true,
-      message: 'User created successfully',
-      data: {
-        id,
-        nik: validated.nik,
-        nama: validated.nama,
-        jabatan: validated.jabatan,
-        username: validated.username,
-        role_id: validated.role_id,
-      },
-    });
-  } catch (error: any) {
-    console.error(error);
-    const status = error.name === 'ZodError' ? 400 : 500;
-    return NextResponse.json(
-      { success: false, message: error.message || 'Error creating user' },
-      { status },
-    );
-  }
-}
-
-export async function DELETE(request: Request) {
-  try {
-    await protectApi(['admin', 'superadmin']);
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
+    if (roleIdParam && (role_id === undefined || Number.isNaN(role_id))) {
       return NextResponse.json(
-        { success: false, message: 'id is required' },
+        { success: false, message: 'role_id must be a number' },
         { status: 400 },
       );
     }
 
-    await deleteUser(id);
+    const users = await getAllUsers({ role_id, search });
+
+    return NextResponse.json({ success: true, data: users });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, message: getErrorMessage(error) },
+      { status: 401 },
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await protectApi(['admin', 'helpdesk', 'superadmin']);
+
+    const body = await req.json();
+
+    const userId = await createUser(body);
 
     return NextResponse.json({
       success: true,
-      message: 'User deleted successfully',
+      id: userId,
     });
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error) },
+      { status: 400 },
     );
   }
 }

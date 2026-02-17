@@ -1,7 +1,20 @@
 import jwt from 'jsonwebtoken';
 
-const ACCESS_EXPIRY = '12h';
+const ACCESS_EXPIRY = '4h';
 const REFRESH_EXPIRY = '7d';
+
+import { NextRequest } from 'next/server';
+
+export function getUserFromRequest(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Unauthorized');
+  }
+
+  const token = authHeader.split(' ')[1];
+  return verifyAccessToken(token);
+}
 
 export function signAccessToken(payload: any) {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET!, {

@@ -9,6 +9,9 @@ export type SortField =
   | 'ticket'
   | 'serviceNo'
   | 'contactName'
+  | 'customerType'
+  | 'maxTtr'
+  | 'jenisTiket'
   | 'summary'
   | 'workzone'
   | 'technicianName'
@@ -176,6 +179,9 @@ export default function TicketTable({
                   {renderSortableHeader('Ticket', 'ticket')}
                   {renderSortableHeader('Service', 'serviceNo')}
                   {renderSortableHeader('Customer', 'contactName')}
+                  {renderSortableHeader('Type', 'customerType')}
+                  {renderSortableHeader('Max_TTR', 'maxTtr')}
+                  {renderSortableHeader('Jenis_Tiket', 'jenisTiket')}
                   {renderSortableHeader('Summary', 'summary')}
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Technician', 'technicianName')}

@@ -20,3 +20,17 @@ const STATUS_COLOR_MAP: Record<string, BadgeColor> = {
 export const getStatusColor = (status: string): BadgeColor => {
   return STATUS_COLOR_MAP[status?.trim()] ?? 'error';
 };
+
+export function getMaxTtr(ticket: any): string | null {
+  if (!ticket?.customerType) return null;
+
+  const map: Record<string, keyof typeof ticket> = {
+    reguler: 'maxTtrReguler',
+    hvc_gold: 'maxTtrGold',
+    hvc_platinum: 'maxTtrPlatinum',
+    hvc_diamond: 'maxTtrDiamond',
+  };
+
+  const key = map[ticket.customerType.toLowerCase()];
+  return key ? ticket[key] : null;
+}

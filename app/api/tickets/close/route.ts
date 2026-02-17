@@ -1,5 +1,6 @@
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
+import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(req: Request) {
     const { ticketId, rca, subRca } = body;
 
     if (!ticketId)
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: 'Ticket ID wajib diisi' },
         { status: 400 },
       );
@@ -18,15 +19,14 @@ export async function POST(req: Request) {
     const result = await TicketService.close(
       Number(ticketId),
       user.id_user,
-      rca,
-      subRca,
+      String(rca || ''),
+      String(subRca || ''),
     );
 
-    return Response.json({ success: true, ...result });
-  } catch (error: any) {
-    return Response.json(
-      { success: false, message: error.message },
-      { status: 400 },
-    );
+    return NextResponse.json({ success: true, ...result });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to close ticket';
+    return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }

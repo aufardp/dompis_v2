@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/app/libs/db';
 import { saveFiles } from '@/app/libs/upload';
+import { protectApi } from '@/app/libs/protectApi';
 
 export async function POST(req: NextRequest) {
   try {
+    await protectApi(['teknisi', 'admin', 'helpdesk', 'superadmin']);
+
     const formData = await req.formData();
     const files = formData.getAll('files') as File[];
     const incident = formData.get('incident') as string;

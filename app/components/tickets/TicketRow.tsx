@@ -1,7 +1,7 @@
 import { RefreshCw, UserPlus } from 'lucide-react';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
-import { formatDate, getStatusColor } from './helpers';
+import { formatDate, getStatusColor, getMaxTtr } from './helpers';
 
 export default function TicketRow({
   ticket,
@@ -21,18 +21,22 @@ export default function TicketRow({
         </div>
       </td>
 
-      <td className='px-5 py-4'>{ticket.serviceNo}</td>
+      <td className='px-5 py-4 text-center'>{ticket.serviceNo}</td>
 
-      <td className='px-5 py-4'>
-        <p className='font-medium'>{ticket.contactName}</p>
+      <td className='max-w-xs truncate px-5 py-4'>
+        <p className='text-sm'>{ticket.contactName}</p>
         <p className='text-xs text-gray-500'>{ticket.contactPhone}</p>
       </td>
 
+      <td className='px-5 py-4 text-center'>{ticket.customerType}</td>
+
+      <td className='px-5 py-4 text-center'>{getMaxTtr(ticket) || '-'}</td>
+
+      <td className='px-5 py-4 text-center'>{ticket.jenisTiket}</td>
+
       <td className='max-w-xs truncate px-5 py-4'>{ticket.summary}</td>
 
-      <td className='max-w-xs truncate px-5 py-4 text-center'>
-        {ticket.workzone}
-      </td>
+      <td className='px-5 py-4 text-center'>{ticket.workzone}</td>
 
       <td className='px-5 py-4 text-center'>
         {ticket.technicianName || (

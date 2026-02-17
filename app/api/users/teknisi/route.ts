@@ -1,5 +1,6 @@
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
+import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
@@ -7,14 +8,12 @@ export async function GET() {
 
     const data = await TicketService.getTeknisiUsers();
 
-    return Response.json({
+    return NextResponse.json({
       success: true,
       data,
     });
-  } catch (error: any) {
-    return Response.json(
-      { success: false, message: error.message },
-      { status: 400 },
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }

@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 
+function toInt(value: string | null, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
 // =====================================================
 // GET TICKETS (ADMIN & TEKNISI)
 // =====================================================
@@ -16,43 +21,35 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
+    const hasilVisit =
+      searchParams.get('hasilVisit') || searchParams.get('status') || undefined;
+
     const filters = {
       search: searchParams.get('search') || '',
-      status: searchParams.get('status') || undefined,
-      priority: searchParams.get('priority') || undefined,
+      hasilVisit,
       workzone: searchParams.get('workzone') || undefined,
-      page: parseInt(searchParams.get('page') || '1'),
-      limit: parseInt(searchParams.get('limit') || '50'),
+      page: toInt(searchParams.get('page'), 1),
+      limit: toInt(searchParams.get('limit'), 50),
     };
 
-    let result;
-
-    // 🔹 ADMIN & HELPDESK → lihat semua
-    if (user.role === 'admin' || user.role === 'helpdesk') {
-      result = await TicketService.getTickets('admin', undefined, filters);
-    }
-
-    // 🔹 TEKNISI → hanya tiket miliknya
-    if (user.role === 'teknisi') {
-      result = await TicketService.getTickets('teknisi', user.id_user, filters);
-    }
-
-    // 🔹 SUPERADMIN → lihat semua
-    if (user.role === 'superadmin') {
-      result = await TicketService.getTickets('admin', undefined, filters);
-    }
+    const result = await TicketService.getTickets(
+      user.role,
+      user.id_user,
+      filters,
+    );
 
     return NextResponse.json({
       success: true,
       data: result,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('GET /tickets error:', error);
 
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Error fetching tickets',
+        message:
+          error instanceof Error ? error.message : 'Error fetching tickets',
       },
       { status: 500 },
     );

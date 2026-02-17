@@ -1,13 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getUsersByAreaId } from '@/app/libs/services/users.service';
 import { protectApi } from '@/app/libs/protectApi';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
+
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || undefined;
 
     const { id } = await context.params;
 
@@ -27,18 +30,16 @@ export async function GET(
       );
     }
 
-    const data = await getUsersByAreaId(areaId);
+    const data = await getUsersByAreaId(areaId, search);
 
     return NextResponse.json({
       success: true,
       total: data.length,
       data,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('GET USERS BY AREA ERROR:', error);
-    return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

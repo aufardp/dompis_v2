@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import db from '@/app/libs/db';
+import { TicketService } from '@/app/libs/services/tickets.service';
 
 export async function POST(req: Request) {
   try {
-    await protectApi(['admin']);
+    await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const { ticketId } = await req.json();
 
@@ -15,32 +15,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const connection = await db.getConnection();
+    const result = await TicketService.unassign(Number(ticketId));
 
-    try {
-      await connection.beginTransaction();
-
-      await connection.query(
-        `UPDATE ticket SET teknisi_user_id = NULL, hasil_visit = 'open' WHERE id_ticket = ?`,
-        [ticketId],
-      );
-
-      await connection.commit();
-
-      return NextResponse.json({
-        success: true,
-        message: 'Ticket unassigned successfully',
-      });
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, message: error.message || 'Failed to unassign ticket' },
-      { status: 400 },
-    );
+    return NextResponse.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to unassign ticket';
+    return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }

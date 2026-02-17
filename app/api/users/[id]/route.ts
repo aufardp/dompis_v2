@@ -1,99 +1,104 @@
-import { getUserById, updateUser } from '@/app/libs/services/users.service';
-import { updateUserSchema } from '@/app/libs/validations/users.schema';
-import { protectApi } from '@/app/libs/protectApi';
-import { NextResponse } from 'next/server';
+export const runtime = 'nodejs';
 
-interface RouteContext {
-  params: Promise<{ id: string }>;
+import { NextRequest, NextResponse } from 'next/server';
+import { protectApi } from '@/app/libs/protectApi';
+import {
+  getUserById,
+  updateUser,
+  deleteUser,
+} from '@/app/libs/services/users.service';
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return 'Unexpected error';
 }
 
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const { id } = await params;
-    const userId = Number(id);
-
-    if (!id || isNaN(userId)) {
+    const { id: idParam } = await params;
+    const id = Number(idParam);
+    if (Number.isNaN(id)) {
       return NextResponse.json(
-        { success: false, message: 'ID is required' },
+        { success: false, message: 'Invalid user id' },
         { status: 400 },
       );
     }
 
-    const data = await getUserById(userId);
+    const user = await getUserById(id);
 
-    if (!data) {
+    if (!user) {
       return NextResponse.json(
-        { success: false, message: 'User not found' },
+        { success: false, message: 'User tidak ditemukan' },
         { status: 404 },
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      data,
-    });
-  } catch (error: any) {
-    console.error('GET BY ID ERROR:', error);
+    return NextResponse.json({ success: true, data: user });
+  } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: error.message || 'Internal Server Error' },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error) },
+      { status: 401 },
     );
   }
 }
 
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
-    await protectApi(['admin', 'superadmin']);
+    await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const { id } = await context.params;
-    const userId = Number(id);
-
-    if (isNaN(userId)) {
+    const { id: idParam } = await params;
+    const id = Number(idParam);
+    if (Number.isNaN(id)) {
       return NextResponse.json(
-        { success: false, message: 'Invalid user ID' },
+        { success: false, message: 'Invalid user id' },
         { status: 400 },
       );
     }
 
-    const body = await request.json();
+    const body = await req.json();
 
-    const validated = updateUserSchema.parse({
-      ...body,
-      role_id: body.role_id ? Number(body.role_id) : undefined,
-      area_id: body.area_id ? Number(body.area_id) : undefined,
-      sa_id: body.sa_id ? Number(body.sa_id) : undefined,
-    });
+    await updateUser(id, body);
 
-    await updateUser(userId, {
-      nik: validated.nik,
-      nama: validated.nama,
-      jabatan: validated.jabatan,
-      username: validated.username,
-      password: validated.password,
-      role_id: validated.role_id,
-      area_id: validated.area_id,
-      sa_id: validated.sa_id,
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'User berhasil diupdate',
-    });
-  } catch (error: any) {
-    console.error('Update user error:', error);
-
-    const status = error.name === 'ZodError' ? 400 : 500;
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
     return NextResponse.json(
-      {
-        success: false,
-        message: error.message || 'Error saat mengupdate user',
-      },
-      { status },
+      { success: false, message: getErrorMessage(error) },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    await protectApi(['admin', 'helpdesk', 'superadmin']);
+
+    const { id: idParam } = await params;
+    const id = Number(idParam);
+    if (Number.isNaN(id)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid user id' },
+        { status: 400 },
+      );
+    }
+
+    await deleteUser(id);
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, message: getErrorMessage(error) },
+      { status: 400 },
     );
   }
 }

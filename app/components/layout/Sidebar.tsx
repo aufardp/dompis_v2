@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
 
 const MENU_ITEMS = [
   {
@@ -15,32 +13,28 @@ const MENU_ITEMS = [
   },
 ];
 
-export default function Sidebar() {
-  const [isOpen, setIsOpen] = useState(false);
+export default function Sidebar({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
 
   const handleNavigate = (path: string) => {
     router.push(path);
-    setIsOpen(false);
+    onClose();
   };
 
   return (
     <>
-      {/* Mobile Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className='fixed top-4 left-4 z-50 rounded-lg border border-slate-200 bg-white p-2 shadow-md lg:hidden'
-        aria-label='Toggle menu'
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
       {/* Overlay */}
       {isOpen && (
         <div
           className='fixed inset-0 z-40 bg-black/50 lg:hidden'
-          onClick={() => setIsOpen(false)}
+          onClick={onClose}
         />
       )}
 

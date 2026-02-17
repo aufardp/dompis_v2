@@ -5,7 +5,7 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 export async function POST(req: Request) {
   try {
     // 🔐 Hanya admin yang boleh assign
-    await protectApi(['admin']);
+    await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const body = await req.json();
     const { ticketId, teknisiUserId } = body;
@@ -30,11 +30,12 @@ export async function POST(req: Request) {
       success: true,
       ...result,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Failed to assign ticket',
+        message:
+          error instanceof Error ? error.message : 'Failed to assign ticket',
       },
       { status: 400 },
     );

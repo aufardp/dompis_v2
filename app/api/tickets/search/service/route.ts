@@ -4,7 +4,12 @@ import { protectApi } from '@/app/libs/protectApi';
 
 export async function GET(req: Request) {
   try {
-    const user = await protectApi(['admin', 'teknisi']);
+    const user = await protectApi([
+      'admin',
+      'teknisi',
+      'helpdesk',
+      'superadmin',
+    ]);
 
     const { searchParams } = new URL(req.url);
     const serviceNo = searchParams.get('serviceNo');
@@ -27,9 +32,12 @@ export async function GET(req: Request) {
       total: result.length,
       data: result,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: error.message },
+      {
+        success: false,
+        message: error instanceof Error ? error.message : 'Error',
+      },
       { status: 400 },
     );
   }

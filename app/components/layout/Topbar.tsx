@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Button from '../ui/Button';
-import { useRouter } from 'next/navigation';
 import { useDebounce } from '@/app/hooks/useOptimizations';
 import { Search, X, Menu } from 'lucide-react';
+import UserMenu from './user-menu/UserMenu';
 
 interface Props {
   onMenuClick: () => void;
@@ -13,9 +12,7 @@ interface Props {
 
 export default function Topbar({ onMenuClick, onSearch }: Props) {
   const [searchValue, setSearchValue] = useState('');
-  const [loggingOut, setLoggingOut] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
-  const router = useRouter();
   const debouncedSearch = useDebounce(searchValue, 500);
 
   useEffect(() => {
@@ -31,27 +28,6 @@ export default function Topbar({ onMenuClick, onSearch }: Props) {
     },
     [onSearch, searchValue],
   );
-
-  const handleLogout = async () => {
-    if (!confirm('Are you sure you want to logout?')) return;
-
-    setLoggingOut(true);
-    try {
-      const res = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        router.push('/login');
-        router.refresh();
-      }
-    } catch (err) {
-      console.error('Logout failed:', err);
-    } finally {
-      setLoggingOut(false);
-    }
-  };
 
   const clearSearch = () => {
     setSearchValue('');
@@ -105,9 +81,7 @@ export default function Topbar({ onMenuClick, onSearch }: Props) {
       </div>
 
       <div className='flex items-center gap-3'>
-        <Button variant='outline' onClick={handleLogout} disabled={loggingOut}>
-          {loggingOut ? 'Logging out...' : 'Logout'}
-        </Button>
+        <UserMenu profileHref='/admin/profile' />
       </div>
 
       {/* Mobile Search Modal */}
