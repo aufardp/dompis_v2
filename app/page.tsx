@@ -4,13 +4,17 @@ import { verifyAccessToken } from '@/app/libs/auth';
 
 export default async function Home() {
   const cookieStore = await cookies();
-  const token = cookieStore.get('accessToken')?.value;
+  const token = cookieStore.get('token')?.value;
 
   if (token) {
     try {
       const decoded: any = verifyAccessToken(token);
 
-      if (decoded.role === 'admin' || decoded.role === 'superadmin') {
+      if (
+        decoded.role === 'admin' ||
+        decoded.role === 'superadmin' ||
+        decoded.role === 'super_admin'
+      ) {
         redirect('/admin');
       }
 

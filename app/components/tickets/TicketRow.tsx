@@ -24,15 +24,15 @@ export default function TicketRow({
       <td className='px-5 py-4 text-center'>{ticket.serviceNo}</td>
 
       <td className='max-w-xs truncate px-5 py-4'>
-        <p className='text-sm'>{ticket.contactName}</p>
-        <p className='text-xs text-gray-500'>{ticket.contactPhone}</p>
+        <p className='text-sm'>{ticket.contactName || '-'}</p>
+        <p className='text-xs text-gray-500'>{ticket.contactPhone || '-'}</p>
       </td>
 
-      <td className='px-5 py-4 text-center'>{ticket.customerType}</td>
+      <td className='px-5 py-4 text-center'>{ticket.customerType || '-'}</td>
 
       <td className='px-5 py-4 text-center'>{getMaxTtr(ticket) || '-'}</td>
 
-      <td className='px-5 py-4 text-center'>{ticket.jenisTiket}</td>
+      <td className='px-5 py-4 text-center'>{ticket.jenisTiket || '-'}</td>
 
       <td className='max-w-xs truncate px-5 py-4'>{ticket.summary}</td>
 

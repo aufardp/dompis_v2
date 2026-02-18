@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       'teknisi',
       'helpdesk',
       'superadmin',
+      'super_admin',
     ]);
 
     const { searchParams } = new URL(request.url);

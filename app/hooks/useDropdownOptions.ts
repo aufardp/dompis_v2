@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Option {
   value: string;
@@ -20,7 +21,8 @@ export function useAreaOptions(): UseDropdownOptionsReturn {
     const fetchOptions = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/area');
+        const res = await fetchWithAuth('/api/area');
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
           setOptions(data.data);
@@ -48,7 +50,8 @@ export function useServiceAreaOptions(): UseDropdownOptionsReturn {
     const fetchOptions = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/sa');
+        const res = await fetchWithAuth('/api/sa');
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
           setOptions(data.data);
@@ -76,7 +79,8 @@ export function useRcaOptions(): UseDropdownOptionsReturn {
     const fetchOptions = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/sa');
+        const res = await fetchWithAuth('/api/sa');
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
           setOptions(data.data);
@@ -104,7 +108,8 @@ export function useSubRcaOptions(): UseDropdownOptionsReturn {
     const fetchOptions = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/sa');
+        const res = await fetchWithAuth('/api/sa');
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
           setOptions(data.data);
@@ -123,30 +128,22 @@ export function useSubRcaOptions(): UseDropdownOptionsReturn {
   return { options, loading, error };
 }
 
-export function useWorkzoneOptions(): UseDropdownOptionsReturn {
+export function useWorkzoneOptions() {
   const [options, setOptions] = useState<Option[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchOptions = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch('/api/workzone');
-        const data = await res.json();
-        if (data.success) {
-          setOptions(data.data);
-        } else {
-          setError(data.message);
-        }
-      } catch (err) {
-        setError('Failed to fetch workzone options');
-      } finally {
-        setLoading(false);
+    const fetchWorkzones = async () => {
+      const res = await fetchWithAuth('/api/workzone');
+      if (!res) return;
+      const result = await res.json();
+
+      if (result.success) {
+        setOptions(result.data);
       }
     };
-    fetchOptions();
+
+    fetchWorkzones();
   }, []);
 
-  return { options, loading, error };
+  return { options };
 }

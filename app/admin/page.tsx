@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import NewTicketModal from '@/app/components/tickets/create/NewTicketModal';
 import TicketTable from '@/app/components/tickets/TicketTable';
@@ -8,6 +8,7 @@ import AssignTechnicianModal from '@/app/components/tickets/assign/AssignTechnic
 import Select from '@/app/components/form/Select';
 import { useAdminTickets } from '@/app/hooks/useAdminTickets';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
+import TicketStats from '../components/tickets/TicketStats';
 
 interface TicketData {
   idTicket: number;
@@ -31,10 +32,15 @@ export default function TicketPage() {
     workzoneFilter || undefined,
   );
 
-  const handleSearch = (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     setCurrentPage(1);
-  };
+  }, []);
+
+  const handleWorkzoneChange = useCallback((value: string) => {
+    setWorkzoneFilter(value);
+    setCurrentPage(1);
+  }, []);
 
   const handleAssignClick = (ticketId: number | string) => {
     const ticket = tickets.find((t) => t.idTicket === ticketId);
@@ -61,8 +67,8 @@ export default function TicketPage() {
                 <Select
                   options={workzoneOptions}
                   placeholder='All Workzone'
-                  onChange={setWorkzoneFilter}
-                  defaultValue={workzoneFilter}
+                  value={workzoneFilter}
+                  onChange={handleWorkzoneChange}
                 />
               </div>
 
@@ -75,7 +81,9 @@ export default function TicketPage() {
             </div>
           </div>
 
-          {/* TABLE */}
+          {/* STATS */}
+          <TicketStats workzone={workzoneFilter || undefined} />
+
           <TicketTable
             tickets={tickets}
             loading={loading}

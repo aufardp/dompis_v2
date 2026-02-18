@@ -27,6 +27,7 @@ interface TicketTableProps {
     currentPage: number;
     totalPages: number;
     total: number;
+    limit?: number;
     onPageChange: (page: number) => void;
   };
 }
@@ -161,7 +162,7 @@ export default function TicketTable({
         ) : (
           sortedTickets.map((ticket) => (
             <TicketCardMobile
-              key={ticket.ticket}
+              key={ticket.idTicket ?? ticket.ticket}
               ticket={ticket}
               onAssign={handleAssign}
             />
@@ -205,7 +206,7 @@ export default function TicketTable({
                 ) : (
                   sortedTickets.map((ticket) => (
                     <TicketRow
-                      key={ticket.ticket}
+                      key={ticket.idTicket ?? ticket.ticket}
                       ticket={ticket}
                       onAssign={handleAssign}
                     />
@@ -221,9 +222,13 @@ export default function TicketTable({
       {pagination && pagination.totalPages > 1 && (
         <div className='flex flex-col items-center justify-between gap-4 border-t pt-4 sm:flex-row'>
           <p className='text-sm text-gray-500'>
-            Showing {(pagination.currentPage - 1) * 10 + 1} to{' '}
-            {Math.min(pagination.currentPage * 10, pagination.total)} of{' '}
-            {pagination.total}
+            Showing{' '}
+            {(pagination.currentPage - 1) * (pagination.limit ?? 10) + 1} to{' '}
+            {Math.min(
+              pagination.currentPage * (pagination.limit ?? 10),
+              pagination.total,
+            )}{' '}
+            of {pagination.total}
           </p>
 
           <Pagination

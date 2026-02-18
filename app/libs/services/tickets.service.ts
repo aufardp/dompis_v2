@@ -10,7 +10,7 @@ export class TicketService {
     let whereClause = '';
     const params: any[] = [];
 
-    if (role === 'super_admin') {
+    if (role === 'super_admin' || role === 'superadmin') {
       return { joinClause, whereClause, params };
     }
 
@@ -44,7 +44,7 @@ export class TicketService {
     filters?: {
       search?: string;
       hasilVisit?: string;
-      workzone?: string;
+      workzone?: string; // service area id (id_sa) from dropdown
       page?: number;
       limit?: number;
     },
@@ -61,6 +61,10 @@ export class TicketService {
 
     let baseWhere = ' WHERE 1=1 ';
     const params: any[] = [];
+
+    const serviceAreaId = Number(workzone);
+    const hasServiceAreaFilter =
+      Number.isFinite(serviceAreaId) && serviceAreaId > 0;
 
     if (search) {
       baseWhere += `
@@ -80,9 +84,23 @@ export class TicketService {
       params.push(hasilVisit);
     }
 
-    if (workzone) {
-      baseWhere += ` AND t.WORKZONE = ?`;
-      params.push(workzone);
+    // Filter by selected service area (maps ticket.WORKZONE -> service_area.nama_sa)
+    let filterJoinClause = '';
+    if (hasServiceAreaFilter) {
+      if (role === 'admin') {
+        // admin already joins `service_area sa` in buildAccessFilter
+        baseWhere += ` AND sa.id_sa = ?`;
+        params.push(serviceAreaId);
+      } else {
+        filterJoinClause += `
+          JOIN service_area sa_filter
+            ON LOWER(REPLACE(t.WORKZONE,' ',''))
+               LIKE CONCAT('%', LOWER(REPLACE(sa_filter.nama_sa,' ','')), '%')
+        `;
+
+        baseWhere += ` AND sa_filter.id_sa = ?`;
+        params.push(serviceAreaId);
+      }
     }
 
     const {
@@ -91,6 +109,8 @@ export class TicketService {
       params: roleParams,
     } = this.buildAccessFilter(role, userId);
 
+    const finalJoinClause = joinClause + filterJoinClause;
+
     const finalWhere = baseWhere + whereClause;
     const finalParams = [...params, ...roleParams];
 
@@ -98,9 +118,9 @@ export class TicketService {
 
     const [count]: any = await db.query(
       `
-    SELECT COUNT(*) as total
+    SELECT COUNT(DISTINCT t.id_ticket) as total
     FROM ticket t
-    ${joinClause}
+    ${finalJoinClause}
     ${finalWhere}
     `,
       finalParams,
@@ -112,7 +132,7 @@ export class TicketService {
 
     const [rows]: any = await db.query(
       `
-    SELECT
+    SELECT DISTINCT
       t.id_ticket AS idTicket,
       t.INCIDENT AS ticket,
       t.SUMMARY AS summary,
@@ -146,9 +166,9 @@ export class TicketService {
     FROM ticket t
     LEFT JOIN users u
       ON t.teknisi_user_id = u.id_user
-    ${joinClause}
+    ${finalJoinClause}
     ${finalWhere}
-    ORDER BY STR_TO_DATE(t.REPORTED_DATE, '%Y-%m-%d %H:%i:%s') DESC
+    ORDER BY STR_TO_DATE(t.REPORTED_DATE, '%Y-%m-%d %H:%i:%s') DESC, t.id_ticket DESC
     LIMIT ? OFFSET ?
     `,
       [...finalParams, limit, offset],
@@ -191,7 +211,7 @@ export class TicketService {
 
   /* =====================================================
      ASSIGN
-  ===================================================== */
+   ===================================================== */
 
   static async assignToUser(ticketId: number, teknisiUserId: number) {
     const connection = await db.getConnection();
@@ -229,6 +249,77 @@ export class TicketService {
 
       await connection.commit();
       return { message: 'Ticket assigned successfully' };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  /* =====================================================
+     UNASSIGN (ADMIN/HELPDESK/SUPERADMIN)
+  ===================================================== */
+
+  static async unassign(ticketId: number, role?: string, userId?: number) {
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows]: any = await connection.query(
+        `
+        SELECT id_ticket, teknisi_user_id, HASIL_VISIT, WORKZONE
+        FROM ticket
+        WHERE id_ticket=?
+        FOR UPDATE
+        `,
+        [ticketId],
+      );
+
+      if (!rows.length) throw new Error('Ticket not found');
+
+      const ticket = rows[0];
+
+      if (String(ticket.HASIL_VISIT).toUpperCase() === 'CLOSE') {
+        throw new Error('Ticket already closed');
+      }
+
+      // Admin: enforce service-area access (helpdesk/superadmin can unassign all)
+      if (role === 'admin') {
+        if (!userId) throw new Error('Unauthorized');
+
+        const [access]: any = await connection.query(
+          `
+          SELECT 1
+          FROM ticket t
+          JOIN service_area sa
+            ON LOWER(REPLACE(t.WORKZONE,' ',''))
+               LIKE CONCAT('%', LOWER(REPLACE(sa.nama_sa,' ','')), '%')
+          JOIN user_sa us
+            ON sa.id_sa = us.sa_id
+          WHERE t.id_ticket = ?
+            AND us.user_id = ?
+          LIMIT 1
+          `,
+          [ticketId, userId],
+        );
+
+        if (!access.length) throw new Error('Unauthorized');
+      }
+
+      await connection.query(
+        `
+        UPDATE ticket
+        SET teknisi_user_id = NULL,
+            HASIL_VISIT = 'OPEN'
+        WHERE id_ticket = ?
+        `,
+        [ticketId],
+      );
+
+      await connection.commit();
+      return { message: 'Ticket unassigned successfully' };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -319,29 +410,136 @@ export class TicketService {
      STATS (ROLE SAFE)
   ===================================================== */
 
-  static async getStats(role: string, userId: number) {
+  static async getStats(role: string, userId: number, saId?: number) {
     const { joinClause, whereClause, params } = this.buildAccessFilter(
       role,
       userId,
     );
 
+    let extraJoin = '';
+    let extraWhere = '';
+    const extraParams: any[] = [];
+
+    const serviceAreaId = Number(saId);
+    const hasSaFilter = Number.isFinite(serviceAreaId) && serviceAreaId > 0;
+
+    if (hasSaFilter) {
+      if (role === 'admin') {
+        extraWhere += ` AND sa.id_sa = ?`;
+        extraParams.push(serviceAreaId);
+      } else {
+        extraJoin += `
+          JOIN service_area sa_filter
+            ON LOWER(REPLACE(t.WORKZONE,' ',''))
+               LIKE CONCAT('%', LOWER(REPLACE(sa_filter.nama_sa,' ','')), '%')
+        `;
+        extraWhere += ` AND sa_filter.id_sa = ?`;
+        extraParams.push(serviceAreaId);
+      }
+    }
+
+    const finalJoin = joinClause + extraJoin;
+    const finalParams = [...params, ...extraParams];
+
+    // Use DISTINCT tickets to avoid join-multiplication inflating counts
     const [rows]: any = await db.query(
       `
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN teknisi_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned,
-        SUM(CASE WHEN hasil_visit='OPEN' THEN 1 ELSE 0 END) AS open,
-        SUM(CASE WHEN hasil_visit='ASSIGNED' THEN 1 ELSE 0 END) AS assigned,
-        SUM(CASE WHEN hasil_visit='CLOSE' THEN 1 ELSE 0 END) AS closed
-      FROM ticket t
-      ${joinClause}
-      WHERE 1=1
-      ${whereClause}
+        SUM(x.unassigned) AS unassigned,
+        SUM(x.open) AS open,
+        SUM(x.assigned) AS assigned,
+        SUM(x.closed) AS closed
+      FROM (
+        SELECT DISTINCT
+          t.id_ticket,
+          CASE WHEN t.teknisi_user_id IS NULL THEN 1 ELSE 0 END AS unassigned,
+          CASE WHEN t.hasil_visit='OPEN' THEN 1 ELSE 0 END AS open,
+          CASE WHEN t.hasil_visit='ASSIGNED' THEN 1 ELSE 0 END AS assigned,
+          CASE WHEN t.hasil_visit='CLOSE' THEN 1 ELSE 0 END AS closed
+        FROM ticket t
+        ${finalJoin}
+        WHERE 1=1
+        ${whereClause}
+        ${extraWhere}
+      ) x
       `,
-      params,
+      finalParams,
     );
 
     return rows[0];
+  }
+
+  static async getStatsByServiceArea(
+    role: string,
+    userId: number,
+    saId?: number,
+  ) {
+    const serviceAreaId = Number(saId);
+    const hasSaFilter = Number.isFinite(serviceAreaId) && serviceAreaId > 0;
+
+    let subWhere = ' WHERE 1=1 ';
+    const params: any[] = [];
+
+    // role restrictions
+    if (role === 'teknisi') {
+      subWhere += ' AND t.teknisi_user_id = ?';
+      params.push(userId);
+    }
+
+    // admin restrictions applied after mapping via user_sa
+    let adminJoin = '';
+    if (role === 'admin') {
+      adminJoin += `
+        JOIN user_sa us
+          ON us.sa_id = sa.id_sa
+         AND us.user_id = ?
+      `;
+      params.push(userId);
+    }
+
+    if (hasSaFilter) {
+      params.push(serviceAreaId);
+    }
+
+    const [rows]: any = await db.query(
+      `
+      SELECT
+        sa.id_sa AS id_sa,
+        sa.nama_sa AS nama_sa,
+        COUNT(*) AS total,
+        SUM(CASE WHEN x.teknisi_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned,
+        SUM(CASE WHEN x.hasil_visit='OPEN' THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN x.hasil_visit='ASSIGNED' THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN x.hasil_visit='CLOSE' THEN 1 ELSE 0 END) AS closed
+      FROM (
+        SELECT
+          t.id_ticket,
+          t.teknisi_user_id,
+          t.hasil_visit,
+          (
+            SELECT sa2.id_sa
+            FROM service_area sa2
+            WHERE LOWER(REPLACE(t.WORKZONE,' ',''))
+              LIKE CONCAT('%', LOWER(REPLACE(sa2.nama_sa,' ','')), '%')
+            ORDER BY LENGTH(LOWER(REPLACE(sa2.nama_sa,' ',''))) DESC
+            LIMIT 1
+          ) AS sa_id
+        FROM ticket t
+        ${subWhere}
+      ) x
+      JOIN service_area sa ON sa.id_sa = x.sa_id
+      ${adminJoin}
+      WHERE x.sa_id IS NOT NULL
+      ${hasSaFilter ? ' AND sa.id_sa = ?' : ''}
+      GROUP BY sa.id_sa, sa.nama_sa
+      ORDER BY sa.nama_sa ASC
+      `,
+      // Params are: role filters in subquery, admin join user_id (if any), optional sa filter
+      params,
+    );
+
+    return rows;
   }
 
   /* =====================================================

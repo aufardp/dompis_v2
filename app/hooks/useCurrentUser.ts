@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 export interface CurrentUser {
   id_user: number;
@@ -19,7 +20,8 @@ export function useCurrentUser() {
     setError(null);
 
     try {
-      const res = await fetch('/api/users/me', { credentials: 'include' });
+      const res = await fetchWithAuth('/api/users/me');
+      if (!res) return;
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {

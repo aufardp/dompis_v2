@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { Ticket } from '../types/ticket';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface PaginationInfo {
   currentPage: number;
   totalPages: number;
   total: number;
+  limit: number;
 }
 
 export function useAdminTickets(
@@ -18,6 +20,7 @@ export function useAdminTickets(
     currentPage: 1,
     totalPages: 1,
     total: 0,
+    limit: 10,
   });
 
   const fetchData = useCallback(async () => {
@@ -37,9 +40,8 @@ export function useAdminTickets(
         params.append('workzone', workzone);
       }
 
-      const res = await fetch(`/api/tickets?${params.toString()}`, {
-        credentials: 'include',
-      });
+      const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
+      if (!res) return;
 
       const data = await res.json();
 
@@ -53,6 +55,7 @@ export function useAdminTickets(
           currentPage: data.data.page ?? 1,
           totalPages: data.data.totalPages ?? 1,
           total: data.data.total ?? 0,
+          limit: data.data.limit ?? 10,
         });
       }
     } catch (err) {

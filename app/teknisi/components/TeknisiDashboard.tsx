@@ -73,28 +73,6 @@ export default function TeknisiDashboard() {
     }
   }, []);
 
-  // const getDeadlineInfo = useCallback(
-  //   (ticket: Ticket) => {
-  //     const maxHours = getMaxTtrHours(ticket);
-  //     if (!maxHours || !ticket.reportedDate) return null;
-
-  //     const reported = new Date(ticket.reportedDate);
-  //     const deadline = new Date(reported.getTime() + maxHours * 60 * 60 * 1000);
-
-  //     const now = new Date();
-  //     const diffMs = deadline.getTime() - now.getTime();
-  //     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-
-  //     return {
-  //       deadline,
-  //       remainingHours: diffHours,
-  //       isExpired: diffMs <= 0,
-  //       isWarning: diffHours <= 2 && diffMs > 0,
-  //     };
-  //   },
-  //   [getMaxTtrHours],
-  // );
-
   const handleTicketUpdated = useCallback(() => {
     fetchTickets();
     setSelectedTicket(null);

@@ -4,29 +4,38 @@ import { protectApi } from '@/app/libs/protectApi';
 
 export async function GET() {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'teknisi']);
+    const user = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
-    const [rows]: any = await db.query(`
-      SELECT DISTINCT 
-        t.WORKZONE AS workzone
-      FROM ticket t
-      WHERE t.WORKZONE IS NOT NULL AND t.WORKZONE != ''
-      ORDER BY t.WORKZONE ASC
-    `);
+    // super admin -> return all service areas
+    if (user.role === 'super_admin' || user.role === 'superadmin') {
+      const [rows]: any = await db.query(
+        `SELECT CAST(id_sa AS CHAR) AS value, nama_sa AS label FROM service_area ORDER BY nama_sa ASC`,
+      );
 
-    const options = rows.map((row: any) => ({
-      value: row.workzone,
-      label: row.workzone,
-    }));
+      return NextResponse.json({ success: true, data: rows });
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: options,
-    });
-  } catch (error: any) {
-    console.error('Workzone fetch error:', error);
+    // admin/helpdesk -> only SA mapped to this user_id via user_sa
+    const [rows]: any = await db.query(
+      `
+      SELECT CAST(sa.id_sa AS CHAR) AS value, sa.nama_sa AS label
+      FROM user_sa us
+      JOIN service_area sa ON us.sa_id = sa.id_sa
+      WHERE us.user_id = ?
+      ORDER BY sa.nama_sa ASC
+      `,
+      [user.id_user],
+    );
+
+    return NextResponse.json({ success: true, data: rows });
+  } catch (error) {
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: 'Server Error' },
       { status: 500 },
     );
   }

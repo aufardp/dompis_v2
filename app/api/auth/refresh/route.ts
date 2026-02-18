@@ -20,10 +20,23 @@ export async function POST() {
       role: decoded.role,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       accessToken: newAccessToken,
     });
+
+    // Update httpOnly access token cookie used by protectApi/middleware
+    response.cookies.set({
+      name: 'token',
+      value: newAccessToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60, // 1 hour
+      path: '/',
+    });
+
+    return response;
   } catch {
     return NextResponse.json(
       { success: false, message: 'Invalid refresh token' },

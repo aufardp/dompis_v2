@@ -3,10 +3,14 @@
 import { useState } from 'react';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import ChangePasswordModal from '@/app/components/layout/ChangePasswordModal';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, KeyRound } from 'lucide-react';
+import Button from '@/app/components/ui/Button';
 
 export default function TeknisiProfilePage() {
   const { user, loading, error, refresh } = useCurrentUser();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const router = useRouter();
 
   return (
     <div className='mx-auto max-w-2xl space-y-6 p-4 md:p-6'>
@@ -41,19 +45,22 @@ export default function TeknisiProfilePage() {
           </div>
         )}
 
-        <div className='mt-6 flex flex-wrap gap-3'>
-          <button
+        <div className='mt-8 flex flex-col gap-3 sm:flex-row sm:justify-between'>
+          <Button
             onClick={() => setShowPasswordModal(true)}
-            className='rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700'
+            className='flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-blue-700 hover:shadow-md active:scale-[0.98]'
           >
+            <KeyRound size={16} />
             Change Password
-          </button>
-          <button
-            onClick={refresh}
-            className='rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50'
+          </Button>
+
+          <Button
+            onClick={() => router.push('/teknisi')}
+            className='flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-blue-700 hover:shadow-md active:scale-[0.98]'
           >
-            Refresh
-          </button>
+            <ArrowLeft size={16} />
+            Back
+          </Button>
         </div>
       </div>
 

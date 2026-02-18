@@ -1,29 +1,24 @@
-import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
+import { NextResponse } from 'next/server';
 
-export async function POST(req: Request) {
+export async function GET() {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const user = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const { ticketId } = await req.json();
-
-    if (!ticketId) {
-      return NextResponse.json(
-        { success: false, message: 'ticketId is required' },
-        { status: 400 },
-      );
-    }
-
-    const result = await TicketService.unassign(Number(ticketId));
+    const data = await TicketService.getUnassignedTickets(
+      user.role,
+      user.id_user,
+    );
 
     return NextResponse.json({
       success: true,
-      ...result,
+      total: data.length,
+      data,
     });
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : 'Failed to unassign ticket';
+      error instanceof Error ? error.message : 'Failed to load tickets';
     return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }

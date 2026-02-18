@@ -48,12 +48,6 @@ export default function TeknisiLayout({
           </div>
           <div className='flex items-center gap-2'>
             <UserMenu profileHref='/teknisi/profile' />
-            <button
-              onClick={() => setShowLogoutModal(true)}
-              className='flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100'
-            >
-              <span>Keluar</span>
-            </button>
           </div>
         </div>
       </header>

@@ -13,5 +13,12 @@ export async function POST() {
     path: '/',
   });
 
+  response.cookies.set({
+    name: 'refreshToken',
+    value: '',
+    maxAge: 0,
+    path: '/',
+  });
+
   return response;
 }

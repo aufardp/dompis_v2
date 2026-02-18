@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 interface Option {
   value: string;
@@ -11,6 +11,8 @@ interface SelectProps {
   onChange: (value: string) => void;
   className?: string;
   defaultValue?: string;
+  value?: string;
+  allowEmpty?: boolean;
 }
 
 const Select: React.FC<SelectProps> = ({
@@ -19,13 +21,26 @@ const Select: React.FC<SelectProps> = ({
   onChange,
   className = '',
   defaultValue = '',
+  value,
+  allowEmpty = true,
 }) => {
-  // Manage the selected value
-  const [selectedValue, setSelectedValue] = useState<string>(defaultValue);
+  const isControlled = value !== undefined;
+  const [internalValue, setInternalValue] = useState<string>(defaultValue);
+
+  useEffect(() => {
+    if (!isControlled) setInternalValue(defaultValue);
+  }, [defaultValue, isControlled]);
+
+  const selectedValue = isControlled ? value : internalValue;
+
+  const computedOptions = useMemo(() => {
+    if (!allowEmpty) return options;
+    return [{ value: '', label: placeholder }, ...options];
+  }, [allowEmpty, options, placeholder]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setSelectedValue(value);
+    if (!isControlled) setInternalValue(value);
     onChange(value); // Trigger parent handler
   };
 
@@ -39,16 +54,8 @@ const Select: React.FC<SelectProps> = ({
       value={selectedValue}
       onChange={handleChange}
     >
-      {/* Placeholder option */}
-      <option
-        value=''
-        disabled
-        className='text-gray-700 dark:bg-gray-900 dark:text-gray-400'
-      >
-        {placeholder}
-      </option>
       {/* Map over options */}
-      {options.map((option) => (
+      {computedOptions.map((option) => (
         <option
           key={option.value}
           value={option.value}
