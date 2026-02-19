@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUsersByAreaId } from '@/app/libs/services/users.service';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,10 @@ export async function GET(
     });
   } catch (error: unknown) {
     console.error('GET USERS BY AREA ERROR:', error);
-    const message = error instanceof Error ? error.message : 'Unexpected error';
-    return NextResponse.json({ success: false, message }, { status: 500 });
+    const message = getErrorMessage(error, 'Unexpected error');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 500) },
+    );
   }
 }

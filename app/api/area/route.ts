@@ -10,6 +10,7 @@ import {
 } from '@/app/libs/validations/area.schema';
 import db from '@/app/libs/db';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET() {
   try {
@@ -32,14 +33,16 @@ export async function GET() {
   } catch (error: any) {
     console.error('Area fetch error:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error, 'Server Error') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }
 
 export async function POST(request: Request) {
   try {
+    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
     const body = await request.json();
     const validated = createAreaSchema.parse(body);
 
@@ -52,9 +55,12 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error(error);
-    const status = error.name === 'ZodError' ? 400 : 500;
+    const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
     return NextResponse.json(
-      { success: false, message: error.message || 'Error creating area' },
+      {
+        success: false,
+        message: getErrorMessage(error, 'Error creating area'),
+      },
       { status },
     );
   }
@@ -62,6 +68,8 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
     const body = await request.json();
     const validated = updateAreaSchema.parse({
       id_area: Number(body.id_area),
@@ -78,9 +86,12 @@ export async function PUT(request: Request) {
     });
   } catch (error: any) {
     console.error(error);
-    const status = error.name === 'ZodError' ? 400 : 500;
+    const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
     return NextResponse.json(
-      { success: false, message: error.message || 'Error updating area' },
+      {
+        success: false,
+        message: getErrorMessage(error, 'Error updating area'),
+      },
       { status },
     );
   }
@@ -88,6 +99,8 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -107,8 +120,11 @@ export async function DELETE(request: Request) {
   } catch (error: any) {
     console.error(error);
     return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
+      {
+        success: false,
+        message: getErrorMessage(error, 'Error deleting area'),
+      },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

@@ -100,14 +100,20 @@ export default function TicketStats({ workzone }: Props) {
 
   return (
     <div className='space-y-4'>
-      <div className='grid grid-cols-2 gap-4 md:grid-cols-5'>
+      <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
         <StatCard title='Total' value={data.total} loading={loading} />
         <StatCard
+          title='Unassigned'
+          value={data.unassigned}
+          color='red'
+          loading={loading}
+        />
+        {/* <StatCard
           title='Open'
           value={data.open}
           color='yellow'
           loading={loading}
-        />
+        /> */}
         <StatCard
           title='Assigned'
           value={data.assigned}
@@ -118,12 +124,6 @@ export default function TicketStats({ workzone }: Props) {
           title='Closed'
           value={data.closed}
           color='green'
-          loading={loading}
-        />
-        <StatCard
-          title='Unassigned'
-          value={data.unassigned}
-          color='red'
           loading={loading}
         />
       </div>

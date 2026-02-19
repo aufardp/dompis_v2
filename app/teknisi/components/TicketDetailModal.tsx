@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { rcaMapping } from '@/app/types/rca';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Props {
   ticket: Ticket;
@@ -47,12 +48,13 @@ export default function TicketDetailModal({
     setActionLoading('pickup');
 
     try {
-      const res = await fetch('/api/tickets/pickup', {
+      const res = await fetchWithAuth('/api/tickets/pickup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ ticketId: ticket.idTicket }),
       });
+
+      if (!res) return;
 
       const data = await res.json();
       if (data.success) onUpdated();
@@ -118,6 +120,10 @@ export default function TicketDetailModal({
       };
 
       xhr.onload = () => {
+        if (xhr.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
         if (xhr.status === 200) resolve();
         else reject();
       };
@@ -142,16 +148,17 @@ export default function TicketDetailModal({
 
       await uploadEvidence();
 
-      const res = await fetch('/api/tickets/close', {
+      const res = await fetchWithAuth('/api/tickets/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           ticketId: ticket.idTicket,
           rca: selectedRca,
           subRca: selectedSubRca,
         }),
       });
+
+      if (!res) return;
 
       const data = await res.json();
 

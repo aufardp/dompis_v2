@@ -1,11 +1,19 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { TicketService } from '@/app/libs/services/tickets.service';
+import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function POST(req: Request) {
   try {
     // 🔐 Hanya admin yang boleh assign
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const user = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
     const body = await req.json();
     const { ticketId, teknisiUserId } = body;
@@ -21,9 +29,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketService.assignToUser(
+    const result = await TicketWorkflowService.assignToUser(
       Number(ticketId),
       Number(teknisiUserId),
+      user,
     );
 
     return NextResponse.json({
@@ -34,10 +43,9 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error ? error.message : 'Failed to assign ticket',
+        message: getErrorMessage(error, 'Failed to assign ticket'),
       },
-      { status: 400 },
+      { status: getErrorStatus(error, 400) },
     );
   }
 }

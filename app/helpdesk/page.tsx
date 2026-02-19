@@ -2,6 +2,7 @@
 
 import TicketList from '@/app/components/tickets/TicketListTech';
 import { useEffect, useState } from 'react';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Stats {
   total: number;
@@ -22,9 +23,8 @@ export default function HelpdeskPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/tickets/stats', {
-          credentials: 'include',
-        });
+        const res = await fetchWithAuth('/api/tickets/stats');
+        if (!res) return;
         const data = await res.json();
         if (data.success) {
           setStats(data.data);

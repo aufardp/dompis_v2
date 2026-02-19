@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTicketForm } from './useTicketForm';
 import TicketForm from './TicketForm';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Props {
   isOpen: boolean;
@@ -17,10 +18,10 @@ export default function NewTicketModal({ isOpen, onClose, onCreated }: Props) {
 
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/area', { credentials: 'include' })
-        .then((res) => res.json())
+      fetchWithAuth('/api/area')
+        .then((res) => (res ? res.json() : null))
         .then((data) => {
-          if (data.success) setAreas(data.data);
+          if (data?.success) setAreas(data.data);
         });
     }
   }, [isOpen]);

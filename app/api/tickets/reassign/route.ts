@@ -1,10 +1,18 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { TicketService } from '@/app/libs/services/tickets.service';
+import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function POST(req: Request) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const user = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
     const { ticketId, teknisiId } = await req.json();
 
@@ -15,15 +23,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketService.assignToUser(
+    const result = await TicketWorkflowService.assignToUser(
       Number(ticketId),
       Number(teknisiId),
+      user,
     );
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to reassign';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    const message = getErrorMessage(error, 'Failed to reassign');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 400) },
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getCurrentUser } from '@/app/libs/services/users.service';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET() {
   try {
@@ -17,7 +18,10 @@ export async function GET() {
     return NextResponse.json({ success: true, data: user });
   } catch (error: unknown) {
     console.error(error);
-    const message = error instanceof Error ? error.message : 'Unauthorized';
-    return NextResponse.json({ success: false, message }, { status: 401 });
+    const message = getErrorMessage(error, 'Failed to load current user');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 500) },
+    );
   }
 }

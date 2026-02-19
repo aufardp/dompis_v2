@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Stats {
   assigned: number;
@@ -21,9 +22,8 @@ export default function TeknisiDashboard() {
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/tickets?limit=100', {
-        credentials: 'include',
-      });
+      const res = await fetchWithAuth('/api/tickets?limit=100');
+      if (!res) return;
       const data = await res.json();
 
       if (data.success && data.data?.data) {

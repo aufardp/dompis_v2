@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/app/libs/db';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET() {
   try {
@@ -35,8 +36,8 @@ export async function GET() {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     return NextResponse.json(
-      { success: false, message: 'Server Error' },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error, 'Server Error') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

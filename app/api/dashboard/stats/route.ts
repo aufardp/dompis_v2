@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/app/libs/db';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(request: Request) {
   try {
@@ -85,8 +86,8 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error('Dashboard stats error:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error, 'Server Error') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

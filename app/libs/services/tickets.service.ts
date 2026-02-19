@@ -1,4 +1,8 @@
 import db from '@/app/libs/db';
+import {
+  TicketWorkflowService,
+  type ActorContext,
+} from '@/app/libs/services/ticketWorkflow.service';
 
 export class TicketService {
   /* =====================================================
@@ -210,51 +214,170 @@ export class TicketService {
   }
 
   /* =====================================================
+     QUICK SEARCH (ROLE AWARE)
+  ===================================================== */
+
+  static async search(incident: string, role: string, userId: number) {
+    const { joinClause, whereClause, params } = this.buildAccessFilter(
+      role,
+      userId,
+    );
+
+    const keyword = `%${incident}%`;
+
+    const [rows]: any = await db.query(
+      `
+      SELECT DISTINCT
+        t.id_ticket AS idTicket,
+        t.INCIDENT AS ticket,
+        t.SUMMARY AS summary,
+        t.REPORTED_DATE AS reportedDate,
+        t.SERVICE_NO AS serviceNo,
+        t.CONTACT_NAME AS contactName,
+        t.CONTACT_PHONE AS contactPhone,
+        t.WORKZONE AS workzone,
+        t.HASIL_VISIT AS hasilVisit,
+        t.teknisi_user_id AS teknisiUserId,
+        u.nama AS technicianName
+      FROM ticket t
+      LEFT JOIN users u
+        ON t.teknisi_user_id = u.id_user
+      ${joinClause}
+      WHERE 1=1
+        AND t.INCIDENT LIKE ?
+      ${whereClause}
+      ORDER BY t.id_ticket DESC
+      LIMIT 20
+      `,
+      [keyword, ...params],
+    );
+
+    return rows;
+  }
+
+  static async searchByContactName(
+    contactName: string,
+    role: string,
+    userId: number,
+  ) {
+    const { joinClause, whereClause, params } = this.buildAccessFilter(
+      role,
+      userId,
+    );
+
+    const keyword = `%${contactName}%`;
+
+    const [rows]: any = await db.query(
+      `
+      SELECT DISTINCT
+        t.id_ticket AS idTicket,
+        t.INCIDENT AS ticket,
+        t.CONTACT_NAME AS contactName,
+        t.CONTACT_PHONE AS contactPhone,
+        t.SERVICE_NO AS serviceNo,
+        t.WORKZONE AS workzone,
+        t.HASIL_VISIT AS hasilVisit
+      FROM ticket t
+      ${joinClause}
+      WHERE 1=1
+        AND t.CONTACT_NAME LIKE ?
+      ${whereClause}
+      ORDER BY t.id_ticket DESC
+      LIMIT 20
+      `,
+      [keyword, ...params],
+    );
+
+    return rows;
+  }
+
+  static async searchByServiceNo(
+    serviceNo: string,
+    role: string,
+    userId: number,
+  ) {
+    const { joinClause, whereClause, params } = this.buildAccessFilter(
+      role,
+      userId,
+    );
+
+    const keyword = `%${serviceNo}%`;
+
+    const [rows]: any = await db.query(
+      `
+      SELECT DISTINCT
+        t.id_ticket AS idTicket,
+        t.INCIDENT AS ticket,
+        t.SERVICE_NO AS serviceNo,
+        t.CONTACT_NAME AS contactName,
+        t.CONTACT_PHONE AS contactPhone,
+        t.WORKZONE AS workzone,
+        t.HASIL_VISIT AS hasilVisit
+      FROM ticket t
+      ${joinClause}
+      WHERE 1=1
+        AND t.SERVICE_NO LIKE ?
+      ${whereClause}
+      ORDER BY t.id_ticket DESC
+      LIMIT 20
+      `,
+      [keyword, ...params],
+    );
+
+    return rows;
+  }
+
+  static async getTicketsByUser(userId: number) {
+    const [rows]: any = await db.query(
+      `
+      SELECT DISTINCT
+        t.id_ticket AS idTicket,
+        t.INCIDENT AS ticket,
+        t.SUMMARY AS summary,
+        t.REPORTED_DATE AS reportedDate,
+        t.WORKZONE AS workzone,
+        t.HASIL_VISIT AS hasilVisit,
+        t.teknisi_user_id AS teknisiUserId
+      FROM ticket t
+      JOIN service_area sa
+        ON LOWER(REPLACE(t.WORKZONE,' ',''))
+           LIKE CONCAT('%', LOWER(REPLACE(sa.nama_sa,' ','')), '%')
+      JOIN user_sa us
+        ON sa.id_sa = us.sa_id
+      WHERE us.user_id = ?
+      ORDER BY STR_TO_DATE(t.REPORTED_DATE, '%Y-%m-%d %H:%i:%s') DESC, t.id_ticket DESC
+      LIMIT 200
+      `,
+      [userId],
+    );
+
+    return rows;
+  }
+
+  static async getTeknisiUsers() {
+    const [rows]: any = await db.query(
+      `
+      SELECT u.id_user, u.nama, u.nik
+      FROM users u
+      JOIN roles r ON r.id_role = u.role_id
+      WHERE r.key = 'teknisi'
+      ORDER BY u.nama ASC
+      `,
+    );
+
+    return rows;
+  }
+
+  /* =====================================================
      ASSIGN
    ===================================================== */
 
-  static async assignToUser(ticketId: number, teknisiUserId: number) {
-    const connection = await db.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      const [ticket]: any = await connection.query(
-        `SELECT id_ticket FROM ticket WHERE id_ticket=?`,
-        [ticketId],
-      );
-
-      if (!ticket.length) throw new Error('Ticket not found');
-
-      const [user]: any = await connection.query(
-        `
-        SELECT u.id_user
-        FROM users u
-        JOIN roles r ON u.role_id = r.id_role
-        WHERE u.id_user=? AND r.key='teknisi'
-        `,
-        [teknisiUserId],
-      );
-
-      if (!user.length) throw new Error('Technician not found');
-
-      await connection.query(
-        `
-        UPDATE ticket
-        SET teknisi_user_id=?, hasil_visit='ASSIGNED'
-        WHERE id_ticket=?
-        `,
-        [teknisiUserId, ticketId],
-      );
-
-      await connection.commit();
-      return { message: 'Ticket assigned successfully' };
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+  static async assignToUser(
+    ticketId: number,
+    teknisiUserId: number,
+    actor: ActorContext,
+  ) {
+    return TicketWorkflowService.assignToUser(ticketId, teknisiUserId, actor);
   }
 
   /* =====================================================
@@ -262,103 +385,27 @@ export class TicketService {
   ===================================================== */
 
   static async unassign(ticketId: number, role?: string, userId?: number) {
-    const connection = await db.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      const [rows]: any = await connection.query(
-        `
-        SELECT id_ticket, teknisi_user_id, HASIL_VISIT, WORKZONE
-        FROM ticket
-        WHERE id_ticket=?
-        FOR UPDATE
-        `,
-        [ticketId],
-      );
-
-      if (!rows.length) throw new Error('Ticket not found');
-
-      const ticket = rows[0];
-
-      if (String(ticket.HASIL_VISIT).toUpperCase() === 'CLOSE') {
-        throw new Error('Ticket already closed');
-      }
-
-      // Admin: enforce service-area access (helpdesk/superadmin can unassign all)
-      if (role === 'admin') {
-        if (!userId) throw new Error('Unauthorized');
-
-        const [access]: any = await connection.query(
-          `
-          SELECT 1
-          FROM ticket t
-          JOIN service_area sa
-            ON LOWER(REPLACE(t.WORKZONE,' ',''))
-               LIKE CONCAT('%', LOWER(REPLACE(sa.nama_sa,' ','')), '%')
-          JOIN user_sa us
-            ON sa.id_sa = us.sa_id
-          WHERE t.id_ticket = ?
-            AND us.user_id = ?
-          LIMIT 1
-          `,
-          [ticketId, userId],
-        );
-
-        if (!access.length) throw new Error('Unauthorized');
-      }
-
-      await connection.query(
-        `
-        UPDATE ticket
-        SET teknisi_user_id = NULL,
-            HASIL_VISIT = 'OPEN'
-        WHERE id_ticket = ?
-        `,
-        [ticketId],
-      );
-
-      await connection.commit();
-      return { message: 'Ticket unassigned successfully' };
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    if (!role || !userId) throw new Error('Unauthorized');
+    return TicketWorkflowService.unassignTicket(ticketId, {
+      id_user: userId,
+      role,
+    });
   }
 
   /* =====================================================
      PICKUP
-  ===================================================== */
+   ===================================================== */
 
   static async pickup(ticketId: number, teknisiUserId: number) {
-    const [rows]: any = await db.query(
-      `SELECT teknisi_user_id, hasil_visit FROM ticket WHERE id_ticket=?`,
-      [ticketId],
-    );
-
-    if (!rows.length) throw new Error('Ticket not found');
-
-    const ticket = rows[0];
-
-    if (Number(ticket.teknisi_user_id) !== teknisiUserId)
-      throw new Error('Unauthorized');
-
-    if (ticket.hasil_visit !== 'ASSIGNED')
-      throw new Error('Ticket not ready for pickup');
-
-    await db.query(
-      `UPDATE ticket SET hasil_visit='ON_PROGRESS' WHERE id_ticket=?`,
-      [ticketId],
-    );
-
-    return { message: 'Ticket picked up successfully' };
+    return TicketWorkflowService.pickupTicket(ticketId, {
+      id_user: teknisiUserId,
+      role: 'teknisi',
+    });
   }
 
   /* =====================================================
      CLOSE
-  ===================================================== */
+   ===================================================== */
 
   static async close(
     ticketId: number,
@@ -366,44 +413,12 @@ export class TicketService {
     rca: string,
     subRca: string,
   ) {
-    const [rows]: any = await db.query(
-      `SELECT teknisi_user_id, hasil_visit FROM ticket WHERE id_ticket=?`,
-      [ticketId],
+    return TicketWorkflowService.closeTicket(
+      ticketId,
+      { id_user: teknisiUserId, role: 'teknisi' },
+      rca,
+      subRca,
     );
-
-    if (!rows.length) throw new Error('Ticket not found');
-
-    const ticket = rows[0];
-
-    if (Number(ticket.teknisi_user_id) !== teknisiUserId)
-      throw new Error('Unauthorized');
-
-    if (ticket.hasil_visit === 'CLOSE')
-      throw new Error('Ticket already closed');
-
-    if (!rca || !subRca) throw new Error('RCA dan Sub RCA wajib diisi');
-
-    const [evidence]: any = await db.query(
-      `SELECT COUNT(*) as total FROM ticket_evidence WHERE ticket_id=?`,
-      [ticketId],
-    );
-
-    if (Number(evidence[0].total) < 2)
-      throw new Error('Minimal 2 evidence wajib sebelum close');
-
-    await db.query(
-      `
-      UPDATE ticket
-      SET hasil_visit='CLOSE',
-          rca=?,
-          sub_rca=?,
-          closed_at=NOW()
-      WHERE id_ticket=?
-      `,
-      [rca, subRca, ticketId],
-    );
-
-    return { message: 'Ticket closed successfully' };
   }
 
   /* =====================================================

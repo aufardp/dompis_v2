@@ -3,11 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getAllUsers, createUser } from '@/app/libs/services/users.service';
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return 'Unexpected error';
-}
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,8 +27,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: true, data: users });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 401 },
+      {
+        success: false,
+        message: getErrorMessage(error, 'Failed to load users'),
+      },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }
@@ -51,8 +50,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 400 },
+      {
+        success: false,
+        message: getErrorMessage(error, 'Failed to create user'),
+      },
+      { status: getErrorStatus(error, 400) },
     );
   }
 }

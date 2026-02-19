@@ -1,6 +1,9 @@
+export const runtime = 'nodejs';
+
 import { protectApi } from '@/app/libs/protectApi';
-import { TicketService } from '@/app/libs/services/tickets.service';
+import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function POST(req: Request) {
   try {
@@ -15,11 +18,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketService.pickup(Number(ticketId), user.id_user);
+    const result = await TicketWorkflowService.pickupTicket(
+      Number(ticketId),
+      user,
+    );
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to pickup';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    const message = getErrorMessage(error, 'Failed to pickup');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 400) },
+    );
   }
 }

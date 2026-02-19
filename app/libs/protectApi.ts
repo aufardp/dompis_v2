@@ -1,5 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import { verifyAccessToken } from './auth';
+import { ApiError } from './apiError';
 
 export async function protectApi(allowedRoles: string[] = []) {
   let token: string | undefined;
@@ -18,18 +19,18 @@ export async function protectApi(allowedRoles: string[] = []) {
     token = cookieStore.get('token')?.value;
   }
 
-  if (!token) throw new Error('Unauthorized - No token');
+  if (!token) throw new ApiError(401, 'Unauthorized - No token');
 
   let decoded: any;
 
   try {
     decoded = verifyAccessToken(token);
   } catch {
-    throw new Error('Unauthorized - Invalid or expired token');
+    throw new ApiError(401, 'Unauthorized - Invalid or expired token');
   }
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(decoded.role)) {
-    throw new Error('Forbidden - Access denied');
+    throw new ApiError(403, 'Forbidden - Access denied');
   }
 
   return decoded;

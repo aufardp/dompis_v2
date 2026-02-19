@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -49,10 +50,9 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error ? error.message : 'Error fetching tickets',
+        message: getErrorMessage(error, 'Error fetching tickets'),
       },
-      { status: 500 },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

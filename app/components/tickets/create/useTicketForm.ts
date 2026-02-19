@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TicketFormData } from './types';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 export function useTicketForm(onSuccess?: () => void) {
   const [loading, setLoading] = useState(false);
@@ -35,15 +36,16 @@ export function useTicketForm(onSuccess?: () => void) {
     setErrors([]);
 
     try {
-      const res = await fetch('/api/tickets', {
+      const res = await fetchWithAuth('/api/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           ...formData,
           areaId: formData.areaId ? Number(formData.areaId) : null,
         }),
       });
+
+      if (!res) return;
 
       const data = await res.json();
 

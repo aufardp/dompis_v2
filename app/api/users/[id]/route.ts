@@ -2,16 +2,12 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import {
   getUserById,
   updateUser,
   deleteUser,
 } from '@/app/libs/services/users.service';
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return 'Unexpected error';
-}
 
 export async function GET(
   req: NextRequest,
@@ -41,8 +37,8 @@ export async function GET(
     return NextResponse.json({ success: true, data: user });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 401 },
+      { success: false, message: getErrorMessage(error, 'Unexpected error') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }
@@ -70,8 +66,8 @@ export async function PUT(
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 400 },
+      { success: false, message: getErrorMessage(error, 'Unexpected error') },
+      { status: getErrorStatus(error, 400) },
     );
   }
 }
@@ -97,8 +93,8 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 400 },
+      { success: false, message: getErrorMessage(error, 'Unexpected error') },
+      { status: getErrorStatus(error, 400) },
     );
   }
 }

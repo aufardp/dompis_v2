@@ -8,6 +8,7 @@ import {
   EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 import Button from '../ui/Button';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Props {
   isOpen: boolean;
@@ -53,17 +54,18 @@ export default function ChangePasswordModal({ isOpen, onClose }: Props) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/users/change-password', {
-        method: 'POST',
+      const res = await fetchWithAuth('/api/users/change-password', {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           currentPassword,
           newPassword,
         }),
       });
+
+      if (!res) return;
 
       const data = await res.json();
 

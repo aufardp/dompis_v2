@@ -1,4 +1,5 @@
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET() {
   try {
@@ -11,8 +12,8 @@ export async function GET() {
     });
   } catch (error: any) {
     return Response.json(
-      { success: false, message: error.message },
-      { status: 401 },
+      { success: false, message: getErrorMessage(error, 'Unauthorized') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

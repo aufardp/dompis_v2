@@ -13,12 +13,21 @@ export const formatDate = (dateStr: string) => {
 
 const STATUS_COLOR_MAP: Record<string, BadgeColor> = {
   OPEN: 'warning',
+  ASSIGNED: 'info',
+  ON_PROGRESS: 'info',
   IN_PROGRESS: 'info',
   CLOSE: 'success',
+  CLOSED: 'success',
+  CANCELLED: 'error',
+  PENDING: 'warning',
+  ESCALATED: 'dark',
 };
 
 export const getStatusColor = (status: string): BadgeColor => {
-  return STATUS_COLOR_MAP[status?.trim()] ?? 'error';
+  const key = String(status || '')
+    .trim()
+    .toUpperCase();
+  return STATUS_COLOR_MAP[key] ?? 'error';
 };
 
 export function getMaxTtr(ticket: any): string | null {

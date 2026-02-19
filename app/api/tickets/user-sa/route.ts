@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return 'Unexpected error';
-}
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,8 +15,8 @@ export async function GET(req: NextRequest) {
   } catch (error: unknown) {
     console.error(error);
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error, 'Unexpected error') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

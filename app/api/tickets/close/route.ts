@@ -1,6 +1,9 @@
+export const runtime = 'nodejs';
+
 import { protectApi } from '@/app/libs/protectApi';
-import { TicketService } from '@/app/libs/services/tickets.service';
+import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function POST(req: Request) {
   try {
@@ -16,17 +19,19 @@ export async function POST(req: Request) {
         { status: 400 },
       );
 
-    const result = await TicketService.close(
+    const result = await TicketWorkflowService.closeTicket(
       Number(ticketId),
-      user.id_user,
+      user,
       String(rca || ''),
       String(subRca || ''),
     );
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to close ticket';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    const message = getErrorMessage(error, 'Failed to close ticket');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 400) },
+    );
   }
 }

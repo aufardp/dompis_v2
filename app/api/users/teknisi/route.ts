@@ -1,6 +1,7 @@
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { NextResponse } from 'next/server';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET() {
   try {
@@ -13,7 +14,10 @@ export async function GET() {
       data,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unexpected error';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    const message = getErrorMessage(error, 'Unexpected error');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 400) },
+    );
   }
 }

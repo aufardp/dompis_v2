@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
   LockClosedIcon,
   ArrowRightOnRectangleIcon,
@@ -46,9 +47,8 @@ export default function UserAvatar({ onPasswordChange }: Props) {
 
   const fetchUser = async () => {
     try {
-      const res = await fetch('/api/users/me', {
-        credentials: 'include',
-      });
+      const res = await fetchWithAuth('/api/users/me');
+      if (!res) return;
       const data = await res.json();
       if (data.success) {
         setUser(data.data);

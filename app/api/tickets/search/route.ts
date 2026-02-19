@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(req: Request) {
   try {
@@ -36,9 +37,9 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : 'Error',
+        message: getErrorMessage(error, 'Error'),
       },
-      { status: 400 },
+      { status: getErrorStatus(error, 400) },
     );
   }
 }

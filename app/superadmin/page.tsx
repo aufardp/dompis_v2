@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Ticket } from '@/app/types/ticket';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface DashboardStats {
   totalTickets: number;
@@ -27,9 +28,11 @@ export default function SuperadminPage() {
   const fetchData = async () => {
     try {
       const [ticketsRes, statsRes] = await Promise.all([
-        fetch('/api/tickets', { credentials: 'include' }),
-        fetch('/api/dashboard/stats?type=stats', { credentials: 'include' }),
+        fetchWithAuth('/api/tickets'),
+        fetchWithAuth('/api/dashboard/stats?type=stats'),
       ]);
+
+      if (!ticketsRes || !statsRes) return;
 
       const ticketsData = await ticketsRes.json();
       const statsData = await statsRes.json();

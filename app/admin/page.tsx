@@ -12,6 +12,9 @@ import TicketStats from '../components/tickets/TicketStats';
 
 interface TicketData {
   idTicket: number;
+  ticketCode?: string;
+  workzone?: string | null;
+  technicianName?: string | null;
   teknisiUserId?: number;
 }
 
@@ -47,6 +50,9 @@ export default function TicketPage() {
     const techId = ticket?.teknisiUserId;
     setAssignModalTicket({
       idTicket: Number(ticketId),
+      ticketCode: ticket?.ticket,
+      workzone: ticket?.workzone ?? null,
+      technicianName: ticket?.technicianName ?? null,
       teknisiUserId:
         techId !== undefined && techId !== null ? techId : undefined,
     });
@@ -105,7 +111,10 @@ export default function TicketPage() {
       {assignModalTicket && (
         <AssignTechnicianModal
           ticketId={assignModalTicket.idTicket}
+          ticketCode={assignModalTicket.ticketCode}
+          ticketWorkzone={assignModalTicket.workzone}
           currentTechnicianId={assignModalTicket.teknisiUserId}
+          currentTechnicianName={assignModalTicket.technicianName}
           isOpen
           onClose={() => setAssignModalTicket(null)}
           onAssign={async () => {

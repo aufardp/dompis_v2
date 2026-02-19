@@ -1,6 +1,7 @@
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { NextResponse } from 'next/server';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 function toOptionalPositiveInt(value: string | null) {
   if (!value) return undefined;
@@ -47,8 +48,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to load stats';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    const message = getErrorMessage(error, 'Failed to load stats');
+    return NextResponse.json(
+      { success: false, message },
+      { status: getErrorStatus(error, 400) },
+    );
   }
 }
