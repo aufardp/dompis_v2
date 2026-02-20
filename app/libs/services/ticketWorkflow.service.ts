@@ -1,3 +1,5 @@
+// app/services/ticketWorkflow.service.ts
+
 import prisma from '@/app/libs/prisma';
 import {
   assertRoleAllowed,
@@ -6,6 +8,9 @@ import {
 } from '@/app/libs/roles';
 import { ActivityType, TicketStatus } from '@/generated/prisma/enums';
 import { Prisma } from '@/generated/prisma/client';
+import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
+
+// ── Public Types ──────────────────────────────────────────────────────────────
 
 export type ActorContext = {
   id_user: number;
@@ -41,6 +46,8 @@ export type UpdateTicketInput = {
   workflow?: TicketUpdateWorkflow;
 };
 
+// ── Internal Types ────────────────────────────────────────────────────────────
+
 type VisitStatus =
   | 'OPEN'
   | 'ASSIGNED'
@@ -50,13 +57,34 @@ type VisitStatus =
   | 'CANCELLED'
   | 'CLOSE';
 
+type LockedTicket = {
+  id_ticket: number;
+  INCIDENT: string;
+  WORKZONE: string | null;
+  teknisi_user_id: number | null;
+  HASIL_VISIT: string | null;
+  PENDING_REASON: string | null;
+};
+
+type WorkflowResult = {
+  ticketUpdate: Record<string, unknown>;
+  pendingReason: string | null | undefined;
+};
+
+type PatchResult = {
+  ticketUpdate: Record<string, unknown>;
+  patchChanges: string[];
+  pendingReason: string | null | undefined;
+};
+
+// ── Pure Utilities ────────────────────────────────────────────────────────────
+
 function normalizeVisitStatus(value: unknown): VisitStatus {
   const s = String(value ?? '')
     .trim()
     .toUpperCase();
 
-  if (!s) return 'OPEN';
-  if (s === 'OPEN') return 'OPEN';
+  if (!s || s === 'OPEN') return 'OPEN';
   if (s === 'ASSIGNED') return 'ASSIGNED';
   if (s === 'ON_PROGRESS' || s === 'IN_PROGRESS') return 'ON_PROGRESS';
   if (s === 'PENDING') return 'PENDING';
@@ -78,17 +106,60 @@ function cleanNullableString(value: unknown): string | null | undefined {
   return s.length === 0 ? null : s;
 }
 
-function truncateVarchar(value: string, max: number) {
-  if (value.length <= max) return value;
-  if (max <= 3) return value.slice(0, max);
-  return value.slice(0, max - 3) + '...';
+function truncate255(value: string): string {
+  if (value.length <= 255) return value;
+  return value.slice(0, 252) + '...';
+}
+
+function toTrackingStatus(from: VisitStatus): TicketStatus | null {
+  const map: Partial<Record<VisitStatus, TicketStatus>> = {
+    ASSIGNED: TicketStatus.ASSIGNED,
+    ON_PROGRESS: TicketStatus.ON_PROGRESS,
+    PENDING: TicketStatus.PENDING,
+    ESCALATED: TicketStatus.ESCALATED,
+    CANCELLED: TicketStatus.CANCELLED,
+    CLOSE: TicketStatus.CLOSE,
+  };
+  return map[from] ?? null;
+}
+
+function assertTransition(
+  action: 'ASSIGN' | 'UNASSIGN' | 'PICKUP' | 'CLOSE',
+  from: VisitStatus,
+) {
+  const allowed: Record<typeof action, VisitStatus[]> = {
+    ASSIGN: ['OPEN', 'ASSIGNED'],
+    UNASSIGN: ['ASSIGNED'],
+    PICKUP: ['ASSIGNED'],
+    CLOSE: ['ON_PROGRESS'],
+  };
+
+  if (!allowed[action].includes(from)) {
+    throw new Error('Invalid status transition');
+  }
+}
+
+// ── DB Helpers ────────────────────────────────────────────────────────────────
+
+async function lockTicketRow(
+  tx: Prisma.TransactionClient,
+  ticketId: number,
+): Promise<LockedTicket | null> {
+  const rows = await tx.$queryRaw<LockedTicket[]>`
+    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT, PENDING_REASON
+    FROM ticket
+    WHERE id_ticket = ${ticketId}
+    FOR UPDATE
+  `;
+  return rows[0] ?? null;
 }
 
 async function resolveServiceAreaForWorkzone(
   tx: Prisma.TransactionClient,
   workzone: string | null,
-) {
+): Promise<{ id_sa: number; nama_sa: string | null } | null> {
   if (!workzone) return null;
+
   const wz = normalizeKey(workzone);
   if (!wz) return null;
 
@@ -96,16 +167,15 @@ async function resolveServiceAreaForWorkzone(
     select: { id_sa: true, nama_sa: true },
   });
 
-  let best: { id_sa: number; nama_sa: string | null; norm: string } | undefined;
+  let best:
+    | { id_sa: number; nama_sa: string | null; normLen: number }
+    | undefined;
 
   for (const sa of serviceAreas) {
-    const name = sa.nama_sa ? String(sa.nama_sa) : '';
-    const norm = name ? normalizeKey(name) : '';
-    if (!norm) continue;
-    if (!wz.includes(norm)) continue;
-
-    if (!best || norm.length > best.norm.length) {
-      best = { id_sa: sa.id_sa, nama_sa: sa.nama_sa, norm };
+    const norm = sa.nama_sa ? normalizeKey(sa.nama_sa) : '';
+    if (!norm || !wz.includes(norm)) continue;
+    if (!best || norm.length > best.normLen) {
+      best = { id_sa: sa.id_sa, nama_sa: sa.nama_sa, normLen: norm.length };
     }
   }
 
@@ -118,13 +188,9 @@ async function assertAdminHasAccessToServiceArea(
   serviceAreaId: number,
 ) {
   const access = await tx.user_sa.findFirst({
-    where: {
-      user_id: actorId,
-      sa_id: serviceAreaId,
-    },
+    where: { user_id: actorId, sa_id: serviceAreaId },
     select: { id: true },
   });
-
   if (!access) throw new Error('Unauthorized');
 }
 
@@ -134,13 +200,9 @@ async function assertTechnicianEligibleForServiceArea(
   serviceAreaId: number,
 ) {
   const mapping = await tx.user_sa.findFirst({
-    where: {
-      user_id: technicianId,
-      sa_id: serviceAreaId,
-    },
+    where: { user_id: technicianId, sa_id: serviceAreaId },
     select: { id: true },
   });
-
   if (!mapping) {
     throw new Error(
       'Selected technician is not assigned to this ticket workzone',
@@ -148,69 +210,305 @@ async function assertTechnicianEligibleForServiceArea(
   }
 }
 
-async function lockTicketRow(tx: Prisma.TransactionClient, ticketId: number) {
-  const rows = await tx.$queryRaw<
-    Array<{
-      id_ticket: number;
-      INCIDENT: string;
-      WORKZONE: string | null;
-      teknisi_user_id: number | null;
-      HASIL_VISIT: string | null;
-      PENDING_REASON: string | null;
-    }>
-  >`
-    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT, PENDING_REASON
-    FROM ticket
-    WHERE id_ticket = ${ticketId}
-    FOR UPDATE
-  `;
-
-  return rows[0] ?? null;
-}
-
-function assertTransition(
-  action: 'ASSIGN' | 'UNASSIGN' | 'PICKUP' | 'CLOSE',
-  from: VisitStatus,
+async function deactivateAssignmentHistory(
+  tx: Prisma.TransactionClient,
+  ticketId: number,
+  now: Date,
 ) {
-  if (action === 'ASSIGN') {
-    if (from === 'OPEN' || from === 'ASSIGNED') return;
-    throw new Error('Invalid status transition');
-  }
-
-  if (action === 'UNASSIGN') {
-    if (from === 'ASSIGNED') return;
-    throw new Error('Invalid status transition');
-  }
-
-  if (action === 'PICKUP') {
-    if (from === 'ASSIGNED') return;
-    throw new Error('Invalid status transition');
-  }
-
-  if (action === 'CLOSE') {
-    if (from === 'ON_PROGRESS') return;
-    throw new Error('Invalid status transition');
-  }
+  return tx.ticket_assignment_history.updateMany({
+    where: { ticket_id: ticketId, is_active: true },
+    data: { is_active: false, unassigned_at: now },
+  });
 }
 
-function toTrackingStatus(from: VisitStatus): TicketStatus | null {
-  switch (from) {
-    case 'OPEN':
-      return null;
-    case 'ASSIGNED':
-      return TicketStatus.ASSIGNED;
-    case 'ON_PROGRESS':
-      return TicketStatus.ON_PROGRESS;
-    case 'PENDING':
-      return TicketStatus.PENDING;
-    case 'ESCALATED':
-      return TicketStatus.ESCALATED;
-    case 'CANCELLED':
-      return TicketStatus.CANCELLED;
-    case 'CLOSE':
-      return TicketStatus.CLOSE;
+// ── Internal Workflow Handlers ────────────────────────────────────────────────
+
+/**
+ * Handles ON_PROGRESS <-> PENDING transitions for the teknisi role.
+ * Returns the ticket column updates and the new pending reason value.
+ */
+async function handleTechnicianWorkflow(
+  tx: Prisma.TransactionClient,
+  ticket: LockedTicket,
+  ticketId: number,
+  actor: ActorContext,
+  roleId: number,
+  workflow: TicketUpdateWorkflow,
+  current: VisitStatus,
+  now: Date,
+  resolvePendingReason: () => Promise<string | null>,
+): Promise<WorkflowResult> {
+  if (
+    ticket.teknisi_user_id == null ||
+    ticket.teknisi_user_id !== actor.id_user
+  ) {
+    throw new Error('Unauthorized');
   }
+
+  const rawNext = cleanNullableString(workflow.status);
+  if (!rawNext) throw new Error('status is required');
+
+  const next = normalizeVisitStatus(rawNext);
+
+  if (next === current) {
+    throw new Error(
+      next === 'PENDING'
+        ? 'Ticket is already PENDING. Please resume first'
+        : 'Ticket already has that status',
+    );
+  }
+  if (current === 'CLOSE') throw new Error('Ticket already closed');
+
+  // ON_PROGRESS → PENDING
+  if (next === 'PENDING') {
+    if (current !== 'ON_PROGRESS') throw new Error('Invalid status transition');
+
+    const reason = cleanNullableString(workflow.pendingReason);
+    if (!reason) throw new Error('pendingReason is required');
+
+    const reasonDb = truncate255(reason);
+
+    await upsertTracking(tx, {
+      ticketId,
+      assignedTo: actor.id_user,
+      status: TicketStatus.PENDING,
+      isActive: true,
+      now,
+      extra: { pendingAt: now, pendingReason: reasonDb },
+    });
+
+    await logStatusChange(tx, {
+      ticketId,
+      oldStatus: TicketStatus.ON_PROGRESS,
+      newStatus: TicketStatus.PENDING,
+      changedBy: actor.id_user,
+      roleId,
+      note: workflow.note ? String(workflow.note).trim() : 'Set to PENDING',
+    });
+
+    await logActivity(tx, {
+      ticketId,
+      userId: actor.id_user,
+      roleId,
+      type: ActivityType.STATUS_CHANGE,
+      description: truncate255(
+        `Status change: ON_PROGRESS -> PENDING | reason: ${reasonDb}`,
+      ),
+    });
+
+    return {
+      ticketUpdate: { HASIL_VISIT: 'PENDING' },
+      pendingReason: reasonDb,
+    };
+  }
+
+  // PENDING → ON_PROGRESS
+  if (next === 'ON_PROGRESS') {
+    if (current !== 'PENDING') throw new Error('Invalid status transition');
+
+    const previousReason = await resolvePendingReason();
+
+    await upsertTracking(tx, {
+      ticketId,
+      assignedTo: actor.id_user,
+      status: TicketStatus.ON_PROGRESS,
+      isActive: true,
+      now,
+      extra: { onProgressAt: now, pendingReason: null },
+    });
+
+    await logStatusChange(tx, {
+      ticketId,
+      oldStatus: TicketStatus.PENDING,
+      newStatus: TicketStatus.ON_PROGRESS,
+      changedBy: actor.id_user,
+      roleId,
+      note: workflow.note ? String(workflow.note).trim() : 'Resume work',
+    });
+
+    await logActivity(tx, {
+      ticketId,
+      userId: actor.id_user,
+      roleId,
+      type: ActivityType.STATUS_CHANGE,
+      description: truncate255(
+        previousReason
+          ? `Status change: PENDING -> ON_PROGRESS | cleared reason: ${previousReason}`
+          : 'Status change: PENDING -> ON_PROGRESS',
+      ),
+    });
+
+    // Empty string clears PENDING_REASON in DB (column may be NOT NULL)
+    return { ticketUpdate: { HASIL_VISIT: 'ON_PROGRESS' }, pendingReason: '' };
+  }
+
+  throw new Error('Invalid status transition');
 }
+
+/**
+ * Handles escalation for admin / helpdesk / superadmin roles.
+ */
+async function handleAdminWorkflow(
+  tx: Prisma.TransactionClient,
+  ticket: LockedTicket,
+  ticketId: number,
+  actor: ActorContext,
+  roleId: number,
+  workflow: TicketUpdateWorkflow,
+  current: VisitStatus,
+  now: Date,
+  resolvePendingReason: () => Promise<string | null>,
+): Promise<WorkflowResult> {
+  const rawNext = cleanNullableString(workflow.status);
+  if (!rawNext) throw new Error('status is required');
+
+  const next = normalizeVisitStatus(rawNext);
+
+  if (next === current) throw new Error('Ticket already has that status');
+  if (current === 'CLOSE') throw new Error('Ticket already closed');
+  if (next !== 'ESCALATED') throw new Error('Invalid status transition');
+
+  if (!['ASSIGNED', 'ON_PROGRESS', 'PENDING'].includes(current)) {
+    throw new Error('Invalid status transition');
+  }
+  if (ticket.teknisi_user_id == null) throw new Error('Ticket is not assigned');
+
+  const previousReason =
+    current === 'PENDING' ? await resolvePendingReason() : null;
+
+  await upsertTracking(tx, {
+    ticketId,
+    assignedTo: ticket.teknisi_user_id,
+    status: TicketStatus.ESCALATED,
+    isActive: true,
+    now,
+    extra: { pendingReason: null },
+  });
+
+  await logStatusChange(tx, {
+    ticketId,
+    oldStatus: toTrackingStatus(current),
+    newStatus: TicketStatus.ESCALATED,
+    changedBy: actor.id_user,
+    roleId,
+    note: workflow.note ? String(workflow.note).trim() : 'Escalated',
+  });
+
+  await logActivity(tx, {
+    ticketId,
+    userId: actor.id_user,
+    roleId,
+    type: ActivityType.STATUS_CHANGE,
+    description: truncate255(
+      previousReason
+        ? `Status change: ${current} -> ESCALATED | cleared reason: ${previousReason}`
+        : `Status change: ${current} -> ESCALATED`,
+    ),
+  });
+
+  return { ticketUpdate: { HASIL_VISIT: 'ESCALATED' }, pendingReason: '' };
+}
+
+/**
+ * Applies direct field patches from the `patch` input and returns the DB
+ * update object, the list of changed field names, and any pending reason update.
+ */
+async function applyPatchFields(
+  tx: Prisma.TransactionClient,
+  patch: TicketUpdatePatch,
+  ticket: LockedTicket,
+  roleKey: string,
+  ticketId: number,
+  actor: ActorContext,
+  now: Date,
+): Promise<PatchResult> {
+  const ticketUpdate: Record<string, unknown> = {};
+  const patchChanges: string[] = [];
+  let pendingReason: string | null | undefined;
+
+  const current = normalizeVisitStatus(ticket.HASIL_VISIT);
+
+  // Simple scalar fields — map patch key → DB column
+  const FIELD_MAP: Array<[keyof TicketUpdatePatch, string]> = [
+    ['summary', 'SUMMARY'],
+    ['ownerGroup', 'OWNER_GROUP'],
+    ['status', 'STATUS'],
+    ['serviceType', 'SERVICE_TYPE'],
+    ['customerSegment', 'CUSTOMER_SEGMENT'],
+    ['customerType', 'CUSTOMER_TYPE'],
+    ['serviceNo', 'SERVICE_NO'],
+    ['contactName', 'CONTACT_NAME'],
+    ['contactPhone', 'CONTACT_PHONE'],
+    ['deviceName', 'DEVICE_NAME'],
+    ['symptom', 'SYMPTOM'],
+    ['alamat', 'ALAMAT'],
+    ['descriptionActualSolution', 'DESCRIPTION_ACTUAL_SOLUTION'],
+  ];
+
+  for (const [patchKey, dbKey] of FIELD_MAP) {
+    if (patch[patchKey] !== undefined) {
+      ticketUpdate[dbKey] = cleanNullableString(patch[patchKey]);
+      patchChanges.push(patchKey);
+    }
+  }
+
+  // pendingReason — admin-only, ticket must already be PENDING
+  if (patch.pendingReason !== undefined) {
+    if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
+    if (current !== 'PENDING') {
+      throw new Error('pendingReason can only be set when ticket is PENDING');
+    }
+
+    const reason = cleanNullableString(patch.pendingReason);
+    if (!reason) throw new Error('pendingReason is required');
+    if (ticket.teknisi_user_id == null)
+      throw new Error('Ticket is not assigned');
+
+    const reasonDb = truncate255(reason);
+    pendingReason = reasonDb;
+
+    await upsertTracking(tx, {
+      ticketId,
+      assignedTo: ticket.teknisi_user_id,
+      status: TicketStatus.PENDING,
+      isActive: true,
+      now,
+      extra: { pendingAt: now, pendingReason: reasonDb },
+    });
+
+    patchChanges.push('pendingReason');
+  }
+
+  // workzone — admin-only, validates SA access and technician eligibility
+  if (patch.workzone !== undefined) {
+    if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
+
+    const newWorkzone = cleanNullableString(patch.workzone);
+    if (!newWorkzone) throw new Error('workzone is required');
+
+    const sa = await resolveServiceAreaForWorkzone(tx, newWorkzone);
+    if (!sa) throw new Error('Ticket workzone is not mapped to a service area');
+
+    if (roleKey === 'admin') {
+      await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
+    }
+
+    if (ticket.teknisi_user_id != null) {
+      await assertTechnicianEligibleForServiceArea(
+        tx,
+        ticket.teknisi_user_id,
+        sa.id_sa,
+      );
+    }
+
+    ticketUpdate.WORKZONE = newWorkzone;
+    patchChanges.push('workzone');
+  }
+
+  return { ticketUpdate, patchChanges, pendingReason };
+}
+
+// ── Main Service ──────────────────────────────────────────────────────────────
 
 export class TicketWorkflowService {
   static async getEligibleTechniciansByTicketId(
@@ -221,7 +519,7 @@ export class TicketWorkflowService {
       throw new Error('Invalid ticket id');
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.findUnique({
         where: { id_ticket: ticketId },
         select: { id_ticket: true, WORKZONE: true },
@@ -255,11 +553,7 @@ export class TicketWorkflowService {
               }
             : {}),
         },
-        select: {
-          id_user: true,
-          nama: true,
-          nik: true,
-        },
+        select: { id_user: true, nama: true, nik: true },
         orderBy: { nama: 'asc' },
       });
 
@@ -271,8 +565,6 @@ export class TicketWorkflowService {
         technicians,
       };
     });
-
-    return result;
   }
 
   static async assignToUser(
@@ -280,20 +572,16 @@ export class TicketWorkflowService {
     technicianId: number,
     actor: ActorContext,
   ) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Invalid ticketId');
-    }
-    if (!Number.isFinite(technicianId) || technicianId <= 0) {
+    if (!Number.isFinite(technicianId) || technicianId <= 0)
       throw new Error('Invalid teknisiUserId');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['admin', 'helpdesk', 'superadmin']);
     const roleId = roleKeyToRoleId(roleKey);
-
     const now = new Date();
 
     return prisma.$transaction(async (tx) => {
@@ -302,83 +590,56 @@ export class TicketWorkflowService {
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
       if (current === 'CLOSE') throw new Error('Ticket already closed');
-      if (current === 'ON_PROGRESS') {
+      if (current === 'ON_PROGRESS')
         throw new Error('Ticket is in progress and cannot be reassigned');
-      }
 
       assertTransition('ASSIGN', current);
 
       const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
-      if (!sa) {
+      if (!sa)
         throw new Error('Ticket workzone is not mapped to a service area');
-      }
 
       if (roleKey === 'admin') {
         await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
       }
 
-      // Validate technician existence and role
       const techExists = await tx.users.findFirst({
-        where: {
-          id_user: technicianId,
-          roles: { is: { key: 'teknisi' } },
-        },
+        where: { id_user: technicianId, roles: { is: { key: 'teknisi' } } },
         select: { id_user: true },
       });
       if (!techExists) throw new Error('Technician not found');
 
       await assertTechnicianEligibleForServiceArea(tx, technicianId, sa.id_sa);
 
-      if (
-        ticket.teknisi_user_id != null &&
-        ticket.teknisi_user_id === technicianId
-      ) {
+      if (ticket.teknisi_user_id === technicianId) {
         throw new Error('Ticket is already assigned to this technician');
       }
 
       const isReassign = ticket.teknisi_user_id != null;
       const oldTechnicianId = ticket.teknisi_user_id;
+      const assignNote = isReassign
+        ? `Reassigned from #${oldTechnicianId} to #${technicianId}`
+        : `Assigned to #${technicianId}`;
 
       await tx.ticket.update({
         where: { id_ticket: ticketId },
-        data: {
-          teknisi_user_id: technicianId,
-          HASIL_VISIT: 'ASSIGNED',
+        data: { teknisi_user_id: technicianId, HASIL_VISIT: 'ASSIGNED' },
+      });
+
+      await upsertTracking(tx, {
+        ticketId,
+        assignedTo: technicianId,
+        status: TicketStatus.ASSIGNED,
+        isActive: true,
+        now,
+        extra: {
+          assignedBy: actor.id_user,
+          assignedAt: now,
+          pendingReason: null,
         },
       });
 
-      // Upsert tracking state
-      await tx.ticket_tracking.upsert({
-        where: { ticket_id: ticketId },
-        create: {
-          ticket_id: ticketId,
-          assigned_by: actor.id_user,
-          assigned_to: technicianId,
-          assigned_at: now,
-          current_status: TicketStatus.ASSIGNED,
-          is_active: true,
-          updated_at: now,
-        },
-        update: {
-          assigned_by: actor.id_user,
-          assigned_to: technicianId,
-          assigned_at: now,
-          picked_up_at: null,
-          on_progress_at: null,
-          pending_at: null,
-          closed_at: null,
-          pending_reason: null,
-          current_status: TicketStatus.ASSIGNED,
-          is_active: true,
-          updated_at: now,
-        },
-      });
-
-      // Deactivate previous assignment(s)
-      await tx.ticket_assignment_history.updateMany({
-        where: { ticket_id: ticketId, is_active: true },
-        data: { is_active: false, unassigned_at: now },
-      });
+      await deactivateAssignmentHistory(tx, ticketId, now);
 
       await tx.ticket_assignment_history.create({
         data: {
@@ -390,34 +651,23 @@ export class TicketWorkflowService {
         },
       });
 
-      // Status history only if we move from OPEN to ASSIGNED
       if (current !== 'ASSIGNED') {
-        await tx.ticket_status_history.create({
-          data: {
-            ticket_id: ticketId,
-            old_status: toTrackingStatus(current),
-            new_status: TicketStatus.ASSIGNED,
-            changed_by: actor.id_user,
-            changed_role: roleId,
-            note: isReassign
-              ? `Reassigned from #${oldTechnicianId} to #${technicianId}`
-              : `Assigned to #${technicianId}`,
-          },
+        await logStatusChange(tx, {
+          ticketId,
+          oldStatus: toTrackingStatus(current),
+          newStatus: TicketStatus.ASSIGNED,
+          changedBy: actor.id_user,
+          roleId,
+          note: assignNote,
         });
       }
 
-      await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: actor.id_user,
-          role_id: roleId,
-          activity_type: isReassign
-            ? ActivityType.REASSIGN
-            : ActivityType.ASSIGN,
-          description: isReassign
-            ? `Reassigned from #${oldTechnicianId} to #${technicianId}`
-            : `Assigned to #${technicianId}`,
-        },
+      await logActivity(tx, {
+        ticketId,
+        userId: actor.id_user,
+        roleId,
+        type: isReassign ? ActivityType.REASSIGN : ActivityType.ASSIGN,
+        description: assignNote,
       });
 
       return {
@@ -429,17 +679,14 @@ export class TicketWorkflowService {
   }
 
   static async unassignTicket(ticketId: number, actor: ActorContext) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Invalid ticketId');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['admin', 'helpdesk', 'superadmin']);
     const roleId = roleKeyToRoleId(roleKey);
-
     const now = new Date();
 
     return prisma.$transaction(async (tx) => {
@@ -451,67 +698,47 @@ export class TicketWorkflowService {
 
       assertTransition('UNASSIGN', current);
 
-      if (ticket.teknisi_user_id == null) {
+      if (ticket.teknisi_user_id == null)
         throw new Error('Ticket is not assigned');
-      }
 
       const oldTechnicianId = ticket.teknisi_user_id;
 
-      const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
       if (roleKey === 'admin') {
+        const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
         if (!sa) throw new Error('Unauthorized');
         await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
       }
 
       await tx.ticket.update({
         where: { id_ticket: ticketId },
-        data: {
-          teknisi_user_id: null,
-          HASIL_VISIT: 'OPEN',
-        },
+        data: { teknisi_user_id: null, HASIL_VISIT: 'OPEN' },
       });
 
-      await tx.ticket_tracking.upsert({
-        where: { ticket_id: ticketId },
-        create: {
-          ticket_id: ticketId,
-          assigned_to: oldTechnicianId,
-          current_status: TicketStatus.CANCELLED,
-          is_active: false,
-          updated_at: now,
-        },
-        update: {
-          assigned_to: oldTechnicianId,
-          current_status: TicketStatus.CANCELLED,
-          is_active: false,
-          updated_at: now,
-        },
+      await upsertTracking(tx, {
+        ticketId,
+        assignedTo: oldTechnicianId,
+        status: TicketStatus.CANCELLED,
+        isActive: false,
+        now,
       });
 
-      await tx.ticket_assignment_history.updateMany({
-        where: { ticket_id: ticketId, is_active: true },
-        data: { is_active: false, unassigned_at: now },
+      await deactivateAssignmentHistory(tx, ticketId, now);
+
+      await logStatusChange(tx, {
+        ticketId,
+        oldStatus: TicketStatus.ASSIGNED,
+        newStatus: TicketStatus.CANCELLED,
+        changedBy: actor.id_user,
+        roleId,
+        note: `Unassigned from #${oldTechnicianId}`,
       });
 
-      await tx.ticket_status_history.create({
-        data: {
-          ticket_id: ticketId,
-          old_status: TicketStatus.ASSIGNED,
-          new_status: TicketStatus.CANCELLED,
-          changed_by: actor.id_user,
-          changed_role: roleId,
-          note: `Unassigned from #${oldTechnicianId}`,
-        },
-      });
-
-      await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: actor.id_user,
-          role_id: roleId,
-          activity_type: ActivityType.STATUS_CHANGE,
-          description: `Unassigned from #${oldTechnicianId}`,
-        },
+      await logActivity(tx, {
+        ticketId,
+        userId: actor.id_user,
+        roleId,
+        type: ActivityType.STATUS_CHANGE,
+        description: `Unassigned from #${oldTechnicianId}`,
       });
 
       return { message: 'Ticket unassigned successfully' };
@@ -519,81 +746,57 @@ export class TicketWorkflowService {
   }
 
   static async pickupTicket(ticketId: number, actor: ActorContext) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('ticketId is required');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['teknisi']);
     const roleId = roleKeyToRoleId(roleKey);
-
     const now = new Date();
 
     return prisma.$transaction(async (tx) => {
       const ticket = await lockTicketRow(tx, ticketId);
       if (!ticket) throw new Error('Ticket not found');
 
-      if (ticket.teknisi_user_id == null) {
+      if (ticket.teknisi_user_id == null)
         throw new Error('Ticket is not assigned');
-      }
-
-      if (ticket.teknisi_user_id !== actor.id_user) {
+      if (ticket.teknisi_user_id !== actor.id_user)
         throw new Error('Unauthorized');
-      }
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
       assertTransition('PICKUP', current);
 
       await tx.ticket.update({
         where: { id_ticket: ticketId },
-        data: {
-          HASIL_VISIT: 'ON_PROGRESS',
-        },
+        data: { HASIL_VISIT: 'ON_PROGRESS' },
       });
 
-      await tx.ticket_tracking.upsert({
-        where: { ticket_id: ticketId },
-        create: {
-          ticket_id: ticketId,
-          assigned_to: actor.id_user,
-          picked_up_at: now,
-          on_progress_at: now,
-          current_status: TicketStatus.ON_PROGRESS,
-          is_active: true,
-          updated_at: now,
-        },
-        update: {
-          assigned_to: actor.id_user,
-          picked_up_at: now,
-          on_progress_at: now,
-          current_status: TicketStatus.ON_PROGRESS,
-          is_active: true,
-          updated_at: now,
-        },
+      await upsertTracking(tx, {
+        ticketId,
+        assignedTo: actor.id_user,
+        status: TicketStatus.ON_PROGRESS,
+        isActive: true,
+        now,
+        extra: { pickedUpAt: now, onProgressAt: now },
       });
 
-      await tx.ticket_status_history.create({
-        data: {
-          ticket_id: ticketId,
-          old_status: TicketStatus.ASSIGNED,
-          new_status: TicketStatus.ON_PROGRESS,
-          changed_by: actor.id_user,
-          changed_role: roleId,
-          note: 'Pickup -> ON_PROGRESS',
-        },
+      await logStatusChange(tx, {
+        ticketId,
+        oldStatus: TicketStatus.ASSIGNED,
+        newStatus: TicketStatus.ON_PROGRESS,
+        changedBy: actor.id_user,
+        roleId,
+        note: 'Pickup -> ON_PROGRESS',
       });
 
-      await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: actor.id_user,
-          role_id: roleId,
-          activity_type: ActivityType.STATUS_CHANGE,
-          description: 'Pickup -> ON_PROGRESS',
-        },
+      await logActivity(tx, {
+        ticketId,
+        userId: actor.id_user,
+        roleId,
+        type: ActivityType.STATUS_CHANGE,
+        description: 'Pickup -> ON_PROGRESS',
       });
 
       return { message: 'Ticket picked up successfully' };
@@ -606,35 +809,29 @@ export class TicketWorkflowService {
     rca: string,
     subRca: string,
   ) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Ticket ID wajib diisi');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['teknisi']);
     const roleId = roleKeyToRoleId(roleKey);
-
     const now = new Date();
-    const rcaValue = String(rca || '').trim();
-    const subRcaValue = String(subRca || '').trim();
-    if (!rcaValue || !subRcaValue) {
+
+    const rcaValue = String(rca ?? '').trim();
+    const subRcaValue = String(subRca ?? '').trim();
+    if (!rcaValue || !subRcaValue)
       throw new Error('RCA dan Sub RCA wajib diisi');
-    }
 
     return prisma.$transaction(async (tx) => {
       const ticket = await lockTicketRow(tx, ticketId);
       if (!ticket) throw new Error('Ticket not found');
 
-      if (ticket.teknisi_user_id == null) {
+      if (ticket.teknisi_user_id == null)
         throw new Error('Ticket is not assigned');
-      }
-
-      if (ticket.teknisi_user_id !== actor.id_user) {
+      if (ticket.teknisi_user_id !== actor.id_user)
         throw new Error('Unauthorized');
-      }
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
       assertTransition('CLOSE', current);
@@ -642,10 +839,8 @@ export class TicketWorkflowService {
       const evidenceCount = await tx.ticket_evidence.count({
         where: { ticket_id: ticketId },
       });
-
-      if (evidenceCount < 2) {
+      if (evidenceCount < 2)
         throw new Error('Minimal 2 evidence wajib sebelum close');
-      }
 
       await tx.ticket.update({
         where: { id_ticket: ticketId },
@@ -657,49 +852,32 @@ export class TicketWorkflowService {
         },
       });
 
-      await tx.ticket_tracking.upsert({
-        where: { ticket_id: ticketId },
-        create: {
-          ticket_id: ticketId,
-          assigned_to: actor.id_user,
-          closed_at: now,
-          current_status: TicketStatus.CLOSE,
-          is_active: false,
-          updated_at: now,
-        },
-        update: {
-          assigned_to: actor.id_user,
-          closed_at: now,
-          current_status: TicketStatus.CLOSE,
-          is_active: false,
-          updated_at: now,
-        },
+      await upsertTracking(tx, {
+        ticketId,
+        assignedTo: actor.id_user,
+        status: TicketStatus.CLOSE,
+        isActive: false,
+        now,
+        extra: { closedAt: now },
       });
 
-      await tx.ticket_assignment_history.updateMany({
-        where: { ticket_id: ticketId, is_active: true },
-        data: { is_active: false, unassigned_at: now },
+      await deactivateAssignmentHistory(tx, ticketId, now);
+
+      await logStatusChange(tx, {
+        ticketId,
+        oldStatus: TicketStatus.ON_PROGRESS,
+        newStatus: TicketStatus.CLOSE,
+        changedBy: actor.id_user,
+        roleId,
+        note: 'Ticket closed',
       });
 
-      await tx.ticket_status_history.create({
-        data: {
-          ticket_id: ticketId,
-          old_status: TicketStatus.ON_PROGRESS,
-          new_status: TicketStatus.CLOSE,
-          changed_by: actor.id_user,
-          changed_role: roleId,
-          note: 'Ticket closed',
-        },
-      });
-
-      await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: actor.id_user,
-          role_id: roleId,
-          activity_type: ActivityType.CLOSE,
-          description: 'Ticket closed',
-        },
+      await logActivity(tx, {
+        ticketId,
+        userId: actor.id_user,
+        roleId,
+        type: ActivityType.CLOSE,
+        description: 'Ticket closed',
       });
 
       return { message: 'Ticket closed successfully' };
@@ -711,12 +889,10 @@ export class TicketWorkflowService {
     actor: ActorContext,
     input: UpdateTicketInput,
   ) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Invalid ticketId');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['admin', 'helpdesk', 'superadmin', 'teknisi']);
@@ -724,41 +900,40 @@ export class TicketWorkflowService {
 
     const patch = input.patch ?? {};
     const workflow = input.workflow;
+    const hasWorkflowStatus = workflow?.status !== undefined;
 
-    const attemptedPatchKeys = Object.keys(patch).filter(
+    // Validate patch keys against role permissions up-front
+    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution'] as const;
+    const ADMIN_PATCH_KEYS = [
+      'summary',
+      'ownerGroup',
+      'status',
+      'workzone',
+      'serviceType',
+      'customerSegment',
+      'customerType',
+      'serviceNo',
+      'contactName',
+      'contactPhone',
+      'deviceName',
+      'symptom',
+      'alamat',
+      'pendingReason',
+    ] as const;
+
+    const allowedKeys =
+      roleKey === 'teknisi' ? TEKNISI_PATCH_KEYS : ADMIN_PATCH_KEYS;
+    const attemptedKeys = Object.keys(patch).filter(
       (k) => (patch as Record<string, unknown>)[k] !== undefined,
     );
 
-    const allowedPatchKeys =
-      roleKey === 'teknisi'
-        ? (['descriptionActualSolution'] as const)
-        : ([
-            'summary',
-            'ownerGroup',
-            'status',
-            'workzone',
-            'serviceType',
-            'customerSegment',
-            'customerType',
-            'serviceNo',
-            'contactName',
-            'contactPhone',
-            'deviceName',
-            'symptom',
-            'alamat',
-            'pendingReason',
-          ] as const);
-
-    for (const key of attemptedPatchKeys) {
-      if (!(allowedPatchKeys as readonly string[]).includes(key)) {
+    for (const key of attemptedKeys) {
+      if (!(allowedKeys as readonly string[]).includes(key)) {
         throw new Error('Forbidden - Access denied');
       }
     }
 
-    const rawWorkflowStatus = workflow?.status;
-    const hasWorkflowStatus = rawWorkflowStatus !== undefined;
-
-    if (attemptedPatchKeys.length === 0 && !hasWorkflowStatus) {
+    if (attemptedKeys.length === 0 && !hasWorkflowStatus) {
       throw new Error('No updates provided');
     }
 
@@ -770,7 +945,26 @@ export class TicketWorkflowService {
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
 
-      const resolvePendingReason = async () => {
+      // Role-based access guards
+      if (roleKey === 'admin') {
+        const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
+        if (!sa) throw new Error('Unauthorized');
+        await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
+      }
+
+      if (roleKey === 'teknisi') {
+        if (
+          ticket.teknisi_user_id == null ||
+          ticket.teknisi_user_id !== actor.id_user
+        )
+          throw new Error('Unauthorized');
+        if (current === 'CLOSE') throw new Error('Ticket already closed');
+        if (current !== 'ON_PROGRESS' && current !== 'PENDING')
+          throw new Error('Ticket must be ON_PROGRESS before updating');
+      }
+
+      // Lazily fetch pending reason when needed (avoids an extra query otherwise)
+      const resolvePendingReason = async (): Promise<string | null> => {
         const fromTicket = cleanNullableString(ticket.PENDING_REASON);
         if (fromTicket) return fromTicket;
 
@@ -781,396 +975,83 @@ export class TicketWorkflowService {
         return cleanNullableString(row?.pending_reason) ?? null;
       };
 
-      let pendingReasonTicketUpdate: string | null | undefined;
+      // Apply direct field patches
+      const {
+        ticketUpdate,
+        patchChanges,
+        pendingReason: patchPendingReason,
+      } = await applyPatchFields(
+        tx,
+        patch,
+        ticket,
+        roleKey,
+        ticketId,
+        actor,
+        now,
+      );
 
-      if (roleKey === 'admin') {
-        const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
-        if (!sa) throw new Error('Unauthorized');
-        await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
-      }
+      // Apply workflow status transition
+      let workflowPendingReason: string | null | undefined;
 
-      if (roleKey === 'teknisi') {
-        if (ticket.teknisi_user_id == null) throw new Error('Unauthorized');
-        if (ticket.teknisi_user_id !== actor.id_user)
-          throw new Error('Unauthorized');
-        if (current === 'CLOSE') throw new Error('Ticket already closed');
-        if (current !== 'ON_PROGRESS' && current !== 'PENDING') {
-          throw new Error('Ticket must be ON_PROGRESS before updating');
-        }
-      }
-
-      const ticketUpdate: Record<string, unknown> = {};
-      const patchChanges: string[] = [];
-
-      if (patch.summary !== undefined) {
-        ticketUpdate.SUMMARY = cleanNullableString(patch.summary);
-        patchChanges.push('summary');
-      }
-      if (patch.ownerGroup !== undefined) {
-        ticketUpdate.OWNER_GROUP = cleanNullableString(patch.ownerGroup);
-        patchChanges.push('ownerGroup');
-      }
-      if (patch.status !== undefined) {
-        ticketUpdate.STATUS = cleanNullableString(patch.status);
-        patchChanges.push('status');
-      }
-      if (patch.serviceType !== undefined) {
-        ticketUpdate.SERVICE_TYPE = cleanNullableString(patch.serviceType);
-        patchChanges.push('serviceType');
-      }
-      if (patch.customerSegment !== undefined) {
-        ticketUpdate.CUSTOMER_SEGMENT = cleanNullableString(
-          patch.customerSegment,
-        );
-        patchChanges.push('customerSegment');
-      }
-      if (patch.customerType !== undefined) {
-        ticketUpdate.CUSTOMER_TYPE = cleanNullableString(patch.customerType);
-        patchChanges.push('customerType');
-      }
-      if (patch.serviceNo !== undefined) {
-        ticketUpdate.SERVICE_NO = cleanNullableString(patch.serviceNo);
-        patchChanges.push('serviceNo');
-      }
-      if (patch.contactName !== undefined) {
-        ticketUpdate.CONTACT_NAME = cleanNullableString(patch.contactName);
-        patchChanges.push('contactName');
-      }
-      if (patch.contactPhone !== undefined) {
-        ticketUpdate.CONTACT_PHONE = cleanNullableString(patch.contactPhone);
-        patchChanges.push('contactPhone');
-      }
-      if (patch.deviceName !== undefined) {
-        ticketUpdate.DEVICE_NAME = cleanNullableString(patch.deviceName);
-        patchChanges.push('deviceName');
-      }
-      if (patch.symptom !== undefined) {
-        ticketUpdate.SYMPTOM = cleanNullableString(patch.symptom);
-        patchChanges.push('symptom');
-      }
-      if (patch.alamat !== undefined) {
-        ticketUpdate.ALAMAT = cleanNullableString(patch.alamat);
-        patchChanges.push('alamat');
-      }
-      if (patch.descriptionActualSolution !== undefined) {
-        ticketUpdate.DESCRIPTION_ACTUAL_SOLUTION = cleanNullableString(
-          patch.descriptionActualSolution,
-        );
-        patchChanges.push('descriptionActualSolution');
-      }
-      if (patch.pendingReason !== undefined) {
-        if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
-        if (current !== 'PENDING') {
-          throw new Error(
-            'pendingReason can only be set when ticket is PENDING',
-          );
-        }
-
-        const reason = cleanNullableString(patch.pendingReason);
-        if (!reason) throw new Error('pendingReason is required');
-        const reasonDb = truncateVarchar(reason, 255);
-
-        if (ticket.teknisi_user_id == null) {
-          throw new Error('Ticket is not assigned');
-        }
-
-        pendingReasonTicketUpdate = reasonDb;
-
-        await tx.ticket_tracking.upsert({
-          where: { ticket_id: ticketId },
-          create: {
-            ticket_id: ticketId,
-            assigned_to: ticket.teknisi_user_id,
-            pending_at: now,
-            pending_reason: reasonDb,
-            current_status: TicketStatus.PENDING,
-            is_active: true,
-            updated_at: now,
-          },
-          update: {
-            pending_reason: reasonDb,
-            updated_at: now,
-          },
-        });
-
-        patchChanges.push('pendingReason');
-      }
-
-      if (patch.workzone !== undefined) {
-        if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
-
-        const newWorkzone = cleanNullableString(patch.workzone);
-        if (!newWorkzone) {
-          throw new Error('workzone is required');
-        }
-
-        const saNew = await resolveServiceAreaForWorkzone(tx, newWorkzone);
-        if (!saNew) {
-          throw new Error('Ticket workzone is not mapped to a service area');
-        }
-
-        if (roleKey === 'admin') {
-          await assertAdminHasAccessToServiceArea(
-            tx,
-            actor.id_user,
-            saNew.id_sa,
-          );
-        }
-
-        if (ticket.teknisi_user_id != null) {
-          await assertTechnicianEligibleForServiceArea(
-            tx,
-            ticket.teknisi_user_id,
-            saNew.id_sa,
-          );
-        }
-
-        ticketUpdate.WORKZONE = newWorkzone;
-        patchChanges.push('workzone');
-      }
-
-      // Workflow status update (kept strict to protect transitions)
       if (hasWorkflowStatus) {
-        const cleaned = cleanNullableString(rawWorkflowStatus);
-        if (!cleaned) throw new Error('status is required');
+        const result = await (roleKey === 'teknisi'
+          ? handleTechnicianWorkflow(
+              tx,
+              ticket,
+              ticketId,
+              actor,
+              roleId,
+              workflow!,
+              current,
+              now,
+              resolvePendingReason,
+            )
+          : handleAdminWorkflow(
+              tx,
+              ticket,
+              ticketId,
+              actor,
+              roleId,
+              workflow!,
+              current,
+              now,
+              resolvePendingReason,
+            ));
 
-        const next = normalizeVisitStatus(cleaned);
-
-        if (next === current) {
-          if (roleKey === 'teknisi' && next === 'PENDING') {
-            throw new Error('Ticket is already PENDING. Please resume first');
-          }
-          throw new Error('Ticket already has that status');
-        }
-
-        if (current === 'CLOSE') throw new Error('Ticket already closed');
-
-        // Only support:
-        // - teknisi: ON_PROGRESS <-> PENDING
-        // - admin/helpdesk/superadmin: -> ESCALATED
-        if (roleKey === 'teknisi') {
-          if (
-            ticket.teknisi_user_id == null ||
-            ticket.teknisi_user_id !== actor.id_user
-          ) {
-            throw new Error('Unauthorized');
-          }
-
-          if (next === 'PENDING') {
-            if (current !== 'ON_PROGRESS')
-              throw new Error('Invalid status transition');
-
-            const reason = cleanNullableString(workflow?.pendingReason);
-            if (!reason) throw new Error('pendingReason is required');
-
-            const reasonDb = truncateVarchar(reason, 255);
-            pendingReasonTicketUpdate = reasonDb;
-
-            ticketUpdate.HASIL_VISIT = 'PENDING';
-
-            await tx.ticket_tracking.upsert({
-              where: { ticket_id: ticketId },
-              create: {
-                ticket_id: ticketId,
-                assigned_to: actor.id_user,
-                pending_at: now,
-                pending_reason: reasonDb,
-                current_status: TicketStatus.PENDING,
-                is_active: true,
-                updated_at: now,
-              },
-              update: {
-                assigned_to: actor.id_user,
-                pending_at: now,
-                pending_reason: reasonDb,
-                current_status: TicketStatus.PENDING,
-                is_active: true,
-                updated_at: now,
-              },
-            });
-
-            await tx.ticket_status_history.create({
-              data: {
-                ticket_id: ticketId,
-                old_status: TicketStatus.ON_PROGRESS,
-                new_status: TicketStatus.PENDING,
-                changed_by: actor.id_user,
-                changed_role: roleId,
-                note: workflow?.note
-                  ? String(workflow.note).trim()
-                  : 'Set to PENDING',
-              },
-            });
-
-            await tx.ticket_activity_log.create({
-              data: {
-                ticket_id: ticketId,
-                user_id: actor.id_user,
-                role_id: roleId,
-                activity_type: ActivityType.STATUS_CHANGE,
-                description: truncateVarchar(
-                  `Status change: ${current} -> PENDING | reason: ${reasonDb}`,
-                  255,
-                ),
-              },
-            });
-          } else if (next === 'ON_PROGRESS') {
-            if (current !== 'PENDING')
-              throw new Error('Invalid status transition');
-
-            const previousReason = await resolvePendingReason();
-            // ticket.PENDING_REASON is NOT NULL in some deployments; clear with empty string
-            pendingReasonTicketUpdate = '';
-
-            ticketUpdate.HASIL_VISIT = 'ON_PROGRESS';
-
-            await tx.ticket_tracking.upsert({
-              where: { ticket_id: ticketId },
-              create: {
-                ticket_id: ticketId,
-                assigned_to: actor.id_user,
-                on_progress_at: now,
-                current_status: TicketStatus.ON_PROGRESS,
-                pending_reason: null,
-                is_active: true,
-                updated_at: now,
-              },
-              update: {
-                assigned_to: actor.id_user,
-                on_progress_at: now,
-                current_status: TicketStatus.ON_PROGRESS,
-                pending_reason: null,
-                is_active: true,
-                updated_at: now,
-              },
-            });
-
-            await tx.ticket_status_history.create({
-              data: {
-                ticket_id: ticketId,
-                old_status: TicketStatus.PENDING,
-                new_status: TicketStatus.ON_PROGRESS,
-                changed_by: actor.id_user,
-                changed_role: roleId,
-                note: workflow?.note
-                  ? String(workflow.note).trim()
-                  : 'Resume work',
-              },
-            });
-
-            await tx.ticket_activity_log.create({
-              data: {
-                ticket_id: ticketId,
-                user_id: actor.id_user,
-                role_id: roleId,
-                activity_type: ActivityType.STATUS_CHANGE,
-                description: truncateVarchar(
-                  previousReason
-                    ? `Status change: ${current} -> ON_PROGRESS | cleared reason: ${previousReason}`
-                    : `Status change: ${current} -> ON_PROGRESS`,
-                  255,
-                ),
-              },
-            });
-          } else {
-            throw new Error('Invalid status transition');
-          }
-        } else {
-          // admin/helpdesk/superadmin
-          if (next !== 'ESCALATED')
-            throw new Error('Invalid status transition');
-
-          if (
-            current !== 'ASSIGNED' &&
-            current !== 'ON_PROGRESS' &&
-            current !== 'PENDING'
-          ) {
-            throw new Error('Invalid status transition');
-          }
-          if (ticket.teknisi_user_id == null) {
-            throw new Error('Ticket is not assigned');
-          }
-
-          const previousReason =
-            current === 'PENDING' ? await resolvePendingReason() : null;
-          // ticket.PENDING_REASON is NOT NULL in some deployments; clear with empty string
-          pendingReasonTicketUpdate = '';
-
-          ticketUpdate.HASIL_VISIT = 'ESCALATED';
-
-          await tx.ticket_tracking.upsert({
-            where: { ticket_id: ticketId },
-            create: {
-              ticket_id: ticketId,
-              assigned_to: ticket.teknisi_user_id,
-              current_status: TicketStatus.ESCALATED,
-              pending_reason: null,
-              is_active: true,
-              updated_at: now,
-            },
-            update: {
-              assigned_to: ticket.teknisi_user_id,
-              current_status: TicketStatus.ESCALATED,
-              pending_reason: null,
-              is_active: true,
-              updated_at: now,
-            },
-          });
-
-          await tx.ticket_status_history.create({
-            data: {
-              ticket_id: ticketId,
-              old_status: toTrackingStatus(current),
-              new_status: TicketStatus.ESCALATED,
-              changed_by: actor.id_user,
-              changed_role: roleId,
-              note: workflow?.note ? String(workflow.note).trim() : 'Escalated',
-            },
-          });
-
-          await tx.ticket_activity_log.create({
-            data: {
-              ticket_id: ticketId,
-              user_id: actor.id_user,
-              role_id: roleId,
-              activity_type: ActivityType.STATUS_CHANGE,
-              description: truncateVarchar(
-                previousReason
-                  ? `Status change: ${current} -> ESCALATED | cleared reason: ${previousReason}`
-                  : `Status change: ${current} -> ESCALATED`,
-                255,
-              ),
-            },
-          });
-        }
+        Object.assign(ticketUpdate, result.ticketUpdate);
+        workflowPendingReason = result.pendingReason;
       }
 
-      const hasTicketUpdate = Object.keys(ticketUpdate).length > 0;
-      if (hasTicketUpdate) {
+      // Persist ticket column changes
+      if (Object.keys(ticketUpdate).length > 0) {
         await tx.ticket.update({
           where: { id_ticket: ticketId },
           data: ticketUpdate as any,
         });
       }
 
-      if (pendingReasonTicketUpdate !== undefined) {
+      // PENDING_REASON uses a raw query because the column may be NOT NULL
+      // in some deployments, and Prisma would skip a `null` update.
+      const finalPendingReason =
+        workflowPendingReason !== undefined
+          ? workflowPendingReason
+          : patchPendingReason;
+
+      if (finalPendingReason !== undefined) {
         await tx.$executeRaw`
           UPDATE ticket
-          SET PENDING_REASON = ${pendingReasonTicketUpdate}
+          SET PENDING_REASON = ${finalPendingReason}
           WHERE id_ticket = ${ticketId}
         `;
       }
 
-      // Log field updates separately (status changes are logged above)
       if (patchChanges.length > 0) {
-        await tx.ticket_activity_log.create({
-          data: {
-            ticket_id: ticketId,
-            user_id: actor.id_user,
-            role_id: roleId,
-            activity_type: ActivityType.COMMENT,
-            description: `Updated fields: ${patchChanges.join(', ')}`,
-          },
+        await logActivity(tx, {
+          ticketId,
+          userId: actor.id_user,
+          roleId,
+          type: ActivityType.COMMENT,
+          description: `Updated fields: ${patchChanges.join(', ')}`,
         });
       }
 
@@ -1183,28 +1064,23 @@ export class TicketWorkflowService {
     actor: ActorContext,
     fileCount: number,
   ) {
-    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+    if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Invalid ticketId');
-    }
-    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0) {
+    if (!Number.isFinite(actor?.id_user) || actor.id_user <= 0)
       throw new Error('Unauthorized');
-    }
 
     const roleKey = normalizeRoleKey(actor.role);
     const roleId = roleKeyToRoleId(roleKey);
-
     const count = Number.isFinite(fileCount) ? Math.max(0, fileCount) : 0;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: actor.id_user,
-          role_id: roleId,
-          activity_type: ActivityType.UPLOAD_EVIDENCE,
-          description: `Uploaded ${count} evidence file(s)`,
-        },
-      });
+    await prisma.ticket_activity_log.create({
+      data: {
+        ticket_id: ticketId,
+        user_id: actor.id_user,
+        role_id: roleId,
+        activity_type: ActivityType.UPLOAD_EVIDENCE,
+        description: `Uploaded ${count} evidence file(s)`,
+      },
     });
   }
 }

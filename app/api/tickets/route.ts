@@ -32,6 +32,7 @@ export async function GET(request: Request) {
       search: searchParams.get('search') || '',
       hasilVisit,
       workzone: searchParams.get('workzone') || undefined,
+      ctype: searchParams.get('ctype') || undefined,
       page: toInt(searchParams.get('page'), 1),
       limit: toInt(searchParams.get('limit'), 50),
     };

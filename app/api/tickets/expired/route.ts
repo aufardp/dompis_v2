@@ -25,38 +25,19 @@ export async function GET(request: Request) {
     const workzone =
       searchParams.get('workzone') || searchParams.get('sa_id') || null;
     const saId = toOptionalPositiveInt(workzone);
-    const includeBy = searchParams.get('includeBy');
 
-    const stats = await TicketService.getStats(user.role, user.id_user, saId);
-
-    const includeByArray = includeBy ? includeBy.split(',') : [];
-
-    const byServiceArea = includeByArray.includes('sa')
-      ? await TicketService.getStatsByServiceArea(user.role, user.id_user, saId)
-      : undefined;
-
-    const byCustomerType = includeByArray.includes('ctype')
-      ? await TicketService.getStatsByCustomerType(
-          user.role,
-          user.id_user,
-          saId,
-        )
-      : undefined;
+    const expiredTickets = await TicketService.getExpiredTickets(
+      user.role,
+      user.id_user,
+      saId,
+    );
 
     return NextResponse.json({
       success: true,
-      data: {
-        total: Number(stats?.total || 0),
-        unassigned: Number(stats?.unassigned || 0),
-        open: Number(stats?.open || 0),
-        assigned: Number(stats?.assigned || 0),
-        closed: Number(stats?.closed || 0),
-        byServiceArea,
-        byCustomerType,
-      },
+      data: expiredTickets,
     });
   } catch (error: unknown) {
-    const message = getErrorMessage(error, 'Failed to load stats');
+    const message = getErrorMessage(error, 'Failed to load expired tickets');
     return NextResponse.json(
       { success: false, message },
       { status: getErrorStatus(error, 400) },

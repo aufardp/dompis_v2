@@ -1,6 +1,7 @@
 import { RefreshCw, UserPlus } from 'lucide-react';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
+import CustomerTypeBadge from './CustomerTypeBadge';
 import {
   formatDate,
   getStatusColor,
@@ -34,11 +35,23 @@ export default function TicketRow({
         <p className='text-xs text-gray-500'>{ticket.contactPhone || '-'}</p>
       </td>
 
-      <td className='px-5 py-4 text-center'>{ticket.customerType || '-'}</td>
+      <td className='px-5 py-4 text-center'>
+        <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
+      </td>
 
       <td className='px-5 py-4 text-center'>{getMaxTtr(ticket) || '-'}</td>
 
       <td className='px-5 py-4 text-center'>{ticket.jenisTiket || '-'}</td>
+
+      <td className='px-5 py-4 text-center'>
+        <span
+          className={`inline-flex min-w-fit items-center justify-center rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${getTicketAgeColorClass(
+            ticket,
+          )}`}
+        >
+          {getTicketAge(ticket)}
+        </span>
+      </td>
 
       <td className='max-w-xs truncate px-5 py-4'>{ticket.summary}</td>
 
@@ -54,14 +67,6 @@ export default function TicketRow({
         <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
           {ticket.hasilVisit}
         </Badge>
-      </td>
-
-      <td className='px-5 py-4 text-center'>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
-        >
-          {getTicketAge(ticket)}
-        </span>
       </td>
 
       <td className='px-5 py-4 text-center'>

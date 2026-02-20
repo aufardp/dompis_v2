@@ -3,6 +3,7 @@ import {
   formatDateWIB,
   calculateTicketAge as calcAge,
   getTicketAgeColor as getAgeColor,
+  getSlaHours,
   TicketAgeColor,
 } from '@/app/utils/datetime';
 
@@ -43,6 +44,43 @@ export function getMaxTtr(ticket: any): string | null {
   return key ? ticket[key] : null;
 }
 
+export function getSlaHoursRemaining(ticket: {
+  reportedDate?: string | null;
+  hasilVisit?: string | null;
+  closedAt?: string | null;
+  customerType?: string;
+}): number {
+  if (!ticket.reportedDate) return 0;
+
+  const slaHours = getSlaHours(ticket.customerType);
+
+  try {
+    const start = new Date(ticket.reportedDate);
+    const now = new Date();
+
+    if (ticket.hasilVisit === 'CLOSE' && ticket.closedAt) {
+      const closed = new Date(ticket.closedAt);
+      const hoursElapsed =
+        (closed.getTime() - start.getTime()) / (1000 * 60 * 60);
+      return Math.max(0, slaHours - hoursElapsed);
+    }
+
+    const hoursElapsed = (now.getTime() - start.getTime()) / (1000 * 60 * 60);
+    return Math.max(0, slaHours - hoursElapsed);
+  } catch {
+    return 0;
+  }
+}
+
+export function isTicketExpired(ticket: {
+  reportedDate?: string | null;
+  hasilVisit?: string | null;
+  closedAt?: string | null;
+  customerType?: string;
+}): boolean {
+  return getSlaHoursRemaining(ticket) <= 0;
+}
+
 export function getTicketAge(ticket: {
   reportedDate?: string | null;
   hasilVisit?: string | null;
@@ -63,11 +101,13 @@ export function getTicketAgeColorClass(ticket: {
   reportedDate?: string | null;
   hasilVisit?: string | null;
   closedAt?: string | null;
+  customerType?: string;
 }): string {
   const color = getAgeColor(
     ticket.reportedDate,
     ticket.hasilVisit,
     ticket.closedAt,
+    ticket.customerType,
   );
   return AGE_COLOR_CLASS_MAP[color];
 }

@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Pagination from '../tables/Pagination';
 import TicketRow from './TicketRow';
 import TicketCardMobile from './TicketCardMobile';
+import TableEmptyState from '@/app/components/tables/TableEmptyState';
 
 export type SortField =
   | 'ticket'
@@ -12,6 +13,7 @@ export type SortField =
   | 'customerType'
   | 'maxTtr'
   | 'jenisTiket'
+  | 'age'
   | 'summary'
   | 'workzone'
   | 'technicianName'
@@ -137,10 +139,10 @@ export default function TicketTable({
 
   const renderSortableHeader = (label: string, field: SortField) => (
     <th
-      className='cursor-pointer px-5 py-3 text-left transition-colors hover:bg-gray-100'
+      className='cursor-pointer px-5 py-3 text-center transition-colors hover:bg-gray-100'
       onClick={() => handleSort(field)}
     >
-      <div className='flex items-center gap-1'>
+      <div className='flex items-center justify-center gap-1'>
         {label}
         <SortIcon
           field={field}
@@ -175,7 +177,7 @@ export default function TicketTable({
         <div className='overflow-hidden rounded-xl border bg-white shadow-sm'>
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>
-              <thead className='bg-gray-50 text-xs text-gray-500 uppercase'>
+              <thead className='bg-gray-50 text-xs font-semibold tracking-wide text-gray-500 uppercase'>
                 <tr>
                   {renderSortableHeader('Ticket', 'ticket')}
                   {renderSortableHeader('Service', 'serviceNo')}
@@ -183,27 +185,19 @@ export default function TicketTable({
                   {renderSortableHeader('Type', 'customerType')}
                   {renderSortableHeader('Max_TTR', 'maxTtr')}
                   {renderSortableHeader('Jenis_Tiket', 'jenisTiket')}
+                  {renderSortableHeader('Age', 'age')}
                   {renderSortableHeader('Summary', 'summary')}
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Technician', 'technicianName')}
                   {renderSortableHeader('Status', 'status')}
-                  <th className='px-5 py-3 text-center'>Age</th>
                   <th className='px-5 py-3 text-center'>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={7} className='py-8 text-center'>
-                      Loading...
-                    </td>
-                  </tr>
+                  <TableEmptyState colSpan={12} message='Loading' />
                 ) : sortedTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className='py-8 text-center'>
-                      No tickets found
-                    </td>
-                  </tr>
+                  <TableEmptyState colSpan={12} message='No tickets found' />
                 ) : (
                   sortedTickets.map((ticket) => (
                     <TicketRow
@@ -221,8 +215,8 @@ export default function TicketTable({
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div className='flex flex-col items-center justify-between gap-4 border-t pt-4 sm:flex-row'>
-          <p className='text-sm text-gray-500'>
+        <div className='flex flex-col items-center gap-3 border-t pt-4 sm:flex-row sm:justify-between'>
+          <p className='text-xs text-gray-500 sm:text-sm'>
             Showing{' '}
             {(pagination.currentPage - 1) * (pagination.limit ?? 10) + 1} to{' '}
             {Math.min(

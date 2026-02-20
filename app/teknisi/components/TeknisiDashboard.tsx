@@ -11,6 +11,7 @@ import { calculateTicketAge, getTicketAgeColor } from '@/app/utils/datetime';
 interface Stats {
   assigned: number;
   onProgress: number;
+  pending: number;
   closed: number;
 }
 
@@ -19,7 +20,7 @@ export default function TeknisiDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [filter, setFilter] = useState<
-    'all' | 'assigned' | 'on_progress' | 'closed'
+    'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
   >('all');
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -49,6 +50,7 @@ export default function TeknisiDashboard() {
     return {
       assigned: tickets.filter((t) => t.hasilVisit === 'ASSIGNED').length,
       onProgress: tickets.filter((t) => t.hasilVisit === 'ON_PROGRESS').length,
+      pending: tickets.filter((t) => t.hasilVisit === 'PENDING').length,
       closed: tickets.filter((t) => t.hasilVisit === 'CLOSE').length,
     };
   }, [tickets]);
@@ -58,6 +60,7 @@ export default function TeknisiDashboard() {
       if (filter === 'all') return t.hasilVisit !== 'CLOSE';
       if (filter === 'assigned') return t.hasilVisit === 'ASSIGNED';
       if (filter === 'on_progress') return t.hasilVisit === 'ON_PROGRESS';
+      if (filter === 'pending') return t.hasilVisit === 'PENDING';
       if (filter === 'closed') return t.hasilVisit === 'CLOSE';
       return true;
     });
@@ -110,6 +113,12 @@ export default function TeknisiDashboard() {
             Dikerjakan
           </span>
         );
+      case 'PENDING':
+        return (
+          <span className='rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700'>
+            Pending
+          </span>
+        );
       case 'CLOSE':
         return (
           <span className='rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700'>
@@ -137,7 +146,7 @@ export default function TeknisiDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5'>
           <div className='rounded-xl border border-slate-200 bg-white p-5 shadow-sm'>
             <div className='text-3xl font-bold text-blue-600'>
               {loading ? '...' : stats.assigned + stats.onProgress}
@@ -155,6 +164,12 @@ export default function TeknisiDashboard() {
               {loading ? '...' : stats.onProgress}
             </div>
             <div className='text-sm text-slate-500'>Dikerjakan</div>
+          </div>
+          <div className='rounded-xl border border-purple-200 bg-white p-5 shadow-sm'>
+            <div className='text-3xl font-bold text-purple-600'>
+              {loading ? '...' : stats.pending}
+            </div>
+            <div className='text-sm text-slate-500'>Pending</div>
           </div>
           <div className='rounded-xl border border-green-200 bg-white p-5 shadow-sm'>
             <div className='text-3xl font-bold text-green-600'>
@@ -195,6 +210,16 @@ export default function TeknisiDashboard() {
             }`}
           >
             Dikerjakan ({stats.onProgress})
+          </button>
+          <button
+            onClick={() => handleSetFilter('pending')}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition ${
+              filter === 'pending'
+                ? 'bg-purple-600 text-white'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Pending ({stats.pending})
           </button>
           <button
             onClick={() => handleSetFilter('closed')}

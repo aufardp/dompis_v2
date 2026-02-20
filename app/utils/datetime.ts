@@ -14,6 +14,35 @@ import { id } from 'date-fns/locale';
 
 export const WIB_TIMEZONE = 'Asia/Jakarta';
 
+function parseDateInput(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+
+  try {
+    // Handle DD/MM/YYYY HH:mm format
+    if (dateStr.includes('/')) {
+      const [day, month, yearAndTime] = dateStr.split('/');
+      const [year, time] = yearAndTime.split(' ');
+      const [hour, minute] = time ? time.split(':') : ['0', '0'];
+      const parsed = new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        parseInt(hour),
+        parseInt(minute),
+      );
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+
+    // Try standard Date parsing
+    const standard = new Date(dateStr);
+    if (!isNaN(standard.getTime())) return standard;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function nowUTC(): Date {
   return new Date();
 }
@@ -35,10 +64,16 @@ export function formatDateWIB(
   if (!date) return '-';
 
   try {
-    const d = typeof date === 'string' ? toDate(date) : date;
-    if (isNaN(d.getTime())) return '-';
+    let parsed: Date | null = null;
+    if (typeof date === 'string') {
+      parsed = parseDateInput(date);
+    } else if (date instanceof Date) {
+      parsed = date;
+    }
 
-    return formatInTimeZone(d, WIB_TIMEZONE, formatStr, { locale: id });
+    if (!parsed) return '-';
+
+    return formatInTimeZone(parsed, WIB_TIMEZONE, formatStr, { locale: id });
   } catch {
     return '-';
   }
@@ -92,12 +127,12 @@ export function calculateTicketAge(
   if (!reportedDate) return '-';
 
   try {
-    const start = toDate(reportedDate);
-    if (isNaN(start.getTime())) return '-';
+    const start = parseDateInput(reportedDate);
+    if (!start) return '-';
 
     let end: Date;
     if (hasilVisit === 'CLOSE' && closedAt) {
-      end = toDate(closedAt);
+      end = new Date(closedAt);
       if (isNaN(end.getTime())) {
         end = new Date();
       }
@@ -125,20 +160,33 @@ export function calculateTicketAge(
 
 export type TicketAgeColor = 'green' | 'yellow' | 'orange' | 'red' | 'gray';
 
+export const SLA_HOURS: Record<string, number> = {
+  REGULER: 24,
+  HVC_GOLD: 12,
+  HVC_PLATINUM: 6,
+  HVC_DIAMOND: 3,
+};
+
+export function getSlaHours(customerType?: string): number {
+  if (!customerType) return 24;
+  return SLA_HOURS[customerType.toUpperCase()] ?? 24;
+}
+
 export function getTicketAgeColor(
   reportedDate: string | null | undefined,
   hasilVisit?: string | null,
   closedAt?: string | null,
+  customerType?: string,
 ): TicketAgeColor {
   if (!reportedDate) return 'gray';
 
   try {
-    const start = toDate(reportedDate);
-    if (isNaN(start.getTime())) return 'gray';
+    const start = parseDateInput(reportedDate);
+    if (!start) return 'gray';
 
     let end: Date;
     if (hasilVisit === 'CLOSE' && closedAt) {
-      end = toDate(closedAt);
+      end = new Date(closedAt);
       if (isNaN(end.getTime())) {
         end = new Date();
       }
@@ -149,9 +197,12 @@ export function getTicketAgeColor(
     const totalHours = differenceInHours(end, start);
     if (totalHours < 0) return 'gray';
 
-    if (totalHours < 6) return 'green';
-    if (totalHours < 12) return 'yellow';
-    if (totalHours < 24) return 'orange';
+    const slaHours = getSlaHours(customerType);
+    const percentage = (totalHours / slaHours) * 100;
+
+    if (percentage < 50) return 'green';
+    if (percentage < 75) return 'yellow';
+    if (percentage < 100) return 'orange';
     return 'red';
   } catch {
     return 'gray';

@@ -13,6 +13,7 @@ export function useAdminTickets(
   search: string,
   page: number,
   workzone?: string,
+  ctype?: string,
 ) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,10 @@ export function useAdminTickets(
         params.append('workzone', workzone);
       }
 
+      if (ctype) {
+        params.append('ctype', ctype);
+      }
+
       const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
       if (!res) return;
 
@@ -64,7 +69,7 @@ export function useAdminTickets(
     } finally {
       setLoading(false);
     }
-  }, [search, page, workzone]);
+  }, [search, page, workzone, ctype]);
 
   useEffect(() => {
     fetchData();

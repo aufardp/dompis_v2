@@ -1,14 +1,13 @@
 services:
-  # MySQL Database
   mysql:
-    image: mysql:8.0
+    image: mariadb:11
     container_name: dompis_mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: dompis_db
-      MYSQL_USER: dompis_user
-      MYSQL_PASSWORD: dompis_password
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: dompis_db
+      MARIADB_USER: dompis_user
+      MARIADB_PASSWORD: dompis_password
     ports:
       - '3307:3306'
     volumes:
@@ -16,11 +15,11 @@ services:
     networks:
       - dompis-network
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
-      timeout: 20s
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
       retries: 10
 
-  # Redis for Caching and Queue
   redis:
     image: redis:latest
     container_name: dompis_redis
@@ -36,7 +35,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  # phpMyAdmin (Optional - MySQL GUI)
+
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: dompis_phpmyadmin

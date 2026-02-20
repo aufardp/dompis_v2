@@ -2,10 +2,21 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { TicketCtype, CustomerType } from '@/app/types/ticket';
+import CustomerTypeCard from './CustomerTypeCard';
 
 interface ByServiceAreaRow {
   id_sa: number;
   nama_sa: string;
+  total: number;
+  unassigned: number;
+  open: number;
+  assigned: number;
+  closed: number;
+}
+
+interface ByCustomerTypeRow {
+  ctype: TicketCtype;
   total: number;
   unassigned: number;
   open: number;
@@ -20,13 +31,22 @@ interface TicketStatsData {
   assigned: number;
   closed: number;
   byServiceArea?: ByServiceAreaRow[];
+  byCustomerType?: ByCustomerTypeRow[];
 }
 
 interface Props {
-  workzone?: string; // selected service_area id_sa
+  workzone?: string;
+  ctype?: string;
+  onCtypeChange?: (ctype: TicketCtype | 'all') => void;
+  onCountsChange?: (counts: Record<string, number>) => void;
 }
 
-export default function TicketStats({ workzone }: Props) {
+export default function TicketStats({
+  workzone,
+  ctype,
+  onCtypeChange,
+  onCountsChange,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketStatsData>({
     total: 0,
@@ -35,6 +55,7 @@ export default function TicketStats({ workzone }: Props) {
     assigned: 0,
     closed: 0,
     byServiceArea: [],
+    byCustomerType: [],
   });
 
   useEffect(() => {
@@ -43,7 +64,7 @@ export default function TicketStats({ workzone }: Props) {
     async function load() {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ includeBy: 'sa' });
+        const params = new URLSearchParams({ includeBy: 'sa,ctype' });
         if (workzone) params.set('workzone', workzone);
 
         const res = await fetchWithAuth(
@@ -72,7 +93,24 @@ export default function TicketStats({ workzone }: Props) {
               assigned: Number(r.assigned || 0),
               closed: Number(r.closed || 0),
             })),
+            byCustomerType: (json.data?.byCustomerType || []).map((r: any) => ({
+              ctype: r.ctype as TicketCtype,
+              total: Number(r.total || 0),
+              unassigned: Number(r.unassigned || 0),
+              open: Number(r.open || 0),
+              assigned: Number(r.assigned || 0),
+              closed: Number(r.closed || 0),
+            })),
           });
+
+          // Pass counts to parent
+          const counts: Record<string, number> = {
+            all: Number(json.data?.total || 0),
+          };
+          (json.data?.byCustomerType || []).forEach((r: any) => {
+            counts[r.ctype] = Number(r.total || 0);
+          });
+          onCountsChange?.(counts);
         }
       } catch (e) {
         if (!cancelled) {
@@ -83,7 +121,9 @@ export default function TicketStats({ workzone }: Props) {
             assigned: 0,
             closed: 0,
             byServiceArea: [],
+            byCustomerType: [],
           });
+          onCountsChange?.({ all: 0 });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -97,10 +137,20 @@ export default function TicketStats({ workzone }: Props) {
   }, [workzone]);
 
   const bySa = useMemo(() => data.byServiceArea || [], [data.byServiceArea]);
+  const byCtype = useMemo(
+    () => data.byCustomerType || [],
+    [data.byCustomerType],
+  );
+
+  const handleCtypeClick = (ctypeKey: TicketCtype) => {
+    if (onCtypeChange) {
+      onCtypeChange(ctypeKey);
+    }
+  };
 
   return (
-    <div className='space-y-4'>
-      <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
+    <div className='space-y-5 sm:space-y-6'>
+      <div className='grid grid-cols-2 gap-3 sm:gap-4'>
         <StatCard title='Total' value={data.total} loading={loading} />
         <StatCard
           title='Unassigned'
@@ -108,12 +158,6 @@ export default function TicketStats({ workzone }: Props) {
           color='red'
           loading={loading}
         />
-        {/* <StatCard
-          title='Open'
-          value={data.open}
-          color='yellow'
-          loading={loading}
-        /> */}
         <StatCard
           title='Assigned'
           value={data.assigned}
@@ -127,6 +171,29 @@ export default function TicketStats({ workzone }: Props) {
           loading={loading}
         />
       </div>
+
+      {byCtype.length > 0 && (
+        <div className='space-y-3'>
+          <p className='text-sm font-semibold text-slate-900'>
+            By Customer Type
+          </p>
+          <div className='grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'>
+            {byCtype.map((row) => (
+              <CustomerTypeCard
+                key={row.ctype}
+                ctype={row.ctype}
+                total={row.total}
+                open={row.open}
+                unassigned={row.unassigned}
+                assigned={row.assigned}
+                closed={row.closed}
+                isActive={ctype === row.ctype}
+                onClick={() => handleCtypeClick(row.ctype)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {bySa.length > 0 && (
         <div className='overflow-hidden rounded-xl border bg-white shadow-sm'>
@@ -201,9 +268,11 @@ function StatCard({
   };
 
   return (
-    <div className='rounded-xl border bg-white p-4 shadow-sm'>
-      <p className='text-sm text-gray-500'>{title}</p>
-      <p className={`mt-2 text-2xl font-semibold ${colorMap[color]}`}>
+    <div className='rounded-xl border bg-white p-3 shadow-sm sm:p-4'>
+      <p className='text-xs text-gray-500 sm:text-sm'>{title}</p>
+      <p
+        className={`mt-1 text-xl font-semibold sm:mt-2 sm:text-2xl ${colorMap[color]}`}
+      >
         {loading ? '…' : value}
       </p>
     </div>
