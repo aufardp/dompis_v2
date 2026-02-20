@@ -5,6 +5,11 @@ import { Ticket } from '@/app/types/ticket';
 import { rcaMapping } from '@/app/types/rca';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import EvidenceSliderModal from './EvidenceSliderModal';
+import {
+  calculateTicketAge,
+  getTicketAgeColor,
+  formatDateTimeWIB,
+} from '@/app/utils/datetime';
 
 interface Props {
   ticket: Ticket;
@@ -285,7 +290,7 @@ export default function TicketDetailModal({
         <div className='sticky top-0 border-b bg-white p-5'>
           <div className='flex items-center justify-between'>
             <div>
-              <div className='mb-2 flex items-center gap-3'>
+              <div className='mb-2 flex flex-wrap items-center gap-2'>
                 <span className='font-mono text-lg font-bold text-slate-500'>
                   {ticket.ticket}
                 </span>
@@ -293,6 +298,41 @@ export default function TicketDetailModal({
                   className={`rounded-full px-3 py-1 text-sm font-medium ${getStatusColor()}`}
                 >
                   {status}
+                </span>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    getTicketAgeColor(
+                      ticket.reportedDate,
+                      ticket.hasilVisit,
+                      ticket.closedAt,
+                    ) === 'green'
+                      ? 'bg-green-100 text-green-700'
+                      : getTicketAgeColor(
+                            ticket.reportedDate,
+                            ticket.hasilVisit,
+                            ticket.closedAt,
+                          ) === 'yellow'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : getTicketAgeColor(
+                              ticket.reportedDate,
+                              ticket.hasilVisit,
+                              ticket.closedAt,
+                            ) === 'orange'
+                          ? 'bg-orange-100 text-orange-700'
+                          : getTicketAgeColor(
+                                ticket.reportedDate,
+                                ticket.hasilVisit,
+                                ticket.closedAt,
+                              ) === 'red'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {calculateTicketAge(
+                    ticket.reportedDate,
+                    ticket.hasilVisit,
+                    ticket.closedAt,
+                  )}
                 </span>
               </div>
               <h2 className='text-base font-semibold text-slate-800'>
@@ -342,7 +382,19 @@ export default function TicketDetailModal({
               <div>
                 <div className='text-xs text-slate-400'>Tgl. Laporan</div>
                 <div className='text-sm text-slate-700'>
-                  {ticket.reportedDate || '-'}
+                  {ticket.reportedDate
+                    ? formatDateTimeWIB(ticket.reportedDate)
+                    : '-'}
+                </div>
+              </div>
+              <div>
+                <div className='text-xs text-slate-400'>Umur Ticket</div>
+                <div className='text-sm text-slate-700'>
+                  {calculateTicketAge(
+                    ticket.reportedDate,
+                    ticket.hasilVisit,
+                    ticket.closedAt,
+                  )}
                 </div>
               </div>
             </div>

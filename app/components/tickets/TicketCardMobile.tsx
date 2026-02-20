@@ -9,7 +9,13 @@ import {
 } from 'lucide-react';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
-import { formatDate, getMaxTtr, getStatusColor } from './helpers';
+import {
+  formatDate,
+  getMaxTtr,
+  getStatusColor,
+  getTicketAge,
+  getTicketAgeColorClass,
+} from './helpers';
 
 export default function TicketCardMobile({
   ticket,
@@ -41,6 +47,12 @@ export default function TicketCardMobile({
         <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
           {ticket.hasilVisit || '-'}
         </Badge>
+
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
+        >
+          {getTicketAge(ticket)}
+        </span>
       </div>
 
       <div className='mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700'>

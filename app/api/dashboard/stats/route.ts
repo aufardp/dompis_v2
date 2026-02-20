@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import db from '@/app/libs/db';
+import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
@@ -11,28 +11,57 @@ export async function GET(request: Request) {
     const areaId = searchParams.get('areaId');
 
     if (type === 'technicians') {
-      const query = `
-        SELECT 
-          u.id_user as id,
-          u.nik,
-          u.nama,
-          u.jabatan,
-          COUNT(t.id_ticket) as total_orders,
-          SUM(CASE WHEN t.status = 'Closed' THEN 1 ELSE 0 END) as completed_orders,
-          SUM(CASE WHEN t.status != 'Closed' THEN 1 ELSE 0 END) as unfinished_orders,
-          SUM(CASE 
-            WHEN t.status != 'Closed' AND t.technician_id IS NOT NULL 
-            THEN 1 ELSE 0 END) as active_orders
-        FROM users u
-        INNER JOIN roles r ON u.role_id = r.id_role AND r.\`key\` = 'teknisi'
-        LEFT JOIN ticket t ON u.id_user = t.technician_id
-        ${areaId ? 'WHERE u.area_id = ?' : ''}
-        GROUP BY u.id_user
-        ORDER BY u.nama ASC
-      `;
+      const whereClause: Record<string, any> = {
+        roles: { key: 'teknisi' },
+      };
 
-      const params = areaId ? [areaId] : [];
-      const [rows]: any = await db.query(query, params);
+      if (areaId) {
+        whereClause.area_id = Number(areaId);
+      }
+
+      const technicians = await prisma.users.findMany({
+        where: whereClause,
+        include: {
+          _count: {
+            select: { ticket: true },
+          },
+        },
+        orderBy: { nama: 'asc' },
+      });
+
+      const rows = await Promise.all(
+        technicians.map(async (tech) => {
+          const completedOrders = await prisma.ticket.count({
+            where: {
+              teknisi_user_id: tech.id_user,
+              HASIL_VISIT: 'CLOSE',
+            },
+          });
+          const unfinishedOrders = await prisma.ticket.count({
+            where: {
+              teknisi_user_id: tech.id_user,
+              HASIL_VISIT: { not: 'CLOSE' },
+            },
+          });
+          const activeOrders = await prisma.ticket.count({
+            where: {
+              teknisi_user_id: tech.id_user,
+              HASIL_VISIT: { not: 'CLOSE' },
+            },
+          });
+
+          return {
+            id: tech.id_user,
+            nik: tech.nik,
+            nama: tech.nama,
+            jabatan: tech.jabatan,
+            total_orders: tech._count.ticket,
+            completed_orders: completedOrders,
+            unfinished_orders: unfinishedOrders,
+            active_orders: activeOrders,
+          };
+        }),
+      );
 
       return NextResponse.json({
         success: true,
@@ -41,40 +70,45 @@ export async function GET(request: Request) {
     }
 
     if (type === 'stats') {
-      const query = `
-        SELECT 
-          (SELECT COUNT(*) FROM users u INNER JOIN roles r ON u.role_id = r.id_role AND r.\`key\` = 'teknisi' ${areaId ? 'WHERE u.area_id = ?' : ''}) as total_technicians,
-          (SELECT COUNT(DISTINCT t.technician_id) 
-           FROM ticket t 
-           WHERE t.status != 'Closed' AND t.technician_id IS NOT NULL
-           ${areaId ? 'AND t.area_id = ?' : ''}) as busy_technicians,
-          (SELECT COUNT(*) FROM users u 
-           INNER JOIN roles r ON u.role_id = r.id_role AND r.\`key\` = 'teknisi'
-           LEFT JOIN ticket t ON u.id_user = t.technician_id AND t.status != 'Closed'
-           WHERE t.id_ticket IS NULL
-           ${areaId ? 'AND u.area_id = ?' : ''}) as idle_technicians,
-          (SELECT COUNT(*) FROM ticket ${areaId ? 'WHERE area_id = ?' : ''}) as total_tickets,
-          (SELECT COUNT(*) FROM ticket WHERE status = 'Closed' ${areaId ? 'AND area_id = ?' : ''}) as completed_tickets,
-          (SELECT COUNT(*) FROM ticket WHERE status != 'Closed' ${areaId ? 'AND area_id = ?' : ''}) as unfinished_tickets
-      `;
+      const whereClause: Record<string, any> = {
+        roles: { key: 'teknisi' },
+      };
 
-      let params: any[] = [];
       if (areaId) {
-        params = [areaId, areaId, areaId, areaId, areaId, areaId];
+        whereClause.area_id = Number(areaId);
       }
 
-      const [rows]: any = await db.query(query, params);
-      const stats = rows[0];
+      const [totalTechnicians, busyTechniciansData, allTickets] =
+        await Promise.all([
+          prisma.users.count({ where: whereClause }),
+          prisma.ticket.groupBy({
+            by: ['teknisi_user_id'],
+            where: {
+              HASIL_VISIT: { not: 'CLOSE' },
+              teknisi_user_id: { not: null },
+            },
+          }),
+          prisma.ticket.findMany(),
+        ]);
+
+      const busyTechnicians = busyTechniciansData.length;
+      const idleTechnicians = totalTechnicians - busyTechnicians;
+
+      const totalTickets = allTickets.length;
+      const completedTickets = allTickets.filter(
+        (t) => t.HASIL_VISIT === 'CLOSE',
+      ).length;
+      const unfinishedTickets = totalTickets - completedTickets;
 
       return NextResponse.json({
         success: true,
         data: {
-          totalTechnicians: Number(stats.total_technicians),
-          busyTechnicians: Number(stats.busy_technicians),
-          idleTechnicians: Number(stats.idle_technicians),
-          totalTickets: Number(stats.total_tickets),
-          completedTickets: Number(stats.completed_tickets),
-          unfinishedTickets: Number(stats.unfinished_tickets),
+          totalTechnicians,
+          busyTechnicians,
+          idleTechnicians,
+          totalTickets,
+          completedTickets,
+          unfinishedTickets,
         },
       });
     }

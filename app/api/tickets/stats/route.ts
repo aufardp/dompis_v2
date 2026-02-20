@@ -3,6 +3,8 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
+export const dynamic = 'force-dynamic';
+
 function toOptionalPositiveInt(value: string | null) {
   if (!value) return undefined;
   const n = Number(value);

@@ -1,28 +1,27 @@
-import { NextResponse } from "next/server";
-import db from "@/app/libs/db";
+import { NextResponse } from 'next/server';
+import prisma from '@/app/libs/prisma';
 
 export async function GET() {
-   try {
-      const [rows]: any = await db.query("SELECT * FROM roles");
+  try {
+    const roles = await prisma.roles.findMany();
 
-      // Transform data for react-select
-      const options = rows.map((role: any) => ({
-         id: role.id_role,
-         label: role.name,
-         key: role.key,
-         created_at: role.created_at,
-         updated_at: role.updated_at,
-      }));
+    const options = roles.map((role) => ({
+      id: role.id_role,
+      label: role.name,
+      key: role.key,
+      created_at: role.created_at,
+      updated_at: role.updated_at,
+    }));
 
-      return NextResponse.json({
-         success: true,
-         data: options,
-      });
-   } catch (error: any) {
-      console.error("Roles fetch error:", error);
-      return NextResponse.json(
-         { success: false, message: error.message },
-         { status: 500 },
-      );
-   }
+    return NextResponse.json({
+      success: true,
+      data: options,
+    });
+  } catch (error: any) {
+    console.error('Roles fetch error:', error);
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 },
+    );
+  }
 }

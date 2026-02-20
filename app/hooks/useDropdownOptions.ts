@@ -130,20 +130,35 @@ export function useSubRcaOptions(): UseDropdownOptionsReturn {
 
 export function useWorkzoneOptions() {
   const [options, setOptions] = useState<Option[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchWorkzones = async () => {
-      const res = await fetchWithAuth('/api/workzone');
-      if (!res) return;
-      const result = await res.json();
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetchWithAuth('/api/workzone');
+        if (!res) {
+          setError('Failed to fetch');
+          return;
+        }
+        const result = await res.json();
 
-      if (result.success) {
-        setOptions(result.data);
+        if (result.success) {
+          setOptions(result.data || []);
+        } else {
+          setError(result.message || 'Failed to fetch workzones');
+        }
+      } catch (err) {
+        setError('Failed to fetch workzones');
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchWorkzones();
   }, []);
 
-  return { options };
+  return { options, loading, error };
 }

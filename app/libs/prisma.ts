@@ -25,8 +25,6 @@ function getDatabaseUrl(): string {
 function getAdapter() {
   const databaseUrl = getDatabaseUrl();
 
-  // PrismaMariaDb accepts PoolConfig or a connection string.
-  // MariaDB connector does not reliably accept `mysql://` scheme, so we parse it.
   const u = new URL(databaseUrl);
   const database = u.pathname.replace(/^\//, '');
 

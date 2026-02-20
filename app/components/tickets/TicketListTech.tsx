@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { calculateTicketAge, getTicketAgeColor } from '@/app/utils/datetime';
 
 interface Props {
   limit?: number;
@@ -57,7 +58,7 @@ export default function TicketListTech({ limit }: Props) {
         >
           <div className='flex items-start justify-between gap-4'>
             <div className='min-w-0 flex-1'>
-              <div className='mb-2 flex items-center gap-2'>
+              <div className='mb-2 flex flex-wrap items-center gap-2'>
                 <span className='font-mono text-sm font-medium text-slate-500'>
                   #{ticket.ticket}
                 </span>
@@ -73,6 +74,41 @@ export default function TicketListTech({ limit }: Props) {
                   }`}
                 >
                   {ticket.hasilVisit || 'Open'}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    getTicketAgeColor(
+                      ticket.reportedDate,
+                      ticket.hasilVisit,
+                      ticket.closedAt,
+                    ) === 'green'
+                      ? 'bg-green-100 text-green-700'
+                      : getTicketAgeColor(
+                            ticket.reportedDate,
+                            ticket.hasilVisit,
+                            ticket.closedAt,
+                          ) === 'yellow'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : getTicketAgeColor(
+                              ticket.reportedDate,
+                              ticket.hasilVisit,
+                              ticket.closedAt,
+                            ) === 'orange'
+                          ? 'bg-orange-100 text-orange-700'
+                          : getTicketAgeColor(
+                                ticket.reportedDate,
+                                ticket.hasilVisit,
+                                ticket.closedAt,
+                              ) === 'red'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {calculateTicketAge(
+                    ticket.reportedDate,
+                    ticket.hasilVisit,
+                    ticket.closedAt,
+                  )}
                 </span>
               </div>
               <h4 className='line-clamp-2 text-sm font-semibold text-slate-800'>

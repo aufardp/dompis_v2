@@ -13,6 +13,7 @@ interface SelectProps {
   defaultValue?: string;
   value?: string;
   allowEmpty?: boolean;
+  disabled?: boolean;
 }
 
 const Select: React.FC<SelectProps> = ({
@@ -23,6 +24,7 @@ const Select: React.FC<SelectProps> = ({
   defaultValue = '',
   value,
   allowEmpty = true,
+  disabled = false,
 }) => {
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState<string>(defaultValue);
@@ -53,6 +55,7 @@ const Select: React.FC<SelectProps> = ({
       } ${className}`}
       value={selectedValue}
       onChange={handleChange}
+      disabled={disabled}
     >
       {/* Map over options */}
       {computedOptions.map((option) => (

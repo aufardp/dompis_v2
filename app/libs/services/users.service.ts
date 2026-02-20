@@ -1,16 +1,5 @@
-import db from '@/app/libs/db';
+import prisma from '@/app/libs/prisma';
 import bcrypt from 'bcryptjs';
-import type {
-  PoolConnection,
-  ResultSetHeader,
-  RowDataPacket,
-} from 'mysql2/promise';
-
-type DbValue = string | number | boolean | Date | null;
-
-/* =========================
-   TYPES
-========================= */
 
 export interface CreateUserDTO {
   nik: string;
@@ -20,8 +9,8 @@ export interface CreateUserDTO {
   password: string;
   role_id: number;
   area_id: number;
-  sa_ids?: number[]; // many-to-many
-  sa_id?: number; // backward-compat (single)
+  sa_ids?: number[];
+  sa_id?: number;
 }
 
 export interface UpdateUserDTO {
@@ -33,7 +22,7 @@ export interface UpdateUserDTO {
   role_id?: number;
   area_id?: number;
   sa_ids?: number[];
-  sa_id?: number; // backward-compat (single)
+  sa_id?: number;
 }
 
 export interface CurrentUser {
@@ -43,19 +32,7 @@ export interface CurrentUser {
   role_name: string;
 }
 
-interface UserListRow extends RowDataPacket {
-  id_user: number;
-  nik: string;
-  nama: string;
-  jabatan: string;
-  username: string;
-  role_id: number;
-  area_id: number;
-  created_at: Date;
-  updated_at: Date;
-}
-
-interface UserRow extends RowDataPacket {
+export interface UserById {
   id_user: number;
   nik: string;
   nama: string;
@@ -66,417 +43,317 @@ interface UserRow extends RowDataPacket {
   area_id: number;
   created_at: Date;
   updated_at: Date;
-}
-
-interface UserByIdRow extends UserRow {
-  sa_ids: string | null;
-}
-
-export interface UserById extends UserRow {
   sa_ids: number[];
 }
-
-interface IdRow extends RowDataPacket {
-  id_user: number;
-}
-
-interface BasicUserRow extends RowDataPacket {
-  id_user: number;
-  nama: string;
-  nik: string;
-}
-
-function ensureConnectionRelease(connection: PoolConnection) {
-  try {
-    connection.release();
-  } catch {
-    // ignore
-  }
-}
-
-/* =========================
-   GET ALL USERS
-========================= */
 
 export async function getAllUsers(filters?: {
   role_id?: number;
   search?: string;
 }) {
-  let query = `
-    SELECT 
-      u.id_user,
-      u.nik,
-      u.nama,
-      u.jabatan,
-      u.username,
-      u.role_id,
-      u.area_id,
-      u.created_at,
-      u.updated_at
-    FROM users u
-    WHERE 1=1
-  `;
-
-  const params: DbValue[] = [];
+  const where: Record<string, any> = {};
 
   if (filters?.role_id) {
-    query += ' AND u.role_id = ?';
-    params.push(filters.role_id);
+    where.role_id = filters.role_id;
   }
 
   if (filters?.search) {
-    query += ' AND (u.nama LIKE ? OR u.nik LIKE ? OR u.username LIKE ?)';
-    const search = `%${filters.search}%`;
-    params.push(search, search, search);
+    where.OR = [
+      { nama: { contains: filters.search } },
+      { nik: { contains: filters.search } },
+      { username: { contains: filters.search } },
+    ];
   }
 
-  query += ' ORDER BY u.id_user DESC';
+  const users = await prisma.users.findMany({
+    where,
+    select: {
+      id_user: true,
+      nik: true,
+      nama: true,
+      jabatan: true,
+      username: true,
+      role_id: true,
+      area_id: true,
+      created_at: true,
+      updated_at: true,
+    },
+    orderBy: { id_user: 'desc' },
+  });
 
-  const [rows] = await db.query<UserListRow[]>(query, params);
-  return rows;
+  return users;
 }
 
-/* =========================
-   GET USER BY ID
-========================= */
-
 export async function getUserById(id: number) {
-  const [rows] = await db.query<UserByIdRow[]>(
-    `
-    SELECT 
-      u.*,
-      GROUP_CONCAT(us.sa_id) as sa_ids
-    FROM users u
-    LEFT JOIN user_sa us ON u.id_user = us.user_id
-    WHERE u.id_user = ?
-    GROUP BY u.id_user
-    `,
-    [id],
-  );
+  const user = await prisma.users.findUnique({
+    where: { id_user: id },
+    include: {
+      user_sa: true,
+    },
+  });
 
-  const row = rows[0];
-  if (!row) return null;
+  if (!user) return null;
 
-  const rawSa = row.sa_ids;
-  const sa_ids = rawSa
-    ? rawSa
-        .split(',')
-        .map((v) => Number(v))
-        .filter((v) => Number.isFinite(v))
-    : [];
+  const sa_ids = user.user_sa
+    .map((us) => us.sa_id)
+    .filter((sa): sa is number => sa !== null);
 
-  const { sa_ids: _ignored, ...rest } = row;
+  const { password, user_sa, ...rest } = user as any;
   return { ...rest, sa_ids };
 }
 
 export async function getCurrentUser(
   id_user: number,
 ): Promise<CurrentUser | null> {
-  const [rows] = await db.query<
-    (RowDataPacket & {
-      id_user: number;
-      nama: string;
-      jabatan: string;
-      role_name: string;
-    })[]
-  >(
-    `
-    SELECT
-      u.id_user,
-      u.nama,
-      u.jabatan,
-      COALESCE(r.name, '') AS role_name
-    FROM users u
-    LEFT JOIN roles r ON u.role_id = r.id_role
-    WHERE u.id_user = ?
-    LIMIT 1
-    `,
-    [id_user],
-  );
+  const user = await prisma.users.findUnique({
+    where: { id_user },
+    include: {
+      roles: {
+        select: { name: true },
+      },
+    },
+  });
 
-  return rows[0] || null;
+  if (!user) return null;
+
+  return {
+    id_user: user.id_user,
+    nama: user.nama || '',
+    jabatan: user.jabatan || '',
+    role_name: user.roles?.name || '',
+  };
 }
 
 export async function getUsersByRoleId(roleId: number, search?: string) {
-  let sql = `
-    SELECT u.id_user, u.nama, u.nik
-    FROM users u
-    WHERE u.role_id = ?
-  `;
-
-  const params: DbValue[] = [roleId];
+  const where: Record<string, any> = {
+    role_id: roleId,
+  };
 
   if (search) {
-    sql += ' AND (u.nama LIKE ? OR u.nik LIKE ?)';
-    const keyword = `%${search}%`;
-    params.push(keyword, keyword);
+    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
   }
 
-  sql += ' ORDER BY u.nama ASC';
-  const [rows] = await db.query<BasicUserRow[]>(sql, params);
-  return rows;
+  const users = await prisma.users.findMany({
+    where,
+    select: {
+      id_user: true,
+      nama: true,
+      nik: true,
+    },
+    orderBy: { nama: 'asc' },
+  });
+
+  return users;
 }
 
 export async function getUsersByAreaId(areaId: number, search?: string) {
-  let sql = `
-    SELECT u.id_user, u.nama, u.nik
-    FROM users u
-    WHERE u.area_id = ?
-  `;
-
-  const params: DbValue[] = [areaId];
+  const where: Record<string, any> = {
+    area_id: areaId,
+  };
 
   if (search) {
-    sql += ' AND (u.nama LIKE ? OR u.nik LIKE ?)';
-    const keyword = `%${search}%`;
-    params.push(keyword, keyword);
+    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
   }
 
-  sql += ' ORDER BY u.nama ASC';
-  const [rows] = await db.query<BasicUserRow[]>(sql, params);
-  return rows;
+  const users = await prisma.users.findMany({
+    where,
+    select: {
+      id_user: true,
+      nama: true,
+      nik: true,
+    },
+    orderBy: { nama: 'asc' },
+  });
+
+  return users;
 }
 
 export async function getUsersBySaId(saId: number, search?: string) {
-  let sql = `
-    SELECT u.id_user, u.nama, u.nik
-    FROM users u
-    INNER JOIN user_sa us ON us.user_id = u.id_user
-    WHERE us.sa_id = ?
-  `;
-
-  const params: DbValue[] = [saId];
+  const where: Record<string, any> = {
+    user_sa: {
+      some: {
+        sa_id: saId,
+      },
+    },
+  };
 
   if (search) {
-    sql += ' AND (u.nama LIKE ? OR u.nik LIKE ?)';
-    const keyword = `%${search}%`;
-    params.push(keyword, keyword);
+    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
   }
 
-  sql += ' ORDER BY u.nama ASC';
-  const [rows] = await db.query<BasicUserRow[]>(sql, params);
-  return rows;
+  const users = await prisma.users.findMany({
+    where,
+    select: {
+      id_user: true,
+      nama: true,
+      nik: true,
+    },
+    orderBy: { nama: 'asc' },
+  });
+
+  return users;
 }
 
-/* =========================
-   CREATE USER (TRANSACTION SAFE)
-========================= */
-
 export async function createUser(data: CreateUserDTO) {
-  const connection = await db.getConnection();
-  await connection.beginTransaction();
+  const existing = await prisma.users.findFirst({
+    where: {
+      OR: [{ username: data.username }, { nik: data.nik }],
+    },
+  });
 
-  try {
-    // Check duplicate
-    const [existing] = await connection.query<IdRow[]>(
-      'SELECT id_user FROM users WHERE username = ? OR nik = ?',
-      [data.username, data.nik],
-    );
+  if (existing) {
+    throw new Error('Username atau NIK sudah terdaftar');
+  }
 
-    if (existing.length > 0) {
-      throw new Error('Username atau NIK sudah terdaftar');
+  const hashedPassword = await bcrypt.hash(data.password, 10);
+
+  const saIds = Array.isArray(data.sa_ids)
+    ? data.sa_ids
+    : data.sa_id
+      ? [data.sa_id]
+      : [];
+
+  const user = await prisma.users.create({
+    data: {
+      nik: data.nik,
+      nama: data.nama,
+      jabatan: data.jabatan,
+      username: data.username,
+      password: hashedPassword,
+      role_id: data.role_id,
+      area_id: data.area_id,
+      user_sa: {
+        create: saIds.map((saId) => ({
+          sa_id: saId,
+        })),
+      },
+    },
+  });
+
+  return user.id_user;
+}
+
+export async function updateUser(id: number, data: UpdateUserDTO) {
+  const existing = await prisma.users.findUnique({
+    where: { id_user: id },
+  });
+
+  if (!existing) {
+    throw new Error('User tidak ditemukan');
+  }
+
+  if (data.username && data.username !== existing.username) {
+    const dup = await prisma.users.findFirst({
+      where: {
+        username: data.username,
+        NOT: { id_user: id },
+      },
+    });
+    if (dup) {
+      throw new Error('Username sudah digunakan');
     }
+  }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+  if (data.nik && data.nik !== existing.nik) {
+    const dup = await prisma.users.findFirst({
+      where: {
+        nik: data.nik,
+        NOT: { id_user: id },
+      },
+    });
+    if (dup) {
+      throw new Error('NIK sudah digunakan');
+    }
+  }
 
-    const [result] = await connection.query<ResultSetHeader>(
-      `
-      INSERT INTO users
-      (nik, nama, jabatan, username, password, role_id, area_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-      `,
-      [
-        data.nik,
-        data.nama,
-        data.jabatan,
-        data.username,
-        hashedPassword,
-        data.role_id,
-        data.area_id,
-      ],
-    );
+  const updateData: Record<string, any> = {};
 
-    const userId = result.insertId;
+  if (data.nik !== undefined) updateData.nik = data.nik;
+  if (data.nama !== undefined) updateData.nama = data.nama;
+  if (data.jabatan !== undefined) updateData.jabatan = data.jabatan;
+  if (data.username !== undefined) updateData.username = data.username;
+  if (data.role_id !== undefined) updateData.role_id = data.role_id;
+  if (data.area_id !== undefined) updateData.area_id = data.area_id;
 
-    // Insert pivot SA
+  if (data.password !== undefined) {
+    updateData.password = await bcrypt.hash(data.password, 10);
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    updateData.updated_at = new Date();
+  }
+
+  if (data.sa_ids !== undefined || data.sa_id !== undefined) {
+    await prisma.user_sa.deleteMany({
+      where: { user_id: id },
+    });
+
     const saIds = Array.isArray(data.sa_ids)
       ? data.sa_ids
-      : Number.isFinite(data.sa_id)
+      : data.sa_id
         ? [data.sa_id]
         : [];
 
     if (saIds.length > 0) {
-      for (const saId of saIds) {
-        await connection.query(
-          `
-          INSERT INTO user_sa (user_id, sa_id, created_at, updated_at)
-          VALUES (?, ?, NOW(), NOW())
-          `,
-          [userId, saId],
-        );
-      }
+      await prisma.user_sa.createMany({
+        data: saIds.map((saId) => ({
+          user_id: id,
+          sa_id: saId,
+        })),
+      });
     }
-
-    await connection.commit();
-    ensureConnectionRelease(connection);
-
-    return userId;
-  } catch (error) {
-    await connection.rollback();
-    ensureConnectionRelease(connection);
-    throw error;
   }
+
+  await prisma.users.update({
+    where: { id_user: id },
+    data: updateData,
+  });
+
+  return true;
 }
-
-/* =========================
-   UPDATE USER
-========================= */
-
-export async function updateUser(id: number, data: UpdateUserDTO) {
-  const connection = await db.getConnection();
-  await connection.beginTransaction();
-
-  try {
-    const existing = await getUserById(id);
-    if (!existing) {
-      throw new Error('User tidak ditemukan');
-    }
-
-    // Check duplicate username
-    if (data.username && data.username !== existing.username) {
-      const [dup] = await connection.query<IdRow[]>(
-        'SELECT id_user FROM users WHERE username = ? AND id_user != ?',
-        [data.username, id],
-      );
-      if (dup.length > 0) {
-        throw new Error('Username sudah digunakan');
-      }
-    }
-
-    // Check duplicate nik
-    if (data.nik && data.nik !== existing.nik) {
-      const [dup] = await connection.query<IdRow[]>(
-        'SELECT id_user FROM users WHERE nik = ? AND id_user != ?',
-        [data.nik, id],
-      );
-      if (dup.length > 0) {
-        throw new Error('NIK sudah digunakan');
-      }
-    }
-
-    const fields: string[] = [];
-    const values: DbValue[] = [];
-
-    const addField = (field: string, value: DbValue) => {
-      fields.push(`${field} = ?`);
-      values.push(value);
-    };
-
-    if (data.nik !== undefined) addField('nik', data.nik);
-    if (data.nama !== undefined) addField('nama', data.nama);
-    if (data.jabatan !== undefined) addField('jabatan', data.jabatan);
-    if (data.username !== undefined) addField('username', data.username);
-    if (data.role_id !== undefined) addField('role_id', data.role_id);
-    if (data.area_id !== undefined) addField('area_id', data.area_id);
-
-    if (data.password !== undefined) {
-      const hashed = await bcrypt.hash(data.password, 10);
-      addField('password', hashed);
-    }
-
-    if (fields.length > 0) {
-      addField('updated_at', new Date());
-      values.push(id);
-
-      await connection.query(
-        `UPDATE users SET ${fields.join(', ')} WHERE id_user = ?`,
-        values,
-      );
-    }
-
-    // Update SA pivot
-    if (data.sa_ids !== undefined || data.sa_id !== undefined) {
-      await connection.query('DELETE FROM user_sa WHERE user_id = ?', [id]);
-
-      const saIds = Array.isArray(data.sa_ids)
-        ? data.sa_ids
-        : Number.isFinite(data.sa_id)
-          ? [data.sa_id]
-          : [];
-
-      if (saIds.length > 0) {
-        for (const saId of saIds) {
-          await connection.query(
-            `
-            INSERT INTO user_sa (user_id, sa_id, created_at, updated_at)
-            VALUES (?, ?, NOW(), NOW())
-            `,
-            [id, saId],
-          );
-        }
-      }
-    }
-
-    await connection.commit();
-    ensureConnectionRelease(connection);
-
-    return true;
-  } catch (error) {
-    await connection.rollback();
-    ensureConnectionRelease(connection);
-    throw error;
-  }
-}
-
-/* =========================
-   DELETE USER
-========================= */
 
 export async function deleteUser(id: number) {
-  const connection = await db.getConnection();
-  await connection.beginTransaction();
+  const existing = await prisma.users.findUnique({
+    where: { id_user: id },
+  });
 
-  try {
-    const existing = await getUserById(id);
-    if (!existing) {
-      throw new Error('User tidak ditemukan');
-    }
-
-    await connection.query('DELETE FROM user_sa WHERE user_id = ?', [id]);
-    await connection.query('DELETE FROM users WHERE id_user = ?', [id]);
-
-    await connection.commit();
-    ensureConnectionRelease(connection);
-
-    return true;
-  } catch (error) {
-    await connection.rollback();
-    ensureConnectionRelease(connection);
-    throw error;
+  if (!existing) {
+    throw new Error('User tidak ditemukan');
   }
-}
 
-/* =========================
-   CHANGE PASSWORD
-========================= */
+  await prisma.user_sa.deleteMany({
+    where: { user_id: id },
+  });
+
+  await prisma.users.delete({
+    where: { id_user: id },
+  });
+
+  return true;
+}
 
 export async function changePassword(
   userId: number,
   currentPassword: string,
   newPassword: string,
 ) {
-  const user = await getUserById(userId);
+  const user = await prisma.users.findUnique({
+    where: { id_user: userId },
+  });
+
   if (!user) throw new Error('User tidak ditemukan');
 
-  const valid = await bcrypt.compare(currentPassword, user.password);
+  const valid = await bcrypt.compare(currentPassword, user.password || '');
   if (!valid) throw new Error('Password saat ini salah');
 
   const hashed = await bcrypt.hash(newPassword, 10);
 
-  await db.query(
-    'UPDATE users SET password = ?, updated_at = NOW() WHERE id_user = ?',
-    [hashed, userId],
-  );
+  await prisma.users.update({
+    where: { id_user: userId },
+    data: {
+      password: hashed,
+      updated_at: new Date(),
+    },
+  });
 
   return true;
 }

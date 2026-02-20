@@ -6,6 +6,7 @@ import TicketDetailModal from './TicketDetailModal';
 import TicketUpdateModal from './TicketUpdateModal';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDateTimeWIB } from '@/app/utils/datetime';
+import { calculateTicketAge, getTicketAgeColor } from '@/app/utils/datetime';
 
 interface Stats {
   assigned: number;
@@ -240,12 +241,47 @@ export default function TeknisiDashboard() {
                   {/* HEADER */}
                   <div className='flex items-start justify-between'>
                     <div>
-                      <div className='flex items-center gap-3'>
+                      <div className='flex flex-wrap items-center gap-2'>
                         <span className='font-mono text-sm font-semibold text-slate-500'>
                           {ticket.ticket}
                         </span>
                         {getStatusBadge(ticket.hasilVisit || '')}
                         {getStatusBadge(ticket.jenisTiket || '')}
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            getTicketAgeColor(
+                              ticket.reportedDate,
+                              ticket.hasilVisit,
+                              ticket.closedAt,
+                            ) === 'green'
+                              ? 'bg-green-100 text-green-700'
+                              : getTicketAgeColor(
+                                    ticket.reportedDate,
+                                    ticket.hasilVisit,
+                                    ticket.closedAt,
+                                  ) === 'yellow'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : getTicketAgeColor(
+                                      ticket.reportedDate,
+                                      ticket.hasilVisit,
+                                      ticket.closedAt,
+                                    ) === 'orange'
+                                  ? 'bg-orange-100 text-orange-700'
+                                  : getTicketAgeColor(
+                                        ticket.reportedDate,
+                                        ticket.hasilVisit,
+                                        ticket.closedAt,
+                                      ) === 'red'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {calculateTicketAge(
+                            ticket.reportedDate,
+                            ticket.hasilVisit,
+                            ticket.closedAt,
+                          )}
+                        </span>
                       </div>
 
                       <h3 className='mt-2 line-clamp-2 text-lg font-semibold text-slate-800'>

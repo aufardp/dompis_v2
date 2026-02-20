@@ -8,7 +8,7 @@ import {
   createAreaSchema,
   updateAreaSchema,
 } from '@/app/libs/validations/area.schema';
-import db from '@/app/libs/db';
+import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
@@ -16,10 +16,9 @@ export async function GET() {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const [rows]: any = await db.query('SELECT * FROM area');
+    const areas = await prisma.area.findMany();
 
-    // Transform data for react-select
-    const options = rows.map((area: any) => ({
+    const options = areas.map((area) => ({
       value: area.id_area,
       label: area.nama_area,
       created_at: area.created_at,

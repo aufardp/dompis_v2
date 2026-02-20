@@ -1,95 +1,88 @@
-import db from "@/app/libs/db";
+import prisma from '@/app/libs/prisma';
 
 export async function getAllArea() {
-   const [rows]: any = await db.query(
-      "SELECT * FROM area ORDER BY id_area ASC",
-   );
-   return rows;
+  const areas = await prisma.area.findMany({
+    orderBy: { id_area: 'asc' },
+  });
+  return areas;
 }
 
 export async function getAreaById(id: string) {
-   if (!id) {
-      throw new Error("ID area wajib diisi");
-   }
+  if (!id) {
+    throw new Error('ID area wajib diisi');
+  }
 
-   const [rows]: any = await db.query(
-      `
-      SELECT 
-         id_area AS id,
-         nama_area,
-         created_at,
-         updated_at
-      FROM area
-      WHERE id_area = ?
-      `,
-      [id],
-   );
+  const area = await prisma.area.findUnique({
+    where: { id_area: Number(id) },
+  });
 
-   return rows.length > 0 ? rows[0] : null;
+  if (!area) return null;
+
+  return {
+    id: area.id_area,
+    nama_area: area.nama_area,
+    created_at: area.created_at,
+    updated_at: area.updated_at,
+  };
 }
 
 export async function createArea(data: { nama_area: string }) {
-   const [duplicate]: any = await db.query(
-      "SELECT id_area FROM area WHERE nama_area = ?",
-      [data.nama_area],
-   );
+  const existing = await prisma.area.findFirst({
+    where: { nama_area: data.nama_area },
+  });
 
-   if (duplicate.length > 0) {
-      throw new Error("Area sudah ada");
-   }
+  if (existing) {
+    throw new Error('Area sudah ada');
+  }
 
-   const [result]: any = await db.query(
-      "INSERT INTO area (nama_area) VALUES (?)",
-      [data.nama_area],
-   );
+  const area = await prisma.area.create({
+    data: { nama_area: data.nama_area },
+  });
 
-   return result.insertId;
+  return area.id_area;
 }
 
 export async function updateArea(id: string, data: { nama_area?: string }) {
-   const existing = await getAreaById(id);
+  const existing = await prisma.area.findUnique({
+    where: { id_area: Number(id) },
+  });
 
-   if (!existing) {
-      throw new Error("Area tidak ditemukan");
-   }
+  if (!existing) {
+    throw new Error('Area tidak ditemukan');
+  }
 
-   if (data.nama_area) {
-      const [duplicate]: any = await db.query(
-         "SELECT id_area FROM area WHERE nama_area = ? AND id_area != ?",
-         [data.nama_area, id],
-      );
+  if (data.nama_area) {
+    const duplicate = await prisma.area.findFirst({
+      where: {
+        nama_area: data.nama_area,
+        NOT: { id_area: Number(id) },
+      },
+    });
 
-      if (duplicate.length > 0) {
-         throw new Error("Nama area sudah ada");
-      }
-   }
+    if (duplicate) {
+      throw new Error('Nama area sudah ada');
+    }
+  }
 
-   const fields: string[] = [];
-   const values: any[] = [];
-
-   if (data.nama_area !== undefined) {
-      fields.push("nama_area = ?");
-      values.push(data.nama_area);
-   }
-
-   if (fields.length === 0) {
-      throw new Error("No data to update");
-   }
-
-   values.push(id);
-
-   await db.query(
-      `UPDATE area SET ${fields.join(", ")} WHERE id_area = ?`,
-      values,
-   );
+  await prisma.area.update({
+    where: { id_area: Number(id) },
+    data: {
+      nama_area: data.nama_area,
+      updated_at: new Date(),
+    },
+  });
 }
 
 export async function deleteArea(id: string) {
-   const existing = await getAreaById(id);
+  const existing = await prisma.area.findUnique({
+    where: { id_area: Number(id) },
+  });
 
-   if (!existing) {
-      throw new Error("Area tidak ditemukan");
-   }
+  if (!existing) {
+    throw new Error('Area tidak ditemukan');
+  }
 
-   await db.query("DELETE FROM area WHERE id_area = ?", [id]);
+  await prisma.area.delete({
+    where: { id_area: Number(id) },
+  });
 }

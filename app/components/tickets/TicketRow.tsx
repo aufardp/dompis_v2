@@ -1,7 +1,13 @@
 import { RefreshCw, UserPlus } from 'lucide-react';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
-import { formatDate, getStatusColor, getMaxTtr } from './helpers';
+import {
+  formatDate,
+  getStatusColor,
+  getMaxTtr,
+  getTicketAge,
+  getTicketAgeColorClass,
+} from './helpers';
 
 export default function TicketRow({
   ticket,
@@ -48,6 +54,14 @@ export default function TicketRow({
         <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
           {ticket.hasilVisit}
         </Badge>
+      </td>
+
+      <td className='px-5 py-4 text-center'>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
+        >
+          {getTicketAge(ticket)}
+        </span>
       </td>
 
       <td className='px-5 py-4 text-center'>

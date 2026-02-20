@@ -27,7 +27,8 @@ export default function TicketPage() {
     null,
   );
 
-  const { options: workzoneOptions } = useWorkzoneOptions();
+  const { options: workzoneOptions, loading: workzoneLoading } =
+    useWorkzoneOptions();
 
   const { tickets, loading, pagination, refresh } = useAdminTickets(
     searchQuery,
@@ -72,9 +73,10 @@ export default function TicketPage() {
               <div className='w-full sm:w-48'>
                 <Select
                   options={workzoneOptions}
-                  placeholder='All Workzone'
+                  placeholder={workzoneLoading ? 'Loading...' : 'All Workzone'}
                   value={workzoneFilter}
                   onChange={handleWorkzoneChange}
+                  disabled={workzoneLoading}
                 />
               </div>
 

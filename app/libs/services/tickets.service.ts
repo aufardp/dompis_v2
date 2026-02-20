@@ -1,46 +1,21 @@
-import db from '@/app/libs/db';
+import prisma from '@/app/libs/prisma';
 import {
   TicketWorkflowService,
   type ActorContext,
-} from '@/app/libs/services/ticketWorkflow.service';
+} from './ticketWorkflow.service';
 
 export class TicketService {
-  /* =====================================================
-     ACCESS FILTER BUILDER (SESUIAI ERD)
-  ===================================================== */
-
-  private static buildAccessFilter(role: string, userId: number) {
-    let joinClause = '';
-    let whereClause = '';
-    const params: any[] = [];
-
-    if (role === 'super_admin' || role === 'superadmin') {
-      return { joinClause, whereClause, params };
-    }
-
-    if (role === 'admin') {
-      joinClause += `
-        JOIN service_area sa
-          ON LOWER(REPLACE(t.WORKZONE,' ','')) 
-             LIKE CONCAT('%', LOWER(REPLACE(sa.nama_sa,' ','')), '%')
-        JOIN user_sa us
-          ON sa.id_sa = us.sa_id
-      `;
-      whereClause += ` AND us.user_id = ?`;
-      params.push(userId);
-    }
-
-    if (role === 'teknisi') {
-      whereClause += ` AND t.teknisi_user_id = ?`;
-      params.push(userId);
-    }
-
-    return { joinClause, whereClause, params };
+  private static async buildWorkzoneFilterForAdmin(
+    userId: number,
+  ): Promise<string[]> {
+    const userSas = await prisma.user_sa.findMany({
+      where: { user_id: userId },
+      include: { service_area: true },
+    });
+    return userSas
+      .map((us) => us.service_area?.nama_sa)
+      .filter((name): name is string => name !== null && name !== undefined);
   }
-
-  /* =====================================================
-     GET TICKETS (ROLE AWARE)
-  ===================================================== */
 
   static async getTickets(
     role: string,
@@ -48,7 +23,7 @@ export class TicketService {
     filters?: {
       search?: string;
       hasilVisit?: string;
-      workzone?: string; // service area id (id_sa) from dropdown
+      workzone?: string;
       page?: number;
       limit?: number;
     },
@@ -63,233 +38,203 @@ export class TicketService {
 
     const offset = (page - 1) * limit;
 
-    let baseWhere = ' WHERE 1=1 ';
-    const params: any[] = [];
+    const where: Record<string, any> = {};
+
+    if (search) {
+      where.OR = [
+        { INCIDENT: { contains: search } },
+        { CONTACT_NAME: { contains: search } },
+        { SERVICE_NO: { contains: search } },
+        { CONTACT_PHONE: { contains: search } },
+      ];
+    }
+
+    if (hasilVisit) {
+      where.HASIL_VISIT = hasilVisit;
+    }
 
     const serviceAreaId = Number(workzone);
     const hasServiceAreaFilter =
       Number.isFinite(serviceAreaId) && serviceAreaId > 0;
 
-    if (search) {
-      baseWhere += `
-      AND (
-        t.INCIDENT LIKE ?
-        OR t.CONTACT_NAME LIKE ?
-        OR t.SERVICE_NO LIKE ?
-        OR t.CONTACT_PHONE LIKE ?
-      )
-    `;
-      const keyword = `%${search}%`;
-      params.push(keyword, keyword, keyword, keyword);
-    }
-
-    if (hasilVisit) {
-      baseWhere += ` AND t.HASIL_VISIT = ?`;
-      params.push(hasilVisit);
-    }
-
-    // Filter by selected service area (maps ticket.WORKZONE -> service_area.nama_sa)
-    let filterJoinClause = '';
+    let selectedWorkzone: string | null = null;
     if (hasServiceAreaFilter) {
-      if (role === 'admin') {
-        // admin already joins `service_area sa` in buildAccessFilter
-        baseWhere += ` AND sa.id_sa = ?`;
-        params.push(serviceAreaId);
-      } else {
-        filterJoinClause += `
-          JOIN service_area sa_filter
-            ON LOWER(REPLACE(t.WORKZONE,' ',''))
-               LIKE CONCAT('%', LOWER(REPLACE(sa_filter.nama_sa,' ','')), '%')
-        `;
-
-        baseWhere += ` AND sa_filter.id_sa = ?`;
-        params.push(serviceAreaId);
+      const sa = await prisma.service_area.findUnique({
+        where: { id_sa: serviceAreaId },
+      });
+      if (sa?.nama_sa) {
+        selectedWorkzone = sa.nama_sa;
       }
     }
 
-    const {
-      joinClause,
-      whereClause,
-      params: roleParams,
-    } = this.buildAccessFilter(role, userId);
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+      if (selectedWorkzone) {
+        where.WORKZONE = { contains: selectedWorkzone };
+      }
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        if (selectedWorkzone) {
+          if (workzones.includes(selectedWorkzone)) {
+            where.WORKZONE = { contains: selectedWorkzone };
+          } else {
+            where.id_ticket = 0;
+          }
+        } else {
+          where.WORKZONE = {
+            in: workzones,
+          };
+        }
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    const finalJoinClause = joinClause + filterJoinClause;
+    const [total, tickets] = await Promise.all([
+      prisma.ticket.count({ where }),
+      prisma.ticket.findMany({
+        where,
+        include: {
+          users: {
+            select: { nama: true },
+          },
+        },
+        orderBy: [{ REPORTED_DATE: 'desc' }, { id_ticket: 'desc' }],
+        skip: offset,
+        take: limit,
+      }),
+    ]);
 
-    const finalWhere = baseWhere + whereClause;
-    const finalParams = [...params, ...roleParams];
-
-    /* ---------- COUNT ---------- */
-
-    const [count]: any = await db.query(
-      `
-    SELECT COUNT(DISTINCT t.id_ticket) as total
-    FROM ticket t
-    ${finalJoinClause}
-    ${finalWhere}
-    `,
-      finalParams,
-    );
-
-    const total = count[0]?.total || 0;
-
-    /* ---------- DATA ---------- */
-
-    const [rows]: any = await db.query(
-      `
-    SELECT DISTINCT
-      t.id_ticket AS idTicket,
-      t.INCIDENT AS ticket,
-      t.SUMMARY AS summary,
-      t.REPORTED_DATE AS reportedDate,
-      t.OWNER_GROUP AS ownerGroup,
-      t.SERVICE_TYPE AS serviceType,
-      t.CUSTOMER_TYPE AS customerType,
-      t.SERVICE_NO AS serviceNo,
-      t.CONTACT_NAME AS contactName,
-      t.CONTACT_PHONE AS contactPhone,
-      t.DEVICE_NAME AS deviceName,
-      t.STATUS AS status,
-      t.HASIL_VISIT AS hasilVisit,
-      t.BOOKING_DATE AS bookingDate,
-      t.SYMPTOM AS symptom,
-      t.DESCRIPTION_ACTUAL_SOLUTION AS descriptionActualSolution,
-      t.WORKZONE AS workzone,
-      t.CUSTOMER_SEGMENT AS customerSegment,
-      t.SOURCE_TICKET AS sourceTicket,
-      t.JENIS_TIKET AS jenisTiket,
-      t.JAM_EXPIRED_24_JAM_REGULER AS maxTtrReguler,
-      t.JAM_EXPIRED_12_JAM_GOLD AS maxTtrGold,
-      t.JAM_EXPIRED_6_JAM_PLATINUM AS maxTtrPlatinum,
-      t.JAM_EXPIRED_3_JAM_DIAMOND AS maxTtrDiamond,
-      t.PENDING_REASON as pendingReason,
-      t.teknisi_user_id AS teknisiUserId,
-      t.rca AS rca,
-      t.sub_rca AS subRca,
-      t.ALAMAT AS alamat,
-      t.closed_at AS closedAt,
-      u.nama AS technicianName
-    FROM ticket t
-    LEFT JOIN users u
-      ON t.teknisi_user_id = u.id_user
-    ${finalJoinClause}
-    ${finalWhere}
-    ORDER BY STR_TO_DATE(t.REPORTED_DATE, '%Y-%m-%d %H:%i:%s') DESC, t.id_ticket DESC
-    LIMIT ? OFFSET ?
-    `,
-      [...finalParams, limit, offset],
-    );
+    const data = tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticket: t.INCIDENT,
+      summary: t.SUMMARY,
+      reportedDate: t.REPORTED_DATE,
+      ownerGroup: t.OWNER_GROUP,
+      serviceType: t.SERVICE_TYPE,
+      customerType: t.CUSTOMER_TYPE,
+      serviceNo: t.SERVICE_NO,
+      contactName: t.CONTACT_NAME,
+      contactPhone: t.CONTACT_PHONE,
+      deviceName: t.DEVICE_NAME,
+      status: t.STATUS,
+      hasilVisit: t.HASIL_VISIT,
+      bookingDate: t.BOOKING_DATE,
+      symptom: t.SYMPTOM,
+      descriptionActualSolution: t.DESCRIPTION_ACTUAL_SOLUTION,
+      workzone: t.WORKZONE,
+      customerSegment: t.CUSTOMER_SEGMENT,
+      sourceTicket: t.SOURCE_TICKET,
+      jenisTiket: t.JENIS_TIKET,
+      maxTtrReguler: t.JAM_EXPIRED_24_JAM_REGULER,
+      maxTtrGold: t.JAM_EXPIRED_12_JAM_GOLD,
+      maxTtrPlatinum: t.JAM_EXPIRED_6_JAM_PLATINUM,
+      maxTtrDiamond: t.JAM_EXPIRED_3_JAM_DIAMOND,
+      pendingReason: (t as any).PENDING_REASON,
+      teknisiUserId: t.teknisi_user_id,
+      rca: t.rca,
+      subRca: t.sub_rca,
+      alamat: t.ALAMAT,
+      closedAt: t.closed_at,
+      technicianName: t.users?.nama,
+    }));
 
     return {
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
-      data: rows,
+      data,
     };
   }
 
-  /* =====================================================
-     GET UNASSIGNED (ROLE SAFE)
-  ===================================================== */
-
   static async getUnassignedTickets(role: string, userId: number) {
-    const { joinClause, whereClause, params } = this.buildAccessFilter(
-      role,
-      userId,
-    );
+    const where: Record<string, any> = {
+      teknisi_user_id: null,
+      HASIL_VISIT: 'OPEN',
+    };
 
-    const [rows]: any = await db.query(
-      `
-      SELECT t.*
-      FROM ticket t
-      ${joinClause}
-      WHERE t.teknisi_user_id IS NULL
-        AND t.HASIL_VISIT = 'OPEN'
-      ${whereClause}
-      ORDER BY t.REPORTED_DATE DESC
-      `,
-      params,
-    );
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        where.WORKZONE = { in: workzones };
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    return rows;
+    const tickets = await prisma.ticket.findMany({
+      where,
+      orderBy: { REPORTED_DATE: 'desc' },
+    });
+
+    return tickets;
   }
-
-  /* =====================================================
-     QUICK SEARCH (ROLE AWARE)
-  ===================================================== */
 
   static async search(incident: string, role: string, userId: number) {
-    const { joinClause, whereClause, params } = this.buildAccessFilter(
-      role,
-      userId,
-    );
+    const where: Record<string, any> = {
+      INCIDENT: { contains: incident },
+    };
 
-    const keyword = `%${incident}%`;
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        where.WORKZONE = { in: workzones };
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    const [rows]: any = await db.query(
-      `
-      SELECT DISTINCT
-        t.id_ticket AS idTicket,
-        t.INCIDENT AS ticket,
-        t.SUMMARY AS summary,
-        t.REPORTED_DATE AS reportedDate,
-        t.SERVICE_NO AS serviceNo,
-        t.CONTACT_NAME AS contactName,
-        t.CONTACT_PHONE AS contactPhone,
-        t.WORKZONE AS workzone,
-        t.HASIL_VISIT AS hasilVisit,
-        t.teknisi_user_id AS teknisiUserId,
-        u.nama AS technicianName
-      FROM ticket t
-      LEFT JOIN users u
-        ON t.teknisi_user_id = u.id_user
-      ${joinClause}
-      WHERE 1=1
-        AND t.INCIDENT LIKE ?
-      ${whereClause}
-      ORDER BY t.id_ticket DESC
-      LIMIT 20
-      `,
-      [keyword, ...params],
-    );
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        where.WORKZONE = { in: workzones };
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    return rows;
-  }
+    const tickets = await prisma.ticket.findMany({
+      orderBy: { id_ticket: 'desc' },
+      take: 20,
+    });
 
-  static async searchByContactName(
-    contactName: string,
-    role: string,
-    userId: number,
-  ) {
-    const { joinClause, whereClause, params } = this.buildAccessFilter(
-      role,
-      userId,
-    );
-
-    const keyword = `%${contactName}%`;
-
-    const [rows]: any = await db.query(
-      `
-      SELECT DISTINCT
-        t.id_ticket AS idTicket,
-        t.INCIDENT AS ticket,
-        t.CONTACT_NAME AS contactName,
-        t.CONTACT_PHONE AS contactPhone,
-        t.SERVICE_NO AS serviceNo,
-        t.WORKZONE AS workzone,
-        t.HASIL_VISIT AS hasilVisit
-      FROM ticket t
-      ${joinClause}
-      WHERE 1=1
-        AND t.CONTACT_NAME LIKE ?
-      ${whereClause}
-      ORDER BY t.id_ticket DESC
-      LIMIT 20
-      `,
-      [keyword, ...params],
-    );
-
-    return rows;
+    return tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticket: t.INCIDENT,
+      contactName: t.CONTACT_NAME,
+      contactPhone: t.CONTACT_PHONE,
+      serviceNo: t.SERVICE_NO,
+      workzone: t.WORKZONE,
+      hasilVisit: t.HASIL_VISIT,
+    }));
   }
 
   static async searchByServiceNo(
@@ -297,81 +242,90 @@ export class TicketService {
     role: string,
     userId: number,
   ) {
-    const { joinClause, whereClause, params } = this.buildAccessFilter(
-      role,
-      userId,
-    );
+    const where: Record<string, any> = {
+      SERVICE_NO: { contains: serviceNo },
+    };
 
-    const keyword = `%${serviceNo}%`;
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        where.WORKZONE = { in: workzones };
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    const [rows]: any = await db.query(
-      `
-      SELECT DISTINCT
-        t.id_ticket AS idTicket,
-        t.INCIDENT AS ticket,
-        t.SERVICE_NO AS serviceNo,
-        t.CONTACT_NAME AS contactName,
-        t.CONTACT_PHONE AS contactPhone,
-        t.WORKZONE AS workzone,
-        t.HASIL_VISIT AS hasilVisit
-      FROM ticket t
-      ${joinClause}
-      WHERE 1=1
-        AND t.SERVICE_NO LIKE ?
-      ${whereClause}
-      ORDER BY t.id_ticket DESC
-      LIMIT 20
-      `,
-      [keyword, ...params],
-    );
+    const tickets = await prisma.ticket.findMany({
+      orderBy: { id_ticket: 'desc' },
+      take: 20,
+    });
 
-    return rows;
+    return tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticket: t.INCIDENT,
+      serviceNo: t.SERVICE_NO,
+      contactName: t.CONTACT_NAME,
+      contactPhone: t.CONTACT_PHONE,
+      workzone: t.WORKZONE,
+      hasilVisit: t.HASIL_VISIT,
+    }));
   }
 
   static async getTicketsByUser(userId: number) {
-    const [rows]: any = await db.query(
-      `
-      SELECT DISTINCT
-        t.id_ticket AS idTicket,
-        t.INCIDENT AS ticket,
-        t.SUMMARY AS summary,
-        t.REPORTED_DATE AS reportedDate,
-        t.WORKZONE AS workzone,
-        t.HASIL_VISIT AS hasilVisit,
-        t.teknisi_user_id AS teknisiUserId
-      FROM ticket t
-      JOIN service_area sa
-        ON LOWER(REPLACE(t.WORKZONE,' ',''))
-           LIKE CONCAT('%', LOWER(REPLACE(sa.nama_sa,' ','')), '%')
-      JOIN user_sa us
-        ON sa.id_sa = us.sa_id
-      WHERE us.user_id = ?
-      ORDER BY STR_TO_DATE(t.REPORTED_DATE, '%Y-%m-%d %H:%i:%s') DESC, t.id_ticket DESC
-      LIMIT 200
-      `,
-      [userId],
-    );
+    const userSas = await prisma.user_sa.findMany({
+      where: { user_id: userId },
+      include: { service_area: true },
+    });
 
-    return rows;
+    const saNames = userSas
+      .map((us) => us.service_area?.nama_sa)
+      .filter((name): name is string => name !== null && name !== undefined);
+
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        WORKZONE: {
+          in: saNames,
+        },
+      },
+      orderBy: [{ REPORTED_DATE: 'desc' }, { id_ticket: 'desc' }],
+      take: 200,
+    });
+
+    return tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticket: t.INCIDENT,
+      summary: t.SUMMARY,
+      reportedDate: t.REPORTED_DATE,
+      workzone: t.WORKZONE,
+      hasilVisit: t.HASIL_VISIT,
+      teknisiUserId: t.teknisi_user_id,
+    }));
   }
 
   static async getTeknisiUsers() {
-    const [rows]: any = await db.query(
-      `
-      SELECT u.id_user, u.nama, u.nik
-      FROM users u
-      JOIN roles r ON r.id_role = u.role_id
-      WHERE r.key = 'teknisi'
-      ORDER BY u.nama ASC
-      `,
-    );
+    const teknisi = await prisma.users.findMany({
+      where: {
+        roles: {
+          key: 'teknisi',
+        },
+      },
+      select: {
+        id_user: true,
+        nama: true,
+        nik: true,
+      },
+      orderBy: { nama: 'asc' },
+    });
 
-    return rows;
+    return teknisi;
   }
-
-  /* =====================================================
-     ASSIGN
-   ===================================================== */
 
   static async assignToUser(
     ticketId: number,
@@ -381,10 +335,6 @@ export class TicketService {
     return TicketWorkflowService.assignToUser(ticketId, teknisiUserId, actor);
   }
 
-  /* =====================================================
-     UNASSIGN (ADMIN/HELPDESK/SUPERADMIN)
-  ===================================================== */
-
   static async unassign(ticketId: number, role?: string, userId?: number) {
     if (!role || !userId) throw new Error('Unauthorized');
     return TicketWorkflowService.unassignTicket(ticketId, {
@@ -393,20 +343,12 @@ export class TicketService {
     });
   }
 
-  /* =====================================================
-     PICKUP
-   ===================================================== */
-
   static async pickup(ticketId: number, teknisiUserId: number) {
     return TicketWorkflowService.pickupTicket(ticketId, {
       id_user: teknisiUserId,
       role: 'teknisi',
     });
   }
-
-  /* =====================================================
-     CLOSE
-   ===================================================== */
 
   static async close(
     ticketId: number,
@@ -421,10 +363,6 @@ export class TicketService {
       subRca,
     );
   }
-
-  /* =====================================================
-   UPDATE (SET STATUS PENDING)
-===================================================== */
 
   static async update(
     ticketId: number,
@@ -458,68 +396,64 @@ export class TicketService {
     });
   }
 
-  /* =====================================================
-     STATS (ROLE SAFE)
-  ===================================================== */
-
   static async getStats(role: string, userId: number, saId?: number) {
-    const { joinClause, whereClause, params } = this.buildAccessFilter(
-      role,
-      userId,
-    );
-
-    let extraJoin = '';
-    let extraWhere = '';
-    const extraParams: any[] = [];
+    const where: Record<string, any> = {};
 
     const serviceAreaId = Number(saId);
     const hasSaFilter = Number.isFinite(serviceAreaId) && serviceAreaId > 0;
 
+    let selectedWorkzone: string | null = null;
     if (hasSaFilter) {
-      if (role === 'admin') {
-        extraWhere += ` AND sa.id_sa = ?`;
-        extraParams.push(serviceAreaId);
-      } else {
-        extraJoin += `
-          JOIN service_area sa_filter
-            ON LOWER(REPLACE(t.WORKZONE,' ',''))
-               LIKE CONCAT('%', LOWER(REPLACE(sa_filter.nama_sa,' ','')), '%')
-        `;
-        extraWhere += ` AND sa_filter.id_sa = ?`;
-        extraParams.push(serviceAreaId);
+      const sa = await prisma.service_area.findUnique({
+        where: { id_sa: serviceAreaId },
+      });
+      if (sa?.nama_sa) {
+        selectedWorkzone = sa.nama_sa;
       }
     }
 
-    const finalJoin = joinClause + extraJoin;
-    const finalParams = [...params, ...extraParams];
+    if (role === 'teknisi') {
+      where.teknisi_user_id = userId;
+      if (selectedWorkzone) {
+        where.WORKZONE = { contains: selectedWorkzone };
+      }
+    } else if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const workzones = await this.buildWorkzoneFilterForAdmin(userId);
+      if (workzones.length > 0) {
+        if (selectedWorkzone) {
+          if (workzones.includes(selectedWorkzone)) {
+            where.WORKZONE = { contains: selectedWorkzone };
+          } else {
+            where.id_ticket = 0;
+          }
+        } else {
+          where.WORKZONE = { in: workzones };
+        }
+      } else {
+        where.id_ticket = 0;
+      }
+    }
 
-    // Use DISTINCT tickets to avoid join-multiplication inflating counts
-    const [rows]: any = await db.query(
-      `
-      SELECT
-        COUNT(*) AS total,
-        SUM(x.unassigned) AS unassigned,
-        SUM(x.open) AS open,
-        SUM(x.assigned) AS assigned,
-        SUM(x.closed) AS closed
-      FROM (
-        SELECT DISTINCT
-          t.id_ticket,
-          CASE WHEN t.teknisi_user_id IS NULL THEN 1 ELSE 0 END AS unassigned,
-          CASE WHEN t.hasil_visit='OPEN' THEN 1 ELSE 0 END AS open,
-          CASE WHEN t.hasil_visit='ASSIGNED' THEN 1 ELSE 0 END AS assigned,
-          CASE WHEN t.hasil_visit='CLOSE' THEN 1 ELSE 0 END AS closed
-        FROM ticket t
-        ${finalJoin}
-        WHERE 1=1
-        ${whereClause}
-        ${extraWhere}
-      ) x
-      `,
-      finalParams,
-    );
+    const [total, unassigned, openVal, assigned, closed] = await Promise.all([
+      prisma.ticket.count({ where }),
+      prisma.ticket.count({ where: { ...where, teknisi_user_id: null } }),
+      prisma.ticket.count({ where: { ...where, HASIL_VISIT: 'OPEN' } }),
+      prisma.ticket.count({ where: { ...where, HASIL_VISIT: 'ASSIGNED' } }),
+      prisma.ticket.count({ where: { ...where, HASIL_VISIT: 'CLOSE' } }),
+    ]);
 
-    return rows[0];
+    return {
+      total,
+      unassigned,
+      open: openVal,
+      assigned,
+      closed,
+    };
   }
 
   static async getStatsByServiceArea(
@@ -527,84 +461,104 @@ export class TicketService {
     userId: number,
     saId?: number,
   ) {
-    const serviceAreaId = Number(saId);
-    const hasSaFilter = Number.isFinite(serviceAreaId) && serviceAreaId > 0;
+    let userSaIds: number[] = [];
+    let userWorkzones: string[] = [];
 
-    let subWhere = ' WHERE 1=1 ';
-    const params: any[] = [];
+    if (
+      role === 'admin' ||
+      role === 'helpdesk' ||
+      role === 'superadmin' ||
+      role === 'super_admin'
+    ) {
+      const userSas = await prisma.user_sa.findMany({
+        where: { user_id: userId },
+        select: { sa_id: true },
+      });
+      userSaIds = userSas
+        .map((us) => us.sa_id)
+        .filter((id): id is number => id !== null);
 
-    // role restrictions
-    if (role === 'teknisi') {
-      subWhere += ' AND t.teknisi_user_id = ?';
-      params.push(userId);
+      userWorkzones = await this.buildWorkzoneFilterForAdmin(userId);
     }
 
-    // admin restrictions applied after mapping via user_sa
-    let adminJoin = '';
-    if (role === 'admin') {
-      adminJoin += `
-        JOIN user_sa us
-          ON us.sa_id = sa.id_sa
-         AND us.user_id = ?
-      `;
-      params.push(userId);
+    let serviceAreaFilter: any = undefined;
+
+    if (saId && saId > 0) {
+      serviceAreaFilter = { id_sa: Number(saId) };
+    } else if (userSaIds.length > 0) {
+      serviceAreaFilter = { id_sa: { in: userSaIds } };
+    } else if (role !== 'teknisi') {
+      return [];
     }
 
-    if (hasSaFilter) {
-      params.push(serviceAreaId);
-    }
+    const serviceAreas = await prisma.service_area.findMany({
+      where: serviceAreaFilter,
+    });
 
-    const [rows]: any = await db.query(
-      `
-      SELECT
-        sa.id_sa AS id_sa,
-        sa.nama_sa AS nama_sa,
-        COUNT(*) AS total,
-        SUM(CASE WHEN x.teknisi_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned,
-        SUM(CASE WHEN x.hasil_visit='OPEN' THEN 1 ELSE 0 END) AS open,
-        SUM(CASE WHEN x.hasil_visit='ASSIGNED' THEN 1 ELSE 0 END) AS assigned,
-        SUM(CASE WHEN x.hasil_visit='CLOSE' THEN 1 ELSE 0 END) AS closed
-      FROM (
-        SELECT
-          t.id_ticket,
-          t.teknisi_user_id,
-          t.hasil_visit,
-          (
-            SELECT sa2.id_sa
-            FROM service_area sa2
-            WHERE LOWER(REPLACE(t.WORKZONE,' ',''))
-              LIKE CONCAT('%', LOWER(REPLACE(sa2.nama_sa,' ','')), '%')
-            ORDER BY LENGTH(LOWER(REPLACE(sa2.nama_sa,' ',''))) DESC
-            LIMIT 1
-          ) AS sa_id
-        FROM ticket t
-        ${subWhere}
-      ) x
-      JOIN service_area sa ON sa.id_sa = x.sa_id
-      ${adminJoin}
-      WHERE x.sa_id IS NOT NULL
-      ${hasSaFilter ? ' AND sa.id_sa = ?' : ''}
-      GROUP BY sa.id_sa, sa.nama_sa
-      ORDER BY sa.nama_sa ASC
-      `,
-      // Params are: role filters in subquery, admin join user_id (if any), optional sa filter
-      params,
+    const results = await Promise.all(
+      serviceAreas.map(async (sa) => {
+        const whereClause: Record<string, any> = {};
+
+        if (role === 'teknisi') {
+          whereClause.teknisi_user_id = userId;
+          whereClause.WORKZONE = { contains: sa.nama_sa || '' };
+        } else if (
+          role === 'admin' ||
+          role === 'helpdesk' ||
+          role === 'superadmin' ||
+          role === 'super_admin'
+        ) {
+          if (userWorkzones.length > 0) {
+            if (userWorkzones.includes(sa.nama_sa || '')) {
+              whereClause.WORKZONE = { contains: sa.nama_sa || '' };
+            } else {
+              whereClause.id_ticket = 0;
+            }
+          } else {
+            whereClause.id_ticket = 0;
+          }
+        }
+
+        const [total, unassigned, openVal, assigned, closed] =
+          await Promise.all([
+            prisma.ticket.count({ where: whereClause }),
+            prisma.ticket.count({
+              where: { ...whereClause, teknisi_user_id: null },
+            }),
+            prisma.ticket.count({
+              where: { ...whereClause, HASIL_VISIT: 'OPEN' },
+            }),
+            prisma.ticket.count({
+              where: { ...whereClause, HASIL_VISIT: 'ASSIGNED' },
+            }),
+            prisma.ticket.count({
+              where: { ...whereClause, HASIL_VISIT: 'CLOSE' },
+            }),
+          ]);
+
+        return {
+          id_sa: sa.id_sa,
+          nama_sa: sa.nama_sa,
+          total,
+          unassigned,
+          open: openVal,
+          assigned,
+          closed,
+        };
+      }),
     );
 
-    return rows;
+    return results;
   }
 
-  /* =====================================================
-     CUSTOMER TYPE
-  ===================================================== */
-
   static async getCustomerType() {
-    const [rows]: any = await db.query(`
-      SELECT DISTINCT CUSTOMER_TYPE AS customerType
-      FROM ticket
-      ORDER BY CUSTOMER_TYPE ASC
-    `);
+    const tickets = await prisma.ticket.findMany({
+      select: { CUSTOMER_TYPE: true },
+      distinct: ['CUSTOMER_TYPE'],
+      where: { CUSTOMER_TYPE: { not: null } },
+      orderBy: { CUSTOMER_TYPE: 'asc' },
+    });
 
-    return rows;
+    return tickets.map((t) => ({ customerType: t.CUSTOMER_TYPE }));
   }
 }

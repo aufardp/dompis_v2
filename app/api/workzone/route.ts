@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import db from '@/app/libs/db';
+import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
@@ -12,26 +14,30 @@ export async function GET() {
       'super_admin',
     ]);
 
-    // super admin -> return all service areas
     if (user.role === 'super_admin' || user.role === 'superadmin') {
-      const [rows]: any = await db.query(
-        `SELECT CAST(id_sa AS CHAR) AS value, nama_sa AS label FROM service_area ORDER BY nama_sa ASC`,
-      );
+      const serviceAreas = await prisma.service_area.findMany({
+        orderBy: { nama_sa: 'asc' },
+      });
+
+      const rows = serviceAreas.map((sa) => ({
+        value: String(sa.id_sa),
+        label: sa.nama_sa,
+      }));
 
       return NextResponse.json({ success: true, data: rows });
     }
 
-    // admin/helpdesk -> only SA mapped to this user_id via user_sa
-    const [rows]: any = await db.query(
-      `
-      SELECT CAST(sa.id_sa AS CHAR) AS value, sa.nama_sa AS label
-      FROM user_sa us
-      JOIN service_area sa ON us.sa_id = sa.id_sa
-      WHERE us.user_id = ?
-      ORDER BY sa.nama_sa ASC
-      `,
-      [user.id_user],
-    );
+    const userSas = await prisma.user_sa.findMany({
+      where: { user_id: user.id_user },
+      include: { service_area: true },
+    });
+
+    const rows = userSas
+      .filter((us) => us.service_area)
+      .map((us) => ({
+        value: String(us.service_area!.id_sa),
+        label: us.service_area!.nama_sa,
+      }));
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {

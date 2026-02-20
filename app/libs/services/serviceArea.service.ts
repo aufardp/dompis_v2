@@ -1,148 +1,119 @@
-import db from "@/app/libs/db";
+import prisma from '@/app/libs/prisma';
 
-// 🔹 Get All
 export async function getAllServiceArea() {
-   const [rows]: any = await db.query(`
-      SELECT 
-         sa.id_sa AS id,
-         sa.nama_sa AS serviceArea,
-         a.nama_area AS area
-      FROM service_area sa
-      JOIN area a ON sa.area_id = a.id_area
-      ORDER BY sa.id_sa ASC
-   `);
+  const serviceAreas = await prisma.service_area.findMany({
+    include: { area: true },
+    orderBy: { id_sa: 'asc' },
+  });
 
-   return rows;
+  return serviceAreas.map((sa) => ({
+    id: sa.id_sa,
+    serviceArea: sa.nama_sa,
+    area: sa.area?.nama_area || null,
+  }));
 }
 
-// 🔹 Get SA by id
 export async function getServiceAreaById(id: string) {
-   if (!id) {
-      throw new Error("ID wajib diisi");
-   }
+  if (!id) {
+    throw new Error('ID wajib diisi');
+  }
 
-   const [rows]: any = await db.query(
-      `
-      SELECT 
-         id_sa AS id,
-         nama_sa,
-         area_id,
-         created_at,
-         updated_at
-      FROM service_area
-      WHERE id_sa = ?
-      `,
-      [id],
-   );
+  const sa = await prisma.service_area.findUnique({
+    where: { id_sa: Number(id) },
+  });
 
-   return rows.length > 0 ? rows[0] : null;
+  if (!sa) return null;
+
+  return {
+    id: sa.id_sa,
+    nama_sa: sa.nama_sa,
+    area_id: sa.area_id,
+    created_at: sa.created_at,
+    updated_at: sa.updated_at,
+  };
 }
 
-// 🔹 Get SA By Area ID
 export async function getServiceAreaByArea(area_id: string) {
-   const [rows]: any = await db.query(
-      `
-      SELECT 
-         id_sa AS value, 
-         nama_sa AS label
-      FROM service_area
-      WHERE area_id = ?
-      ORDER BY id_sa ASC
-      `,
-      [area_id],
-   );
+  const serviceAreas = await prisma.service_area.findMany({
+    where: { area_id: Number(area_id) },
+    orderBy: { id_sa: 'asc' },
+  });
 
-   return rows;
+  return serviceAreas.map((sa) => ({
+    value: sa.id_sa,
+    label: sa.nama_sa,
+  }));
 }
 
-// 🔹 Create Service Area
 export async function createServiceArea(data: {
-   nama_sa: string;
-   area_id: number;
+  nama_sa: string;
+  area_id: number;
 }) {
-   // 🔥 Cek apakah area ada
-   const [area]: any = await db.query(
-      `SELECT id_area FROM area WHERE id_area = ?`,
-      [data.area_id],
-   );
+  const area = await prisma.area.findUnique({
+    where: { id_area: data.area_id },
+  });
 
-   if (area.length === 0) {
-      throw new Error("Area tidak ditemukan");
-   }
+  if (!area) {
+    throw new Error('Area tidak ditemukan');
+  }
 
-   // 🔥 Cek duplikasi nama dalam area yang sama
-   const [duplicate]: any = await db.query(
-      `
-      SELECT id_sa 
-      FROM service_area 
-      WHERE nama_sa = ? AND area_id = ?
-      `,
-      [data.nama_sa, data.area_id],
-   );
+  const duplicate = await prisma.service_area.findFirst({
+    where: {
+      nama_sa: data.nama_sa,
+      area_id: data.area_id,
+    },
+  });
 
-   if (duplicate.length > 0) {
-      throw new Error("Service Area sudah ada di area tersebut");
-   }
+  if (duplicate) {
+    throw new Error('Service Area sudah ada di area tersebut');
+  }
 
-   // 🔥 Insert
-   const [result]: any = await db.query(
-      `
-      INSERT INTO service_area (nama_sa, area_id, created_at, updated_at)
-      VALUES (?, ?, NOW(), NOW())
-      `,
-      [data.nama_sa, data.area_id],
-   );
+  const sa = await prisma.service_area.create({
+    data: {
+      nama_sa: data.nama_sa,
+      area_id: data.area_id,
+    },
+  });
 
-   return result.insertId;
+  return sa.id_sa;
 }
 
-// 🔹 Update
 export async function updateServiceArea(
-   id: string,
-   data: { nama_sa?: string; area_id?: string },
+  id: string,
+  data: { nama_sa?: string; area_id?: string },
 ) {
-   const fields: string[] = [];
-   const values: any[] = [];
+  const updateData: Record<string, any> = {};
 
-   if (data.nama_sa !== undefined) {
-      fields.push("nama_sa = ?");
-      values.push(data.nama_sa);
-   }
+  if (data.nama_sa !== undefined) {
+    updateData.nama_sa = data.nama_sa;
+  }
 
-   if (data.area_id !== undefined) {
-      fields.push("area_id = ?");
-      values.push(data.area_id);
-   }
+  if (data.area_id !== undefined) {
+    updateData.area_id = Number(data.area_id);
+  }
 
-   if (fields.length === 0) {
-      throw new Error("No data to update");
-   }
+  if (Object.keys(updateData).length === 0) {
+    throw new Error('No data to update');
+  }
 
-   values.push(id);
+  updateData.updated_at = new Date();
 
-   await db.query(
-      `
-      UPDATE service_area
-      SET ${fields.join(", ")}, updated_at = NOW()
-      WHERE id_sa = ?
-      `,
-      values,
-   );
+  await prisma.service_area.update({
+    where: { id_sa: Number(id) },
+    data: updateData,
+  });
 }
 
-// 🔹 Delete (dengan pengecekan)
 export async function deleteServiceArea(id: string) {
-   const existing = await getServiceAreaById(id);
+  const existing = await prisma.service_area.findUnique({
+    where: { id_sa: Number(id) },
+  });
 
-   if (!existing) {
-      throw new Error("Data tidak ditemukan");
-   }
+  if (!existing) {
+    throw new Error('Data tidak ditemukan');
+  }
 
-   await db.query(
-      `
-      DELETE FROM service_area
-      WHERE id_sa = ?
-      `,
-      [id],
-   );
+  await prisma.service_area.delete({
+    where: { id_sa: Number(id) },
+  });
 }

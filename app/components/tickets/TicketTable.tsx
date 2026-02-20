@@ -187,6 +187,7 @@ export default function TicketTable({
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Technician', 'technicianName')}
                   {renderSortableHeader('Status', 'status')}
+                  <th className='px-5 py-3 text-center'>Age</th>
                   <th className='px-5 py-3 text-center'>Action</th>
                 </tr>
               </thead>
