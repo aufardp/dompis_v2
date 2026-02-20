@@ -27,6 +27,7 @@ export type TicketUpdatePatch = {
   symptom?: string | null;
   alamat?: string | null;
   descriptionActualSolution?: string | null;
+  pendingReason?: string | null;
 };
 
 export type TicketUpdateWorkflow = {
@@ -75,6 +76,12 @@ function cleanNullableString(value: unknown): string | null | undefined {
   if (value === null) return null;
   const s = String(value).trim();
   return s.length === 0 ? null : s;
+}
+
+function truncateVarchar(value: string, max: number) {
+  if (value.length <= max) return value;
+  if (max <= 3) return value.slice(0, max);
+  return value.slice(0, max - 3) + '...';
 }
 
 async function resolveServiceAreaForWorkzone(
@@ -149,9 +156,10 @@ async function lockTicketRow(tx: Prisma.TransactionClient, ticketId: number) {
       WORKZONE: string | null;
       teknisi_user_id: number | null;
       HASIL_VISIT: string | null;
+      PENDING_REASON: string | null;
     }>
   >`
-    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT
+    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT, PENDING_REASON
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -738,7 +746,7 @@ export class TicketWorkflowService {
             'deviceName',
             'symptom',
             'alamat',
-            'descriptionActualSolution',
+            'pendingReason',
           ] as const);
 
     for (const key of attemptedPatchKeys) {
@@ -762,6 +770,19 @@ export class TicketWorkflowService {
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
 
+      const resolvePendingReason = async () => {
+        const fromTicket = cleanNullableString(ticket.PENDING_REASON);
+        if (fromTicket) return fromTicket;
+
+        const row = await tx.ticket_tracking.findUnique({
+          where: { ticket_id: ticketId },
+          select: { pending_reason: true },
+        });
+        return cleanNullableString(row?.pending_reason) ?? null;
+      };
+
+      let pendingReasonTicketUpdate: string | null | undefined;
+
       if (roleKey === 'admin') {
         const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
         if (!sa) throw new Error('Unauthorized');
@@ -773,6 +794,9 @@ export class TicketWorkflowService {
         if (ticket.teknisi_user_id !== actor.id_user)
           throw new Error('Unauthorized');
         if (current === 'CLOSE') throw new Error('Ticket already closed');
+        if (current !== 'ON_PROGRESS' && current !== 'PENDING') {
+          throw new Error('Ticket must be ON_PROGRESS before updating');
+        }
       }
 
       const ticketUpdate: Record<string, unknown> = {};
@@ -834,6 +858,43 @@ export class TicketWorkflowService {
         );
         patchChanges.push('descriptionActualSolution');
       }
+      if (patch.pendingReason !== undefined) {
+        if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
+        if (current !== 'PENDING') {
+          throw new Error(
+            'pendingReason can only be set when ticket is PENDING',
+          );
+        }
+
+        const reason = cleanNullableString(patch.pendingReason);
+        if (!reason) throw new Error('pendingReason is required');
+        const reasonDb = truncateVarchar(reason, 255);
+
+        if (ticket.teknisi_user_id == null) {
+          throw new Error('Ticket is not assigned');
+        }
+
+        pendingReasonTicketUpdate = reasonDb;
+
+        await tx.ticket_tracking.upsert({
+          where: { ticket_id: ticketId },
+          create: {
+            ticket_id: ticketId,
+            assigned_to: ticket.teknisi_user_id,
+            pending_at: now,
+            pending_reason: reasonDb,
+            current_status: TicketStatus.PENDING,
+            is_active: true,
+            updated_at: now,
+          },
+          update: {
+            pending_reason: reasonDb,
+            updated_at: now,
+          },
+        });
+
+        patchChanges.push('pendingReason');
+      }
 
       if (patch.workzone !== undefined) {
         if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
@@ -876,6 +937,9 @@ export class TicketWorkflowService {
         const next = normalizeVisitStatus(cleaned);
 
         if (next === current) {
+          if (roleKey === 'teknisi' && next === 'PENDING') {
+            throw new Error('Ticket is already PENDING. Please resume first');
+          }
           throw new Error('Ticket already has that status');
         }
 
@@ -899,6 +963,9 @@ export class TicketWorkflowService {
             const reason = cleanNullableString(workflow?.pendingReason);
             if (!reason) throw new Error('pendingReason is required');
 
+            const reasonDb = truncateVarchar(reason, 255);
+            pendingReasonTicketUpdate = reasonDb;
+
             ticketUpdate.HASIL_VISIT = 'PENDING';
 
             await tx.ticket_tracking.upsert({
@@ -907,7 +974,7 @@ export class TicketWorkflowService {
                 ticket_id: ticketId,
                 assigned_to: actor.id_user,
                 pending_at: now,
-                pending_reason: reason,
+                pending_reason: reasonDb,
                 current_status: TicketStatus.PENDING,
                 is_active: true,
                 updated_at: now,
@@ -915,7 +982,7 @@ export class TicketWorkflowService {
               update: {
                 assigned_to: actor.id_user,
                 pending_at: now,
-                pending_reason: reason,
+                pending_reason: reasonDb,
                 current_status: TicketStatus.PENDING,
                 is_active: true,
                 updated_at: now,
@@ -941,12 +1008,19 @@ export class TicketWorkflowService {
                 user_id: actor.id_user,
                 role_id: roleId,
                 activity_type: ActivityType.STATUS_CHANGE,
-                description: `Status change: ${current} -> PENDING`,
+                description: truncateVarchar(
+                  `Status change: ${current} -> PENDING | reason: ${reasonDb}`,
+                  255,
+                ),
               },
             });
           } else if (next === 'ON_PROGRESS') {
             if (current !== 'PENDING')
               throw new Error('Invalid status transition');
+
+            const previousReason = await resolvePendingReason();
+            // ticket.PENDING_REASON is NOT NULL in some deployments; clear with empty string
+            pendingReasonTicketUpdate = '';
 
             ticketUpdate.HASIL_VISIT = 'ON_PROGRESS';
 
@@ -990,7 +1064,12 @@ export class TicketWorkflowService {
                 user_id: actor.id_user,
                 role_id: roleId,
                 activity_type: ActivityType.STATUS_CHANGE,
-                description: `Status change: ${current} -> ON_PROGRESS`,
+                description: truncateVarchar(
+                  previousReason
+                    ? `Status change: ${current} -> ON_PROGRESS | cleared reason: ${previousReason}`
+                    : `Status change: ${current} -> ON_PROGRESS`,
+                  255,
+                ),
               },
             });
           } else {
@@ -1012,6 +1091,11 @@ export class TicketWorkflowService {
             throw new Error('Ticket is not assigned');
           }
 
+          const previousReason =
+            current === 'PENDING' ? await resolvePendingReason() : null;
+          // ticket.PENDING_REASON is NOT NULL in some deployments; clear with empty string
+          pendingReasonTicketUpdate = '';
+
           ticketUpdate.HASIL_VISIT = 'ESCALATED';
 
           await tx.ticket_tracking.upsert({
@@ -1020,12 +1104,14 @@ export class TicketWorkflowService {
               ticket_id: ticketId,
               assigned_to: ticket.teknisi_user_id,
               current_status: TicketStatus.ESCALATED,
+              pending_reason: null,
               is_active: true,
               updated_at: now,
             },
             update: {
               assigned_to: ticket.teknisi_user_id,
               current_status: TicketStatus.ESCALATED,
+              pending_reason: null,
               is_active: true,
               updated_at: now,
             },
@@ -1048,7 +1134,12 @@ export class TicketWorkflowService {
               user_id: actor.id_user,
               role_id: roleId,
               activity_type: ActivityType.STATUS_CHANGE,
-              description: `Status change: ${current} -> ESCALATED`,
+              description: truncateVarchar(
+                previousReason
+                  ? `Status change: ${current} -> ESCALATED | cleared reason: ${previousReason}`
+                  : `Status change: ${current} -> ESCALATED`,
+                255,
+              ),
             },
           });
         }
@@ -1060,6 +1151,14 @@ export class TicketWorkflowService {
           where: { id_ticket: ticketId },
           data: ticketUpdate as any,
         });
+      }
+
+      if (pendingReasonTicketUpdate !== undefined) {
+        await tx.$executeRaw`
+          UPDATE ticket
+          SET PENDING_REASON = ${pendingReasonTicketUpdate}
+          WHERE id_ticket = ${ticketId}
+        `;
       }
 
       // Log field updates separately (status changes are logged above)

@@ -49,6 +49,73 @@ export async function POST(req: Request) {
       );
     }
 
+    const roleKey = String((user as any)?.role ?? '')
+      .trim()
+      .toLowerCase();
+
+    /* =====================================================
+       🔵 HANDLE RESUME (PENDING → ON_PROGRESS)
+    ===================================================== */
+
+    if (body.resume === true) {
+      const workflow: TicketUpdateWorkflow = {
+        status: 'ON_PROGRESS',
+        note: 'Resume work',
+      };
+
+      const result = await TicketWorkflowService.updateTicket(ticketId, user, {
+        workflow,
+      });
+
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    /* =====================================================
+       🔵 HANDLE UPDATE → SET PENDING
+    ===================================================== */
+
+    if (roleKey === 'teknisi') {
+      const reasonRaw =
+        typeof body.pendingReason === 'string'
+          ? body.pendingReason
+          : typeof body.pending_reason === 'string'
+            ? body.pending_reason
+            : typeof body.description === 'string'
+              ? body.description
+              : undefined;
+
+      if (typeof reasonRaw === 'string') {
+        const reason = reasonRaw.trim();
+
+        if (!reason) {
+          return NextResponse.json(
+            { success: false, message: 'pendingReason is required' },
+            { status: 400 },
+          );
+        }
+
+        const workflow: TicketUpdateWorkflow = {
+          status: 'PENDING',
+          pendingReason: reason,
+          note: 'Progress update by technician',
+        };
+
+        const result = await TicketWorkflowService.updateTicket(
+          ticketId,
+          user,
+          {
+            workflow,
+          },
+        );
+
+        return NextResponse.json({ success: true, ...result });
+      }
+    }
+
+    /* =====================================================
+       🔵 GENERIC PATCH (ADMIN / HELPDESK SUPPORT)
+    ===================================================== */
+
     const patchSrc = isRecord(body.patch) ? body.patch : body;
 
     const patch: TicketUpdatePatch = {
@@ -66,25 +133,36 @@ export async function POST(req: Request) {
       deviceName: (patchSrc.deviceName ?? patchSrc.device_name) as any,
       symptom: patchSrc.symptom as any,
       alamat: patchSrc.alamat as any,
+      pendingReason: (patchSrc.pendingReason ?? patchSrc.pending_reason) as any,
       descriptionActualSolution: (patchSrc.descriptionActualSolution ??
         patchSrc.description_actual_solution) as any,
     };
 
     const wfSrc = isRecord(body.workflow) ? body.workflow : body;
-    const workflowStatus =
+
+    let workflow: TicketUpdateWorkflow | undefined;
+
+    const rawWorkflowStatus =
       (wfSrc.status as any) ??
       (wfSrc.hasilVisit as any) ??
       (wfSrc.hasil_visit as any) ??
       (wfSrc.newStatus as any);
 
-    const workflow: TicketUpdateWorkflow | undefined =
-      workflowStatus !== undefined
-        ? {
-            status: workflowStatus,
-            pendingReason: (wfSrc.pendingReason ?? wfSrc.pending_reason) as any,
-            note: wfSrc.note as any,
-          }
-        : undefined;
+    if (typeof rawWorkflowStatus === 'string') {
+      let pendingReason: string | undefined;
+      if (typeof (wfSrc as any).pendingReason === 'string') {
+        pendingReason = String((wfSrc as any).pendingReason);
+      } else if (typeof (wfSrc as any).pending_reason === 'string') {
+        pendingReason = String((wfSrc as any).pending_reason);
+      }
+
+      let note: string | undefined;
+      if (typeof (wfSrc as any).note === 'string') {
+        note = String((wfSrc as any).note);
+      }
+
+      workflow = { status: rawWorkflowStatus, pendingReason, note };
+    }
 
     const result = await TicketWorkflowService.updateTicket(ticketId, user, {
       patch,

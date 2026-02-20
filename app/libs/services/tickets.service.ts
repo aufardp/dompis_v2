@@ -161,6 +161,7 @@ export class TicketService {
       t.JAM_EXPIRED_12_JAM_GOLD AS maxTtrGold,
       t.JAM_EXPIRED_6_JAM_PLATINUM AS maxTtrPlatinum,
       t.JAM_EXPIRED_3_JAM_DIAMOND AS maxTtrDiamond,
+      t.PENDING_REASON as pendingReason,
       t.teknisi_user_id AS teknisiUserId,
       t.rca AS rca,
       t.sub_rca AS subRca,
@@ -419,6 +420,42 @@ export class TicketService {
       rca,
       subRca,
     );
+  }
+
+  /* =====================================================
+   UPDATE (SET STATUS PENDING)
+===================================================== */
+
+  static async update(
+    ticketId: number,
+    teknisiUserId: number,
+    description?: string,
+    resume?: boolean,
+  ) {
+    const actor = { id_user: teknisiUserId, role: 'teknisi' };
+
+    if (resume) {
+      return TicketWorkflowService.updateTicket(ticketId, actor, {
+        workflow: {
+          status: 'ON_PROGRESS',
+          note: 'Resume work',
+        },
+      });
+    }
+
+    const cleanDescription = String(description || '').trim();
+
+    if (!cleanDescription) {
+      throw new Error('Description is required');
+    }
+
+    return TicketWorkflowService.updateTicket(ticketId, actor, {
+      workflow: {
+        status: 'PENDING',
+        pendingReason: cleanDescription,
+        note: 'Progress update',
+      },
+    });
   }
 
   /* =====================================================

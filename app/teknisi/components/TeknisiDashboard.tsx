@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
+import TicketUpdateModal from './TicketUpdateModal';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Stats {
@@ -18,6 +19,8 @@ export default function TeknisiDashboard() {
   const [filter, setFilter] = useState<
     'all' | 'assigned' | 'on_progress' | 'closed'
   >('all');
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -84,6 +87,7 @@ export default function TeknisiDashboard() {
 
   const handleSelectTicket = useCallback((ticket: Ticket) => {
     setSelectedTicket(ticket);
+    setShowDetailModal(true);
   }, []);
 
   const formatDate = useCallback((dateStr: string) => {
@@ -358,11 +362,33 @@ export default function TeknisiDashboard() {
         )}
       </div>
 
-      {selectedTicket && (
+      {showDetailModal && selectedTicket && (
         <TicketDetailModal
           ticket={selectedTicket}
-          onClose={() => setSelectedTicket(null)}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedTicket(null);
+          }}
+          onUpdateClick={() => {
+            setShowDetailModal(false);
+            setShowUpdateModal(true);
+          }}
           onUpdated={handleTicketUpdated}
+        />
+      )}
+
+      {showUpdateModal && selectedTicket && (
+        <TicketUpdateModal
+          ticket={selectedTicket}
+          onClose={() => {
+            setShowUpdateModal(false);
+            setSelectedTicket(null);
+          }}
+          onUpdated={() => {
+            setShowUpdateModal(false);
+            setSelectedTicket(null);
+            handleTicketUpdated();
+          }}
         />
       )}
     </div>

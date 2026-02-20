@@ -63,9 +63,9 @@ export default function TicketListTech({ limit }: Props) {
                 </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    ticket.hasilVisit === 'assigned'
+                    ticket.hasilVisit === 'ASSIGNED'
                       ? 'bg-amber-100 text-amber-700'
-                      : ticket.hasilVisit === 'on_progress'
+                      : ticket.hasilVisit === 'ON_PROGRESS'
                         ? 'bg-blue-100 text-blue-700'
                         : ticket.hasilVisit === 'CLOSE'
                           ? 'bg-green-100 text-green-700'
