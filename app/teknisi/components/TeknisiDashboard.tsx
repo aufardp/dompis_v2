@@ -5,6 +5,7 @@ import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
 import TicketUpdateModal from './TicketUpdateModal';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { formatDateTimeWIB } from '@/app/utils/datetime';
 
 interface Stats {
   assigned: number;
@@ -91,14 +92,7 @@ export default function TeknisiDashboard() {
   }, []);
 
   const formatDate = useCallback((dateStr: string) => {
-    if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateTimeWIB(dateStr);
   }, []);
 
   const getStatusBadge = useCallback((status: string) => {

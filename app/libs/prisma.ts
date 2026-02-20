@@ -1,3 +1,16 @@
+/**
+ * Prisma Client Configuration
+ *
+ * TIMEZONE HANDLING:
+ * - All dates are stored in UTC in the database
+ * - Set TZ=UTC in .env to ensure Node.js uses UTC
+ * - Use app/utils/datetime.ts for date conversions:
+ *   - formatDateWIB() - Convert UTC to WIB for display
+ *   - toISODateString() - Safe ISO serialization
+ * - MySQL TIMESTAMP fields auto-convert based on session timezone
+ * - With TZ=UTC, all operations are consistent
+ */
+
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@/generated/prisma/client';
 

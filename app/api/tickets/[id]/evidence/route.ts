@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { toISODateString } from '@/app/utils/datetime';
 
 function toPositiveInt(value: unknown): number | null {
   const n = Number(value);
@@ -74,7 +75,7 @@ export async function GET(
       filePath: r.file_path,
       fileSize: r.file_size ?? null,
       mimeType: r.mime_type ?? null,
-      createdAt: r.created_at ? r.created_at.toISOString() : null,
+      createdAt: toISODateString(r.created_at),
     }));
 
     return NextResponse.json({ success: true, data });

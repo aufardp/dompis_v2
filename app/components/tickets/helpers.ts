@@ -1,14 +1,8 @@
 import { BadgeColor } from '../ui/badge/Badge';
+import { formatDateWIB } from '@/app/utils/datetime';
 
 export const formatDate = (dateStr: string) => {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatDateWIB(dateStr, 'dd MMM yyyy');
 };
 
 const STATUS_COLOR_MAP: Record<string, BadgeColor> = {
