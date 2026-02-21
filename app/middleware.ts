@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { verifyAccessToken } from '@/app/libs/auth';
+import { verifyAccessToken, AccessTokenPayload } from '@/app/libs/auth';
+import { AttendanceService } from '@/app/libs/services/attendance.service';
 
 export function middleware(req: any) {
   const { pathname } = req.nextUrl;
@@ -10,12 +11,10 @@ export function middleware(req: any) {
     pathname.startsWith('/teknisi') ||
     pathname.startsWith('/helpdesk');
 
-  // Only protect API + protected app routes
   if (!isApi && !isProtectedPage) {
     return NextResponse.next();
   }
 
-  // ✅ Skip endpoint auth
   if (
     isApi &&
     (pathname.startsWith('/api/auth/login') ||
@@ -74,17 +73,43 @@ export function middleware(req: any) {
     return response;
   };
 
-  // No token
   if (!token) return respondUnauthorized();
 
-  try {
-    // 🔐 Akan throw error jika expired / invalid
-    verifyAccessToken(token);
+  let decoded: AccessTokenPayload;
 
-    return NextResponse.next();
+  try {
+    decoded = verifyAccessToken(token);
   } catch (error) {
     return respondUnauthorized();
   }
+
+  if (decoded.role === 'teknisi') {
+    const isAttendancePage = pathname.startsWith('/teknisi/attendance');
+
+    const today = AttendanceService.getTodayDateString();
+
+    const hasAttendanceField =
+      typeof decoded.attendance_checked_in === 'boolean';
+    const isSameDay = decoded.attendance_date === today;
+    const hasCheckedInToday =
+      hasAttendanceField && decoded.attendance_checked_in && isSameDay;
+
+    if (!hasCheckedInToday) {
+      if (!isAttendancePage) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/teknisi/attendance';
+        return NextResponse.redirect(url);
+      }
+    } else {
+      if (isAttendancePage) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/teknisi';
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

@@ -6,8 +6,8 @@ import {
   normalizeRoleKey,
   roleKeyToRoleId,
 } from '@/app/libs/roles';
-import { ActivityType, TicketStatus } from '@/generated/prisma/enums';
-import { Prisma } from '@/generated/prisma/client';
+import { ActivityType, TicketStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
 
 // ── Public Types ──────────────────────────────────────────────────────────────

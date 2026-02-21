@@ -1,8 +1,8 @@
 // app/services/ticket.helpers.ts
 
 import prisma from '@/app/libs/prisma';
-import { Prisma } from '@/generated/prisma/client';
-import { ActivityType, TicketStatus } from '@/generated/prisma/enums';
+import { Prisma } from '@prisma/client';
+import { ActivityType, TicketStatus } from '@prisma/client';
 
 // ── Workzone ──────────────────────────────────────────────────────────────────
 

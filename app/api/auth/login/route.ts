@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import bcrypt from 'bcryptjs';
-import { signAccessToken, signRefreshToken } from '@/app/libs/auth';
+import {
+  signAccessToken,
+  signRefreshToken,
+  createDefaultAttendancePayload,
+  AccessTokenPayload,
+} from '@/app/libs/auth';
+import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { roleKeyToRoleId } from '@/app/libs/roles';
 
 export async function POST(req: Request) {
   const { username, password } = await req.json();
@@ -26,10 +33,42 @@ export async function POST(req: Request) {
     );
 
   const role = user.roles?.key || '';
+  const role_id = roleKeyToRoleId(
+    role as 'superadmin' | 'admin' | 'helpdesk' | 'teknisi',
+  );
 
-  const payload = {
+  let workzone: string[] = [];
+  if (role === 'teknisi') {
+    const userSa = await prisma.user_sa.findMany({
+      where: { user_id: user.id_user },
+      include: { service_area: { select: { nama_sa: true } } },
+    });
+    workzone = userSa
+      .map((us) => us.service_area?.nama_sa)
+      .filter((nama): nama is string => !!nama);
+  }
+
+  const attendancePayload = createDefaultAttendancePayload();
+  const today = AttendanceService.getTodayDateString();
+
+  if (role === 'teknisi') {
+    const todayStatus = await AttendanceService.getOwnStatus(user.id_user);
+    if (todayStatus.checked_in) {
+      attendancePayload.attendance_checked_in = true;
+      attendancePayload.attendance_date = today;
+      attendancePayload.attendance_status = todayStatus.status;
+      attendancePayload.attendance_check_in_at = todayStatus.check_in_at;
+    } else {
+      attendancePayload.attendance_date = today;
+    }
+  }
+
+  const payload: AccessTokenPayload = {
     id_user: user.id_user,
     role,
+    role_id,
+    workzone: workzone.length > 0 ? workzone : undefined,
+    ...attendancePayload,
   };
 
   const accessToken = signAccessToken(payload);
@@ -39,6 +78,8 @@ export async function POST(req: Request) {
     success: true,
     accessToken,
     role,
+    needsAttendanceCheck:
+      role === 'teknisi' && !attendancePayload.attendance_checked_in,
   });
 
   response.cookies.set({

@@ -27,14 +27,18 @@ export default function LoginForm() {
       const data = await res.json();
 
       if (res.ok) {
-        const { role } = data;
+        const { role, needsAttendanceCheck } = data;
 
         if (role === 'superadmin') {
           window.location.href = '/superadmin';
         } else if (role === 'admin') {
           window.location.href = '/admin';
         } else if (role === 'teknisi') {
-          window.location.href = '/teknisi';
+          if (needsAttendanceCheck) {
+            window.location.href = '/teknisi/attendance';
+          } else {
+            window.location.href = '/teknisi';
+          }
         } else if (role === 'helpdesk') {
           window.location.href = '/helpdesk';
         } else {

@@ -5,7 +5,7 @@ import { saveFiles } from '@/app/libs/upload';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { normalizeRoleKey, roleKeyToRoleId } from '@/app/libs/roles';
-import { ActivityType } from '@/generated/prisma/enums';
+import { ActivityType } from '@prisma/client';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function POST(req: NextRequest) {

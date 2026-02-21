@@ -1,6 +1,11 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { verifyRefreshToken, signAccessToken } from '@/app/libs/auth';
+import {
+  verifyRefreshToken,
+  signAccessToken,
+  AccessTokenPayload,
+} from '@/app/libs/auth';
+import { AttendanceService } from '@/app/libs/services/attendance.service';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -13,26 +18,40 @@ export async function POST() {
     );
 
   try {
-    const decoded: any = verifyRefreshToken(refreshToken);
+    const decoded = verifyRefreshToken(refreshToken);
 
-    const newAccessToken = signAccessToken({
+    const today = AttendanceService.getTodayDateString();
+
+    const needsReset =
+      decoded.attendance_date && decoded.attendance_date !== today;
+
+    const newPayload: AccessTokenPayload = {
       id_user: decoded.id_user,
       role: decoded.role,
-    });
+      role_id: decoded.role_id,
+      workzone: decoded.workzone,
+      attendance_checked_in: needsReset ? false : decoded.attendance_checked_in,
+      attendance_date: needsReset ? today : decoded.attendance_date,
+      attendance_status: needsReset ? null : decoded.attendance_status,
+      attendance_check_in_at: needsReset
+        ? null
+        : decoded.attendance_check_in_at,
+    };
+
+    const newAccessToken = signAccessToken(newPayload);
 
     const response = NextResponse.json({
       success: true,
       accessToken: newAccessToken,
     });
 
-    // Update httpOnly access token cookie used by protectApi/middleware
     response.cookies.set({
       name: 'token',
       value: newAccessToken,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60, // 1 hour
+      maxAge: 60 * 60,
       path: '/',
     });
 

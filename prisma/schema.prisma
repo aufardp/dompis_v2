@@ -32,6 +32,7 @@ model service_area {
   updated_at DateTime  @default(now()) @db.Timestamp(0)
   area       area?     @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "service_area_ibfk_1")
   user_sa    user_sa[]
+  attendances technician_attendance[]
 
   @@index([area_id], map: "id_area")
 }
@@ -151,6 +152,7 @@ model users {
 
   status_history ticket_status_history[]
   activity_log   ticket_activity_log[]
+  attendance_records technician_attendance[]
 
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
@@ -253,4 +255,33 @@ model ticket_activity_log {
   @@index([ticket_id])
   @@index([user_id])
   @@map("ticket_activity_log")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+}
+
+model technician_attendance {
+  id            Int              @id @default(autoincrement())
+  technician_id Int
+  check_in_at   DateTime         @default(now()) @db.Timestamp(0)
+  check_out_at  DateTime?        @db.Timestamp(0)
+  date          String           @db.VarChar(10)
+  month         Int
+  year          Int
+  workzone_id   Int
+  status        AttendanceStatus
+  notes         String?          @db.VarChar(255)
+  created_at    DateTime         @default(now()) @db.Timestamp(0)
+  updated_at    DateTime         @default(now()) @db.Timestamp(0)
+
+  technician users        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
+  workzone   service_area @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
+
+  @@unique([technician_id, date])
+  @@index([technician_id])
+  @@index([date])
+  @@index([month, year])
+  @@map("technician_attendance")
 }

@@ -1,10 +1,17 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Ticket } from 'lucide-react';
-import { useState } from 'react';
+import { Ticket, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import UserMenu from '../components/layout/user-menu/UserMenu';
 import LogoutConfirmModal from '../components/layout/LogoutConfirmModal';
+import { fetchWithAuth } from '@/app/libs/fetcher';
+
+interface AttendanceStatus {
+  checked_in: boolean;
+  check_in_at: string | null;
+  status: 'PRESENT' | 'LATE' | null;
+}
 
 export default function TeknisiLayout({
   children,
@@ -14,6 +21,26 @@ export default function TeknisiLayout({
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] =
+    useState<AttendanceStatus | null>(null);
+
+  useEffect(() => {
+    const fetchAttendanceStatus = async () => {
+      try {
+        const res = await fetchWithAuth('/api/technicians/attendance/status');
+        if (res?.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setAttendanceStatus(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching attendance status:', error);
+      }
+    };
+
+    fetchAttendanceStatus();
+  }, []);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -33,6 +60,15 @@ export default function TeknisiLayout({
     }
   };
 
+  const formatCheckInTime = (checkInAt: string | null) => {
+    if (!checkInAt) return '';
+    const date = new Date(checkInAt);
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <div className='min-h-screen bg-slate-50'>
       <header className='sticky top-0 z-40 border-b bg-white shadow-sm'>
@@ -46,7 +82,31 @@ export default function TeknisiLayout({
               <p className='text-xs text-slate-500'>Teknisi</p>
             </div>
           </div>
-          <div className='flex items-center gap-2'>
+          <div className='flex items-center gap-4'>
+            {attendanceStatus?.checked_in && (
+              <div
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ${
+                  attendanceStatus.status === 'PRESENT'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
+                {attendanceStatus.status === 'PRESENT' ? (
+                  <>
+                    <span className='h-2 w-2 rounded-full bg-green-500'></span>
+                    <span>Hadir</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock size={14} />
+                    <span>Terlambat</span>
+                  </>
+                )}
+                <span className='ml-1 text-xs opacity-75'>
+                  {formatCheckInTime(attendanceStatus.check_in_at)}
+                </span>
+              </div>
+            )}
             <UserMenu profileHref='/teknisi/profile' />
           </div>
         </div>
