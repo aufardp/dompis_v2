@@ -17,6 +17,7 @@ type TicketFilters = {
   ctype?: string;
   page?: number;
   limit?: number;
+  sort?: 'asc' | 'desc';
 };
 
 // ── Mapper ────────────────────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ export class TicketService {
       ctype,
       page = 1,
       limit = 20,
+      sort = 'asc',
     } = filters ?? {};
     const offset = (page - 1) * limit;
 
@@ -156,7 +158,7 @@ export class TicketService {
       prisma.ticket.findMany({
         where,
         include: { users: { select: { nama: true } } },
-        orderBy: [{ REPORTED_DATE: 'desc' }, { id_ticket: 'desc' }],
+        orderBy: [{ REPORTED_DATE: sort }, { id_ticket: 'asc' }],
         skip: offset,
         take: limit,
       }),

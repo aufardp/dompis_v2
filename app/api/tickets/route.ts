@@ -35,6 +35,7 @@ export async function GET(request: Request) {
       ctype: searchParams.get('ctype') || undefined,
       page: toInt(searchParams.get('page'), 1),
       limit: toInt(searchParams.get('limit'), 50),
+      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'asc',
     };
 
     const result = await TicketService.getTickets(

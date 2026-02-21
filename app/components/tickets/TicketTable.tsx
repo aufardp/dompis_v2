@@ -5,24 +5,47 @@ import Pagination from '../tables/Pagination';
 import TicketRow from './TicketRow';
 import TicketCardMobile from './TicketCardMobile';
 import TableEmptyState from '@/app/components/tables/TableEmptyState';
+import TicketDetailDrawer from './TicketDetailDrawer';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { computeTicketRanks, TicketWithRank } from '@/app/libs/tickets/sort';
+import { calculateAgeInHours } from '@/app/libs/tickets/sort';
+import { TicketCtype } from '@/app/types/ticket';
 
 export type SortField =
   | 'ticket'
   | 'serviceNo'
   | 'contactName'
   | 'customerType'
-  | 'maxTtr'
-  | 'jenisTiket'
   | 'age'
-  | 'summary'
+  | 'jenisTiket'
   | 'workzone'
   | 'technicianName'
-  | 'status'
   | 'reportedDate';
 export type SortOrder = 'asc' | 'desc';
 
 interface TicketTableProps {
-  tickets?: Array<any>;
+  tickets?: Array<{
+    idTicket?: number;
+    ticket?: string;
+    serviceNo?: string;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    ctype?: TicketCtype;
+    customerType?: string;
+    summary?: string;
+    jenisTiket?: string;
+    workzone?: string;
+    technicianName?: string | null;
+    teknisiUserId?: number | null;
+    hasilVisit?: string | null;
+    closedAt?: string | null;
+    reportedDate?: string | null;
+    status?: string;
+    maxTtrReguler?: string | null;
+    maxTtrGold?: string | null;
+    maxTtrPlatinum?: string | null;
+    maxTtrDiamond?: string | null;
+  }>;
   loading?: boolean;
   onAssign?: (ticket: any) => void;
   pagination?: {
@@ -66,33 +89,9 @@ const SortIcon = ({
     );
   }
   return order === 'asc' ? (
-    <svg
-      className='h-4 w-4 text-blue-600'
-      fill='none'
-      stroke='currentColor'
-      viewBox='0 0 24 24'
-    >
-      <path
-        strokeLinecap='round'
-        strokeLinejoin='round'
-        strokeWidth={2}
-        d='M5 15l7-7 7 7'
-      />
-    </svg>
+    <ChevronUp className='h-4 w-4 text-blue-600' />
   ) : (
-    <svg
-      className='h-4 w-4 text-blue-600'
-      fill='none'
-      stroke='currentColor'
-      viewBox='0 0 24 24'
-    >
-      <path
-        strokeLinecap='round'
-        strokeLinejoin='round'
-        strokeWidth={2}
-        d='M19 9l-7 7-7-7'
-      />
-    </svg>
+    <ChevronDown className='h-4 w-4 text-blue-600' />
   );
 };
 
@@ -103,9 +102,10 @@ export default function TicketTable({
   pagination,
 }: TicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    field: 'reportedDate',
-    order: 'desc',
+    field: 'age',
+    order: 'asc',
   });
+  const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -114,12 +114,24 @@ export default function TicketTable({
     }));
   }, []);
 
+  const toggleExpand = useCallback((ticketId: number) => {
+    setExpandedTicketId((prev) => (prev === ticketId ? null : ticketId));
+  }, []);
+
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
 
     return [...tickets].sort((a, b) => {
-      let aVal: any = a[sortConfig.field];
-      let bVal: any = b[sortConfig.field];
+      let aVal: any;
+      let bVal: any;
+
+      if (sortConfig.field === 'age') {
+        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt);
+        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt);
+      } else {
+        aVal = a[sortConfig.field];
+        bVal = b[sortConfig.field];
+      }
 
       if (aVal === null || aVal === undefined) aVal = '';
       if (bVal === null || bVal === undefined) bVal = '';
@@ -135,11 +147,15 @@ export default function TicketTable({
     });
   }, [tickets, sortConfig]);
 
+  const ticketRanks = useMemo(() => {
+    return computeTicketRanks(tickets);
+  }, [tickets]);
+
   const handleAssign = onAssign || (() => {});
 
   const renderSortableHeader = (label: string, field: SortField) => (
     <th
-      className='cursor-pointer px-5 py-3 text-center transition-colors hover:bg-gray-100'
+      className='cursor-pointer px-3 py-3 text-center transition-colors hover:bg-gray-100'
       onClick={() => handleSort(field)}
     >
       <div className='flex items-center justify-center gap-1'>
@@ -179,33 +195,44 @@ export default function TicketTable({
             <table className='w-full text-sm'>
               <thead className='bg-gray-50 text-xs font-semibold tracking-wide text-gray-500 uppercase'>
                 <tr>
+                  <th className='w-16 px-3 py-3 text-center'>#</th>
                   {renderSortableHeader('Ticket', 'ticket')}
                   {renderSortableHeader('Service', 'serviceNo')}
                   {renderSortableHeader('Customer', 'contactName')}
                   {renderSortableHeader('Type', 'customerType')}
-                  {renderSortableHeader('Max_TTR', 'maxTtr')}
-                  {renderSortableHeader('Jenis_Tiket', 'jenisTiket')}
+                  <th className='px-3 py-3 text-center'>Max TTR</th>
                   {renderSortableHeader('Age', 'age')}
-                  {renderSortableHeader('Summary', 'summary')}
+                  {renderSortableHeader('Jenis_Tiket', 'jenisTiket')}
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Technician', 'technicianName')}
-                  {renderSortableHeader('Status', 'status')}
-                  <th className='px-5 py-3 text-center'>Action</th>
+                  <th className='px-3 py-3 text-center'>Status</th>
+                  <th className='w-16 px-3 py-3 text-center'>Detail</th>
+                  <th className='px-3 py-3 text-center'>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableEmptyState colSpan={12} message='Loading' />
+                  <TableEmptyState colSpan={14} message='Loading' />
                 ) : sortedTickets.length === 0 ? (
-                  <TableEmptyState colSpan={12} message='No tickets found' />
+                  <TableEmptyState colSpan={14} message='No tickets found' />
                 ) : (
-                  sortedTickets.map((ticket) => (
-                    <TicketRow
-                      key={ticket.idTicket ?? ticket.ticket}
-                      ticket={ticket}
-                      onAssign={handleAssign}
-                    />
-                  ))
+                  sortedTickets.map((ticket) => {
+                    const ticketId = ticket.idTicket ?? ticket.ticket;
+                    const isExpanded = expandedTicketId === ticketId;
+                    const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
+                    return (
+                      <TicketRow
+                        key={ticketId}
+                        ticket={ticket}
+                        onAssign={handleAssign}
+                        isExpanded={isExpanded}
+                        onToggleExpand={() => toggleExpand(ticketId as number)}
+                        rank={ticketInfo?.rank}
+                        ticketAge={ticketInfo?.ageFormatted}
+                        severity={ticketInfo?.severity}
+                      />
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -233,6 +260,16 @@ export default function TicketTable({
           />
         </div>
       )}
+
+      <TicketDetailDrawer
+        open={expandedTicketId !== null}
+        onClose={() => setExpandedTicketId(null)}
+        ticket={
+          (sortedTickets.find(
+            (t) => (t.idTicket ?? t.ticket) === expandedTicketId,
+          ) as any) || null
+        }
+      />
     </div>
   );
 }

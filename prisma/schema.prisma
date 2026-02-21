@@ -70,6 +70,7 @@ model ticket {
   REDAMAN                     String?                     @db.VarChar(255)
   MANJA_EXPIRED               String?                     @db.VarChar(255)
   ALAMAT                      String?                     @db.VarChar(255)
+  PENDING_REASON              String?                     @db.VarChar(255)
   rca                         String?                     @db.VarChar(100)
   sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
