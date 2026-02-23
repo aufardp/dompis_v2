@@ -267,15 +267,25 @@ export default function TechnicianDetailPage() {
           </div>
         </div>
 
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
+        <div className='grid grid-cols-2 gap-4 sm:grid-cols-5'>
           <StatBox
-            title='Tiket Aktif'
-            value={technician.total_assigned}
+            title='Assigned'
+            value={technician.order_counts?.assigned || 0}
             color='text-blue-600'
           />
           <StatBox
-            title='Selesai Hari Ini'
-            value={technician.total_closed_today}
+            title='On Progress'
+            value={technician.order_counts?.on_progress || 0}
+            color='text-amber-600'
+          />
+          <StatBox
+            title='Pending'
+            value={technician.order_counts?.pending || 0}
+            color='text-orange-600'
+          />
+          <StatBox
+            title='Closed'
+            value={technician.order_counts?.closed || 0}
             color='text-green-600'
           />
           <StatBox

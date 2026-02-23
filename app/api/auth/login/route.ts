@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/app/libs/prisma';
 import bcrypt from 'bcryptjs';
 import {
   signAccessToken,
@@ -9,14 +8,12 @@ import {
 } from '@/app/libs/auth';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { roleKeyToRoleId } from '@/app/libs/roles';
+import { findUserByUsername, findUserWorkzones } from '@/app/libs/db';
 
 export async function POST(req: Request) {
   const { username, password } = await req.json();
 
-  const user = await prisma.users.findFirst({
-    where: { username },
-    include: { roles: { select: { key: true } } },
-  });
+  const user = await findUserByUsername(username);
 
   if (!user)
     return NextResponse.json(
@@ -32,20 +29,14 @@ export async function POST(req: Request) {
       { status: 401 },
     );
 
-  const role = user.roles?.key || '';
+  const role = user.role_key || '';
   const role_id = roleKeyToRoleId(
     role as 'superadmin' | 'admin' | 'helpdesk' | 'teknisi',
   );
 
   let workzone: string[] = [];
   if (role === 'teknisi') {
-    const userSa = await prisma.user_sa.findMany({
-      where: { user_id: user.id_user },
-      include: { service_area: { select: { nama_sa: true } } },
-    });
-    workzone = userSa
-      .map((us) => us.service_area?.nama_sa)
-      .filter((nama): nama is string => !!nama);
+    workzone = await findUserWorkzones(user.id_user);
   }
 
   const attendancePayload = createDefaultAttendancePayload();

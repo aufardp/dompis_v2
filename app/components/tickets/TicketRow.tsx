@@ -3,9 +3,10 @@ import clsx from 'clsx';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
 import CustomerTypeBadge from './CustomerTypeBadge';
-import { formatDate, getStatusColor, getMaxTtr } from './helpers';
+import { getStatusColor, getMaxTtr } from './helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
+import { formatDateTimeWIB } from '@/app/utils/datetime';
 
 interface TicketRowProps {
   ticket: {
@@ -14,6 +15,8 @@ interface TicketRowProps {
     serviceNo?: string;
     contactName?: string | null;
     contactPhone?: string | null;
+    alamat?: string | null;
+    bookingDate?: string | null;
     ctype?: TicketCtype;
     customerType?: string;
     summary?: string;
@@ -66,17 +69,31 @@ export default function TicketRow({
         <div>
           <p className='font-medium'>{ticket.ticket}</p>
           <p className='text-xs text-gray-500'>
-            {ticket.reportedDate ? formatDate(ticket.reportedDate) : '-'}
+            {ticket.reportedDate ? formatDateTimeWIB(ticket.reportedDate) : '-'}
           </p>
         </div>
       </td>
 
       <td className='px-5 py-4 text-center'>{ticket.serviceNo}</td>
 
-      <td className='max-w-xs truncate px-5 py-4'>
-        <p className='text-sm'>{ticket.contactName || '-'}</p>
-        <p className='text-xs text-gray-500'>{ticket.contactPhone || '-'}</p>
+      <td className='px-5 py-4'>
+        <div className='flex flex-col gap-0.5'>
+          <p className='text-sm leading-tight font-medium text-gray-900'>
+            {ticket.contactName || '-'}
+          </p>
+          <p className='text-xs text-gray-400'>{ticket.contactPhone || '-'}</p>
+        </div>
       </td>
+
+      <td className='px-5 py-4'>
+        <div className='flex flex-col gap-0.5'>
+          <p className='text-sm leading-tight font-medium text-gray-900'>
+            {ticket.alamat || '-'}
+          </p>
+        </div>
+      </td>
+
+      <td className='px-5 py-4 text-center'>{ticket.bookingDate || '-'}</td>
 
       <td className='px-5 py-4 text-center'>
         <CustomerTypeBadge ctype={ticket.ctype} size='sm' />

@@ -23,6 +23,12 @@ interface SingleTechnician {
   total_closed_all: number;
   average_resolve_time_hours: number | null;
   status: 'IDLE' | 'AKTIF' | 'OVERLOAD';
+  order_counts?: {
+    assigned: number;
+    on_progress: number;
+    pending: number;
+    closed: number;
+  };
 }
 
 interface UseSingleTechnicianReturn {

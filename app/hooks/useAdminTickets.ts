@@ -25,6 +25,7 @@ export function useAdminTickets(
   });
 
   const fetchData = useCallback(async () => {
+    console.log('[useAdminTickets] Starting fetch...');
     try {
       setLoading(true);
 
@@ -45,16 +46,38 @@ export function useAdminTickets(
         params.append('ctype', ctype);
       }
 
+      console.log(
+        '[useAdminTickets] Fetching from /api/tickets?',
+        params.toString(),
+      );
+
       const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
-      if (!res) return;
+
+      if (!res) {
+        console.log(
+          '[useAdminTickets] No response - possibly redirecting to login',
+        );
+        return;
+      }
 
       const data = await res.json();
+      console.log('[useAdminTickets] Response:', {
+        ok: res.ok,
+        status: res.status,
+        data,
+      });
 
       if (!res.ok) {
+        console.log('[useAdminTickets] Response not ok:', data.message);
         throw new Error(data.message || 'Failed fetch tickets');
       }
 
       if (data.success && data.data) {
+        console.log('[useAdminTickets] Setting tickets:', {
+          ticketsCount: data.data.data?.length ?? 0,
+          total: data.data.total,
+          firstTicket: data.data.data?.[0],
+        });
         setTickets(data.data.data ?? []);
         setPagination({
           currentPage: data.data.page ?? 1,
@@ -62,12 +85,15 @@ export function useAdminTickets(
           total: data.data.total ?? 0,
           limit: data.data.limit ?? 10,
         });
+      } else {
+        console.log('[useAdminTickets] No data in response:', data);
       }
     } catch (err) {
-      console.error('Fetch tickets error:', err);
+      console.error('[useAdminTickets] Catch error:', err);
       setTickets([]);
     } finally {
       setLoading(false);
+      console.log('[useAdminTickets] Done, loading=false');
     }
   }, [search, page, workzone, ctype]);
 

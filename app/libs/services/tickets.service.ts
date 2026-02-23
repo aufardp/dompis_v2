@@ -74,6 +74,8 @@ export class TicketService {
     userId: number,
     selectedWorkzone?: string | null,
   ): Promise<Record<string, any>> {
+    console.log('[buildWorkzoneWhere]', { role, userId, selectedWorkzone });
+    
     if (role === 'teknisi') {
       const where: Record<string, any> = { teknisi_user_id: userId };
       if (selectedWorkzone) where.WORKZONE = { contains: selectedWorkzone };
@@ -82,7 +84,13 @@ export class TicketService {
 
     if (isAdminRole(role)) {
       const workzones = await getWorkzonesForUser(userId);
-      if (workzones.length === 0) return { id_ticket: 0 };
+      console.log('[buildWorkzoneWhere] Admin workzones:', workzones);
+      
+      // If admin has no workzones, return empty filter (show all tickets)
+      if (workzones.length === 0) {
+        console.log('[buildWorkzoneWhere] No workzones assigned, showing all tickets');
+        return {};
+      }
 
       if (selectedWorkzone) {
         return workzones.includes(selectedWorkzone)

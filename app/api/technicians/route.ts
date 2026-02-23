@@ -203,7 +203,6 @@ export async function GET(request: NextRequest) {
     const assignedTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        HASIL_VISIT: { not: 'CLOSE' },
       },
       select: {
         id_ticket: true,
@@ -255,7 +254,20 @@ export async function GET(request: NextRequest) {
     const mappedTechnicians = filteredTechnicians
       .map((tech) => {
         const tickets = ticketsByTech.get(tech.id_user) || [];
-        const mappedTickets = tickets.map(mapTechnicianTicket);
+
+        const assignedTickets = tickets.filter(
+          (t) => t.HASIL_VISIT === 'ASSIGNED',
+        );
+        const onProgressTickets = tickets.filter(
+          (t) => t.HASIL_VISIT === 'ON_PROGRESS',
+        );
+        const pendingTickets = tickets.filter(
+          (t) => t.HASIL_VISIT === 'PENDING',
+        );
+        const closedTickets = tickets.filter((t) => t.HASIL_VISIT === 'CLOSE');
+
+        const activeTickets = tickets.filter((t) => t.HASIL_VISIT !== 'CLOSE');
+        const mappedTickets = activeTickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
         const techStatus = getTechnicianStatus(ticketCount);
 
@@ -289,6 +301,12 @@ export async function GET(request: NextRequest) {
           total_assigned: ticketCount,
           total_closed_today: closedTodayMap.get(tech.id_user) || 0,
           average_resolve_time_hours: null,
+          order_counts: {
+            assigned: assignedTickets.length,
+            on_progress: onProgressTickets.length,
+            pending: pendingTickets.length,
+            closed: closedTickets.length,
+          },
         };
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);

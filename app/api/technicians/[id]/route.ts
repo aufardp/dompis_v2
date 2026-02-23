@@ -218,6 +218,16 @@ export async function GET(
       };
     });
 
+    const assignedCount = assignedTickets.filter(
+      (t) => t.HASIL_VISIT === 'ASSIGNED',
+    ).length;
+    const onProgressCount = assignedTickets.filter(
+      (t) => t.HASIL_VISIT === 'ON_PROGRESS',
+    ).length;
+    const pendingCount = assignedTickets.filter(
+      (t) => t.HASIL_VISIT === 'PENDING',
+    ).length;
+
     const totalClosed = await prisma.ticket.count({
       where: {
         teknisi_user_id: techId,
@@ -265,6 +275,12 @@ export async function GET(
         total_closed_all: totalClosed,
         average_resolve_time_hours: avgResolveHours,
         status: getTechnicianStatus(mappedTickets.length),
+        order_counts: {
+          assigned: assignedCount,
+          on_progress: onProgressCount,
+          pending: pendingCount,
+          closed: totalClosed,
+        },
       },
     });
   } catch (error: unknown) {

@@ -18,10 +18,14 @@ export const metadata: Metadata = {
   description: 'Semangat Pagi Pagi Pagi ...',
 };
 
-export default function RootLayout({ children }: any) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html>
-      <body>
+    <html lang='id'>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

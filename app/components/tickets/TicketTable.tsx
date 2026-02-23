@@ -7,8 +7,12 @@ import TicketCardMobile from './TicketCardMobile';
 import TableEmptyState from '@/app/components/tables/TableEmptyState';
 import TicketDetailDrawer from './TicketDetailDrawer';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { computeTicketRanks, TicketWithRank } from '@/app/libs/tickets/sort';
-import { calculateAgeInHours } from '@/app/libs/tickets/sort';
+import {
+  computeTicketRanks,
+  TicketWithRank,
+  calculateAgeInHours,
+  sortByPriority,
+} from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
 
 export type SortField =
@@ -16,11 +20,14 @@ export type SortField =
   | 'serviceNo'
   | 'contactName'
   | 'customerType'
+  | 'alamat'
+  | 'bookingDate'
   | 'age'
   | 'jenisTiket'
   | 'workzone'
   | 'technicianName'
-  | 'reportedDate';
+  | 'reportedDate'
+  | 'priority';
 export type SortOrder = 'asc' | 'desc';
 
 interface TicketTableProps {
@@ -30,6 +37,8 @@ interface TicketTableProps {
     serviceNo?: string;
     contactName?: string | null;
     contactPhone?: string | null;
+    alamat?: string | null;
+    bookingDate?: string | null;
     ctype?: TicketCtype;
     customerType?: string;
     summary?: string;
@@ -101,6 +110,10 @@ export default function TicketTable({
   onAssign,
   pagination,
 }: TicketTableProps) {
+  console.log('[TicketTable] Rendering:', {
+    ticketsCount: tickets.length,
+    loading,
+  });
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'age',
     order: 'asc',
@@ -121,6 +134,10 @@ export default function TicketTable({
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
 
+    if (sortConfig.field === 'priority') {
+      return sortByPriority(tickets);
+    }
+
     return [...tickets].sort((a, b) => {
       let aVal: any;
       let bVal: any;
@@ -128,9 +145,9 @@ export default function TicketTable({
       if (sortConfig.field === 'age') {
         aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt);
         bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt);
-      } else {
-        aVal = a[sortConfig.field];
-        bVal = b[sortConfig.field];
+      } else if (sortConfig.field !== 'priority') {
+        aVal = a[sortConfig.field as keyof typeof a];
+        bVal = b[sortConfig.field as keyof typeof b];
       }
 
       if (aVal === null || aVal === undefined) aVal = '';
@@ -171,8 +188,16 @@ export default function TicketTable({
 
   return (
     <div className='space-y-4'>
+      {/* DEBUG
+      <div className='bg-yellow-100 p-2 text-sm'>
+        DEBUG: tickets={tickets.length}, loading={loading}, sortedTickets=
+        {sortedTickets.length}
+        {pagination &&
+          `, total=${pagination.total}, totalPages=${pagination.totalPages}`}
+      </div> */}
+
       {/* Mobile */}
-      <div className='space-y-3 lg:hidden'>
+      <div className='block space-y-3 lg:hidden'>
         {loading ? (
           <p className='py-8 text-center text-gray-500'>Loading...</p>
         ) : sortedTickets.length === 0 ? (
@@ -189,7 +214,7 @@ export default function TicketTable({
       </div>
 
       {/* Desktop */}
-      <div className='hidden lg:block'>
+      <div className='block'>
         <div className='overflow-hidden rounded-xl border bg-white shadow-sm'>
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>
@@ -199,6 +224,8 @@ export default function TicketTable({
                   {renderSortableHeader('Ticket', 'ticket')}
                   {renderSortableHeader('Service', 'serviceNo')}
                   {renderSortableHeader('Customer', 'contactName')}
+                  {renderSortableHeader('Address', 'alamat')}
+                  {renderSortableHeader('Booking_Date', 'bookingDate')}
                   {renderSortableHeader('Type', 'customerType')}
                   <th className='px-3 py-3 text-center'>Max TTR</th>
                   {renderSortableHeader('Age', 'age')}

@@ -14,6 +14,13 @@ export interface TechnicianTicket {
   ageHours: number;
 }
 
+export interface TechnicianOrderCounts {
+  assigned: number;
+  on_progress: number;
+  pending: number;
+  closed: number;
+}
+
 export interface Technician {
   id_user: number;
   nama: string;
@@ -24,6 +31,7 @@ export interface Technician {
   total_assigned: number;
   total_closed_today: number;
   average_resolve_time_hours: number | null;
+  order_counts?: TechnicianOrderCounts;
 }
 
 export interface TechnicianSummary {

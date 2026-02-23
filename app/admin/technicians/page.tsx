@@ -19,7 +19,6 @@ import Button from '@/app/components/ui/Button';
 import Select from '@/app/components/form/Select';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { TechnicianStatus, Technician } from '@/app/types/technician';
-import { fetchWithAuth } from '@/app/libs/fetcher';
 
 function stringToColor(str: string): string {
   const colors = [
@@ -231,9 +230,20 @@ function TechnicianCard({ technician }: { technician: Technician }) {
         </div>
 
         <div className='mt-4 border-t border-slate-100 pt-3'>
-          <p className='mb-2 text-xs font-medium tracking-wider text-slate-400 uppercase'>
-            {technician.total_assigned} Tiket Aktif
-          </p>
+          <div className='mb-2 flex flex-wrap gap-1.5'>
+            <span className='inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700'>
+              {technician.order_counts?.assigned || 0} Assigned
+            </span>
+            <span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700'>
+              {technician.order_counts?.on_progress || 0} On Progress
+            </span>
+            <span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700'>
+              {technician.order_counts?.pending || 0} Pending
+            </span>
+            <span className='inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700'>
+              {technician.order_counts?.closed || 0} Closed
+            </span>
+          </div>
 
           {displayTickets.length === 0 ? (
             <div className='flex flex-col items-center py-4 text-center'>
@@ -326,9 +336,6 @@ export default function TechnicianMonitoringPage() {
   const [statusFilter, setStatusFilter] = useState<TechnicianStatus | 'all'>(
     'all',
   );
-  const [showAllTechnicians, setShowAllTechnicians] = useState(false);
-  const [presentCount, setPresentCount] = useState(0);
-  const [absentCount, setAbsentCount] = useState(0);
 
   const filters = useMemo(
     () => ({
@@ -347,31 +354,26 @@ export default function TechnicianMonitoringPage() {
     error,
     lastUpdated,
     refresh,
-  } = useTechnicianTickets(filters, 60, showAllTechnicians);
+  } = useTechnicianTickets(filters, 60);
 
-  useEffect(() => {
-    const fetchAttendance = async () => {
-      try {
-        const res = await fetchWithAuth('/api/technicians/attendance/today');
-        if (!res) return;
-        const data = await res.json();
-        if (data.success) {
-          const present = data.data?.present_count || 0;
-          setPresentCount(present);
-          const totalTechs = summary.total_active + summary.idle_count;
-          setAbsentCount(Math.max(0, totalTechs - present));
-        }
-      } catch (err) {
-        console.error('Error fetching attendance:', err);
+  const orderStats = useMemo(() => {
+    let totalAssigned = 0;
+    let totalOnProgress = 0;
+    let totalPending = 0;
+    let totalClosed = 0;
+
+    technicians.forEach((tech) => {
+      const counts = tech.order_counts;
+      if (counts) {
+        totalAssigned += counts.assigned;
+        totalOnProgress += counts.on_progress;
+        totalPending += counts.pending;
+        totalClosed += counts.closed;
       }
-    };
-    fetchAttendance();
-  }, [
-    showAllTechnicians,
-    summary.total_active,
-    summary.idle_count,
-    technicians,
-  ]);
+    });
+
+    return { totalAssigned, totalOnProgress, totalPending, totalClosed };
+  }, [technicians]);
 
   const hasFilters = Boolean(
     search || workzoneFilter || statusFilter !== 'all',
@@ -463,9 +465,24 @@ export default function TechnicianMonitoringPage() {
             onClick={handleResetFilters}
           />
           <StatsCard
-            title='Tiket Assigned'
-            value={summary.total_assigned}
-            color='text-slate-600'
+            title='Assigned'
+            value={orderStats.totalAssigned}
+            color='text-blue-500'
+          />
+          <StatsCard
+            title='On Progress'
+            value={orderStats.totalOnProgress}
+            color='text-amber-600'
+          />
+          <StatsCard
+            title='Pending'
+            value={orderStats.totalPending}
+            color='text-orange-600'
+          />
+          <StatsCard
+            title='Closed'
+            value={orderStats.totalClosed}
+            color='text-green-600'
           />
           <StatsCard
             title='Overload'
@@ -474,35 +491,7 @@ export default function TechnicianMonitoringPage() {
             isActive={statusFilter === 'OVERLOAD'}
             onClick={() => setStatusFilter('OVERLOAD')}
           />
-          <StatsCard
-            title='Idle'
-            value={summary.idle_count}
-            color='text-gray-500'
-            isActive={statusFilter === 'IDLE'}
-            onClick={() => setStatusFilter('IDLE')}
-          />
-          <StatsCard
-            title='Sudah Absen'
-            value={presentCount}
-            color='text-green-600'
-            isActive={!showAllTechnicians}
-            onClick={() => setShowAllTechnicians(false)}
-          />
-          <StatsCard
-            title='Belum Absen'
-            value={absentCount}
-            color='text-red-600'
-            isActive={showAllTechnicians}
-            onClick={() => setShowAllTechnicians(true)}
-          />
         </div>
-
-        {showAllTechnicians && (
-          <div className='flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700'>
-            <AlertCircle size={16} />
-            Menampilkan semua teknisi termasuk yang belum absen
-          </div>
-        )}
 
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <div className='relative max-w-md flex-1'>

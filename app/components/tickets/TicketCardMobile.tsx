@@ -6,9 +6,12 @@ import {
   Hash,
   Clock3,
   User,
+  Calendar,
+  MapPinned,
 } from 'lucide-react';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
+import CustomerTypeBadge from './CustomerTypeBadge';
 import {
   formatDate,
   getMaxTtr,
@@ -73,10 +76,8 @@ export default function TicketCardMobile({
         <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
           <User className='h-4 w-4 text-slate-500' />
           <div className='min-w-0'>
-            <p className='text-[11px] text-slate-500'>Customer</p>
-            <p className='truncate font-semibold'>
-              {ticket.customerType || '-'}
-            </p>
+            <p className='text-[11px] text-slate-500'>Type</p>
+            <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
           </div>
         </div>
         <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
@@ -84,6 +85,22 @@ export default function TicketCardMobile({
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Max TTR</p>
             <p className='truncate font-semibold'>{maxTtr}</p>
+          </div>
+        </div>
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
+          <Calendar className='h-4 w-4 text-slate-500' />
+          <div className='min-w-0'>
+            <p className='text-[11px] text-slate-500'>Booking Date</p>
+            <p className='truncate font-semibold'>
+              {ticket.bookingDate || '-'}
+            </p>
+          </div>
+        </div>
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
+          <MapPinned className='h-4 w-4 text-slate-500' />
+          <div className='min-w-0'>
+            <p className='text-[11px] text-slate-500'>Address</p>
+            <p className='truncate font-semibold'>{ticket.alamat || '-'}</p>
           </div>
         </div>
       </div>

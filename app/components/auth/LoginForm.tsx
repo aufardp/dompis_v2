@@ -1,9 +1,11 @@
 'use client';
 import { EyeSlashIcon, EyeIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
 export default function LoginForm() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,19 +32,19 @@ export default function LoginForm() {
         const { role, needsAttendanceCheck } = data;
 
         if (role === 'superadmin') {
-          window.location.href = '/superadmin';
+          router.push('/superadmin');
         } else if (role === 'admin') {
-          window.location.href = '/admin';
+          router.push('/admin');
         } else if (role === 'teknisi') {
           if (needsAttendanceCheck) {
-            window.location.href = '/teknisi/attendance';
+            router.push('/teknisi/attendance');
           } else {
-            window.location.href = '/teknisi';
+            router.push('/teknisi');
           }
         } else if (role === 'helpdesk') {
-          window.location.href = '/helpdesk';
+          router.push('/helpdesk');
         } else {
-          window.location.href = '/';
+          router.push('/');
         }
       } else {
         setError(data.message || 'Login failed');

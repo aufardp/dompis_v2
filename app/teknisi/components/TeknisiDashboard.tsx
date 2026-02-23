@@ -351,6 +351,25 @@ export default function TeknisiDashboard() {
 
                     <div>
                       <p className='text-xs tracking-wide text-slate-400 uppercase'>
+                        Telepon
+                      </p>
+                      {ticket.contactPhone ? (
+                        <a
+                          href={`https://wa.me/${ticket.contactPhone.replace(/\D/g, '').replace(/^0/, '62')}`}
+                          target='_blank'
+                          rel='noopener noreferrer'
+                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                          className='font-medium text-green-600 hover:text-green-700 hover:underline'
+                        >
+                          {ticket.contactPhone}
+                        </a>
+                      ) : (
+                        <p className='font-medium text-slate-700'>-</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className='text-xs tracking-wide text-slate-400 uppercase'>
                         Customer Type
                       </p>
                       <p className='font-medium text-slate-700'>

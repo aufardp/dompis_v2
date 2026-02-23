@@ -201,6 +201,12 @@ export default function TicketPage() {
               onPageChange: setCurrentPage,
             }}
           />
+          {/* DEBUG */}
+          <div className='debug hidden'>
+            <pre>
+              {JSON.stringify({ tickets, loading, pagination }, null, 2)}
+            </pre>
+          </div>
         </div>
       </AdminLayout>
 

@@ -35,12 +35,13 @@ model service_area {
   attendances technician_attendance[]
 
   @@index([area_id], map: "id_area")
+  @@index([nama_sa], map: "idx_nama_sa")
 }
 
 model ticket {
   id_ticket                   Int                         @id @default(autoincrement())
   INCIDENT                    String                      @unique(map: "INCIDENT") @db.VarChar(100)
-  SUMMARY                     String?                     @db.VarChar(250)
+  SUMMARY                     String?                     @db.Text
   REPORTED_DATE               String?                     @db.VarChar(100)
   OWNER_GROUP                 String?                     @db.VarChar(50)
   CUSTOMER_SEGMENT            String?                     @db.VarChar(100)
@@ -85,6 +86,7 @@ model ticket {
   ticket_activity_log         ticket_activity_log[]
 
   @@index([teknisi_user_id], map: "fk_ticket_user")
+  @@index([WORKZONE], map: "idx_workzone")
 }
 
 model ticket_assign_history {
@@ -125,6 +127,7 @@ model user_sa {
 
   @@index([sa_id], map: "sa_id")
   @@index([user_id], map: "user_id")
+  @@index([user_id, sa_id], map: "idx_user_sa")
 }
 
 model users {

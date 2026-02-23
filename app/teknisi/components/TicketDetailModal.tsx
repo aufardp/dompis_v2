@@ -397,6 +397,12 @@ export default function TicketDetailModal({
                   )}
                 </div>
               </div>
+              <div>
+                <div className='text-xs text-slate-400'>Alamat</div>
+                <div className='text-sm text-slate-700'>
+                  {ticket.alamat || '-'}
+                </div>
+              </div>
             </div>
           </div>
 

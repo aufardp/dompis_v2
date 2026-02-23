@@ -10,6 +10,70 @@ import { ActivityType, TicketStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
 
+// ── Service Area Cache (35 items, TTL 1 hour) ────────────────────────────────
+
+interface ServiceAreaCacheEntry {
+  id_sa: number;
+  nama_sa: string | null;
+}
+
+interface ServiceAreaCache {
+  byId: Map<number, ServiceAreaCacheEntry>;
+  byName: Map<string, ServiceAreaCacheEntry>;
+  loadedAt: number;
+}
+
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+let serviceAreaCache: ServiceAreaCache | null = null;
+
+async function loadServiceAreaCache(
+  tx: Prisma.TransactionClient,
+): Promise<ServiceAreaCache> {
+  const serviceAreas = await tx.service_area.findMany({
+    select: { id_sa: true, nama_sa: true },
+    where: { nama_sa: { not: null } },
+  });
+
+  const byId = new Map<number, ServiceAreaCacheEntry>();
+  const byName = new Map<string, ServiceAreaCacheEntry>();
+
+  for (const sa of serviceAreas) {
+    const entry: ServiceAreaCacheEntry = {
+      id_sa: sa.id_sa,
+      nama_sa: sa.nama_sa,
+    };
+    byId.set(sa.id_sa, entry);
+    if (sa.nama_sa) {
+      const normKey = normalizeKey(sa.nama_sa);
+      byName.set(normKey, entry);
+    }
+  }
+
+  return { byId, byName, loadedAt: Date.now() };
+}
+
+function getServiceAreaCache(
+  tx: Prisma.TransactionClient,
+  forceRefresh = false,
+): Promise<ServiceAreaCache> {
+  if (!forceRefresh && serviceAreaCache) {
+    const age = Date.now() - serviceAreaCache.loadedAt;
+    if (age < CACHE_TTL_MS) {
+      return Promise.resolve(serviceAreaCache);
+    }
+  }
+
+  return loadServiceAreaCache(tx).then((cache) => {
+    serviceAreaCache = cache;
+    return cache;
+  });
+}
+
+export function invalidateServiceAreaCache() {
+  serviceAreaCache = null;
+}
+
 // ── Public Types ──────────────────────────────────────────────────────────────
 
 export type ActorContext = {
@@ -163,15 +227,13 @@ async function resolveServiceAreaForWorkzone(
   const wz = normalizeKey(workzone);
   if (!wz) return null;
 
-  const serviceAreas = await tx.service_area.findMany({
-    select: { id_sa: true, nama_sa: true },
-  });
+  const cache = await getServiceAreaCache(tx);
 
   let best:
     | { id_sa: number; nama_sa: string | null; normLen: number }
     | undefined;
 
-  for (const sa of serviceAreas) {
+  for (const [, sa] of cache.byName) {
     const norm = sa.nama_sa ? normalizeKey(sa.nama_sa) : '';
     if (!norm || !wz.includes(norm)) continue;
     if (!best || norm.length > best.normLen) {
@@ -603,13 +665,18 @@ export class TicketWorkflowService {
         await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
       }
 
-      const techExists = await tx.users.findFirst({
-        where: { id_user: technicianId, roles: { is: { key: 'teknisi' } } },
+      const techWithRole = await tx.users.findFirst({
+        where: {
+          id_user: technicianId,
+          roles: { is: { key: 'teknisi' } },
+          user_sa: { some: { sa_id: sa.id_sa } },
+        },
         select: { id_user: true },
       });
-      if (!techExists) throw new Error('Technician not found');
-
-      await assertTechnicianEligibleForServiceArea(tx, technicianId, sa.id_sa);
+      if (!techWithRole)
+        throw new Error(
+          'Technician not found or not eligible for this service area',
+        );
 
       if (ticket.teknisi_user_id === technicianId) {
         throw new Error('Ticket is already assigned to this technician');

@@ -3,6 +3,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { AttendanceCheckInInput } from '@/app/types/attendance';
+import prisma from '@/app/libs/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const decoded = await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const currentUserId = decoded.id_user;
 
     const { searchParams } = new URL(request.url);
     const monthParam = searchParams.get('month');
@@ -75,7 +77,48 @@ export async function GET(request: NextRequest) {
       ? parseInt(technicianIdParam)
       : undefined;
 
-    const technicianIds = technicianId ? [technicianId] : undefined;
+    const currentUserServiceAreas = await prisma.user_sa.findMany({
+      where: { user_id: currentUserId },
+      select: { sa_id: true },
+    });
+
+    const currentUserSaIds: number[] = currentUserServiceAreas
+      .map((usa) => usa.sa_id)
+      .filter((id): id is number => id !== null && id !== undefined);
+
+    let technicianIds: number[] | undefined;
+
+    if (technicianId) {
+      technicianIds = [technicianId];
+    } else if (currentUserSaIds.length > 0) {
+      const techniciansInSameArea = await prisma.user_sa.findMany({
+        where: { sa_id: { in: currentUserSaIds } },
+        select: { user_id: true },
+      });
+
+      technicianIds = Array.from(
+        new Set(
+          techniciansInSameArea
+            .map((usa) => usa.user_id)
+            .filter((id): id is number => id !== null && id !== undefined),
+        ),
+      );
+    }
+
+    if (!technicianId && (!technicianIds || technicianIds.length === 0)) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          records: [],
+          summary: {
+            total_present: 0,
+            total_late: 0,
+            total_absent: 0,
+            working_days: AttendanceService.getWorkingDaysInMonth(month, year),
+          },
+        },
+      });
+    }
 
     const result = await AttendanceService.getMonthlyAttendance(
       month,
