@@ -36,7 +36,9 @@ async function triggerPush() {
 app.prepare().then(() => {
   console.log('Next.js app prepared');
 
-  if (!dev) {
+  const cronEnabled = process.env.CRON_ENABLED === 'true' || !dev;
+
+  if (cronEnabled) {
     cron.schedule('*/5 * * * *', () => {
       console.log('[CRON] Running sync every 5 minutes...');
       triggerSync();
@@ -48,6 +50,8 @@ app.prepare().then(() => {
     });
 
     console.log('[CRON] Scheduled: sync every 5 min, push every 10 min');
+  } else {
+    console.log('[CRON] Disabled (set CRON_ENABLED=true to enable)');
   }
 
   createServer((req, res) => {

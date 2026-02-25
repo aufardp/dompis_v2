@@ -4,8 +4,11 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { differenceInMinutes } from 'date-fns';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { getCache, setCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
+
+const TECHNICIANS_CACHE_TTL = 300;
 
 function parseDateInput(dateStr: string | null | undefined): Date | null {
   if (!dateStr) return null;
@@ -97,6 +100,23 @@ export async function GET(request: NextRequest) {
     const workzone = searchParams.get('workzone') || undefined;
     const status = searchParams.get('status') || 'all';
     const includeAbsent = searchParams.get('include_absent') === 'true';
+    const includeClosedToday =
+      searchParams.get('include_closed_today') === 'true';
+    const closedTodayLimitRaw = searchParams.get('closed_today_limit');
+    const closedTodayLimit = Math.max(
+      0,
+      Math.min(10, Number(closedTodayLimitRaw || 3) || 3),
+    );
+
+    const cacheKey = `technicians:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        data: cached,
+        cached: true,
+      });
+    }
 
     const currentUserServiceAreas = await prisma.user_sa.findMany({
       where: { user_id: currentUserId },
@@ -213,9 +233,35 @@ export async function GET(request: NextRequest) {
         REPORTED_DATE: true,
         HASIL_VISIT: true,
         teknisi_user_id: true,
+        closed_at: true,
       },
       orderBy: { REPORTED_DATE: 'asc' },
     });
+
+    const closedTicketsToday = includeClosedToday
+      ? await prisma.ticket.findMany({
+          where: {
+            teknisi_user_id: { in: uniqueTechnicianIds },
+            HASIL_VISIT: 'CLOSE',
+            closed_at: {
+              gte: today,
+              lte: todayEnd,
+            },
+          },
+          select: {
+            id_ticket: true,
+            INCIDENT: true,
+            CONTACT_NAME: true,
+            CUSTOMER_TYPE: true,
+            SERVICE_NO: true,
+            REPORTED_DATE: true,
+            HASIL_VISIT: true,
+            teknisi_user_id: true,
+            closed_at: true,
+          },
+          orderBy: { closed_at: 'desc' },
+        })
+      : [];
 
     const closedToday = await prisma.ticket.groupBy({
       by: ['teknisi_user_id'],
@@ -246,6 +292,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const closedTodayByTech = new Map<number, typeof closedTicketsToday>();
+    if (includeClosedToday) {
+      for (const t of closedTicketsToday) {
+        if (!t.teknisi_user_id) continue;
+        const existing = closedTodayByTech.get(t.teknisi_user_id) || [];
+        if (existing.length >= closedTodayLimit) continue;
+        existing.push(t);
+        closedTodayByTech.set(t.teknisi_user_id, existing);
+      }
+    }
+
     let totalActive = 0;
     let totalAssigned = 0;
     let overloadCount = 0;
@@ -270,6 +327,18 @@ export async function GET(request: NextRequest) {
         const mappedTickets = activeTickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
         const techStatus = getTechnicianStatus(ticketCount);
+
+        const mappedClosedToday = includeClosedToday
+          ? (closedTodayByTech.get(tech.id_user) || []).map((t) => {
+              const base = mapTechnicianTicket(t as any);
+              return {
+                ...base,
+                closedAt: (t as any).closed_at
+                  ? new Date((t as any).closed_at).toISOString()
+                  : null,
+              };
+            })
+          : undefined;
 
         const workzoneNames = techWorkzones.get(tech.id_user) || [];
         const workzoneName =
@@ -298,6 +367,9 @@ export async function GET(request: NextRequest) {
           workzone: workzoneName,
           avatar_url: null,
           assigned_tickets: mappedTickets,
+          ...(includeClosedToday
+            ? { closed_tickets_today: mappedClosedToday }
+            : {}),
           total_assigned: ticketCount,
           total_closed_today: closedTodayMap.get(tech.id_user) || 0,
           average_resolve_time_hours: null,
@@ -311,18 +383,22 @@ export async function GET(request: NextRequest) {
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
 
+    const responseData = {
+      technicians: mappedTechnicians,
+      summary: {
+        total_active: totalActive,
+        total_assigned: totalAssigned,
+        overload_count: overloadCount,
+        idle_count: idleCount,
+      },
+      userWorkzones: currentUserWorkzoneNames,
+    };
+
+    await setCache(cacheKey, responseData, TECHNICIANS_CACHE_TTL);
+
     return NextResponse.json({
       success: true,
-      data: {
-        technicians: mappedTechnicians,
-        summary: {
-          total_active: totalActive,
-          total_assigned: totalAssigned,
-          overload_count: overloadCount,
-          idle_count: idleCount,
-        },
-        userWorkzones: currentUserWorkzoneNames,
-      },
+      data: responseData,
     });
   } catch (error: unknown) {
     console.error('GET /technicians error:', error);

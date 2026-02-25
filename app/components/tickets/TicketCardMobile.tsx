@@ -28,6 +28,11 @@ export default function TicketCardMobile({
   onAssign: (ticketId: string | number) => void;
 }) {
   const isAssigned = Boolean(ticket?.teknisiUserId);
+  const visit = String(ticket?.hasilVisit ?? ticket?.status ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  const isClosed = visit === 'CLOSE' || visit === 'CLOSED';
   const maxTtr = getMaxTtr(ticket) || '-';
 
   return (
@@ -134,19 +139,21 @@ export default function TicketCardMobile({
           </p>
         </div>
 
-        <Button
-          onClick={() => onAssign(ticket.idTicket)}
-          className={`shrink-0 px-4 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] ${
-            isAssigned
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-        >
-          {isAssigned ? <RefreshCw size={16} /> : <UserPlus size={16} />}
-          <span className='hidden sm:inline'>
-            {isAssigned ? 'Reassign' : 'Assign'}
-          </span>
-        </Button>
+        {!isClosed && (
+          <Button
+            onClick={() => onAssign(ticket.idTicket)}
+            className={`shrink-0 px-4 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] ${
+              isAssigned
+                ? 'bg-amber-500 text-white hover:bg-amber-600'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {isAssigned ? <RefreshCw size={16} /> : <UserPlus size={16} />}
+            <span className='hidden sm:inline'>
+              {isAssigned ? 'Reassign' : 'Assign'}
+            </span>
+          </Button>
+        )}
       </div>
     </div>
   );

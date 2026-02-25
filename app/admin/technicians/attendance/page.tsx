@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
+import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import {
   MonthlyAttendanceSummary,
   AttendanceStatus,
@@ -158,6 +160,11 @@ export default function MonthlyAttendancePage() {
     fetchData();
   }, [fetchData]);
 
+  useAutoRefresh({
+    intervalMs: 120_000,
+    refreshers: [fetchData],
+  });
+
   const handleMonthChange = (newMonth: number) => {
     if (newMonth < 1) {
       setMonth(12);
@@ -259,159 +266,182 @@ export default function MonthlyAttendancePage() {
           </button>
         </div>
 
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
-          <div className='rounded-xl border border-slate-200 bg-white p-5'>
-            <div className='flex items-center gap-3'>
-              <div className='rounded-full bg-blue-100 p-2'>
-                <Calendar className='h-5 w-5 text-blue-600' />
-              </div>
-              <div>
-                <p className='text-sm text-slate-500'>Hari Kerja</p>
-                <p className='text-2xl font-bold text-slate-800'>
-                  {totalWorkingDays}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className='rounded-xl border border-slate-200 bg-white p-5'>
-            <div className='flex items-center gap-3'>
-              <div className='rounded-full bg-green-100 p-2'>
-                <CheckCircle className='h-5 w-5 text-green-600' />
-              </div>
-              <div>
-                <p className='text-sm text-slate-500'>Rata-rata Kehadiran</p>
-                <p className='text-2xl font-bold text-green-600'>
-                  {stats.avgPercentage}%
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className='rounded-xl border border-slate-200 bg-white p-5'>
-            <div className='flex items-center gap-3'>
-              <div className='rounded-full bg-amber-100 p-2'>
-                <Clock className='h-5 w-5 text-amber-600' />
-              </div>
-              <div>
-                <p className='text-sm text-slate-500'>Total Teknisi</p>
-                <p className='text-2xl font-bold text-slate-800'>
-                  {summaries.length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
-          <div className='overflow-x-auto'>
-            <table className='w-full text-sm'>
-              <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
-                <tr>
-                  <th className='px-4 py-3 text-left'>Teknisi</th>
-                  <th className='px-4 py-3 text-left'>Workzone</th>
-                  <th className='px-4 py-3 text-center'>Hadir</th>
-                  <th className='px-4 py-3 text-center'>Terlambat</th>
-                  <th className='px-4 py-3 text-center'>Absen</th>
-                  <th className='px-4 py-3 text-center'>Persentase</th>
-                  <th className='px-4 py-3 text-center'>Detail</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-slate-100'>
-                {loading ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={7} className='px-4 py-4'>
-                        <div className='h-6 animate-pulse rounded bg-slate-200' />
-                      </td>
-                    </tr>
-                  ))
-                ) : summaries.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className='px-4 py-12 text-center text-slate-400'
-                    >
-                      Tidak ada data absensi
-                    </td>
-                  </tr>
-                ) : (
-                  summaries.map((summary) => (
-                    <tr
-                      key={summary.technician_id}
-                      className='hover:bg-slate-50'
-                    >
-                      <td className='px-4 py-3'>
-                        <div className='flex items-center gap-3'>
-                          <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600'>
-                            {summary.technician_name
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .toUpperCase()
-                              .slice(0, 2)}
-                          </div>
-                          <div>
-                            <p className='font-medium text-slate-800'>
-                              {summary.technician_name}
-                            </p>
-                            <p className='text-xs text-slate-500'>
-                              {summary.technician_nik || '-'}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className='px-4 py-3'>
-                        <span className='inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600'>
-                          {summary.workzone}
-                        </span>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <span className='font-semibold text-green-600'>
-                          {summary.total_present}
-                        </span>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <span className='font-semibold text-amber-600'>
-                          {summary.total_late}
-                        </span>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <span className='font-semibold text-red-600'>
-                          {summary.total_absent}
-                        </span>
-                      </td>
-                      <td className='px-4 py-3'>
-                        <div className='flex items-center gap-2'>
-                          <div className='h-2 w-20 overflow-hidden rounded-full bg-slate-100'>
-                            <div
-                              className={`h-full ${getPercentageColor(summary.attendance_percentage)}`}
-                              style={{
-                                width: `${summary.attendance_percentage}%`,
-                              }}
-                            />
-                          </div>
-                          <span
-                            className={`text-sm font-semibold ${getPercentageTextColor(summary.attendance_percentage)}`}
-                          >
-                            {summary.attendance_percentage}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <Link
-                          href={`/admin/technicians/attendance/${summary.technician_id}?month=${month}&year=${year}`}
-                        >
-                          <Button variant='outline' size='sm'>
-                            Lihat Detail
-                          </Button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminAccordion
+          multiple
+          storageKey='admin:attendance:sections'
+          items={[
+            {
+              id: 'overview',
+              title: 'Overview',
+              defaultOpen: true,
+              children: (
+                <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                    <div className='flex items-center gap-3'>
+                      <div className='rounded-full bg-blue-100 p-2'>
+                        <Calendar className='h-5 w-5 text-blue-600' />
+                      </div>
+                      <div>
+                        <p className='text-sm text-slate-500'>Hari Kerja</p>
+                        <p className='text-2xl font-bold text-slate-800'>
+                          {totalWorkingDays}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                    <div className='flex items-center gap-3'>
+                      <div className='rounded-full bg-green-100 p-2'>
+                        <CheckCircle className='h-5 w-5 text-green-600' />
+                      </div>
+                      <div>
+                        <p className='text-sm text-slate-500'>
+                          Rata-rata Kehadiran
+                        </p>
+                        <p className='text-2xl font-bold text-green-600'>
+                          {stats.avgPercentage}%
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                    <div className='flex items-center gap-3'>
+                      <div className='rounded-full bg-amber-100 p-2'>
+                        <Clock className='h-5 w-5 text-amber-600' />
+                      </div>
+                      <div>
+                        <p className='text-sm text-slate-500'>Total Teknisi</p>
+                        <p className='text-2xl font-bold text-slate-800'>
+                          {summaries.length}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'table',
+              title: 'Attendance Table',
+              defaultOpen: true,
+              right:
+                summaries.length > 0 ? `${summaries.length} techs` : undefined,
+              children: (
+                <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
+                  <div className='overflow-x-auto'>
+                    <table className='w-full text-sm'>
+                      <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
+                        <tr>
+                          <th className='px-4 py-3 text-left'>Teknisi</th>
+                          <th className='px-4 py-3 text-left'>Workzone</th>
+                          <th className='px-4 py-3 text-center'>Hadir</th>
+                          <th className='px-4 py-3 text-center'>Terlambat</th>
+                          <th className='px-4 py-3 text-center'>Absen</th>
+                          <th className='px-4 py-3 text-center'>Persentase</th>
+                          <th className='px-4 py-3 text-center'>Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody className='divide-y divide-slate-100'>
+                        {loading ? (
+                          [...Array(5)].map((_, i) => (
+                            <tr key={i}>
+                              <td colSpan={7} className='px-4 py-4'>
+                                <div className='h-6 animate-pulse rounded bg-slate-200' />
+                              </td>
+                            </tr>
+                          ))
+                        ) : summaries.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              className='px-4 py-12 text-center text-slate-400'
+                            >
+                              Tidak ada data absensi
+                            </td>
+                          </tr>
+                        ) : (
+                          summaries.map((summary) => (
+                            <tr
+                              key={summary.technician_id}
+                              className='hover:bg-slate-50'
+                            >
+                              <td className='px-4 py-3'>
+                                <div className='flex items-center gap-3'>
+                                  <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600'>
+                                    {summary.technician_name
+                                      .split(' ')
+                                      .map((n) => n[0])
+                                      .join('')
+                                      .toUpperCase()
+                                      .slice(0, 2)}
+                                  </div>
+                                  <div>
+                                    <p className='font-medium text-slate-800'>
+                                      {summary.technician_name}
+                                    </p>
+                                    <p className='text-xs text-slate-500'>
+                                      {summary.technician_nik || '-'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className='px-4 py-3'>
+                                <span className='inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600'>
+                                  {summary.workzone}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <span className='font-semibold text-green-600'>
+                                  {summary.total_present}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <span className='font-semibold text-amber-600'>
+                                  {summary.total_late}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <span className='font-semibold text-red-600'>
+                                  {summary.total_absent}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3'>
+                                <div className='flex items-center gap-2'>
+                                  <div className='h-2 w-20 overflow-hidden rounded-full bg-slate-100'>
+                                    <div
+                                      className={`h-full ${getPercentageColor(summary.attendance_percentage)}`}
+                                      style={{
+                                        width: `${summary.attendance_percentage}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <span
+                                    className={`text-sm font-semibold ${getPercentageTextColor(summary.attendance_percentage)}`}
+                                  >
+                                    {summary.attendance_percentage}%
+                                  </span>
+                                </div>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <Link
+                                  href={`/admin/technicians/attendance/${summary.technician_id}?month=${month}&year=${year}`}
+                                >
+                                  <Button variant='outline' size='sm'>
+                                    Lihat Detail
+                                  </Button>
+                                </Link>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </AdminLayout>
   );

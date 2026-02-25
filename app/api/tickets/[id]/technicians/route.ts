@@ -10,7 +10,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    const actor = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
     const { id: idParam } = await params;
     const ticketId = Number(idParam);
@@ -27,6 +32,7 @@ export async function GET(
     const data = await TicketWorkflowService.getEligibleTechniciansByTicketId(
       ticketId,
       search,
+      { id_user: actor.id_user, role: actor.role },
     );
 
     return NextResponse.json({ success: true, data });

@@ -25,11 +25,19 @@ export async function GET(request: Request) {
     const workzone =
       searchParams.get('workzone') || searchParams.get('sa_id') || null;
     const saId = toOptionalPositiveInt(workzone);
+    const dept = searchParams.get('dept') || undefined;
+    const ticketType =
+      searchParams.get('ticketType') ||
+      searchParams.get('jenisTiket') ||
+      undefined;
+    const hasilVisit =
+      searchParams.get('hasilVisit') || searchParams.get('status') || undefined;
 
     const expiredTickets = await TicketService.getExpiredTickets(
       user.role,
       user.id_user,
       saId,
+      { dept, ticketType, hasilVisit },
     );
 
     return NextResponse.json({

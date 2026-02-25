@@ -4,10 +4,26 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { acquireLock, releaseLock } from '@/lib/ratelimit';
+import { invalidateTicketsCache } from '@/lib/cache';
 
 export async function POST(req: Request) {
+  const lockKey = 'ticket-lock';
+  const ownerId = `assign-${Date.now()}-${Math.random()}`;
+
+  const lockAcquired = await acquireLock(lockKey, ownerId, 30);
+
+  if (!lockAcquired) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Ticket sedang diproses oleh admin lain. Silakan coba lagi.',
+      },
+      { status: 409 },
+    );
+  }
+
   try {
-    // 🔐 Hanya admin yang boleh assign
     const user = await protectApi([
       'admin',
       'helpdesk',
@@ -18,7 +34,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { ticketId, teknisiUserId } = body;
 
-    // 🔎 Validasi input
     if (!ticketId || !teknisiUserId) {
       return NextResponse.json(
         {
@@ -35,6 +50,8 @@ export async function POST(req: Request) {
       user,
     );
 
+    await invalidateTicketsCache();
+
     return NextResponse.json({
       success: true,
       ...result,
@@ -47,5 +64,7 @@ export async function POST(req: Request) {
       },
       { status: getErrorStatus(error, 400) },
     );
+  } finally {
+    await releaseLock(lockKey, ownerId);
   }
 }

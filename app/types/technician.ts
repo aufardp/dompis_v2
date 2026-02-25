@@ -12,6 +12,7 @@ export interface TechnicianTicket {
   hasilVisit: TicketVisitStatus;
   age: string;
   ageHours: number;
+  closedAt?: string | null;
 }
 
 export interface TechnicianOrderCounts {
@@ -28,6 +29,7 @@ export interface Technician {
   workzone: string;
   avatar_url?: string | null;
   assigned_tickets: TechnicianTicket[];
+  closed_tickets_today?: TechnicianTicket[];
   total_assigned: number;
   total_closed_today: number;
   average_resolve_time_hours: number | null;

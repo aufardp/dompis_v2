@@ -24,6 +24,8 @@ function getAdapter() {
     password: decodeURIComponent(u.password),
     database,
     connectionLimit,
+    connectTimeout: 10000,
+    idleTimeout: 5000,
   });
 }
 
@@ -37,6 +39,13 @@ export function getPrisma(): PrismaClient {
   return prismaClient;
 }
 
+export async function disconnectPrisma() {
+  if (prismaClient) {
+    await prismaClient.$disconnect();
+    prismaClient = null;
+  }
+}
+
 const prisma = {
   get $connect() {
     return getPrisma().$connect.bind(getPrisma());
@@ -46,6 +55,9 @@ const prisma = {
   },
   get $queryRaw() {
     return getPrisma().$queryRaw.bind(getPrisma());
+  },
+  get $executeRawUnsafe() {
+    return getPrisma().$executeRawUnsafe.bind(getPrisma());
   },
   get $transaction() {
     return getPrisma().$transaction.bind(getPrisma());
@@ -73,9 +85,6 @@ const prisma = {
   },
   get technician_attendance() {
     return getPrisma().technician_attendance;
-  },
-  get ticket_assign_history() {
-    return getPrisma().ticket_assign_history;
   },
   get ticket_evidence() {
     return getPrisma().ticket_evidence;

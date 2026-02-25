@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { Ticket } from '../types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
@@ -14,6 +14,9 @@ export function useAdminTickets(
   page: number,
   workzone?: string,
   ctype?: string,
+  hasilVisit?: string,
+  dept?: string,
+  ticketType?: string,
 ) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,8 +27,10 @@ export function useAdminTickets(
     limit: 10,
   });
 
+  const requestIdRef = useRef(0);
+
   const fetchData = useCallback(async () => {
-    console.log('[useAdminTickets] Starting fetch...');
+    const requestId = ++requestIdRef.current;
     try {
       setLoading(true);
 
@@ -46,10 +51,17 @@ export function useAdminTickets(
         params.append('ctype', ctype);
       }
 
-      console.log(
-        '[useAdminTickets] Fetching from /api/tickets?',
-        params.toString(),
-      );
+      if (hasilVisit) {
+        params.append('hasilVisit', hasilVisit);
+      }
+
+      if (dept) {
+        params.append('dept', dept);
+      }
+
+      if (ticketType) {
+        params.append('ticketType', ticketType);
+      }
 
       const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
 
@@ -61,23 +73,15 @@ export function useAdminTickets(
       }
 
       const data = await res.json();
-      console.log('[useAdminTickets] Response:', {
-        ok: res.ok,
-        status: res.status,
-        data,
-      });
+
+      // Ignore stale responses (e.g. filter changed while request was in-flight)
+      if (requestId !== requestIdRef.current) return;
 
       if (!res.ok) {
-        console.log('[useAdminTickets] Response not ok:', data.message);
         throw new Error(data.message || 'Failed fetch tickets');
       }
 
       if (data.success && data.data) {
-        console.log('[useAdminTickets] Setting tickets:', {
-          ticketsCount: data.data.data?.length ?? 0,
-          total: data.data.total,
-          firstTicket: data.data.data?.[0],
-        });
         setTickets(data.data.data ?? []);
         setPagination({
           currentPage: data.data.page ?? 1,
@@ -86,16 +90,16 @@ export function useAdminTickets(
           limit: data.data.limit ?? 10,
         });
       } else {
-        console.log('[useAdminTickets] No data in response:', data);
+        setTickets([]);
       }
     } catch (err) {
-      console.error('[useAdminTickets] Catch error:', err);
+      if (requestId !== requestIdRef.current) return;
       setTickets([]);
     } finally {
+      if (requestId !== requestIdRef.current) return;
       setLoading(false);
-      console.log('[useAdminTickets] Done, loading=false');
     }
-  }, [search, page, workzone, ctype]);
+  }, [search, page, workzone, ctype, hasilVisit, dept, ticketType]);
 
   useEffect(() => {
     fetchData();

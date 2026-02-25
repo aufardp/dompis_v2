@@ -26,22 +26,48 @@ export async function GET(request: Request) {
       searchParams.get('workzone') || searchParams.get('sa_id') || null;
     const saId = toOptionalPositiveInt(workzone);
     const includeBy = searchParams.get('includeBy');
+    const dept = searchParams.get('dept') || undefined;
+    const ticketType =
+      searchParams.get('ticketType') ||
+      searchParams.get('jenisTiket') ||
+      undefined;
+    const hasilVisit =
+      searchParams.get('hasilVisit') || searchParams.get('status') || undefined;
 
-    const stats = await TicketService.getStats(user.role, user.id_user, saId);
+    const stats = await TicketService.getStats(user.role, user.id_user, saId, {
+      dept,
+      ticketType,
+      hasilVisit,
+    });
 
     const includeByArray = includeBy ? includeBy.split(',') : [];
 
     const byServiceArea = includeByArray.includes('sa')
-      ? await TicketService.getStatsByServiceArea(user.role, user.id_user, saId)
-      : undefined;
-
-    const byCustomerType = includeByArray.includes('ctype')
-      ? await TicketService.getStatsByCustomerType(
+      ? await TicketService.getStatsByServiceArea(
           user.role,
           user.id_user,
           saId,
+          {
+            dept,
+            ticketType,
+            hasilVisit,
+          },
         )
       : undefined;
+
+    const byCustomerType =
+      includeByArray.includes('ctype') && dept !== 'b2b'
+        ? await TicketService.getStatsByCustomerType(
+            user.role,
+            user.id_user,
+            saId,
+            {
+              dept,
+              ticketType,
+              hasilVisit,
+            },
+          )
+        : undefined;
 
     return NextResponse.json({
       success: true,

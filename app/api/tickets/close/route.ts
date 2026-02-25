@@ -4,6 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { invalidateTicketsCache } from '@/lib/cache';
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +26,8 @@ export async function POST(req: Request) {
       String(rca || ''),
       String(subRca || ''),
     );
+
+    await invalidateTicketsCache();
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {

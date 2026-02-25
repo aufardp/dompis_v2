@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { getCache, setCache } from '@/lib/cache';
+
+const STATS_CACHE_TTL = 30;
 
 export async function GET(request: Request) {
   try {
@@ -9,6 +12,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
     const areaId = searchParams.get('areaId');
+
+    const cacheKey = `dashboard:stats:${type}:${areaId || 'all'}`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        data: cached,
+        cached: true,
+      });
+    }
+
+    let result: any;
 
     if (type === 'technicians') {
       const whereClause: Record<string, any> = {
@@ -63,13 +78,8 @@ export async function GET(request: Request) {
         }),
       );
 
-      return NextResponse.json({
-        success: true,
-        data: rows,
-      });
-    }
-
-    if (type === 'stats') {
+      result = rows;
+    } else if (type === 'stats') {
       const whereClause: Record<string, any> = {
         roles: { key: 'teknisi' },
       };
@@ -100,25 +110,28 @@ export async function GET(request: Request) {
       ).length;
       const unfinishedTickets = totalTickets - completedTickets;
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          totalTechnicians,
-          busyTechnicians,
-          idleTechnicians,
-          totalTickets,
-          completedTickets,
-          unfinishedTickets,
-        },
-      });
+      result = {
+        totalTechnicians,
+        busyTechnicians,
+        idleTechnicians,
+        totalTickets,
+        completedTickets,
+        unfinishedTickets,
+      };
+    } else {
+      return NextResponse.json(
+        { success: false, message: 'Invalid type parameter' },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json(
-      { success: false, message: 'Invalid type parameter' },
-      { status: 400 },
-    );
+    await setCache(cacheKey, result, STATS_CACHE_TTL);
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    });
   } catch (error: any) {
-    console.error('Dashboard stats error:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Server Error') },
       { status: getErrorStatus(error, 500) },

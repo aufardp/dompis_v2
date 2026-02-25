@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
@@ -16,6 +16,7 @@ import {
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import {
   AttendanceStatus,
   TechnicianAttendanceWithDetails,
@@ -124,7 +125,7 @@ export default function TechnicianAttendanceDetailPage() {
     notes: '',
   });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchWithAuth(
@@ -145,11 +146,17 @@ export default function TechnicianAttendanceDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [month, technicianId, year]);
 
   useEffect(() => {
     fetchData();
-  }, [technicianId, month, year]);
+  }, [fetchData]);
+
+  useAutoRefresh({
+    intervalMs: 120_000,
+    refreshers: [fetchData],
+    pauseWhen: [showModal, submitting],
+  });
 
   const handleMonthChange = (newMonth: number) => {
     if (newMonth < 1) {

@@ -1,5 +1,4 @@
 import type { NextConfig } from 'next';
-import path from 'path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -7,8 +6,31 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   experimental: {
-    optimizePackageImports: ['@heroicons/react', '@tanstack/react-query'],
+    optimizePackageImports: [
+      '@heroicons/react',
+      '@tanstack/react-query',
+      'lucide-react',
+    ],
   },
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET,POST,PUT,DELETE,OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization',
+          },
+        ],
+      },
+    ];
+  },
+  compress: true,
 };
 
 export default nextConfig;

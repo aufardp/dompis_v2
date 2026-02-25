@@ -1,4 +1,5 @@
-import pool, { RowDataPacket } from '../../lib/db';
+import { query } from '../../app/libs/db';
+import { RowDataPacket } from 'mysql2/promise';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 
@@ -76,7 +77,7 @@ export async function pushSpreadsheet(): Promise<PushResult> {
   try {
     console.log('Auto Push mulai:', nowWIB());
 
-    const [rows] = await pool.query<TicketRow[]>(`
+    const rows = await query<TicketRow[]>(`
       SELECT 
         t.*,
         u.nama AS NAMA_TEKNISI
@@ -94,7 +95,9 @@ export async function pushSpreadsheet(): Promise<PushResult> {
 
     const batchData = Object.entries(columnMap).map(([column, field]) => ({
       range: `'WorkOrder_SO_1'!${column}8:${column}10000`,
-      values: rows.map((row) => [String(row[field as keyof TicketRow] ?? '')]),
+      values: rows.map((row: { [x: string]: any }) => [
+        String(row[field as keyof TicketRow] ?? ''),
+      ]),
     }));
 
     const sheets = getSheetsClient();

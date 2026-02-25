@@ -2,13 +2,27 @@ import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import pool, { RowDataPacket } from '@/lib/db';
+import prisma from '@/app/libs/prisma';
+import { getCache, setCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
+
+const TICKETS_CACHE_TTL = 30;
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function buildTicketCacheKey(
+  params: URLSearchParams,
+  role: string,
+  userId: number,
+  isMonitoring: boolean = false,
+): string {
+  const filterParams = new URLSearchParams(params);
+  filterParams.sort();
+  return `tickets:${isMonitoring ? 'monitoring' : role}:${userId}:${filterParams.toString()}`;
 }
 
 // =====================================================
@@ -18,15 +32,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const isMonitoring = searchParams.get('monitoring') === 'true';
 
-  // If monitoring mode, skip auth and return all tickets
   if (isMonitoring) {
     return getMonitoringTickets(request);
   }
 
-  // Otherwise, require authentication
   try {
-    console.log('[GET /api/tickets] Authenticated request');
-
     const user = await protectApi([
       'admin',
       'teknisi',
@@ -35,17 +45,19 @@ export async function GET(request: Request) {
       'super_admin',
     ]);
 
-    console.log('[GET /api/tickets] User authenticated:', {
-      role: user.role,
-      id: user.id_user,
-    });
-
     const hasilVisit =
       searchParams.get('hasilVisit') || searchParams.get('status') || undefined;
+    const dept = searchParams.get('dept') || undefined;
+    const ticketType =
+      searchParams.get('ticketType') ||
+      searchParams.get('jenisTiket') ||
+      undefined;
 
     const filters = {
       search: searchParams.get('search') || '',
       hasilVisit,
+      dept,
+      ticketType,
       workzone: searchParams.get('workzone') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       page: toInt(searchParams.get('page'), 1),
@@ -53,7 +65,15 @@ export async function GET(request: Request) {
       sort: (searchParams.get('sort') as 'asc' | 'desc') || 'asc',
     };
 
-    console.log('[GET /api/tickets] Filters:', filters);
+    const cacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        data: cached,
+        cached: true,
+      });
+    }
 
     const result = await TicketService.getTickets(
       user.role,
@@ -61,18 +81,13 @@ export async function GET(request: Request) {
       filters,
     );
 
-    console.log('[GET /api/tickets] Result:', {
-      total: result.total,
-      ticketsCount: result.data?.length ?? 0,
-    });
+    await setCache(cacheKey, result, TICKETS_CACHE_TTL);
 
     return NextResponse.json({
       success: true,
       data: result,
     });
   } catch (error: unknown) {
-    console.error('GET /tickets error:', error);
-
     return NextResponse.json(
       {
         success: false,
@@ -92,40 +107,32 @@ async function getMonitoringTickets(request: Request) {
     const page = toInt(searchParams.get('page'), 1);
     const limit = toInt(searchParams.get('limit'), 50);
 
-    const offset = (page - 1) * limit;
-
-    console.log('[Monitoring API] Request received:', { page, limit, offset });
-
-    const [countResult] = await pool.query<RowDataPacket[]>(
-      'SELECT COUNT(*) as total FROM ticket',
-    );
-    const total = countResult[0]?.total ?? 0;
-    console.log('[Monitoring API] Total tickets in DB:', total);
-    const totalPages = Math.ceil(total / limit);
-
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `
-      SELECT 
-        t.*, 
-        u.nama AS NAMA_TEKNISI
-      FROM ticket t
-      LEFT JOIN users u ON t.teknisi_user_id = u.id_user
-      ORDER BY t.id_ticket DESC
-      LIMIT ? OFFSET ?
-    `,
-      [limit, offset],
-    );
-
-    console.log('[Monitoring API] Rows returned:', rows.length);
-    if (rows.length > 0) {
-      console.log('[Monitoring API] Sample ticket:', {
-        id_ticket: (rows[0] as any).id_ticket,
-        INCIDENT: (rows[0] as any).INCIDENT,
-        SUMMARY: (rows[0] as any).SUMMARY,
+    const cacheKey = `tickets:monitoring:page:${page}:limit:${limit}`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        data: cached,
+        timestamp: new Date().toISOString(),
+        cached: true,
       });
     }
 
-    const tickets = rows.map((row: any) => ({
+    const offset = (page - 1) * limit;
+
+    const [total, tickets] = await Promise.all([
+      prisma.ticket.count(),
+      prisma.ticket.findMany({
+        include: { users: { select: { nama: true } } },
+        orderBy: { id_ticket: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    const mappedTickets = tickets.map((row) => ({
       idTicket: row.id_ticket,
       ticket: row.INCIDENT,
       summary: row.SUMMARY,
@@ -148,18 +155,22 @@ async function getMonitoringTickets(request: Request) {
       maxTtrPlatinum: row.JAM_EXPIRED_6_JAM_PLATINUM,
       maxTtrDiamond: row.JAM_EXPIRED_3_JAM_DIAMOND,
       teknisiUserId: row.teknisi_user_id,
-      technicianName: row.NAMA_TEKNISI,
+      technicianName: row.users?.nama,
     }));
+
+    const responseData = {
+      tickets: mappedTickets,
+      page,
+      limit,
+      total,
+      totalPages,
+    };
+
+    await setCache(cacheKey, responseData, TICKETS_CACHE_TTL);
 
     return NextResponse.json({
       success: true,
-      data: {
-        tickets,
-        page,
-        limit,
-        total,
-        totalPages,
-      },
+      data: responseData,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

@@ -13,9 +13,11 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
+import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import Badge from '@/app/components/ui/badge/Badge';
 import CustomerTypeBadge from '@/app/components/tickets/CustomerTypeBadge';
 import { useSingleTechnician } from '@/app/hooks/useSingleTechnician';
+import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import { TicketCtype } from '@/app/types/ticket';
 import { TechnicianStatus } from '@/app/types/technician';
 
@@ -160,6 +162,11 @@ export default function TechnicianDetailPage() {
   const { technician, loading, error, refresh } =
     useSingleTechnician(technicianId);
 
+  useAutoRefresh({
+    intervalMs: 60_000,
+    refreshers: [refresh],
+  });
+
   const sortedTickets = useMemo(() => {
     if (!technician?.assigned_tickets) return [];
     return [...technician.assigned_tickets].sort(
@@ -241,140 +248,168 @@ export default function TechnicianDetailPage() {
           </div>
         </div>
 
-        <div className='rounded-xl border border-slate-200 bg-white p-6'>
-          <div className='flex items-center gap-4'>
-            <div
-              className={`flex h-16 w-16 flex-col items-center justify-center rounded-full text-xl font-semibold text-white ${avatarColor}`}
-            >
-              {initials}
-            </div>
-            <div>
-              <h2 className='text-lg font-semibold text-slate-800'>
-                {technician.nama}
-              </h2>
-              <p className='flex items-center gap-1 text-sm text-slate-500'>
-                <MapPin size={14} />
-                {technician.workzone}
-              </p>
-              <div className='mt-2'>
-                <span
-                  className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
-                >
-                  {statusConfig.label}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className='grid grid-cols-2 gap-4 sm:grid-cols-5'>
-          <StatBox
-            title='Assigned'
-            value={technician.order_counts?.assigned || 0}
-            color='text-blue-600'
-          />
-          <StatBox
-            title='On Progress'
-            value={technician.order_counts?.on_progress || 0}
-            color='text-amber-600'
-          />
-          <StatBox
-            title='Pending'
-            value={technician.order_counts?.pending || 0}
-            color='text-orange-600'
-          />
-          <StatBox
-            title='Closed'
-            value={technician.order_counts?.closed || 0}
-            color='text-green-600'
-          />
-          <StatBox
-            title='Rata-rata Penyelesaian'
-            value={formatAvgTime(technician.average_resolve_time_hours)}
-            color='text-purple-600'
-          />
-        </div>
-
-        <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
-          <div className='border-b border-slate-200 px-6 py-4'>
-            <h3 className='font-semibold text-slate-800'>
-              Tiket Aktif ({technician.total_assigned})
-            </h3>
-          </div>
-
-          {sortedTickets.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full text-sm'>
-                <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
-                  <tr>
-                    <th className='px-4 py-3 text-center'>Rank</th>
-                    <th className='px-4 py-3 text-left'>Ticket ID</th>
-                    <th className='px-4 py-3 text-left'>Customer</th>
-                    <th className='px-4 py-3 text-center'>Tipe</th>
-                    <th className='px-4 py-3 text-left'>Service</th>
-                    <th className='px-4 py-3 text-center'>Umur</th>
-                    <th className='px-4 py-3 text-center'>Status</th>
-                  </tr>
-                </thead>
-                <tbody className='divide-y divide-slate-100'>
-                  {sortedTickets.map((ticket, index) => (
-                    <tr
-                      key={ticket.idTicket}
-                      className={`border-l-4 ${getAgeBorderColor(ticket.ageHours)}`}
+        <AdminAccordion
+          multiple
+          storageKey={`admin:technician:${technicianId}:sections`}
+          items={[
+            {
+              id: 'profile',
+              title: 'Technician Profile',
+              defaultOpen: true,
+              children: (
+                <div className='rounded-xl border border-slate-200 bg-white p-6'>
+                  <div className='flex items-center gap-4'>
+                    <div
+                      className={`flex h-16 w-16 flex-col items-center justify-center rounded-full text-xl font-semibold text-white ${avatarColor}`}
                     >
-                      <td className='px-4 py-3 text-center'>
-                        <span className='font-mono font-semibold text-slate-600'>
-                          #{index + 1}
-                        </span>
-                      </td>
-                      <td className='px-4 py-3'>
-                        <div>
-                          <p className='font-medium text-slate-800'>
-                            {ticket.ticket}
-                          </p>
-                        </div>
-                      </td>
-                      <td className='px-4 py-3'>
-                        <p className='text-slate-700'>{ticket.contactName}</p>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <CustomerTypeBadge
-                          ctype={ticket.ctype as TicketCtype}
-                          size='sm'
-                        />
-                      </td>
-                      <td className='px-4 py-3 font-mono text-slate-600'>
-                        {ticket.serviceNo}
-                      </td>
-                      <td className='px-4 py-3 text-center'>
+                      {initials}
+                    </div>
+                    <div>
+                      <h2 className='text-lg font-semibold text-slate-800'>
+                        {technician.nama}
+                      </h2>
+                      <p className='flex items-center gap-1 text-sm text-slate-500'>
+                        <MapPin size={14} />
+                        {technician.workzone}
+                      </p>
+                      <div className='mt-2'>
                         <span
-                          className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${getAgeColor(ticket.ageHours)}`}
+                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
                         >
-                          {ticket.age}
+                          {statusConfig.label}
                         </span>
-                      </td>
-                      <td className='px-4 py-3 text-center'>
-                        <Badge
-                          color={
-                            ticket.hasilVisit === 'ASSIGNED'
-                              ? 'info'
-                              : ticket.hasilVisit === 'ON_PROGRESS'
-                                ? 'warning'
-                                : 'dark'
-                          }
-                        >
-                          {ticket.hasilVisit}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: 'stats',
+              title: 'Order Stats',
+              defaultOpen: true,
+              children: (
+                <div className='grid grid-cols-2 gap-4 sm:grid-cols-5'>
+                  <StatBox
+                    title='Assigned'
+                    value={technician.order_counts?.assigned || 0}
+                    color='text-blue-600'
+                  />
+                  <StatBox
+                    title='On Progress'
+                    value={technician.order_counts?.on_progress || 0}
+                    color='text-amber-600'
+                  />
+                  <StatBox
+                    title='Pending'
+                    value={technician.order_counts?.pending || 0}
+                    color='text-orange-600'
+                  />
+                  <StatBox
+                    title='Closed'
+                    value={technician.order_counts?.closed || 0}
+                    color='text-green-600'
+                  />
+                  <StatBox
+                    title='Rata-rata Penyelesaian'
+                    value={formatAvgTime(technician.average_resolve_time_hours)}
+                    color='text-purple-600'
+                  />
+                </div>
+              ),
+            },
+            {
+              id: 'tickets',
+              title: 'Active Tickets',
+              defaultOpen: true,
+              right: `${technician.total_assigned}`,
+              children: (
+                <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
+                  <div className='border-b border-slate-200 px-6 py-4'>
+                    <h3 className='font-semibold text-slate-800'>
+                      Tiket Aktif ({technician.total_assigned})
+                    </h3>
+                  </div>
+
+                  {sortedTickets.length === 0 ? (
+                    <EmptyState />
+                  ) : (
+                    <div className='overflow-x-auto'>
+                      <table className='w-full text-sm'>
+                        <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
+                          <tr>
+                            <th className='px-4 py-3 text-center'>Rank</th>
+                            <th className='px-4 py-3 text-left'>Ticket ID</th>
+                            <th className='px-4 py-3 text-left'>Customer</th>
+                            <th className='px-4 py-3 text-center'>Tipe</th>
+                            <th className='px-4 py-3 text-left'>Service</th>
+                            <th className='px-4 py-3 text-center'>Umur</th>
+                            <th className='px-4 py-3 text-center'>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className='divide-y divide-slate-100'>
+                          {sortedTickets.map((ticket, index) => (
+                            <tr
+                              key={ticket.idTicket}
+                              className={`border-l-4 ${getAgeBorderColor(ticket.ageHours)}`}
+                            >
+                              <td className='px-4 py-3 text-center'>
+                                <span className='font-mono font-semibold text-slate-600'>
+                                  #{index + 1}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3'>
+                                <div>
+                                  <p className='font-medium text-slate-800'>
+                                    {ticket.ticket}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className='px-4 py-3'>
+                                <p className='text-slate-700'>
+                                  {ticket.contactName}
+                                </p>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <CustomerTypeBadge
+                                  ctype={ticket.ctype as TicketCtype}
+                                  size='sm'
+                                />
+                              </td>
+                              <td className='px-4 py-3 font-mono text-slate-600'>
+                                {ticket.serviceNo}
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <span
+                                  className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${getAgeColor(ticket.ageHours)}`}
+                                >
+                                  {ticket.age}
+                                </span>
+                              </td>
+                              <td className='px-4 py-3 text-center'>
+                                <Badge
+                                  color={
+                                    ticket.hasilVisit === 'ASSIGNED'
+                                      ? 'info'
+                                      : ticket.hasilVisit === 'ON_PROGRESS'
+                                        ? 'warning'
+                                        : 'dark'
+                                  }
+                                >
+                                  {ticket.hasilVisit}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </AdminLayout>
   );

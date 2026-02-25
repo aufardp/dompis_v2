@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   isOpen: boolean;
@@ -26,9 +27,23 @@ export default function LogoutConfirmModal({
   onConfirm,
 }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) cancelRef.current?.focus();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -42,9 +57,11 @@ export default function LogoutConfirmModal({
 
   if (!isOpen) return null;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className='fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm'
+      className='fixed inset-0 z-[1000] grid place-items-center bg-black/40 p-4 backdrop-blur-sm'
       onClick={() => {
         if (!loading) onClose();
       }}
@@ -56,13 +73,11 @@ export default function LogoutConfirmModal({
         className='w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl'
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Title */}
         <div>
           <h3 className='text-lg font-semibold text-slate-900'>{title}</h3>
           <p className='mt-2 text-sm text-slate-500'>{description}</p>
         </div>
 
-        {/* Actions */}
         <div className='mt-6 flex gap-3'>
           <button
             ref={cancelRef}
@@ -89,6 +104,7 @@ export default function LogoutConfirmModal({
           <p className='mt-4 text-center text-xs text-slate-400'>{hint}</p>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

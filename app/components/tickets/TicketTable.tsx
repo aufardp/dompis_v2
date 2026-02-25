@@ -5,7 +5,7 @@ import Pagination from '../tables/Pagination';
 import TicketRow from './TicketRow';
 import TicketCardMobile from './TicketCardMobile';
 import TableEmptyState from '@/app/components/tables/TableEmptyState';
-import TicketDetailDrawer from './TicketDetailDrawer';
+import TicketDetailDrawer from '../../admin/components/dashboard/TicketDetailDrawer';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import {
   computeTicketRanks,

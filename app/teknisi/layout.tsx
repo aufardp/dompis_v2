@@ -1,11 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Ticket, Clock } from 'lucide-react';
+import { Ticket, Clock, Sun, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import UserMenu from '../components/layout/user-menu/UserMenu';
 import LogoutConfirmModal from '../components/layout/LogoutConfirmModal';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useTheme } from '@/app/contexts/ThemeContext';
 
 interface AttendanceStatus {
   checked_in: boolean;
@@ -23,6 +24,7 @@ export default function TeknisiLayout({
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [attendanceStatus, setAttendanceStatus] =
     useState<AttendanceStatus | null>(null);
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     const fetchAttendanceStatus = async () => {
@@ -70,16 +72,18 @@ export default function TeknisiLayout({
   };
 
   return (
-    <div className='min-h-screen bg-slate-50'>
-      <header className='sticky top-0 z-40 border-b bg-white shadow-sm'>
+    <div className='bg-bg min-h-screen'>
+      <header className='bg-surface sticky top-0 z-40 border-b border-[var(--border)] shadow-sm'>
         <div className='mx-auto flex h-16 items-center justify-between px-4'>
           <div className='flex items-center gap-3'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white'>
+            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white'>
               <Ticket size={20} />
             </div>
             <div>
-              <h1 className='text-lg font-bold text-slate-800'>Dompis</h1>
-              <p className='text-xs text-slate-500'>Teknisi</p>
+              <h1 className='text-lg font-bold text-[var(--text-primary)]'>
+                Dompis
+              </h1>
+              <p className='text-xs text-[var(--text-secondary)]'>Teknisi</p>
             </div>
           </div>
           <div className='flex items-center gap-4'>
@@ -87,13 +91,13 @@ export default function TeknisiLayout({
               <div
                 className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ${
                   attendanceStatus.status === 'PRESENT'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-yellow-100 text-yellow-700'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-yellow-500/20 text-yellow-400'
                 }`}
               >
                 {attendanceStatus.status === 'PRESENT' ? (
                   <>
-                    <span className='h-2 w-2 rounded-full bg-green-500'></span>
+                    <span className='h-2 w-2 rounded-full bg-green-400'></span>
                     <span>Hadir</span>
                   </>
                 ) : (
@@ -107,11 +111,22 @@ export default function TeknisiLayout({
                 </span>
               </div>
             )}
+            <button
+              onClick={toggleTheme}
+              className='bg-surface-2 hover:bg-surface-3 rounded-lg border border-[var(--border)] p-2 transition-colors'
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? (
+                <Sun className='h-5 w-5 text-amber-400' />
+              ) : (
+                <Moon className='h-5 w-5 text-slate-600' />
+              )}
+            </button>
             <UserMenu profileHref='/teknisi/profile' />
           </div>
         </div>
       </header>
-      <main>{children}</main>
+      <main className='p-4'>{children}</main>
 
       <LogoutConfirmModal
         isOpen={showLogoutModal}

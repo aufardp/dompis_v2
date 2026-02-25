@@ -1,4 +1,4 @@
-import pool, { RowDataPacket } from '../../lib/db';
+import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 
@@ -10,50 +10,6 @@ interface SyncResult {
   errors: string[];
 }
 
-/**
- * Mapping kolom spreadsheet ke field DB (0-based index)
- *
- *  0   = INCIDENT
- *  2   = SUMMARY
- *  3   = REPORTED_DATE
- *  4   = OWNER_GROUP
- *  6   = CUSTOMER_SEGMENT
- *  7   = SERVICE_TYPE
- *  9   = WORKZONE
- *  10  = STATUS
- *  12  = TICKET_ID_GAMAS
- *  14  = CONTACT_PHONE
- *  15  = CONTACT_NAME
- *  17  = BOOKING_DATE
- *  20  = SOURCE_TICKET
- *  24  = CUSTOMER_TYPE
- *  30  = SERVICE_NO
- *  36  = PENDING_REASON
- *  40  = SYMPTOM
- *  43  = DESCRIPTION_ACTUAL_SOLUTION
- *  47  = DEVICE_NAME
- *  84  = JENIS_TIKET
- *  85  = JAM_EXPIRED
- *  102 = MANJA_EXPIRED
- *  113 = JAM_EXPIRED_12_JAM_GOLD
- *  114 = STATUS_TTR_12_GOLD
- *  115 = JAM_EXPIRED_3_JAM_DIAMOND
- *  116 = STATUS_TTR_3_DIAMOND
- *  117 = JAM_EXPIRED_24_JAM_REGULER
- *  118 = STATUS_TTR_24_REGULER
- *  119 = REDAMAN
- *  120 = JAM_EXPIRED_6_JAM_PLATINUM
- *  121 = STATUS_TTR_6_PLATINUM
- *  122 = ALAMAT
- *  124 = HASIL_VISIT
- *  125 = rca
- *  126 = sub_rca
- *
- * Kolom tidak dari spreadsheet (tidak di-sync):
- *  id_ticket       → AUTO_INCREMENT
- *  teknisi_user_id → diisi manual / sistem lain
- *  closed_at       → diisi manual / sistem lain
- */
 function mapRow(row: (string | undefined)[]): (string | null)[] {
   const mapped = [
     row[0] ?? null, // INCIDENT
@@ -133,15 +89,13 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       return result;
     }
 
-    const [existingRows] = await pool.query<RowDataPacket[]>(
-      'SELECT INCIDENT FROM ticket',
-    );
+    const existingTickets = await prisma.ticket.findMany({
+      select: { INCIDENT: true },
+    });
 
-    const existingSet = new Set(
-      (existingRows as RowDataPacket[]).map((r) => r.INCIDENT),
-    );
+    const existingSet = new Set(existingTickets.map((r) => r.INCIDENT));
 
-    console.log('Existing tickets in DB:', existingRows.length);
+    console.log('Existing tickets in DB:', existingTickets.length);
     console.log(
       'Sample existing INCIDENT:',
       Array.from(existingSet).slice(0, 5),
@@ -240,7 +194,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     `;
 
     console.log(`Executing bulk insert for ${mappedData.length} rows...`);
-    const insertResult = await pool.query(query, flatValues);
+    const insertResult = await prisma.$executeRawUnsafe(query, ...flatValues);
     console.log('Bulk insert result:', insertResult);
 
     result.inserted = inserted;

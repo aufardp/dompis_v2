@@ -1,17 +1,57 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
+import { X } from 'lucide-react';
 
 const MENU_ITEMS = [
   {
-    label: 'Tickets',
+    label: 'Ticket Management',
     path: '/admin',
+    icon: '📋',
   },
   {
     label: 'Technicians',
     path: '/admin/technicians',
+    icon: '👨‍🔧',
   },
 ];
+
+const DEPT_ITEMS = [
+  { label: 'B2B', path: '/admin?dept=b2b', dotColor: '#3b82f6' },
+  { label: 'B2C', path: '/admin?dept=b2c', dotColor: '#8b5cf6' },
+];
+
+interface NavItemProps {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  dotColor?: string;
+  icon?: string;
+}
+
+function NavItem({ label, active, onClick, dotColor, icon }: NavItemProps) {
+  return (
+    <div
+      onClick={onClick}
+      className={`cursor-pointer rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+        active
+          ? 'bg-white/10 text-[var(--text-primary)]'
+          : 'text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)]'
+      }`}
+    >
+      <div className='flex items-center gap-3'>
+        {icon && <span className='text-base'>{icon}</span>}
+        {dotColor && (
+          <span
+            className='h-2 w-2 rounded-full'
+            style={{ backgroundColor: dotColor }}
+          />
+        )}
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function Sidebar({
   isOpen,
@@ -29,68 +69,82 @@ export default function Sidebar({
   };
 
   return (
-    <>
-      {/* Overlay */}
-      {isOpen && (
-        <div
-          className='fixed inset-0 z-40 bg-black/50 lg:hidden'
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 transform flex-col border-r border-slate-200 bg-white transition-transform duration-300 ease-in-out lg:static ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-      >
-        {/* Header */}
-        <div className='border-b p-4 sm:p-6'>
-          <h1 className='text-primary text-base font-bold sm:text-lg'>
+    <aside
+      className={`bg-surface fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[var(--border)] transition-transform duration-300 ease-in-out lg:static lg:w-[220px] lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+      {/* Header */}
+      <div className='flex items-center justify-between p-4 lg:p-4'>
+        <div>
+          <p className='font-syne text-xl font-extrabold text-[var(--text-primary)]'>
             Dompis
-          </h1>
-          <p className='text-xs text-slate-500 uppercase'>Admin Portal</p>
+          </p>
+          <p className='text-[10px] tracking-[2px] text-[var(--text-secondary)] uppercase'>
+            Admin Portal
+          </p>
         </div>
+        <button
+          onClick={onClose}
+          className='hover:bg-surface-2 rounded-lg p-2 lg:hidden'
+        >
+          <X className='h-5 w-5 text-[var(--text-secondary)]' />
+        </button>
+      </div>
 
-        {/* Navigation */}
-        <nav className='flex-1 space-y-1 overflow-y-auto p-3 text-sm sm:space-y-2 sm:p-4'>
+      {/* Main Navigation */}
+      <div className='px-3 lg:px-3'>
+        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-[var(--text-muted)] uppercase'>
+          Main
+        </p>
+        <nav className='mb-6 flex flex-col gap-1'>
           {MENU_ITEMS.map((item) => {
-            const isActive = pathname.startsWith(item.path);
-
+            const isActive =
+              pathname === item.path ||
+              (item.path === '/admin' && pathname === '/admin');
             return (
               <NavItem
                 key={item.path}
                 label={item.label}
+                icon={item.icon}
                 active={isActive}
                 onClick={() => handleNavigate(item.path)}
               />
             );
           })}
         </nav>
-      </aside>
-    </>
-  );
-}
 
-function NavItem({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      onClick={onClick}
-      className={`cursor-pointer rounded-lg px-3 py-2 transition-colors duration-200 sm:px-4 ${
-        active
-          ? 'bg-primary/10 text-primary font-semibold'
-          : 'text-slate-600 hover:bg-slate-50'
-      }`}
-    >
-      {label}
-    </div>
+        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-[var(--text-muted)] uppercase'>
+          Departemen
+        </p>
+        <nav className='flex flex-col gap-1'>
+          {DEPT_ITEMS.map((item) => (
+            <NavItem
+              key={item.label}
+              label={item.label}
+              dotColor={item.dotColor}
+              onClick={() => handleNavigate(item.path)}
+            />
+          ))}
+        </nav>
+      </div>
+
+      {/* User Profile */}
+      <div className='bg-surface-2 m-3 mt-auto rounded-xl p-3'>
+        <div className='flex items-center gap-3'>
+          <div className='font-syne flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-sm font-bold text-white'>
+            AD
+          </div>
+          <div className='min-w-0 flex-1'>
+            <p className='truncate text-sm leading-tight font-medium text-[var(--text-primary)]'>
+              Admin
+            </p>
+            <p className='text-xs text-[var(--text-secondary)]'>
+              Administrator
+            </p>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }

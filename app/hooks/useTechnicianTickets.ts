@@ -21,6 +21,7 @@ export function useTechnicianTickets(
   filters: TechnicianFilters,
   autoRefreshSeconds = 60,
   includeAbsent = false,
+  opts?: { includeClosedToday?: boolean; closedTodayLimit?: number },
 ): UseTechnicianTicketsReturn {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [summary, setSummary] = useState<TechnicianSummary>({
@@ -47,6 +48,13 @@ export function useTechnicianTickets(
       }
       if (includeAbsent) {
         params.append('include_absent', 'true');
+      }
+
+      if (opts?.includeClosedToday) {
+        params.append('include_closed_today', 'true');
+        if (opts.closedTodayLimit != null) {
+          params.append('closed_today_limit', String(opts.closedTodayLimit));
+        }
       }
 
       const res = await fetchWithAuth(`/api/technicians?${params.toString()}`);

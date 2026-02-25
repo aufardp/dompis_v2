@@ -110,6 +110,12 @@ export type UpdateTicketInput = {
   workflow?: TicketUpdateWorkflow;
 };
 
+export type kojek = {
+  id_user: number | null;
+  ticket: string | null;
+  teknisi: string | null;
+};
+
 // ── Internal Types ────────────────────────────────────────────────────────────
 
 type VisitStatus =
@@ -161,6 +167,15 @@ function normalizeVisitStatus(value: unknown): VisitStatus {
 
 function normalizeKey(value: string): string {
   return value.toLowerCase().replace(/\s+/g, '');
+}
+
+function toTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
 }
 
 function cleanNullableString(value: unknown): string | null | undefined {
@@ -224,24 +239,70 @@ async function resolveServiceAreaForWorkzone(
 ): Promise<{ id_sa: number; nama_sa: string | null } | null> {
   if (!workzone) return null;
 
-  const wz = normalizeKey(workzone);
-  if (!wz) return null;
+  const wzFlat = normalizeKey(workzone);
+  if (!wzFlat) return null;
+
+  const wzTokens = toTokens(workzone);
 
   const cache = await getServiceAreaCache(tx);
 
-  let best:
-    | { id_sa: number; nama_sa: string | null; normLen: number }
-    | undefined;
-
-  for (const [, sa] of cache.byName) {
-    const norm = sa.nama_sa ? normalizeKey(sa.nama_sa) : '';
-    if (!norm || !wz.includes(norm)) continue;
-    if (!best || norm.length > best.normLen) {
-      best = { id_sa: sa.id_sa, nama_sa: sa.nama_sa, normLen: norm.length };
+  // Prefer exact match (ignoring whitespace/case) to avoid accidental substring hits.
+  for (const [, sa] of cache.byId) {
+    const saFlat = sa.nama_sa ? normalizeKey(sa.nama_sa) : '';
+    if (saFlat && saFlat === wzFlat) {
+      return { id_sa: sa.id_sa, nama_sa: sa.nama_sa };
     }
   }
 
-  return best ? { id_sa: best.id_sa, nama_sa: best.nama_sa } : null;
+  // Token match: all SA tokens must exist in the workzone tokens.
+  // This is more reliable than plain substring for overlapping SA names.
+  let best:
+    | {
+        id_sa: number;
+        nama_sa: string | null;
+        score: number;
+        flatLen: number;
+      }
+    | undefined;
+
+  for (const [, sa] of cache.byId) {
+    if (!sa.nama_sa) continue;
+    const saTokens = toTokens(sa.nama_sa);
+    if (saTokens.length === 0) continue;
+
+    const allPresent = saTokens.every((t) => wzTokens.includes(t));
+    if (!allPresent) continue;
+
+    const saFlat = normalizeKey(sa.nama_sa);
+    const flatLen = saFlat.length;
+    const score = saTokens.length * 10 + Math.min(flatLen, 50);
+
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && flatLen > best.flatLen)
+    ) {
+      best = { id_sa: sa.id_sa, nama_sa: sa.nama_sa, score, flatLen };
+    }
+  }
+
+  if (best) return { id_sa: best.id_sa, nama_sa: best.nama_sa };
+
+  // Fallback: longest substring match, but ignore very short SA names.
+  let bestSub:
+    | { id_sa: number; nama_sa: string | null; normLen: number }
+    | undefined;
+
+  for (const [, sa] of cache.byId) {
+    const norm = sa.nama_sa ? normalizeKey(sa.nama_sa) : '';
+    if (!norm || norm.length < 4) continue;
+    if (!wzFlat.includes(norm)) continue;
+    if (!bestSub || norm.length > bestSub.normLen) {
+      bestSub = { id_sa: sa.id_sa, nama_sa: sa.nama_sa, normLen: norm.length };
+    }
+  }
+
+  return bestSub ? { id_sa: bestSub.id_sa, nama_sa: bestSub.nama_sa } : null;
 }
 
 async function assertAdminHasAccessToServiceArea(
@@ -576,6 +637,7 @@ export class TicketWorkflowService {
   static async getEligibleTechniciansByTicketId(
     ticketId: number,
     search?: string,
+    actor?: ActorContext,
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0) {
       throw new Error('Invalid ticket id');
@@ -598,6 +660,13 @@ export class TicketWorkflowService {
           serviceAreaName: null,
           technicians: [],
         };
+      }
+
+      if (actor) {
+        const roleKey = normalizeRoleKey(actor.role);
+        if (roleKey === 'admin') {
+          await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
+        }
       }
 
       const keyword = search?.trim();

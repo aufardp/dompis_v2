@@ -1,18 +1,30 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import AdminLayout from '@/app/components/layout/AdminLayout';
-import NewTicketModal from '@/app/components/tickets/create/NewTicketModal';
-import TicketTable from '@/app/components/tickets/TicketTable';
-import AssignTechnicianModal from '@/app/components/tickets/assign/AssignTechnicianModal';
+import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
+import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import Select from '@/app/components/form/Select';
 import { useAdminTickets } from '@/app/hooks/useAdminTickets';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
+import { useTicketStats } from '@/app/hooks/useTicketStats';
+import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
+import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import TicketStats from '../components/tickets/TicketStats';
 import CustomerTypeTabFilter from '@/app/components/tickets/CustomerTypeTabFilter';
 import CustomerTypeBadge from '@/app/components/tickets/CustomerTypeBadge';
 import TicketAgeAlarm from '@/app/components/tickets/TicketAgeAlarm';
-import { TicketCtype } from '@/app/types/ticket';
+import { TicketCtype, Ticket } from '@/app/types/ticket';
+
+import StatCard from './components/dashboard/StatCard';
+import { AlertBanner } from './components/dashboard/AlertBanner';
+import { DeptFilterBar } from './components/dashboard/DeptFilterBar';
+import B2BSection from './components/dashboard/B2BSection';
+import B2CSection from './components/dashboard/B2CSection';
+import ServiceAreaTable from './components/dashboard/ServiceAreaTable';
+import TicketTable from './components/dashboard/TicketTable';
+import AdminAccordion from '@/app/components/ui/AdminAccordion';
 
 interface TicketData {
   idTicket: number;
@@ -31,6 +43,7 @@ interface CtypeCounts {
 }
 
 export default function TicketPage() {
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [workzoneFilter, setWorkzoneFilter] = useState('');
@@ -46,16 +59,136 @@ export default function TicketPage() {
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
+  const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
+  const [ticketTypeFilter, setTicketTypeFilter] = useState<
+    'all' | 'reguler' | 'sqm'
+  >('all');
+  const [hasilVisitFilter, setHasilVisitFilter] = useState<
+    | 'all'
+    | 'OPEN'
+    | 'ASSIGNED'
+    | 'ON_PROGRESS'
+    | 'PENDING'
+    | 'ESCALATED'
+    | 'CANCELLED'
+    | 'CLOSE'
+  >('all');
+
+  // Read dept from URL query param
+  useEffect(() => {
+    const dept = searchParams.get('dept');
+    if (dept === 'b2b' || dept === 'b2c') {
+      setDeptFilter(dept);
+    } else {
+      setDeptFilter('all');
+    }
+  }, [searchParams]);
 
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
+
+  const {
+    data: statsApi,
+    byServiceArea,
+    byCustomerType,
+    refresh: refreshStats,
+  } = useTicketStats(workzoneFilter || undefined, {
+    dept: deptFilter,
+    ticketType: ticketTypeFilter,
+    hasilVisit: hasilVisitFilter,
+  });
+
+  const { byCustomerType: byCustomerTypeAll } = useTicketStats(
+    workzoneFilter || undefined,
+    {
+      dept: 'all',
+      ticketType: ticketTypeFilter,
+      hasilVisit: hasilVisitFilter,
+    },
+  );
+
+  const { tickets: expiredTickets, refresh: refreshExpired } =
+    useExpiredTickets(workzoneFilter || undefined, {
+      dept: deptFilter,
+      ticketType: ticketTypeFilter,
+      hasilVisit: hasilVisitFilter,
+    });
 
   const { tickets, loading, pagination, refresh } = useAdminTickets(
     searchQuery,
     currentPage,
     workzoneFilter || undefined,
     ctypeFilter !== 'all' ? ctypeFilter : undefined,
+    hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
+    deptFilter !== 'all' ? deptFilter : undefined,
+    ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
   );
+
+  useAutoRefresh({
+    intervalMs: 30_000,
+    refreshers: [refresh, refreshStats, refreshExpired],
+    pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
+  });
+
+  const inferDept = useCallback((t: Ticket) => {
+    const seg = (t.customerSegment ?? '').toUpperCase();
+    if (seg === 'B2B') return 'b2b' as const;
+    if (seg === 'B2C' || seg === 'PL_TSEL') return 'b2c' as const;
+
+    const ct = (t.customerType ?? '').toLowerCase();
+    if (!ct) return null;
+
+    if (['reguler', 'hvc_gold', 'hvc_platinum', 'hvc_diamond'].includes(ct)) {
+      return 'b2c' as const;
+    }
+
+    if (
+      ct.startsWith('datin_') ||
+      ct.startsWith('indibiz') ||
+      ct.startsWith('reseller') ||
+      ct.startsWith('wifi')
+    ) {
+      return 'b2b' as const;
+    }
+
+    return null;
+  }, []);
+
+  const normalizeCustomerType = useCallback((t: Ticket) => {
+    const raw = (t.customerType || t.ctype || '').toString();
+    return raw.trim().toLowerCase().replace(/\s+/g, '_').replace(/__+/g, '_');
+  }, []);
+
+  const normalizeVisitStatus = useCallback((t: Ticket) => {
+    const raw = ((t.hasilVisit ?? t.status) || '').toString();
+    return raw.trim().toUpperCase().replace(/\s+/g, '_');
+  }, []);
+
+  const normalizeTicketType = useCallback((t: Ticket) => {
+    const raw = (t.jenisTiket || '').toString();
+    const normalized = raw.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!normalized) return '';
+    if (normalized.includes('sqm')) return 'sqm';
+    if (normalized.includes('reguler') || normalized.includes('regular')) {
+      return 'reguler';
+    }
+    return normalized;
+  }, []);
+
+  const stats = useMemo(() => {
+    const total = Number(statsApi?.total || 0);
+    const unassigned = Number(statsApi?.unassigned || 0);
+    const assigned = Number(statsApi?.assigned || 0);
+    const closed = Number(statsApi?.closed || 0);
+
+    const b2c = byCustomerType.reduce(
+      (acc, row) => acc + Number(row.total || 0),
+      0,
+    );
+    const other = Math.max(0, total - b2c);
+
+    return { total, unassigned, assigned, closed, b2c, other };
+  }, [byCustomerType, statsApi]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -68,6 +201,13 @@ export default function TicketPage() {
   }, []);
 
   const handleCtypeChange = useCallback((ctype: TicketCtype | 'all') => {
+    setCtypeFilter(ctype);
+    setCurrentPage(1);
+  }, []);
+
+  const handleB2cCustomerTypeSelect = useCallback((ctype: TicketCtype) => {
+    // Ensure the table view matches the B2C card selection.
+    setDeptFilter('b2c');
     setCtypeFilter(ctype);
     setCurrentPage(1);
   }, []);
@@ -103,110 +243,276 @@ export default function TicketPage() {
     });
   };
 
+  const handleDeptChange = (dept: 'all' | 'b2b' | 'b2c') => {
+    setDeptFilter(dept);
+  };
+
+  const handleTicketTypeChange = (type: 'all' | 'reguler' | 'sqm') => {
+    setTicketTypeFilter(type);
+    setCurrentPage(1);
+  };
+
+  const handleHasilVisitChange = (
+    status:
+      | 'all'
+      | 'OPEN'
+      | 'ASSIGNED'
+      | 'ON_PROGRESS'
+      | 'PENDING'
+      | 'ESCALATED'
+      | 'CANCELLED'
+      | 'CLOSE',
+  ) => {
+    setHasilVisitFilter(status);
+    setCurrentPage(1);
+  };
+
+  // IMPORTANT: Ticket table is paginated server-side.
+  // Do not apply additional client-side filters here, otherwise page 1 can appear empty.
+  const filteredTickets = tickets;
+
+  // expiredTickets comes from /api/tickets/expired (not paginated)
+
+  const getCounts = (arr: Ticket[]) => ({
+    total: arr.length,
+    open: arr.filter((t) => normalizeVisitStatus(t) === 'OPEN').length,
+    assigned: arr.filter((t) => {
+      const st = normalizeVisitStatus(t);
+      return st === 'ASSIGNED' || st === 'ON_PROGRESS';
+    }).length,
+    closed: arr.filter((t) => {
+      const st = normalizeVisitStatus(t);
+      return st === 'CLOSE' || st === 'CLOSED';
+    }).length,
+  });
+
+  const b2bStats = {
+    datinK1: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k1'),
+    ),
+    datinK1K2: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k1k2'),
+    ),
+    datinK3: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k3'),
+    ),
+    indibiz4: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'indibiz_4'),
+    ),
+    indibiz24: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'indibiz_24'),
+    ),
+    reseller6: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'reseller_6'),
+    ),
+    reseller36: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'reseller_36'),
+    ),
+    wifi24: getCounts(
+      filteredTickets.filter((t) => normalizeCustomerType(t) === 'wifi_24'),
+    ),
+  };
+
+  const b2cStats = useMemo(() => {
+    const map = new Map(
+      (byCustomerTypeAll || []).map((row) => [String(row.ctype), row] as const),
+    );
+
+    const pick = (ctype: string) => {
+      const row = map.get(ctype);
+      return {
+        total: Number(row?.total || 0),
+        open: Number(row?.open || 0),
+        assigned: Number(row?.assigned || 0),
+        closed: Number(row?.closed || 0),
+      };
+    };
+
+    return {
+      reguler: pick('REGULER'),
+      hvcGold: pick('HVC_GOLD'),
+      hvcPlatinum: pick('HVC_PLATINUM'),
+      hvcDiamond: pick('HVC_DIAMOND'),
+    };
+  }, [byCustomerTypeAll]);
+
+  const b2cTypeCounts = useMemo(() => {
+    const map = new Map(
+      (byCustomerTypeAll || []).map((row) => [String(row.ctype), row] as const),
+    );
+    const totalB2c = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND']
+      .map((k) => Number(map.get(k)?.total || 0))
+      .reduce((a, b) => a + b, 0);
+
+    return {
+      all: totalB2c,
+      REGULER: Number(map.get('REGULER')?.total || 0),
+      HVC_GOLD: Number(map.get('HVC_GOLD')?.total || 0),
+      HVC_PLATINUM: Number(map.get('HVC_PLATINUM')?.total || 0),
+      HVC_DIAMOND: Number(map.get('HVC_DIAMOND')?.total || 0),
+    };
+  }, [byCustomerTypeAll]);
+
+  const serviceAreas = useMemo(() => {
+    const rows = (byServiceArea || []).map((row) => ({
+      name: row.nama_sa,
+      total: Number(row.total || 0),
+      open: Number(row.open || 0),
+      assigned: Number(row.assigned || 0),
+      closed: Number(row.closed || 0),
+      unassigned: Number(row.unassigned || 0),
+    }));
+
+    rows.sort((a, b) => b.total - a.total);
+    return rows.slice(0, 5);
+  }, [byServiceArea]);
+
+  const ticketTableData = filteredTickets.map((t) => ({
+    idTicket: t.idTicket,
+    ticket: t.ticket,
+    serviceNo: t.serviceNo,
+    contactName: t.contactName,
+    contactPhone: t.contactPhone,
+    alamat: t.alamat,
+    bookingDate: t.bookingDate,
+    ctype: t.ctype,
+    customerType: t.customerType,
+    summary: t.summary,
+    jenisTiket: t.jenisTiket,
+    workzone: t.workzone,
+    technicianName: t.technicianName,
+    teknisiUserId: t.teknisiUserId,
+    hasilVisit: t.hasilVisit,
+    closedAt: t.closedAt,
+    reportedDate: t.reportedDate,
+    status: t.status,
+    maxTtrReguler: t.maxTtrReguler,
+    maxTtrGold: t.maxTtrGold,
+    maxTtrPlatinum: t.maxTtrPlatinum,
+    maxTtrDiamond: t.maxTtrDiamond,
+  }));
+
   return (
     <>
-      <AdminLayout onSearch={handleSearch}>
-        <div className='space-y-6 sm:space-y-8'>
-          {/* HEADER ACTION */}
-          <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl'>
-              Ticket Management
-            </h1>
-
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3'>
-              <div className='w-full sm:w-40 md:w-48'>
-                <Select
-                  options={workzoneOptions}
-                  placeholder={workzoneLoading ? 'Loading...' : 'All Workzone'}
-                  value={workzoneFilter}
-                  onChange={handleWorkzoneChange}
-                  disabled={workzoneLoading}
-                />
+      <AdminLayout
+        onSearch={handleSearch}
+        onWorkzoneChange={handleWorkzoneChange}
+        selectedWorkzone={workzoneFilter}
+      >
+        <div className='flex flex-col gap-6'>
+          <div className='bg-surface overflow-hidden rounded-2xl border border-(--border)'>
+            <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
+              <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+                At A Glance
               </div>
+            </div>
+            <div className='px-4 py-4 md:px-5 md:py-5'>
+              <div className='space-y-4 md:space-y-5'>
+                <AlertBanner tickets={expiredTickets} />
 
-              <button
-                onClick={() => setShowNewTicketModal(true)}
-                className='w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 sm:w-auto sm:px-4'
-              >
-                + New Ticket
-              </button>
+                <div className='grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4'>
+                  <StatCard
+                    label='Total'
+                    value={stats.total}
+                    variant='total'
+                    subInfo={`B2C: ${stats.b2c} · Other: ${stats.other}`}
+                  />
+                  <StatCard
+                    label='Unassigned'
+                    value={stats.unassigned}
+                    variant='unassigned'
+                    subInfo={
+                      stats.total > 0
+                        ? `${((stats.unassigned / stats.total) * 100).toFixed(1)}%`
+                        : undefined
+                    }
+                  />
+                  <StatCard
+                    label='Assigned'
+                    value={stats.assigned}
+                    variant='assigned'
+                  />
+                  <StatCard
+                    label='Closed'
+                    value={stats.closed}
+                    variant='closed'
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* TICKET AGE ALARM */}
-          <TicketAgeAlarm
-            onTicketClick={(ticketId) => {
-              const ticket = tickets.find((t) => t.idTicket === ticketId);
-              if (ticket?.teknisiUserId) {
-                setAssignModalTicket({
-                  idTicket: ticketId,
-                  ticketCode: ticket.ticket,
-                  workzone: ticket.workzone ?? null,
-                  technicianName: ticket.technicianName ?? null,
-                  teknisiUserId: ticket.teknisiUserId,
-                });
-              }
-            }}
-          />
-
-          {/* CUSTOMER TYPE FILTER */}
-          <div className='flex flex-col gap-3'>
-            <CustomerTypeTabFilter
-              activeType={ctypeFilter}
-              onChange={handleCtypeChange}
-              counts={ctypeCounts}
-            />
-
-            {/* ACTIVE FILTER INDICATOR */}
-            {ctypeFilter !== 'all' && (
-              <div className='flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 sm:px-4'>
-                <span className='text-sm text-blue-700'>Filter aktif:</span>
-                <CustomerTypeBadge ctype={ctypeFilter} size='sm' />
-                <button
-                  onClick={handleClearCtypeFilter}
-                  className='ml-auto rounded-full p-1 text-blue-600 hover:bg-blue-100 sm:ml-0'
-                >
-                  <svg
-                    className='h-4 w-4'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M6 18L18 6M6 6l12 12'
+          <AdminAccordion
+            multiple
+            storageKey='admin:dashboard:sections'
+            items={[
+              {
+                id: 'b2b',
+                title: 'B2B Cards',
+                defaultOpen: true,
+                children: <B2BSection data={b2bStats} />,
+              },
+              {
+                id: 'b2c',
+                title: 'B2C Cards',
+                defaultOpen: true,
+                children: (
+                  <div className='space-y-3 md:space-y-4'>
+                    <CustomerTypeTabFilter
+                      activeType={ctypeFilter}
+                      onChange={(next) => {
+                        if (next === 'all') {
+                          setDeptFilter('b2c');
+                          handleCtypeChange('all');
+                          return;
+                        }
+                        handleB2cCustomerTypeSelect(next);
+                      }}
+                      counts={b2cTypeCounts}
                     />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
 
-          {/* STATS */}
-          <TicketStats
-            workzone={workzoneFilter || undefined}
-            ctype={ctypeFilter !== 'all' ? ctypeFilter : undefined}
-            onCtypeChange={handleCtypeChange}
-            onCountsChange={handleCtypeCountsChange}
-          />
+                    <B2CSection
+                      data={b2cStats}
+                      activeType={ctypeFilter}
+                      onSelectType={handleB2cCustomerTypeSelect}
+                    />
+                  </div>
+                ),
+              },
+              {
+                id: 'service-areas',
+                title: 'Service Areas',
+                children: <ServiceAreaTable areas={serviceAreas} />,
+              },
+              {
+                id: 'tickets',
+                title: 'Tickets',
+                defaultOpen: true,
+                children: (
+                  <div className='flex flex-col gap-4'>
+                    <DeptFilterBar
+                      onDeptChange={handleDeptChange}
+                      onTypeChange={handleTicketTypeChange}
+                      onStatusChange={handleHasilVisitChange}
+                    />
 
-          <TicketTable
-            tickets={tickets}
-            loading={loading}
-            onAssign={handleAssignClick}
-            pagination={{
-              ...pagination,
-              onPageChange: setCurrentPage,
-            }}
+                    <TicketTable
+                      tickets={ticketTableData}
+                      loading={loading}
+                      onAssign={handleAssignClick}
+                      pagination={{
+                        currentPage: pagination.currentPage,
+                        totalPages: pagination.totalPages,
+                        total: pagination.total,
+                        limit: pagination.limit,
+                        onPageChange: setCurrentPage,
+                      }}
+                    />
+                  </div>
+                ),
+              },
+            ]}
           />
-          {/* DEBUG */}
-          <div className='debug hidden'>
-            <pre>
-              {JSON.stringify({ tickets, loading, pagination }, null, 2)}
-            </pre>
-          </div>
         </div>
       </AdminLayout>
 
