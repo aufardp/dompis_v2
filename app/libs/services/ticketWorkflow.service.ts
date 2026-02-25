@@ -9,6 +9,59 @@ import {
 import { ActivityType, TicketStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
+import { randomUUID } from 'crypto';
+
+type TechnicianSnapshot = {
+  id_user: number;
+  nik: string | null;
+  nama: string | null;
+};
+
+async function getTechnicianSnapshot(
+  tx: Prisma.TransactionClient,
+  userId: number | null,
+): Promise<TechnicianSnapshot | null> {
+  if (!userId) return null;
+  const row = await tx.users.findUnique({
+    where: { id_user: userId },
+    select: { id_user: true, nik: true, nama: true },
+  });
+  if (!row) return null;
+  return { id_user: row.id_user, nik: row.nik ?? null, nama: row.nama ?? null };
+}
+
+async function enqueueTechEvent(
+  tx: Prisma.TransactionClient,
+  args: {
+    eventType: string;
+    payload: Record<string, unknown>;
+    occurredAt: Date;
+  },
+) {
+  const enabled = process.env.TECH_EVENTS_WEBHOOK_ENABLED === 'true';
+  const url = process.env.TECH_EVENTS_WEBHOOK_URL;
+  const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET;
+  if (!enabled || !url || !secret) return;
+
+  const eventId = randomUUID();
+  const payload = {
+    event_id: eventId,
+    event_type: args.eventType,
+    occurred_at: args.occurredAt.toISOString(),
+    ...args.payload,
+  };
+
+  await (tx as any).tech_event_outbox.create({
+    data: {
+      event_id: eventId,
+      event_type: args.eventType,
+      payload,
+      status: 'PENDING',
+      attempt_count: 0,
+      next_attempt_at: null,
+    },
+  });
+}
 
 // ── Service Area Cache (35 items, TTL 1 hour) ────────────────────────────────
 
@@ -935,6 +988,27 @@ export class TicketWorkflowService {
         description: 'Pickup -> ON_PROGRESS',
       });
 
+      const tech = await getTechnicianSnapshot(tx, actor.id_user);
+      await enqueueTechEvent(tx, {
+        eventType: 'TICKET_STATUS_CHANGED',
+        occurredAt: now,
+        payload: {
+          ticket: {
+            id: ticketId,
+            incident: ticket.INCIDENT,
+            workzone: ticket.WORKZONE,
+          },
+          status: {
+            old_hasil_visit: 'ASSIGNED',
+            new_hasil_visit: 'ON_PROGRESS',
+            pending_reason: null,
+          },
+          old_technician: tech,
+          new_technician: tech,
+          actor: { id_user: actor.id_user, role: actor.role },
+        },
+      });
+
       return { message: 'Ticket picked up successfully' };
     });
   }
@@ -1014,6 +1088,48 @@ export class TicketWorkflowService {
         roleId,
         type: ActivityType.CLOSE,
         description: 'Ticket closed',
+      });
+
+      const tech = await getTechnicianSnapshot(tx, actor.id_user);
+      const evidence = await tx.ticket_evidence.findMany({
+        where: { ticket_id: ticketId },
+        orderBy: { id: 'asc' },
+        select: {
+          file_name: true,
+          file_path: true,
+          mime_type: true,
+          file_size: true,
+        },
+      });
+
+      await enqueueTechEvent(tx, {
+        eventType: 'TICKET_STATUS_CHANGED',
+        occurredAt: now,
+        payload: {
+          ticket: {
+            id: ticketId,
+            incident: ticket.INCIDENT,
+            workzone: ticket.WORKZONE,
+          },
+          status: {
+            old_hasil_visit: 'ON_PROGRESS',
+            new_hasil_visit: 'CLOSE',
+            pending_reason: null,
+          },
+          old_technician: tech,
+          new_technician: tech,
+          actor: { id_user: actor.id_user, role: actor.role },
+          close: {
+            rca: rcaValue,
+            sub_rca: subRcaValue,
+            evidence: evidence.map((e) => ({
+              fileName: e.file_name,
+              filePath: e.file_path,
+              mimeType: e.mime_type ?? null,
+              fileSize: e.file_size ?? null,
+            })),
+          },
+        },
       });
 
       return { message: 'Ticket closed successfully' };

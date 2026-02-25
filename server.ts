@@ -33,6 +33,31 @@ async function triggerPush() {
   }
 }
 
+async function triggerTechEventsDispatch() {
+  try {
+    const baseUrl = process.env.CRON_BASE_URL || `http://localhost:${port}`;
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      console.warn('[CRON] CRON_SECRET not set, skipping tech events dispatch');
+      return;
+    }
+
+    const res = await fetch(
+      `${baseUrl}/api/integrations/tech-events/dispatch`,
+      {
+        method: 'POST',
+        headers: {
+          'x-cron-secret': cronSecret,
+        },
+      },
+    );
+    const data = await res.json().catch(() => null);
+    console.log(`[CRON] Tech events dispatch:`, { status: res.status, data });
+  } catch (error) {
+    console.error('[CRON] Tech events dispatch error:', error);
+  }
+}
+
 app.prepare().then(() => {
   console.log('Next.js app prepared');
 
@@ -49,7 +74,13 @@ app.prepare().then(() => {
       triggerPush();
     });
 
-    console.log('[CRON] Scheduled: sync every 5 min, push every 10 min');
+    cron.schedule('* * * * *', () => {
+      triggerTechEventsDispatch();
+    });
+
+    console.log(
+      '[CRON] Scheduled: sync every 5 min, push every 10 min, tech events dispatch every 1 min',
+    );
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true to enable)');
   }

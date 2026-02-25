@@ -98,6 +98,9 @@ const prisma = {
   get ticket_activity_log() {
     return getPrisma().ticket_activity_log;
   },
+  get tech_event_outbox() {
+    return (getPrisma() as any).tech_event_outbox;
+  },
 };
 
 export default prisma;
