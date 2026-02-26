@@ -10,10 +10,10 @@ interface ServiceArea {
 
 export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
   return (
-    <div className='bg-surface overflow-hidden rounded-xl border border-[var(--border)]'>
+    <div className='bg-surface overflow-hidden rounded-xl border border-(--border)'>
       {/* Header - scrollable on mobile */}
       <div className='overflow-x-auto'>
-        <div className='bg-surface-2 grid min-w-150 grid-cols-5 border-b border-[var(--border)] px-4 py-3 text-[11px] font-semibold tracking-wider text-[var(--text-secondary)] uppercase'>
+        <div className='bg-surface-2 grid min-w-150 grid-cols-5 border-b border-(--border) px-4 py-3 text-[11px] font-semibold tracking-wider text-(--text-secondary) uppercase'>
           <span>Service Area</span>
           <span className='text-center'>Total</span>
           <span className='text-center'>Assigned</span>
@@ -29,9 +29,7 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
             <div
               key={area.name}
               className={`hover:bg-surface-2 grid grid-cols-5 items-center px-4 py-3.5 text-sm transition-colors ${
-                index !== areas.length - 1
-                  ? 'border-b border-[var(--border)]'
-                  : ''
+                index !== areas.length - 1 ? 'border-b border-(--border)' : ''
               }`}
             >
               <div className='flex items-center gap-2 font-semibold'>
@@ -46,11 +44,11 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
                           : 'rgba(148, 163, 184, 0.9)',
                   }}
                 />
-                <span className='truncate text-[var(--text-primary)]'>
+                <span className='truncate text-(--text-primary)'>
                   {area.name}
                 </span>
               </div>
-              <span className='font-syne text-center font-bold text-[var(--text-primary)]'>
+              <span className='font-syne text-center font-bold text-(--text-primary)'>
                 {area.total}
               </span>
               <span className='text-center font-bold text-amber-400'>
@@ -69,7 +67,7 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
 
       {/* Empty state */}
       {areas.length === 0 && (
-        <div className='py-8 text-center text-sm text-[var(--text-secondary)]'>
+        <div className='py-8 text-center text-sm text-(--text-secondary)'>
           No service areas found
         </div>
       )}

@@ -555,7 +555,23 @@ export class TicketService {
         const where = { ...baseWhere, CUSTOMER_TYPE: ctype };
         this.applyDashboardFilters(where, opts);
         const counts = await this.countStatuses(where);
-        return { ctype, ...counts };
+
+        // Count by ticket type (reguler vs sqm)
+        const regulerWhere = {
+          ...where,
+          JENIS_TIKET: { in: ['reguler', 'REGULER', 'regular', 'REGULAR'] },
+        };
+        const sqmWhere = {
+          ...where,
+          JENIS_TIKET: { in: ['sqm', 'SQM'] },
+        };
+
+        const [regulerTotal, sqmTotal] = await Promise.all([
+          prisma.ticket.count({ where: regulerWhere }),
+          prisma.ticket.count({ where: sqmWhere }),
+        ]);
+
+        return { ctype, ...counts, regulerTotal, sqmTotal };
       }),
     );
   }

@@ -34,8 +34,8 @@ export function AlertBanner({ tickets }: AlertBannerProps) {
             <p className='text-sm font-semibold text-red-400 md:text-base'>
               {tickets.length} Expired Ticket Terdeteksi
             </p>
-            <p className='mt-0.5 hidden text-xs text-[var(--text-secondary)] sm:block'>
-              Segera tindak lanjuti sebelum SLA breach meluas
+            <p className='mt-0.5 hidden text-xs text-(--text-secondary) sm:block'>
+              Butuh segera di tindak lanjuti
             </p>
           </div>
         </div>
@@ -53,11 +53,11 @@ export function AlertBanner({ tickets }: AlertBannerProps) {
           {ticket.ticketId}
         </span>
         <span className='text-amber-400'>⚡ {ticket.customerType}</span>
-        <span className='hidden text-[var(--text-secondary)] sm:inline'>
+        <span className='hidden text-(--text-secondary) sm:inline'>
           {new Date(ticket.reportedAt).toLocaleString('id-ID')}
         </span>
         <span className='text-red-400'>{ticket.status}</span>
-        <span className='ml-auto hidden text-[var(--text-secondary)] sm:inline'>
+        <span className='ml-auto hidden text-(--text-secondary) sm:inline'>
           🔄 Auto-refresh
         </span>
       </div>

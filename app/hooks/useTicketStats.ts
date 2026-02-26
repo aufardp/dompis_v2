@@ -16,6 +16,8 @@ type StatsByServiceAreaRow = TicketStatsRow & {
 
 type StatsByCustomerTypeRow = TicketStatsRow & {
   ctype: 'REGULER' | 'HVC_GOLD' | 'HVC_PLATINUM' | 'HVC_DIAMOND' | string;
+  regulerTotal?: number;
+  sqmTotal?: number;
 };
 
 export type TicketStatsResponse = TicketStatsRow & {

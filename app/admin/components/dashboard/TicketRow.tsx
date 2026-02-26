@@ -1,7 +1,5 @@
-import { RefreshCw, UserPlus, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, UserPlus, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import clsx from 'clsx';
-import Badge from '../../../components/ui/badge/Badge';
-import Button from '../../../components/ui/Button';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
@@ -34,154 +32,301 @@ export interface TicketRowProps {
     maxTtrDiamond?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
+  onDetail?: (ticketId: string | number) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   rank?: number;
   ticketAge?: string;
   severity?: TicketSeverity;
+  slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
+  selected?: boolean;
+  onSelect?: () => void;
 }
+
+const SLA_STYLES = {
+  'On Track': {
+    badge: 'bg-emerald-50 text-emerald-600',
+    dot: 'bg-emerald-500',
+  },
+  'At Risk': { badge: 'bg-amber-50 text-amber-600', dot: 'bg-amber-500' },
+  Overdue: { badge: 'bg-red-50 text-red-600', dot: 'bg-red-500' },
+};
+
+const JENIS_STYLES: Record<string, string> = {
+  SQM: 'bg-blue-50 text-blue-600',
+  Reguler: 'bg-emerald-50 text-emerald-600',
+};
 
 export default function TicketRow({
   ticket,
   onAssign,
+  onDetail,
   isExpanded = false,
   onToggleExpand,
   rank,
   ticketAge,
   severity = 'normal',
+  slaLabel,
+  selected = false,
+  onSelect,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
+
   const visit = String(ticket.hasilVisit ?? ticket.status ?? '')
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '_');
   const isClosed = visit === 'CLOSE' || visit === 'CLOSED';
 
+  const maxTtr = getMaxTtr(ticket);
+  const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
+  const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
+
+  const handleAssignClick = () => {
+    onAssign(ticket.idTicket ?? '');
+  };
+
+  const handleDetailClick = () => {
+    if (onDetail) {
+      onDetail(ticket.idTicket ?? ticket.ticket ?? '');
+    } else {
+      onToggleExpand?.();
+    }
+  };
+
   return (
     <tr
       className={clsx(
-        'hover:bg-surface-2 transition',
-        severityStyles.border,
+        'group transition-colors duration-100',
         'border-l-4',
+        severityStyles.border,
+        selected ? 'bg-blue-50/60' : 'hover:bg-surface-2',
       )}
     >
-      <td className='px-3 py-4 text-center'>
-        <span className='font-mono text-sm font-semibold text-[var(--text-primary)]'>
-          #{rank || '-'}
+      {/* Checkbox */}
+      <td className='w-10 px-3 py-3 text-center'>
+        <input
+          type='checkbox'
+          checked={selected}
+          onChange={onSelect}
+          className='rounded border-slate-300 accent-blue-600'
+          onClick={(e) => e.stopPropagation()}
+        />
+      </td>
+
+      {/* Rank */}
+      <td className='px-3 py-3 text-center'>
+        <div className='flex items-center justify-center gap-1.5'>
+          <span
+            className={clsx(
+              'h-4 w-1 rounded-full',
+              severityStyles.border.replace('border-l-', 'bg-'),
+            )}
+            style={{
+              background:
+                severity === 'critical'
+                  ? '#ef4444'
+                  : severity === 'warning'
+                    ? '#f59e0b'
+                    : '#94a3b8',
+            }}
+          />
+          <span className='font-mono text-sm font-bold text-(--text-primary)'>
+            #{rank ?? '-'}
+          </span>
+        </div>
+      </td>
+
+      {/* Ticket ID + date */}
+      <td className='px-4 py-3'>
+        <p className='font-mono text-xs font-bold text-(--text-primary)'>
+          {ticket.ticket}
+        </p>
+        <p className='mt-0.5 text-[10px] text-(--text-secondary)'>
+          {ticket.reportedDate ? formatDateTimeWIB(ticket.reportedDate) : '-'}
+        </p>
+      </td>
+
+      {/* Service No */}
+      <td className='px-4 py-3 text-center'>
+        <span className='font-mono text-xs text-(--text-primary)'>
+          {ticket.serviceNo ?? '-'}
         </span>
       </td>
 
-      <td className='px-5 py-4'>
-        <div>
-          <p className='font-medium text-[var(--text-primary)]'>
-            {ticket.ticket}
-          </p>
-          <p className='text-xs text-[var(--text-secondary)]'>
-            {ticket.reportedDate ? formatDateTimeWIB(ticket.reportedDate) : '-'}
-          </p>
-        </div>
+      {/* Customer */}
+      <td className='px-4 py-3'>
+        <p className='text-sm leading-tight font-semibold text-(--text-primary)'>
+          {ticket.contactName || '-'}
+        </p>
+        <p className='mt-0.5 text-[10px] text-(--text-secondary)'>
+          {ticket.contactPhone || '-'}
+        </p>
       </td>
 
-      <td className='px-5 py-4 text-center text-[var(--text-primary)]'>
-        {ticket.serviceNo}
-      </td>
-
-      <td className='px-5 py-4'>
-        <div className='flex flex-col gap-0.5'>
-          <p className='text-sm leading-tight font-medium text-[var(--text-primary)]'>
-            {ticket.contactName || '-'}
+      {/* Address */}
+      <td className='max-w-40 px-4 py-3'>
+        {ticket.alamat ? (
+          <p className='line-clamp-2 text-xs leading-relaxed text-(--text-primary)'>
+            {ticket.alamat}
           </p>
-          <p className='text-xs text-[var(--text-secondary)]'>
-            {ticket.contactPhone || '-'}
-          </p>
-        </div>
+        ) : (
+          <span className='text-xs text-(--text-secondary) italic'>—</span>
+        )}
       </td>
 
-      <td className='px-5 py-4'>
-        <div className='flex flex-col gap-0.5'>
-          <p className='text-sm leading-tight font-medium text-[var(--text-primary)]'>
-            {ticket.alamat || '-'}
-          </p>
-        </div>
+      {/* Booking Date */}
+      <td className='px-4 py-3 text-center'>
+        <span className='text-xs text-(--text-secondary)'>
+          {ticket.bookingDate || '-'}
+        </span>
       </td>
 
-      <td className='px-5 py-4 text-center text-[var(--text-primary)]'>
-        {ticket.bookingDate || '-'}
-      </td>
-
-      <td className='px-5 py-4 text-center'>
+      {/* Customer Type */}
+      <td className='px-4 py-3 text-center'>
         <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
       </td>
 
-      <td className='px-5 py-4 text-center text-[var(--text-primary)]'>
-        {getMaxTtr(ticket) || '-'}
+      {/* Max TTR */}
+      <td className='px-4 py-3 text-center'>
+        {maxTtr ? (
+          <span className='rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600'>
+            ⏱ {maxTtr}
+          </span>
+        ) : (
+          <span className='text-xs text-(--text-secondary) italic'>—</span>
+        )}
       </td>
 
-      <td className='px-5 py-4 text-center'>
-        <span
-          className={clsx(
-            'inline-flex min-w-fit items-center justify-center rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap',
-            severityStyles.badge,
+      {/* Age + SLA */}
+      <td className='px-4 py-3 text-center'>
+        <div className='inline-flex flex-col items-center gap-0.5'>
+          <span
+            className={clsx(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap',
+              severityStyles.badge,
+            )}
+          >
+            {ticketAge || '-'}
+          </span>
+          {sla && (
+            <span
+              className={clsx(
+                'flex items-center gap-1 text-[9px] font-semibold',
+                sla.badge.split(' ')[1],
+              )}
+            >
+              <span className={clsx('h-1.5 w-1.5 rounded-full', sla.dot)} />
+              {slaLabel}
+            </span>
           )}
-        >
-          {ticketAge || '-'}
+        </div>
+      </td>
+
+      {/* Jenis Tiket */}
+      <td className='px-4 py-3 text-center'>
+        {ticket.jenisTiket ? (
+          <span
+            className={clsx(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+              JENIS_STYLES[ticket.jenisTiket] ?? 'bg-slate-100 text-slate-500',
+            )}
+          >
+            {ticket.jenisTiket}
+          </span>
+        ) : (
+          <span className='text-xs text-(--text-secondary) italic'>—</span>
+        )}
+      </td>
+
+      {/* Workzone */}
+      <td className='px-4 py-3 text-center'>
+        <span className='text-xs font-semibold text-(--text-primary)'>
+          {ticket.workzone ?? '-'}
         </span>
       </td>
 
-      <td className='px-5 py-4 text-center text-[var(--text-primary)]'>
-        {ticket.jenisTiket || '-'}
-      </td>
-
-      <td className='px-5 py-4 text-center text-[var(--text-primary)]'>
-        {ticket.workzone}
-      </td>
-
-      <td className='px-5 py-4 text-center'>
-        {ticket.technicianName || (
-          <span className='text-[var(--text-secondary)] italic'>
+      {/* Technician */}
+      <td className='px-4 py-3 text-center'>
+        {ticket.technicianName ? (
+          <div className='inline-flex items-center gap-1.5'>
+            <div className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-indigo-600 text-[10px] font-bold text-white'>
+              {techInitial}
+            </div>
+            <span className='text-xs text-(--text-primary)'>
+              {ticket.technicianName}
+            </span>
+          </div>
+        ) : (
+          <span className='rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600'>
             Unassigned
           </span>
         )}
       </td>
 
-      <td className='px-5 py-4 text-center'>
-        <Badge size='sm' color={getStatusColor(ticket.hasilVisit || '')}>
-          {ticket.hasilVisit || '-'}
-        </Badge>
-      </td>
-
-      <td className='px-3 py-4 text-center'>
-        <button
-          onClick={onToggleExpand}
+      {/* Status */}
+      <td className='px-4 py-3 text-center'>
+        <span
           className={clsx(
-            'hover:bg-surface-2 rounded-lg p-2 transition-colors',
-            isExpanded ? 'text-blue-500' : 'text-[var(--text-secondary)]',
+            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+            `badge-${getStatusColor(ticket.hasilVisit || '')}`,
           )}
         >
-          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-        </button>
+          {ticket.hasilVisit || '-'}
+        </span>
       </td>
 
-      <td className='px-3 py-4 text-center'>
+      {/* ── Merged Action: Detail + Assign ── */}
+      <td className='px-3 py-3 text-center'>
         {isClosed ? (
-          <span className='text-xs text-[var(--text-secondary)]'>-</span>
-        ) : (
-          <Button
-            onClick={() => onAssign(ticket.idTicket ?? '')}
-            className={clsx(
-              'flex items-center gap-2 transition-all duration-200',
-              ticket.teknisiUserId
-                ? 'bg-amber-500 text-white hover:bg-amber-600'
-                : 'bg-blue-600 text-white hover:bg-blue-700',
-            )}
-            size='sm'
+          /* Closed: only Detail button */
+          <button
+            onClick={handleDetailClick}
+            title='Lihat Detail'
+            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600'
           >
-            {ticket.teknisiUserId ? (
-              <RefreshCw size={16} />
-            ) : (
-              <UserPlus size={16} />
-            )}
-          </Button>
+            <Eye size={13} />
+            Detail
+          </button>
+        ) : (
+          /* Active: split button — Detail | Assign/Reassign */
+          <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
+            {/* Detail half */}
+            <button
+              onClick={handleDetailClick}
+              title='Lihat Detail'
+              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600'
+            >
+              <Eye size={13} />
+              Detail
+            </button>
+
+            {/* Assign / Reassign half */}
+            <button
+              onClick={handleAssignClick}
+              title={
+                ticket.teknisiUserId ? 'Reassign Teknisi' : 'Assign Teknisi'
+              }
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white transition',
+                ticket.teknisiUserId
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-blue-600 hover:bg-blue-700',
+              )}
+            >
+              {ticket.teknisiUserId ? (
+                <>
+                  <RefreshCw size={12} />
+                  Reassign
+                </>
+              ) : (
+                <>
+                  <UserPlus size={12} />
+                  Assign
+                </>
+              )}
+            </button>
+          </div>
         )}
       </td>
     </tr>

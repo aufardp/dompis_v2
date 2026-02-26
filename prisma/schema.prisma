@@ -262,6 +262,7 @@ model tech_event_outbox {
 
   @@index([status, next_attempt_at], map: "idx_outbox_status_next")
   @@index([created_at], map: "idx_outbox_created")
+  @@map("tech_event_outbox")
 }
 
 enum AttendanceStatus {

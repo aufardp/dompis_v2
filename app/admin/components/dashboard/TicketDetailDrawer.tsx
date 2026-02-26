@@ -307,7 +307,7 @@ function Field({ label, value, mono, fullWidth }: FieldProps) {
       </p>
       <p
         className={clsx(
-          'text-[13.5px] break-words text-slate-800',
+          'text-[13.5px] wrap-break-word text-slate-800',
           mono && 'font-mono',
         )}
       >

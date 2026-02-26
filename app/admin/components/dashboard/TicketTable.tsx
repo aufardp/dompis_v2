@@ -6,10 +6,9 @@ import TicketRow from './TicketRow';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
 import TicketDetailDrawer from './TicketDetailDrawer';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns3, X } from 'lucide-react';
 import {
   computeTicketRanks,
-  TicketWithRank,
   calculateAgeInHours,
   sortByPriority,
 } from '@/app/libs/tickets/sort';
@@ -57,6 +56,8 @@ export interface AdminTicketTableProps {
   }>;
   loading?: boolean;
   onAssign?: (ticketId: string | number) => void;
+  onDetail?: (ticketId: string | number) => void;
+  onBulkAssign?: (ticketIds: (string | number)[]) => void;
   pagination?: {
     currentPage: number;
     totalPages: number;
@@ -71,6 +72,13 @@ interface SortConfig {
   order: SortOrder;
 }
 
+// Derive SLA label from age hours
+function getSlaLabel(ageHours: number): 'On Track' | 'At Risk' | 'Overdue' {
+  if (ageHours > 500) return 'Overdue';
+  if (ageHours > 240) return 'At Risk';
+  return 'On Track';
+}
+
 const SortIcon = ({
   field,
   currentField,
@@ -82,32 +90,52 @@ const SortIcon = ({
 }) => {
   if (field !== currentField) {
     return (
-      <svg
-        className='h-4 w-4 text-(--text-secondary)'
-        fill='none'
-        stroke='currentColor'
-        viewBox='0 0 24 24'
-      >
-        <path
-          strokeLinecap='round'
-          strokeLinejoin='round'
-          strokeWidth={2}
-          d='M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4'
-        />
-      </svg>
+      <span className='text-xs text-(--text-secondary) opacity-40'>↕</span>
     );
   }
   return order === 'asc' ? (
-    <ChevronUp className='h-4 w-4 text-blue-500' />
+    <ChevronUp className='h-3.5 w-3.5 text-blue-500' />
   ) : (
-    <ChevronDown className='h-4 w-4 text-blue-500' />
+    <ChevronDown className='h-3.5 w-3.5 text-blue-500' />
   );
+};
+
+const COL_LABELS: Record<string, string> = {
+  service: 'Service',
+  customer: 'Customer',
+  address: 'Address',
+  bookingDate: 'Booking Date',
+  type: 'Type',
+  maxTtr: 'Max TTR',
+  age: 'Age / SLA',
+  jenis: 'Jenis Tiket',
+  workzone: 'Workzone',
+  technician: 'Technician',
+  status: 'Status',
+};
+
+type ColKey = keyof typeof COL_LABELS;
+
+const DEFAULT_COLS: Record<ColKey, boolean> = {
+  service: true,
+  customer: true,
+  address: true,
+  bookingDate: false,
+  type: true,
+  maxTtr: true,
+  age: true,
+  jenis: true,
+  workzone: true,
+  technician: true,
+  status: true,
 };
 
 export default function TicketTable({
   tickets = [],
   loading = false,
   onAssign,
+  onDetail,
+  onBulkAssign,
   pagination,
 }: AdminTicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -115,6 +143,12 @@ export default function TicketTable({
     order: 'asc',
   });
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
+    new Set(),
+  );
+  const [visibleCols, setVisibleCols] =
+    useState<Record<ColKey, boolean>>(DEFAULT_COLS);
+  const [showColMenu, setShowColMenu] = useState(false);
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -129,50 +163,65 @@ export default function TicketTable({
 
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
-
-    if (sortConfig.field === 'priority') {
-      return sortByPriority(tickets);
-    }
-
+    if (sortConfig.field === 'priority') return sortByPriority(tickets);
     return [...tickets].sort((a, b) => {
       let aVal: any;
       let bVal: any;
-
       if (sortConfig.field === 'age') {
         aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt);
         bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt);
-      } else if (sortConfig.field !== 'priority') {
+      } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];
       }
-
-      if (aVal === null || aVal === undefined) aVal = '';
-      if (bVal === null || bVal === undefined) bVal = '';
-
+      if (aVal == null) aVal = '';
+      if (bVal == null) bVal = '';
       if (typeof aVal === 'string') {
         aVal = aVal.toLowerCase();
         bVal = bVal.toLowerCase();
       }
-
       if (aVal < bVal) return sortConfig.order === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortConfig.order === 'asc' ? 1 : -1;
       return 0;
     });
   }, [tickets, sortConfig]);
 
-  const ticketRanks = useMemo(() => {
-    return computeTicketRanks(tickets);
-  }, [tickets]);
+  const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
+  const handleAssign = onAssign ?? (() => {});
 
-  const handleAssign = onAssign || (() => {});
+  // Selection helpers
+  const allIds = sortedTickets.map((t) => t.idTicket ?? t.ticket ?? '');
+  const allSelected =
+    allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+  const someSelected = selectedIds.size > 0;
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  }
+
+  function toggleSelect(id: string | number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
 
   const renderSortableHeader = (label: string, field: SortField) => (
     <th
-      className='cursor-pointer px-3 py-3 text-center transition-colors hover:bg-gray-100'
+      className='hover:bg-surface-2 cursor-pointer px-3 py-3 text-center transition-colors'
       onClick={() => handleSort(field)}
     >
       <div className='flex items-center justify-center gap-1'>
-        {label}
+        <span>{label}</span>
         <SortIcon
           field={field}
           currentField={sortConfig.field}
@@ -183,7 +232,35 @@ export default function TicketTable({
   );
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-3'>
+      {/* ── Bulk action bar (appears when rows are selected) ── */}
+      {someSelected && (
+        <div className='flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5'>
+          <span className='text-sm font-semibold text-blue-700'>
+            {selectedIds.size} tiket dipilih
+          </span>
+          <div className='flex gap-2'>
+            {onBulkAssign && (
+              <button
+                onClick={() => {
+                  onBulkAssign([...selectedIds]);
+                  clearSelection();
+                }}
+                className='rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700'
+              >
+                Assign Semua
+              </button>
+            )}
+            <button
+              onClick={clearSelection}
+              className='flex items-center gap-1 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50'
+            >
+              <X size={12} /> Batal
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
         {loading ? (
@@ -204,49 +281,132 @@ export default function TicketTable({
       </div>
 
       {/* Desktop */}
-      <div className='block'>
-        <div className='bg-surface overflow-hidden rounded-xl border border-(--border) shadow-sm'>
+      <div className='hidden lg:block'>
+        <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
+          {/* Table toolbar */}
+          <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
+            <p className='text-xs text-(--text-secondary)'>
+              {pagination?.total ?? sortedTickets.length} tiket
+            </p>
+            {/* Column customizer */}
+            <div className='relative'>
+              <button
+                onClick={() => setShowColMenu((v) => !v)}
+                className='bg-surface flex items-center gap-1.5 rounded-lg border border-(--border) px-2.5 py-1.5 text-xs font-semibold text-(--text-secondary) transition-colors hover:border-blue-300 hover:text-blue-600'
+              >
+                <Columns3 size={13} />
+                Kolom
+              </button>
+              {showColMenu && (
+                <div className='bg-surface absolute top-9 right-0 z-50 w-44 rounded-2xl border border-(--border) shadow-xl'>
+                  <div className='border-b border-(--border) px-3 py-2 text-[10px] font-bold tracking-wider text-(--text-secondary) uppercase'>
+                    Tampilkan Kolom
+                  </div>
+                  <div className='space-y-0.5 p-2'>
+                    {(Object.entries(COL_LABELS) as [ColKey, string][]).map(
+                      ([key, label]) => (
+                        <label
+                          key={key}
+                          className='hover:bg-surface-2 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5'
+                        >
+                          <input
+                            type='checkbox'
+                            checked={visibleCols[key]}
+                            onChange={() =>
+                              setVisibleCols((v) => ({ ...v, [key]: !v[key] }))
+                            }
+                            className='rounded border-slate-300 accent-blue-600'
+                          />
+                          <span className='text-xs text-(--text-primary)'>
+                            {label}
+                          </span>
+                        </label>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>
               <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
                 <tr>
+                  {/* Checkbox all */}
+                  <th className='w-10 px-3 py-3 text-center'>
+                    <input
+                      type='checkbox'
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className='rounded border-slate-300 accent-blue-600'
+                    />
+                  </th>
                   <th className='w-16 px-3 py-3 text-center'>#</th>
                   {renderSortableHeader('Ticket', 'ticket')}
-                  {renderSortableHeader('Service', 'serviceNo')}
-                  {renderSortableHeader('Customer', 'contactName')}
-                  {renderSortableHeader('Address', 'alamat')}
-                  {renderSortableHeader('Booking_Date', 'bookingDate')}
-                  {renderSortableHeader('Type', 'customerType')}
-                  <th className='px-3 py-3 text-center'>Max TTR</th>
-                  {renderSortableHeader('Age', 'age')}
-                  {renderSortableHeader('Jenis_Tiket', 'jenisTiket')}
-                  {renderSortableHeader('Workzone', 'workzone')}
-                  {renderSortableHeader('Technician', 'technicianName')}
-                  <th className='px-3 py-3 text-center'>Status</th>
-                  <th className='w-16 px-3 py-3 text-center'>Detail</th>
-                  <th className='px-3 py-3 text-center'>Action</th>
+                  {visibleCols.service &&
+                    renderSortableHeader('Service', 'serviceNo')}
+                  {visibleCols.customer &&
+                    renderSortableHeader('Customer', 'contactName')}
+                  {visibleCols.address && (
+                    <th className='px-3 py-3 text-center'>Address</th>
+                  )}
+                  {visibleCols.bookingDate &&
+                    renderSortableHeader('Booking Date', 'bookingDate')}
+                  {visibleCols.type &&
+                    renderSortableHeader('Type', 'customerType')}
+                  {visibleCols.maxTtr && (
+                    <th className='px-3 py-3 text-center'>Max TTR</th>
+                  )}
+                  {visibleCols.age && renderSortableHeader('Age / SLA', 'age')}
+                  {visibleCols.jenis &&
+                    renderSortableHeader('Jenis Tiket', 'jenisTiket')}
+                  {visibleCols.workzone &&
+                    renderSortableHeader('Workzone', 'workzone')}
+                  {visibleCols.technician &&
+                    renderSortableHeader('Teknisi', 'technicianName')}
+                  {visibleCols.status && (
+                    <th className='px-3 py-3 text-center'>Status</th>
+                  )}
+                  {/* Merged action column */}
+                  <th className='px-3 py-3 text-center'>Aksi</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className='divide-y divide-(--border)'>
                 {loading ? (
-                  <TableEmptyState colSpan={14} message='Loading' />
+                  <TableEmptyState colSpan={15} message='Loading...' />
                 ) : sortedTickets.length === 0 ? (
-                  <TableEmptyState colSpan={14} message='No tickets found' />
+                  <TableEmptyState
+                    colSpan={15}
+                    message='Tidak ada tiket ditemukan'
+                  />
                 ) : (
                   sortedTickets.map((ticket) => {
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
                     const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
+                    const ageHours = calculateAgeInHours(
+                      ticket.reportedDate,
+                      ticket.hasilVisit,
+                      ticket.closedAt,
+                    );
+                    const slaLabel = getSlaLabel(ageHours);
+                    const isSelected = selectedIds.has(ticketId ?? '');
+
                     return (
                       <TicketRow
                         key={ticketId}
                         ticket={ticket}
                         onAssign={handleAssign}
+                        onDetail={onDetail}
                         isExpanded={isExpanded}
                         onToggleExpand={() => toggleExpand(ticketId as number)}
                         rank={ticketInfo?.rank}
                         ticketAge={ticketInfo?.ageFormatted}
                         severity={ticketInfo?.severity}
+                        slaLabel={slaLabel}
+                        selected={isSelected}
+                        onSelect={() => toggleSelect(ticketId ?? '')}
                       />
                     );
                   })
@@ -254,30 +414,36 @@ export default function TicketTable({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination inside card */}
+          {pagination && pagination.totalPages > 1 && (
+            <div className='bg-surface flex flex-col items-center gap-3 border-t border-(--border) px-5 py-3 sm:flex-row sm:justify-between'>
+              <p className='text-xs text-(--text-secondary)'>
+                Showing{' '}
+                <span className='font-semibold text-(--text-primary)'>
+                  {(pagination.currentPage - 1) * (pagination.limit ?? 10) + 1}–
+                  {Math.min(
+                    pagination.currentPage * (pagination.limit ?? 10),
+                    pagination.total,
+                  )}
+                </span>{' '}
+                of{' '}
+                <span className='font-semibold text-(--text-primary)'>
+                  {pagination.total}
+                </span>{' '}
+                tiket
+              </p>
+              <Pagination
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+                onPageChange={pagination.onPageChange}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Pagination */}
-      {pagination && pagination.totalPages > 1 && (
-        <div className='flex flex-col items-center gap-3 border-t border-(--border) pt-4 sm:flex-row sm:justify-between'>
-          <p className='text-xs text-(--text-secondary) sm:text-sm'>
-            Showing{' '}
-            {(pagination.currentPage - 1) * (pagination.limit ?? 10) + 1} to{' '}
-            {Math.min(
-              pagination.currentPage * (pagination.limit ?? 10),
-              pagination.total,
-            )}{' '}
-            of {pagination.total}
-          </p>
-
-          <Pagination
-            currentPage={pagination.currentPage}
-            totalPages={pagination.totalPages}
-            onPageChange={pagination.onPageChange}
-          />
-        </div>
-      )}
-
+      {/* Detail Drawer */}
       <TicketDetailDrawer
         open={expandedTicketId !== null}
         onClose={() => setExpandedTicketId(null)}
@@ -287,6 +453,26 @@ export default function TicketTable({
           ) as any) || null
         }
       />
+
+      {/* SLA Legend */}
+      <div className='flex flex-wrap items-center gap-4 px-1 pt-1'>
+        <span className='text-[10px] font-bold tracking-wider text-(--text-secondary) uppercase'>
+          SLA:
+        </span>
+        {[
+          { label: 'On Track', color: 'bg-emerald-500' },
+          { label: 'At Risk', color: 'bg-amber-500' },
+          { label: 'Overdue', color: 'bg-red-500' },
+        ].map((s) => (
+          <span
+            key={s.label}
+            className='flex items-center gap-1.5 text-[10px] text-(--text-secondary)'
+          >
+            <span className={`h-2 w-2 rounded-full ${s.color}`} />
+            {s.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

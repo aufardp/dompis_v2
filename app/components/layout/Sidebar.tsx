@@ -35,8 +35,8 @@ function NavItem({ label, active, onClick, dotColor, icon }: NavItemProps) {
       onClick={onClick}
       className={`cursor-pointer rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
         active
-          ? 'bg-white/10 text-[var(--text-primary)]'
-          : 'text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)]'
+          ? 'bg-white/10 text-(--text-primary)'
+          : 'text-(--text-secondary) hover:bg-white/5 hover:text-(--text-primary)'
       }`}
     >
       <div className='flex items-center gap-3'>
@@ -70,17 +70,17 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`bg-surface fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[var(--border)] transition-transform duration-300 ease-in-out lg:static lg:w-[220px] lg:translate-x-0 ${
+      className={`bg-surface fixed inset-y-0 left-0 z-50 flex w-70 flex-col border-r border-(--border) transition-transform duration-300 ease-in-out lg:static lg:w-55 lg:translate-x-0 ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
       {/* Header */}
       <div className='flex items-center justify-between p-4 lg:p-4'>
         <div>
-          <p className='font-syne text-xl font-extrabold text-[var(--text-primary)]'>
+          <p className='font-syne text-xl font-extrabold text-(--text-primary)'>
             Dompis
           </p>
-          <p className='text-[10px] tracking-[2px] text-[var(--text-secondary)] uppercase'>
+          <p className='text-[10px] tracking-[2px] text-(--text-secondary) uppercase'>
             Admin Portal
           </p>
         </div>
@@ -88,13 +88,13 @@ export default function Sidebar({
           onClick={onClose}
           className='hover:bg-surface-2 rounded-lg p-2 lg:hidden'
         >
-          <X className='h-5 w-5 text-[var(--text-secondary)]' />
+          <X className='h-5 w-5 text-(--text-secondary)' />
         </button>
       </div>
 
       {/* Main Navigation */}
       <div className='px-3 lg:px-3'>
-        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-[var(--text-muted)] uppercase'>
+        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-(--text-muted) uppercase'>
           Main
         </p>
         <nav className='mb-6 flex flex-col gap-1'>
@@ -114,7 +114,7 @@ export default function Sidebar({
           })}
         </nav>
 
-        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-[var(--text-muted)] uppercase'>
+        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-(--text-muted) uppercase'>
           Departemen
         </p>
         <nav className='flex flex-col gap-1'>
@@ -132,16 +132,14 @@ export default function Sidebar({
       {/* User Profile */}
       <div className='bg-surface-2 m-3 mt-auto rounded-xl p-3'>
         <div className='flex items-center gap-3'>
-          <div className='font-syne flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-sm font-bold text-white'>
+          <div className='font-syne flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-violet-500 text-sm font-bold text-white'>
             AD
           </div>
           <div className='min-w-0 flex-1'>
-            <p className='truncate text-sm leading-tight font-medium text-[var(--text-primary)]'>
+            <p className='truncate text-sm leading-tight font-medium text-(--text-primary)'>
               Admin
             </p>
-            <p className='text-xs text-[var(--text-secondary)]'>
-              Administrator
-            </p>
+            <p className='text-xs text-(--text-secondary)'>Administrator</p>
           </div>
         </div>
       </div>

@@ -9,6 +9,74 @@ interface CustomerTypeCardProps {
   ttrLabel?: string;
   active?: boolean;
   onClick?: () => void;
+  regulerCount?: number;
+  sqmCount?: number;
+  totalAll?: number;
+}
+
+function MiniBar({
+  value,
+  max,
+  color,
+}: {
+  value: number;
+  max: number;
+  color: string;
+}) {
+  const pct = max === 0 ? 0 : (value / max) * 100;
+  return (
+    <div className='h-1 flex-1 overflow-hidden rounded-full bg-slate-200'>
+      <div
+        className='h-full rounded-full transition-all duration-700'
+        style={{ width: `${pct}%`, background: color }}
+      />
+    </div>
+  );
+}
+
+function ProgressRing({
+  value,
+  max,
+  color,
+  icon,
+}: {
+  value: number;
+  max: number;
+  color: string;
+  icon: string;
+}) {
+  const radius = 18;
+  const circumference = 2 * Math.PI * radius;
+  const pct = max > 0 ? value / max : 0;
+  const offset = circumference * (1 - pct);
+
+  return (
+    <div className='relative flex h-11 w-11 items-center justify-center'>
+      <svg className='absolute inset-0 -rotate-90' viewBox='0 0 44 44'>
+        <circle
+          cx='22'
+          cy='22'
+          r={radius}
+          fill='none'
+          stroke='#e2e8f0'
+          strokeWidth='3'
+        />
+        <circle
+          cx='22'
+          cy='22'
+          r={radius}
+          fill='none'
+          stroke={color}
+          strokeWidth='3'
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap='round'
+          className='transition-all duration-700'
+        />
+      </svg>
+      <span className='text-sm'>{icon}</span>
+    </div>
+  );
 }
 
 export default function CustomerTypeCard({
@@ -19,63 +87,132 @@ export default function CustomerTypeCard({
   assigned,
   closed,
   accentColor,
-  ttrLabel,
   active = false,
   onClick,
+  regulerCount,
+  sqmCount,
+  totalAll,
 }: CustomerTypeCardProps) {
-  const pctClosed = total > 0 ? (closed / total) * 100 : 0;
+  const shareOfAll =
+    totalAll && totalAll > 0 ? ((total / totalAll) * 100).toFixed(1) : null;
 
   return (
     <button
       type='button'
       onClick={onClick}
       aria-pressed={active}
-      className={
-        'bg-surface w-full cursor-pointer rounded-2xl border border-white/[0.07] p-4 text-left transition-all duration-200 hover:-translate-y-0.5 ' +
-        (active ? 'ring-2 ring-white/15' : '')
-      }
-      style={{ borderTop: `2px solid ${accentColor}` }}
+      className='w-full cursor-pointer rounded-2xl bg-white p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md'
+      style={{
+        border: `${active ? 2 : 1}px solid ${active ? accentColor : '#e2e8f0'}`,
+        boxShadow: active
+          ? `0 4px 20px ${accentColor}28`
+          : '0 1px 4px rgba(0,0,0,0.06)',
+      }}
     >
-      {ttrLabel && (
-        <span className='font-syne mb-3 inline-flex items-center gap-1 rounded bg-white/6 px-2 py-0.5 text-[10px] font-bold text-[#6b7a99]'>
-          ⏱ {ttrLabel}
-        </span>
-      )}
+      {/* Header */}
+      <div className='mb-3 flex items-start justify-between'>
+        <div className='flex items-center gap-2'>
+          <div
+            className='flex h-8 w-8 items-center justify-center rounded-full'
+            style={{
+              background: accentColor + '15',
+              border: `1.5px solid ${accentColor}35`,
+            }}
+          >
+            <span className='text-sm'>{icon}</span>
+          </div>
+          <span
+            className='text-[11px] font-bold tracking-widest uppercase'
+            style={{ color: accentColor }}
+          >
+            {name}
+          </span>
+        </div>
 
-      <div className='mb-3 flex items-start gap-2'>
-        <span className='text-lg'>{icon}</span>
-        <span className='text-xs font-semibold tracking-wide text-[#6b7a99] uppercase'>
-          {name}
-        </span>
+        <ProgressRing
+          value={total}
+          max={totalAll ?? total}
+          color={accentColor}
+          icon={icon}
+        />
       </div>
 
+      {/* Big number */}
       <p
-        className='font-syne mb-3 text-3xl font-extrabold tracking-tight'
+        className='text-4xl font-black tracking-tight'
         style={{ color: accentColor }}
       >
-        {total}
+        {total.toLocaleString()}
+      </p>
+      <p className='mb-4 text-xs text-slate-400'>
+        {shareOfAll ? `${shareOfAll}% of total` : 'tickets'}
       </p>
 
-      <div className='flex gap-3 text-[11px] text-[#6b7a99]'>
-        <span className='flex items-center gap-1'>
-          <span className='h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400' />
+      {/* Pills */}
+      {(regulerCount !== undefined || sqmCount !== undefined) && (
+        <div className='mb-3 flex flex-wrap gap-2'>
+          {regulerCount !== undefined && (
+            <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500'>
+              📋 Reguler: {regulerCount}
+            </span>
+          )}
+          {sqmCount !== undefined && (
+            <span
+              className='flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold'
+              style={{
+                background: accentColor + '12',
+                borderColor: accentColor + '35',
+                color: accentColor,
+              }}
+            >
+              📊 SQM: {sqmCount}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Mini bars */}
+      {(regulerCount !== undefined || sqmCount !== undefined) && (
+        <div className='mb-4 space-y-1.5'>
+          {regulerCount !== undefined && (
+            <div className='flex items-center gap-2'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+                Reguler
+              </span>
+              <MiniBar value={regulerCount} max={total} color='#94a3b8' />
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+                {total > 0 ? Math.round((regulerCount / total) * 100) : 0}%
+              </span>
+            </div>
+          )}
+          {sqmCount !== undefined && (
+            <div className='flex items-center gap-2'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+                SQM
+              </span>
+              <MiniBar value={sqmCount} max={total} color={accentColor} />
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+                {total > 0 ? Math.round((sqmCount / total) * 100) : 0}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Status dots */}
+      <div className='flex flex-wrap gap-3 text-[11px] text-slate-400'>
+        <span className='flex items-center gap-1.5'>
+          <span className='h-2 w-2 rounded-full bg-amber-400' />
           {open} Open
         </span>
-        <span className='flex items-center gap-1'>
-          <span className='h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400' />
+        <span className='flex items-center gap-1.5'>
+          <span className='h-2 w-2 rounded-full bg-blue-400' />
           {assigned} Assigned
         </span>
-        <span className='flex items-center gap-1'>
-          <span className='h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400' />
+        <span className='flex items-center gap-1.5'>
+          <span className='h-2 w-2 rounded-full bg-emerald-400' />
           {closed} Closed
         </span>
-      </div>
-
-      <div className='bg-surface-3 mt-3 h-0.5 overflow-hidden rounded-full'>
-        <div
-          className='h-full rounded-full transition-all duration-700'
-          style={{ width: `${pctClosed}%`, background: accentColor }}
-        />
       </div>
     </button>
   );

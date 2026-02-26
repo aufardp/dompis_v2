@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { cn } from '@/app/libs/utils';
+import { SlidersHorizontal, X } from 'lucide-react';
 
 type Dept = 'all' | 'b2b' | 'b2c';
 type TicketType = 'all' | 'reguler' | 'sqm';
@@ -20,6 +21,84 @@ interface DeptFilterBarProps {
   onStatusChange?: (status: HasilVisit) => void;
 }
 
+// const DEPT_OPTIONS = [
+//   {
+//     key: 'b2b',
+//     label: 'B2B',
+//     activeClass: 'bg-blue-500/10 text-blue-400 border-blue-400/30',
+//   },
+//   {
+//     key: 'b2c',
+//     label: 'B2C',
+//     activeClass: 'bg-violet-500/10 text-violet-400 border-violet-400/30',
+//   },
+//   {
+//     key: 'all',
+//     label: 'Semua',
+//     activeClass: 'bg-surface-2 text-(--text-primary) border-(--border)',
+//   },
+// ] as const;
+
+const TYPE_OPTIONS = [
+  {
+    key: 'reguler',
+    label: 'Reguler',
+    dot: 'bg-emerald-400',
+    activeClass: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
+  },
+  {
+    key: 'sqm',
+    label: 'SQM',
+    dot: 'bg-violet-400',
+    activeClass: 'bg-violet-400/15 border-violet-400/40 text-violet-400',
+  },
+  {
+    key: 'all',
+    label: 'Semua',
+    dot: 'bg-current',
+    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
+  },
+] as const;
+
+const STATUS_OPTIONS = [
+  {
+    key: 'OPEN',
+    label: 'Open',
+    dot: 'bg-amber-400',
+    activeClass: 'bg-amber-400/15 border-amber-400/40 text-amber-400',
+  },
+  {
+    key: 'ASSIGNED',
+    label: 'Assigned',
+    dot: 'bg-blue-400',
+    activeClass: 'bg-blue-400/15 border-blue-400/40 text-blue-400',
+  },
+  {
+    key: 'ON_PROGRESS',
+    label: 'On Progress',
+    dot: 'bg-sky-400',
+    activeClass: 'bg-sky-400/15 border-sky-400/40 text-sky-400',
+  },
+  {
+    key: 'PENDING',
+    label: 'Pending',
+    dot: 'bg-orange-400',
+    activeClass: 'bg-orange-400/15 border-orange-400/40 text-orange-400',
+  },
+  {
+    key: 'CLOSE',
+    label: 'Closed',
+    dot: 'bg-emerald-400',
+    activeClass: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
+  },
+  {
+    key: 'all',
+    label: 'All Status',
+    dot: 'bg-current',
+    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
+  },
+] as const;
+
 export function DeptFilterBar({
   onDeptChange,
   onTypeChange,
@@ -30,187 +109,159 @@ export function DeptFilterBar({
   const [hasilVisit, setHasilVisit] = useState<HasilVisit>('all');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const handleDeptChange = (newDept: Dept) => {
-    setDept(newDept);
-    onDeptChange?.(newDept);
-  };
+  const activeCount =
+    (dept !== 'all' ? 1 : 0) +
+    (ticketType !== 'all' ? 1 : 0) +
+    (hasilVisit !== 'all' ? 1 : 0);
 
-  const handleTypeChange = (newType: TicketType) => {
-    setTicketType(newType);
-    onTypeChange?.(newType);
-  };
-
-  const handleStatusChange = (next: HasilVisit) => {
-    setHasilVisit(next);
-    onStatusChange?.(next);
-  };
+  function resetAll() {
+    setDept('all');
+    onDeptChange?.('all');
+    setTicketType('all');
+    onTypeChange?.('all');
+    setHasilVisit('all');
+    onStatusChange?.('all');
+  }
 
   return (
-    <div className='space-y-3'>
-      {/* Mobile Filter Toggle */}
+    <div className='space-y-2'>
+      {/* ── Mobile toggle ── */}
       <div className='flex items-center justify-between lg:hidden'>
         <button
-          onClick={() => setShowMobileFilters(!showMobileFilters)}
-          className='bg-surface-2 flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-secondary)]'
+          onClick={() => setShowMobileFilters((v) => !v)}
+          className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
         >
-          <span>Filters</span>
-          <span className='rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400'>
-            {(dept !== 'all' ? 1 : 0) +
-              (ticketType !== 'all' ? 1 : 0) +
-              (hasilVisit !== 'all' ? 1 : 0)}
-          </span>
+          <SlidersHorizontal size={14} />
+          Filters
+          {activeCount > 0 && (
+            <span className='rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white'>
+              {activeCount}
+            </span>
+          )}
         </button>
+        {activeCount > 0 && (
+          <button
+            onClick={resetAll}
+            className='flex items-center gap-1 text-xs font-semibold text-red-400 hover:text-red-500'
+          >
+            <X size={12} /> Reset
+          </button>
+        )}
       </div>
 
-      {/* Desktop Filters */}
+      {/* ── Filter bar ── */}
       <div
         className={cn(
-          'flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between',
+          'flex-col gap-0 lg:flex-row lg:items-stretch',
           showMobileFilters ? 'flex' : 'hidden lg:flex',
+          'bg-surface overflow-hidden rounded-xl border border-(--border) shadow-sm',
         )}
       >
-        {/* Dept Tabs */}
-        <div className='scrollbar-hide flex w-full overflow-x-auto pb-2 lg:w-auto lg:pb-0'>
-          <div className='bg-surface flex gap-1 rounded-lg border border-[var(--border)] p-1'>
-            {(
-              [
-                { label: 'B2B', key: 'b2b' },
-                { label: 'B2C', key: 'b2c' },
-                { label: 'Semua', key: 'all' },
-              ] as const
-            ).map(({ label, key }) => {
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleDeptChange(key)}
-                  className={cn(
-                    'rounded-md px-4 py-2 text-sm font-semibold whitespace-nowrap transition-all md:px-5',
-                    dept === key &&
-                      key === 'b2b' &&
-                      'bg-blue-500/10 text-blue-400',
-                    dept === key &&
-                      key === 'b2c' &&
-                      'bg-violet-500/10 text-violet-400',
-                    dept === key &&
-                      key === 'all' &&
-                      'bg-surface-2 text-(--text-primary)',
-                    dept !== key &&
-                      'hover:bg-surface-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Ticket Type Pills */}
-        <div className='scrollbar-hide flex w-full overflow-x-auto pb-2 lg:w-auto lg:pb-0'>
-          <div className='flex gap-2'>
-            {[
-              {
-                key: 'reguler',
-                label: 'Reguler',
-                activeClass:
-                  'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
-              },
-              {
-                key: 'sqm',
-                label: 'SQM',
-                activeClass:
-                  'bg-violet-400/15 border-violet-400/40 text-violet-400',
-              },
-              {
-                key: 'all',
-                label: 'Semua',
-                activeClass:
-                  'bg-surface-2 border-white/15 text-[var(--text-primary)]',
-              },
-            ].map(({ key, label, activeClass }) => (
+        {/* Section: Tipe */}
+        {/* <div className='flex items-center gap-2 border-b border-(--border) px-4 py-2.5 lg:border-r lg:border-b-0'>
+          <span className='w-8 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+            Tipe
+          </span>
+          <div className='flex gap-1'>
+            {DEPT_OPTIONS.map(({ key, label, activeClass }) => (
               <button
                 key={key}
-                onClick={() => handleTypeChange(key as TicketType)}
+                onClick={() => {
+                  setDept(key);
+                  onDeptChange?.(key);
+                }}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all',
+                  'rounded-lg border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
+                  dept === key
+                    ? activeClass
+                    : 'hover:bg-surface-2 border-transparent text-(--text-secondary) hover:text-(--text-primary)',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div> */}
+
+        {/* Section: Jenis */}
+        <div className='flex items-center gap-2 border-b border-(--border) px-4 py-2.5 lg:border-r lg:border-b-0'>
+          <span className='w-8 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+            Jenis
+          </span>
+          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+            {TYPE_OPTIONS.map(({ key, label, dot, activeClass }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setTicketType(key);
+                  onTypeChange?.(key);
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
                   ticketType === key
                     ? activeClass
-                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary)',
+                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
                 )}
               >
-                <span className='h-1.5 w-1.5 rounded-full bg-current' />
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    ticketType === key ? dot : 'bg-current opacity-30',
+                  )}
+                />
                 {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Status (HASIL_VISIT) Pills */}
-        <div className='scrollbar-hide flex w-full overflow-x-auto pb-2 lg:w-auto lg:pb-0'>
-          <div className='flex gap-2'>
-            {[
-              {
-                key: 'OPEN',
-                label: 'Open',
-                activeClass:
-                  'bg-amber-400/15 border-amber-400/40 text-amber-400',
-              },
-              {
-                key: 'ASSIGNED',
-                label: 'Assigned',
-                activeClass: 'bg-blue-400/15 border-blue-400/40 text-blue-400',
-              },
-              {
-                key: 'ON_PROGRESS',
-                label: 'On Progress',
-                activeClass: 'bg-sky-400/15 border-sky-400/40 text-sky-400',
-              },
-              {
-                key: 'PENDING',
-                label: 'Pending',
-                activeClass:
-                  'bg-orange-400/15 border-orange-400/40 text-orange-400',
-              },
-              // {
-              //   key: 'ESCALATED',
-              //   label: 'Escalated',
-              //   activeClass:
-              //     'bg-slate-400/15 border-slate-400/40 text-slate-300',
-              // },
-              // {
-              //   key: 'CANCELLED',
-              //   label: 'Cancelled',
-              //   activeClass: 'bg-rose-400/15 border-rose-400/40 text-rose-400',
-              // },
-              {
-                key: 'CLOSE',
-                label: 'Closed',
-                activeClass:
-                  'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
-              },
-              {
-                key: 'all',
-                label: 'All Status',
-                activeClass:
-                  'bg-surface-2 border-white/15 text-[var(--text-primary)]',
-              },
-            ].map(({ key, label, activeClass }) => (
+        {/* Section: Status */}
+        <div className='flex flex-1 items-center gap-2 px-4 py-2.5'>
+          <span className='w-12 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+            Status
+          </span>
+          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+            {STATUS_OPTIONS.map(({ key, label, dot, activeClass }) => (
               <button
                 key={key}
-                onClick={() => handleStatusChange(key as HasilVisit)}
+                onClick={() => {
+                  setHasilVisit(key);
+                  onStatusChange?.(key);
+                }}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all',
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
                   hasilVisit === key
                     ? activeClass
-                    : 'hover:bg-surface-2 border-[var(--border)] text-[var(--text-secondary)]',
+                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
                 )}
               >
-                <span className='h-1.5 w-1.5 rounded-full bg-current' />
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    hasilVisit === key ? dot : 'bg-current opacity-30',
+                  )}
+                />
                 {label}
               </button>
             ))}
           </div>
         </div>
+
+        {/* Reset button — desktop, only visible when filter active */}
+        {activeCount > 0 && (
+          <div className='hidden items-center border-l border-(--border) px-3 lg:flex'>
+            <button
+              onClick={resetAll}
+              className='flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-400 transition hover:bg-red-400/10'
+            >
+              <X size={12} />
+              Reset
+              <span className='rounded-full bg-red-400/20 px-1.5 py-0.5 text-[9px] font-bold'>
+                {activeCount}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

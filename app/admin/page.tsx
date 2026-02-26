@@ -205,12 +205,15 @@ export default function TicketPage() {
     setCurrentPage(1);
   }, []);
 
-  const handleB2cCustomerTypeSelect = useCallback((ctype: TicketCtype) => {
-    // Ensure the table view matches the B2C card selection.
-    setDeptFilter('b2c');
-    setCtypeFilter(ctype);
-    setCurrentPage(1);
-  }, []);
+  const handleB2cCustomerTypeSelect = useCallback(
+    (ctype: TicketCtype | 'all') => {
+      // Ensure the table view matches the B2C card selection.
+      setDeptFilter('b2c');
+      setCtypeFilter(ctype);
+      setCurrentPage(1);
+    },
+    [],
+  );
 
   const handleClearCtypeFilter = useCallback(() => {
     setCtypeFilter('all');
@@ -284,6 +287,14 @@ export default function TicketPage() {
       const st = normalizeVisitStatus(t);
       return st === 'CLOSE' || st === 'CLOSED';
     }).length,
+    regulerCount: arr.filter((t) => {
+      const jt = normalizeTicketType(t);
+      return jt === 'reguler';
+    }).length,
+    sqmCount: arr.filter((t) => {
+      const jt = normalizeTicketType(t);
+      return jt === 'sqm';
+    }).length,
   });
 
   const b2bStats = {
@@ -311,6 +322,89 @@ export default function TicketPage() {
     wifi24: getCounts(
       filteredTickets.filter((t) => normalizeCustomerType(t) === 'wifi_24'),
     ),
+    // Summary calculations for each group
+    summary: {
+      datin: {
+        total: 0,
+        open: 0,
+        assigned: 0,
+        closed: 0,
+        regulerCount: 0,
+        sqmCount: 0,
+      },
+      indibiz: {
+        total: 0,
+        open: 0,
+        assigned: 0,
+        closed: 0,
+        regulerCount: 0,
+        sqmCount: 0,
+      },
+      resellerWifi: {
+        total: 0,
+        open: 0,
+        assigned: 0,
+        closed: 0,
+        regulerCount: 0,
+        sqmCount: 0,
+      },
+    },
+  };
+
+  // Calculate B2B group summaries
+  b2bStats.summary.datin = {
+    total: b2bStats.datinK1.total + b2bStats.datinK1K2.total + b2bStats.datinK3.total,
+    open: b2bStats.datinK1.open + b2bStats.datinK1K2.open + b2bStats.datinK3.open,
+    assigned:
+      b2bStats.datinK1.assigned +
+      b2bStats.datinK1K2.assigned +
+      b2bStats.datinK3.assigned,
+    closed:
+      b2bStats.datinK1.closed +
+      b2bStats.datinK1K2.closed +
+      b2bStats.datinK3.closed,
+    regulerCount:
+      b2bStats.datinK1.regulerCount +
+      b2bStats.datinK1K2.regulerCount +
+      b2bStats.datinK3.regulerCount,
+    sqmCount:
+      b2bStats.datinK1.sqmCount +
+      b2bStats.datinK1K2.sqmCount +
+      b2bStats.datinK3.sqmCount,
+  };
+
+  b2bStats.summary.indibiz = {
+    total: b2bStats.indibiz4.total + b2bStats.indibiz24.total,
+    open: b2bStats.indibiz4.open + b2bStats.indibiz24.open,
+    assigned: b2bStats.indibiz4.assigned + b2bStats.indibiz24.assigned,
+    closed: b2bStats.indibiz4.closed + b2bStats.indibiz24.closed,
+    regulerCount:
+      b2bStats.indibiz4.regulerCount + b2bStats.indibiz24.regulerCount,
+    sqmCount: b2bStats.indibiz4.sqmCount + b2bStats.indibiz24.sqmCount,
+  };
+
+  b2bStats.summary.resellerWifi = {
+    total:
+      b2bStats.reseller6.total +
+      b2bStats.reseller36.total +
+      b2bStats.wifi24.total,
+    open: b2bStats.reseller6.open + b2bStats.reseller36.open + b2bStats.wifi24.open,
+    assigned:
+      b2bStats.reseller6.assigned +
+      b2bStats.reseller36.assigned +
+      b2bStats.wifi24.assigned,
+    closed:
+      b2bStats.reseller6.closed +
+      b2bStats.reseller36.closed +
+      b2bStats.wifi24.closed,
+    regulerCount:
+      b2bStats.reseller6.regulerCount +
+      b2bStats.reseller36.regulerCount +
+      b2bStats.wifi24.regulerCount,
+    sqmCount:
+      b2bStats.reseller6.sqmCount +
+      b2bStats.reseller36.sqmCount +
+      b2bStats.wifi24.sqmCount,
   };
 
   const b2cStats = useMemo(() => {
@@ -325,14 +419,49 @@ export default function TicketPage() {
         open: Number(row?.open || 0),
         assigned: Number(row?.assigned || 0),
         closed: Number(row?.closed || 0),
+        regulerCount: Number(row?.regulerTotal || 0),
+        sqmCount: Number(row?.sqmTotal || 0),
       };
     };
 
+    const reguler = pick('REGULER');
+    const hvcGold = pick('HVC_GOLD');
+    const hvcPlatinum = pick('HVC_PLATINUM');
+    const hvcDiamond = pick('HVC_DIAMOND');
+
+    // Calculate summary totals
+    const summary = {
+      total:
+        reguler.total + hvcGold.total + hvcPlatinum.total + hvcDiamond.total,
+      open: reguler.open + hvcGold.open + hvcPlatinum.open + hvcDiamond.open,
+      assigned:
+        reguler.assigned +
+        hvcGold.assigned +
+        hvcPlatinum.assigned +
+        hvcDiamond.assigned,
+      closed:
+        reguler.closed +
+        hvcGold.closed +
+        hvcPlatinum.closed +
+        hvcDiamond.closed,
+      regulerCount:
+        reguler.regulerCount +
+        hvcGold.regulerCount +
+        hvcPlatinum.regulerCount +
+        hvcDiamond.regulerCount,
+      sqmCount:
+        reguler.sqmCount +
+        hvcGold.sqmCount +
+        hvcPlatinum.sqmCount +
+        hvcDiamond.sqmCount,
+    };
+
     return {
-      reguler: pick('REGULER'),
-      hvcGold: pick('HVC_GOLD'),
-      hvcPlatinum: pick('HVC_PLATINUM'),
-      hvcDiamond: pick('HVC_DIAMOND'),
+      summary,
+      reguler,
+      hvcGold,
+      hvcPlatinum,
+      hvcDiamond,
     };
   }, [byCustomerTypeAll]);
 
@@ -403,7 +532,7 @@ export default function TicketPage() {
           <div className='bg-surface overflow-hidden rounded-2xl border border-(--border)'>
             <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
               <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
-                At A Glance
+                Semangat pagi pagi pagi ...
               </div>
             </div>
             <div className='px-4 py-4 md:px-5 md:py-5'>
@@ -458,19 +587,6 @@ export default function TicketPage() {
                 defaultOpen: true,
                 children: (
                   <div className='space-y-3 md:space-y-4'>
-                    <CustomerTypeTabFilter
-                      activeType={ctypeFilter}
-                      onChange={(next) => {
-                        if (next === 'all') {
-                          setDeptFilter('b2c');
-                          handleCtypeChange('all');
-                          return;
-                        }
-                        handleB2cCustomerTypeSelect(next);
-                      }}
-                      counts={b2cTypeCounts}
-                    />
-
                     <B2CSection
                       data={b2cStats}
                       activeType={ctypeFilter}
