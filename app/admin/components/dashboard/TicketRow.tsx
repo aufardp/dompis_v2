@@ -286,7 +286,6 @@ export default function TicketRow({
             className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600'
           >
             <Eye size={13} />
-            Detail
           </button>
         ) : (
           /* Active: split button — Detail | Assign/Reassign */
@@ -298,7 +297,6 @@ export default function TicketRow({
               className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600'
             >
               <Eye size={13} />
-              Detail
             </button>
 
             {/* Assign / Reassign half */}
@@ -317,12 +315,10 @@ export default function TicketRow({
               {ticket.teknisiUserId ? (
                 <>
                   <RefreshCw size={12} />
-                  Reassign
                 </>
               ) : (
                 <>
                   <UserPlus size={12} />
-                  Assign
                 </>
               )}
             </button>

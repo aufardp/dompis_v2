@@ -10,17 +10,19 @@ import { postTechEvents } from '@/app/libs/integrations/techEvents';
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const got = req.headers.get('x-cron-secret') || '';
+
   if (!expected) {
     throw new Error('CRON_SECRET is not configured');
   }
+
   if (got !== expected) {
     throw new Error('Forbidden');
   }
 }
 
 function computeBackoffMs(attempt: number) {
-  const base = 30_000;
-  const max = 15 * 60_000;
+  const base = 30_000; // 30 detik
+  const max = 15 * 60_000; // 15 menit
   const ms = base * Math.pow(2, Math.max(0, attempt - 1));
   return Math.min(max, ms);
 }
@@ -28,6 +30,7 @@ function computeBackoffMs(attempt: number) {
 export async function POST(req: NextRequest) {
   const lockKey = 'tech-events-dispatch-lock';
   const ownerId = `dispatch-${Date.now()}-${Math.random()}`;
+  let lockAcquired = false;
 
   try {
     requireCronSecret(req);
@@ -37,8 +40,12 @@ export async function POST(req: NextRequest) {
     const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET;
 
     if (!enabled) {
-      return NextResponse.json({ success: true, message: 'Webhook disabled' });
+      return NextResponse.json({
+        success: true,
+        message: 'Webhook disabled',
+      });
     }
+
     if (!url || !secret) {
       return NextResponse.json(
         {
@@ -49,10 +56,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const lockAcquired = await acquireLock(lockKey, ownerId, 55);
+    lockAcquired = await acquireLock(lockKey, ownerId, 55);
+
     if (!lockAcquired) {
       return NextResponse.json(
-        { success: true, message: 'Dispatcher is already running' },
+        {
+          success: true,
+          message: 'Dispatcher is already running',
+        },
         { status: 200 },
       );
     }
@@ -60,8 +71,7 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const limit = 25;
 
-    // Fetch pending events
-    const events = await (prisma as any).tech_event_outbox.findMany({
+    const events = await prisma.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
         OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
@@ -70,27 +80,35 @@ export async function POST(req: NextRequest) {
       take: limit,
     });
 
-    if (!events || events.length === 0) {
-      return NextResponse.json({ success: true, message: 'No pending events' });
+    if (events.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No pending events',
+      });
     }
 
-    const ids = events.map((e: any) => e.id);
+    const ids = events.map((e) => e.id);
 
-    // Mark as SENDING (best-effort)
-    await (prisma as any).tech_event_outbox.updateMany({
+    // Mark as SENDING
+    await prisma.tech_event_outbox.updateMany({
       where: { id: { in: ids }, status: 'PENDING' },
       data: { status: 'SENDING' },
     });
 
-    const payload = { events: events.map((e: any) => e.payload) };
+    const payload = {
+      events: events.map((e) => e.payload),
+    };
+
     const failBatch = async (errorText: string) => {
       const msg = errorText.slice(0, 2000);
+
       for (const e of events) {
-        const attempt = Number(e.attempt_count || 0) + 1;
+        const attempt = e.attempt_count + 1;
         const next = new Date(Date.now() + computeBackoffMs(attempt));
+
         const finalStatus = attempt >= 10 ? 'FAILED' : 'PENDING';
 
-        await (prisma as any).tech_event_outbox.update({
+        await prisma.tech_event_outbox.update({
           where: { id: e.id },
           data: {
             status: finalStatus,
@@ -106,7 +124,7 @@ export async function POST(req: NextRequest) {
       const res = await postTechEvents({ url, secret }, payload);
 
       if (res.ok) {
-        await (prisma as any).tech_event_outbox.updateMany({
+        await prisma.tech_event_outbox.updateMany({
           where: { id: { in: ids } },
           data: {
             status: 'SENT',
@@ -124,17 +142,18 @@ export async function POST(req: NextRequest) {
       }
 
       await failBatch(`Webhook error ${res.status}: ${res.text}`);
+
       return NextResponse.json(
         {
           success: false,
           message: 'Webhook failed',
-          webhook: { status: res.status, body: res.text.slice(0, 500) },
           count: ids.length,
         },
         { status: 502 },
       );
     } catch (e: any) {
       await failBatch(`Webhook request failed: ${String(e?.message || e)}`);
+
       return NextResponse.json(
         {
           success: false,
@@ -146,9 +165,13 @@ export async function POST(req: NextRequest) {
     }
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Dispatch failed');
+
     const status = message === 'Forbidden' ? 403 : getErrorStatus(error, 500);
+
     return NextResponse.json({ success: false, message }, { status });
   } finally {
-    await releaseLock(lockKey, ownerId);
+    if (lockAcquired) {
+      await releaseLock(lockKey, ownerId);
+    }
   }
 }

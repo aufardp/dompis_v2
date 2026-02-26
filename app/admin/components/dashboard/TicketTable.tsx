@@ -120,7 +120,7 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   service: true,
   customer: true,
   address: true,
-  bookingDate: false,
+  bookingDate: true,
   type: true,
   maxTtr: true,
   age: true,

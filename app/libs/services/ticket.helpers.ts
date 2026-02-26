@@ -1,8 +1,7 @@
 // app/services/ticket.helpers.ts
 
 import prisma from '@/app/libs/prisma';
-import { Prisma } from '@prisma/client';
-import { ActivityType, TicketStatus } from '@prisma/client';
+import { Prisma, ActivityType } from '@prisma/client';
 
 // ── Workzone ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +27,6 @@ export async function resolveWorkzoneName(
 export type TrackingUpsertPayload = {
   ticketId: number;
   assignedTo: number;
-  status: TicketStatus;
   isActive: boolean;
   now: Date;
   extra?: Partial<{
@@ -49,7 +47,6 @@ export async function upsertTracking(
   const base = {
     ticket_id: p.ticketId,
     assigned_to: p.assignedTo,
-    current_status: p.status,
     is_active: p.isActive,
     updated_at: p.now,
     ...(p.extra?.assignedBy !== undefined && {
@@ -105,8 +102,8 @@ export async function logStatusChange(
   tx: Prisma.TransactionClient,
   payload: {
     ticketId: number;
-    oldStatus: TicketStatus | null;
-    newStatus: TicketStatus;
+    oldStatus: string | null;
+    newStatus: string;
     changedBy: number;
     roleId: number;
     note?: string | null;

@@ -6,7 +6,7 @@ import {
   normalizeRoleKey,
   roleKeyToRoleId,
 } from '@/app/libs/roles';
-import { ActivityType, TicketStatus } from '@prisma/client';
+import { ActivityType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
 import { randomUUID } from 'crypto';
@@ -243,27 +243,16 @@ function truncate255(value: string): string {
   return value.slice(0, 252) + '...';
 }
 
-function toTrackingStatus(from: VisitStatus): TicketStatus | null {
-  const map: Partial<Record<VisitStatus, TicketStatus>> = {
-    ASSIGNED: TicketStatus.ASSIGNED,
-    ON_PROGRESS: TicketStatus.ON_PROGRESS,
-    PENDING: TicketStatus.PENDING,
-    ESCALATED: TicketStatus.ESCALATED,
-    CANCELLED: TicketStatus.CANCELLED,
-    CLOSE: TicketStatus.CLOSE,
-  };
-  return map[from] ?? null;
-}
-
 function assertTransition(
-  action: 'ASSIGN' | 'UNASSIGN' | 'PICKUP' | 'CLOSE',
+  action: 'OPEN' | 'ASSIGN' | 'UNASSIGN' | 'PICKUP' | 'CLOSE',
   from: VisitStatus,
 ) {
   const allowed: Record<typeof action, VisitStatus[]> = {
-    ASSIGN: ['OPEN', 'ASSIGNED'],
-    UNASSIGN: ['ASSIGNED'],
+    ASSIGN: ['OPEN', 'ASSIGNED', 'PENDING'],
+    UNASSIGN: ['ASSIGNED', 'ON_PROGRESS', 'PENDING', 'ESCALATED'],
     PICKUP: ['ASSIGNED'],
     CLOSE: ['ON_PROGRESS'],
+    OPEN: [],
   };
 
   if (!allowed[action].includes(from)) {
@@ -447,7 +436,6 @@ async function handleTechnicianWorkflow(
     await upsertTracking(tx, {
       ticketId,
       assignedTo: actor.id_user,
-      status: TicketStatus.PENDING,
       isActive: true,
       now,
       extra: { pendingAt: now, pendingReason: reasonDb },
@@ -455,8 +443,8 @@ async function handleTechnicianWorkflow(
 
     await logStatusChange(tx, {
       ticketId,
-      oldStatus: TicketStatus.ON_PROGRESS,
-      newStatus: TicketStatus.PENDING,
+      oldStatus: 'ON_PROGRESS',
+      newStatus: 'PENDING',
       changedBy: actor.id_user,
       roleId,
       note: workflow.note ? String(workflow.note).trim() : 'Set to PENDING',
@@ -487,7 +475,6 @@ async function handleTechnicianWorkflow(
     await upsertTracking(tx, {
       ticketId,
       assignedTo: actor.id_user,
-      status: TicketStatus.ON_PROGRESS,
       isActive: true,
       now,
       extra: { onProgressAt: now, pendingReason: null },
@@ -495,8 +482,8 @@ async function handleTechnicianWorkflow(
 
     await logStatusChange(tx, {
       ticketId,
-      oldStatus: TicketStatus.PENDING,
-      newStatus: TicketStatus.ON_PROGRESS,
+      oldStatus: 'PENDING',
+      newStatus: 'ON_PROGRESS',
       changedBy: actor.id_user,
       roleId,
       note: workflow.note ? String(workflow.note).trim() : 'Resume work',
@@ -555,7 +542,6 @@ async function handleAdminWorkflow(
   await upsertTracking(tx, {
     ticketId,
     assignedTo: ticket.teknisi_user_id,
-    status: TicketStatus.ESCALATED,
     isActive: true,
     now,
     extra: { pendingReason: null },
@@ -563,8 +549,8 @@ async function handleAdminWorkflow(
 
   await logStatusChange(tx, {
     ticketId,
-    oldStatus: toTrackingStatus(current),
-    newStatus: TicketStatus.ESCALATED,
+    oldStatus: current,
+    newStatus: 'ESCALATED',
     changedBy: actor.id_user,
     roleId,
     note: workflow.note ? String(workflow.note).trim() : 'Escalated',
@@ -646,7 +632,6 @@ async function applyPatchFields(
     await upsertTracking(tx, {
       ticketId,
       assignedTo: ticket.teknisi_user_id,
-      status: TicketStatus.PENDING,
       isActive: true,
       now,
       extra: { pendingAt: now, pendingReason: reasonDb },
@@ -815,10 +800,16 @@ export class TicketWorkflowService {
         data: { teknisi_user_id: technicianId, HASIL_VISIT: 'ASSIGNED' },
       });
 
+      const debugTicket = await tx.ticket.findUnique({
+        where: { id_ticket: ticketId },
+        select: { teknisi_user_id: true, HASIL_VISIT: true },
+      });
+
+      console.log('AFTER ASSIGN:', debugTicket);
+
       await upsertTracking(tx, {
         ticketId,
         assignedTo: technicianId,
-        status: TicketStatus.ASSIGNED,
         isActive: true,
         now,
         extra: {
@@ -843,8 +834,8 @@ export class TicketWorkflowService {
       if (current !== 'ASSIGNED') {
         await logStatusChange(tx, {
           ticketId,
-          oldStatus: toTrackingStatus(current),
-          newStatus: TicketStatus.ASSIGNED,
+          oldStatus: current,
+          newStatus: 'ASSIGNED',
           changedBy: actor.id_user,
           roleId,
           note: assignNote,
@@ -883,8 +874,10 @@ export class TicketWorkflowService {
       if (!ticket) throw new Error('Ticket not found');
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
+
       if (current === 'CLOSE') throw new Error('Ticket already closed');
 
+      // Only ASSIGNED ticket can be unassigned
       assertTransition('UNASSIGN', current);
 
       if (ticket.teknisi_user_id == null)
@@ -892,31 +885,37 @@ export class TicketWorkflowService {
 
       const oldTechnicianId = ticket.teknisi_user_id;
 
+      // Admin must have SA access
       if (roleKey === 'admin') {
         const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
         if (!sa) throw new Error('Unauthorized');
         await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
       }
 
+      // ── Update Ticket → OPEN ────────────────────────────
       await tx.ticket.update({
         where: { id_ticket: ticketId },
-        data: { teknisi_user_id: null, HASIL_VISIT: 'OPEN' },
+        data: {
+          teknisi_user_id: null,
+          HASIL_VISIT: 'OPEN',
+        },
       });
 
+      // ── Update Tracking → OPEN (NOT CANCELLED) ──────────
       await upsertTracking(tx, {
         ticketId,
         assignedTo: oldTechnicianId,
-        status: TicketStatus.CANCELLED,
         isActive: false,
         now,
       });
 
       await deactivateAssignmentHistory(tx, ticketId, now);
 
+      // ── Log Status Change → ASSIGNED → OPEN ─────────────
       await logStatusChange(tx, {
         ticketId,
-        oldStatus: TicketStatus.ASSIGNED,
-        newStatus: TicketStatus.CANCELLED,
+        oldStatus: 'ASSIGNED',
+        newStatus: 'OPEN',
         changedBy: actor.id_user,
         roleId,
         note: `Unassigned from #${oldTechnicianId}`,
@@ -965,7 +964,6 @@ export class TicketWorkflowService {
       await upsertTracking(tx, {
         ticketId,
         assignedTo: actor.id_user,
-        status: TicketStatus.ON_PROGRESS,
         isActive: true,
         now,
         extra: { pickedUpAt: now, onProgressAt: now },
@@ -973,8 +971,8 @@ export class TicketWorkflowService {
 
       await logStatusChange(tx, {
         ticketId,
-        oldStatus: TicketStatus.ASSIGNED,
-        newStatus: TicketStatus.ON_PROGRESS,
+        oldStatus: 'ASSIGNED',
+        newStatus: 'ON_PROGRESS',
         changedBy: actor.id_user,
         roleId,
         note: 'Pickup -> ON_PROGRESS',
@@ -1065,7 +1063,6 @@ export class TicketWorkflowService {
       await upsertTracking(tx, {
         ticketId,
         assignedTo: actor.id_user,
-        status: TicketStatus.CLOSE,
         isActive: false,
         now,
         extra: { closedAt: now },
@@ -1075,8 +1072,8 @@ export class TicketWorkflowService {
 
       await logStatusChange(tx, {
         ticketId,
-        oldStatus: TicketStatus.ON_PROGRESS,
-        newStatus: TicketStatus.CLOSE,
+        oldStatus: 'ON_PROGRESS',
+        newStatus: 'CLOSE',
         changedBy: actor.id_user,
         roleId,
         note: 'Ticket closed',

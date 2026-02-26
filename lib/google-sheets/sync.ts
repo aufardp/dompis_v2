@@ -19,7 +19,7 @@ function mapRow(row: (string | undefined)[]): (string | null)[] {
     row[6] ?? null, // CUSTOMER_SEGMENT
     row[7] ?? null, // SERVICE_TYPE
     row[9] ?? null, // WORKZONE
-    row[10] ?? null, // STATUS
+    row[10] ?? null, // STATUS (external only)
     row[12] ?? null, // TICKET_ID_GAMAS
     row[14] ?? null, // CONTACT_PHONE
     row[15] ?? null, // CONTACT_NAME
@@ -30,7 +30,6 @@ function mapRow(row: (string | undefined)[]): (string | null)[] {
     row[40] ?? null, // SYMPTOM
     row[43] ?? null, // DESCRIPTION_ACTUAL_SOLUTION
     row[47] ?? null, // DEVICE_NAME
-    row[124] ?? null, // HASIL_VISIT
     row[113] ?? null, // JAM_EXPIRED_12_JAM_GOLD
     row[114] ?? null, // STATUS_TTR_12_GOLD
     row[115] ?? null, // JAM_EXPIRED_3_JAM_DIAMOND
@@ -48,6 +47,7 @@ function mapRow(row: (string | undefined)[]): (string | null)[] {
     row[125] ?? null, // rca
     row[126] ?? null, // sub_rca
   ];
+
   return mapped.map((v) => v ?? '');
 }
 
@@ -80,10 +80,6 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
     const rows = response.data.values || [];
 
-    console.log('Total rows from spreadsheet:', rows.length);
-    console.log('First row (headers):', rows[0]?.slice(0, 10));
-    console.log('Second row sample:', rows[1]?.slice(0, 10));
-
     if (rows.length <= 1) {
       console.log('Tidak ada data');
       return result;
@@ -95,45 +91,34 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
     const existingSet = new Set(existingTickets.map((r) => r.INCIDENT));
 
-    console.log('Existing tickets in DB:', existingTickets.length);
-    console.log(
-      'Sample existing INCIDENT:',
-      Array.from(existingSet).slice(0, 5),
-    );
-
     let inserted = 0;
     let updated = 0;
     const mappedData: (string | null)[][] = [];
 
     for (let i = 1; i < rows.length; i++) {
-      const data = mapRow(rows[i]);
+      const row = rows[i];
+
+      const rawStatus = row[10]?.toString().trim().toLowerCase();
+
+      // Hanya ambil status backend
+      if (rawStatus !== 'backend') continue;
+
+      const data = mapRow(row);
       const incident = data[0] as string;
 
-      if (!incident) {
-        console.log(`Row ${i} skipped: no INCIDENT value`);
-        continue;
-      }
+      if (!incident) continue;
 
-      if (existingSet.has(incident)) {
-        updated++;
-      } else {
-        inserted++;
-      }
+      if (existingSet.has(incident)) updated++;
+      else inserted++;
+
       mappedData.push(data);
     }
 
-    console.log(
-      `Processed ${rows.length - 1} spreadsheet rows: ${inserted} new, ${updated} existing`,
-    );
-    console.log('Sample mapped data (first row):', mappedData[0]);
+    if (mappedData.length === 0) return result;
 
-    if (mappedData.length === 0) {
-      return result;
-    }
+    // 🔥 HASIL_VISIT DIHAPUS → total 34 kolom
+    const COLUMN_COUNT = 34;
 
-    // 35 kolom dari spreadsheet
-    // (id_ticket=AUTO_INCREMENT, teknisi_user_id & closed_at tidak di-sync)
-    const COLUMN_COUNT = 35;
     const placeholders = mappedData
       .map(() => `(${Array(COLUMN_COUNT).fill('?').join(',')})`)
       .join(',');
@@ -147,13 +132,23 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         TICKET_ID_GAMAS, CONTACT_PHONE, CONTACT_NAME,
         BOOKING_DATE, SOURCE_TICKET, CUSTOMER_TYPE,
         SERVICE_NO, SYMPTOM, DESCRIPTION_ACTUAL_SOLUTION,
-        DEVICE_NAME, HASIL_VISIT, JAM_EXPIRED_12_JAM_GOLD,
-        STATUS_TTR_12_GOLD, JAM_EXPIRED_3_JAM_DIAMOND,
-        STATUS_TTR_3_DIAMOND, JAM_EXPIRED_24_JAM_REGULER,
-        STATUS_TTR_24_REGULER, JAM_EXPIRED_6_JAM_PLATINUM,
-        STATUS_TTR_6_PLATINUM, JENIS_TIKET, JAM_EXPIRED,
-        REDAMAN, MANJA_EXPIRED, ALAMAT, PENDING_REASON,
-        rca, sub_rca
+        DEVICE_NAME,
+        JAM_EXPIRED_12_JAM_GOLD,
+        STATUS_TTR_12_GOLD,
+        JAM_EXPIRED_3_JAM_DIAMOND,
+        STATUS_TTR_3_DIAMOND,
+        JAM_EXPIRED_24_JAM_REGULER,
+        STATUS_TTR_24_REGULER,
+        JAM_EXPIRED_6_JAM_PLATINUM,
+        STATUS_TTR_6_PLATINUM,
+        JENIS_TIKET,
+        JAM_EXPIRED,
+        REDAMAN,
+        MANJA_EXPIRED,
+        ALAMAT,
+        PENDING_REASON,
+        rca,
+        sub_rca
       ) VALUES ${placeholders}
       ON DUPLICATE KEY UPDATE
         SUMMARY                     = VALUES(SUMMARY),
@@ -173,7 +168,6 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         SYMPTOM                     = VALUES(SYMPTOM),
         DESCRIPTION_ACTUAL_SOLUTION = VALUES(DESCRIPTION_ACTUAL_SOLUTION),
         DEVICE_NAME                 = VALUES(DEVICE_NAME),
-        HASIL_VISIT                 = VALUES(HASIL_VISIT),
         JAM_EXPIRED_12_JAM_GOLD     = VALUES(JAM_EXPIRED_12_JAM_GOLD),
         STATUS_TTR_12_GOLD          = VALUES(STATUS_TTR_12_GOLD),
         JAM_EXPIRED_3_JAM_DIAMOND   = VALUES(JAM_EXPIRED_3_JAM_DIAMOND),
@@ -190,21 +184,14 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         PENDING_REASON              = VALUES(PENDING_REASON),
         rca                         = VALUES(rca),
         sub_rca                     = VALUES(sub_rca)
-        -- teknisi_user_id & closed_at TIDAK di-update dari spreadsheet
     `;
 
-    console.log(`Executing bulk insert for ${mappedData.length} rows...`);
     const insertResult = await prisma.$executeRawUnsafe(query, ...flatValues);
-    console.log('Bulk insert result:', insertResult);
 
     result.inserted = inserted;
     result.updated = updated;
 
     console.log(`Sync selesai | Insert: ${inserted} | Update: ${updated}`);
-
-    if (inserted > 0) {
-      console.log(`✅ ${inserted} DATA BARU MASUK`);
-    }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error('Sync error:', errorMessage);

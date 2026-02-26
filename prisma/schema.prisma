@@ -148,16 +148,6 @@ model users {
   @@index([role_id], map: "id_role")
 }
 
-enum TicketStatus {
-  ASSIGNED
-  PICKED_UP
-  ON_PROGRESS
-  PENDING
-  ESCALATED
-  CANCELLED
-  CLOSE
-}
-
 enum ActivityType {
   ASSIGN
   REASSIGN
@@ -177,7 +167,6 @@ model ticket_tracking {
   on_progress_at DateTime?    @db.Timestamp(0)
   pending_at     DateTime?    @db.Timestamp(0)
   closed_at      DateTime?    @db.Timestamp(0)
-  current_status TicketStatus
   pending_reason String?      @db.VarChar(255)
   is_active      Boolean      @default(true)
   created_at     DateTime     @default(now()) @db.Timestamp(0)
@@ -190,15 +179,14 @@ model ticket_tracking {
   usersId_user Int?
 
   @@index([assigned_to])
-  @@index([current_status])
   @@map("ticket_tracking")
 }
 
 model ticket_status_history {
   id           Int           @id @default(autoincrement())
   ticket_id    Int
-  old_status   TicketStatus?
-  new_status   TicketStatus
+  old_status   String?       @db.VarChar(50)
+  new_status   String        @db.VarChar(50)
   changed_by   Int
   changed_role Int
   note         String?       @db.VarChar(255)

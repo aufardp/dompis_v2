@@ -5,25 +5,11 @@ export type TechEventWebhookConfig = {
   secret: string;
 };
 
-export function signTechEventsPayload(
-  secret: string,
-  ts: string,
-  rawBody: string,
-) {
-  const base = `${ts}.${rawBody}`;
-  return crypto.createHmac('sha256', secret).update(base).digest('hex');
-}
-
-export function buildTechEventsWebhookUrl(
-  baseUrl: string,
-  ts: string,
-  sig: string,
-) {
-  const u = new URL(baseUrl);
-  u.searchParams.set('ts', ts);
-  u.searchParams.set('sig', sig);
-  u.searchParams.set('source', 'dompis');
-  return u.toString();
+function signPayload(secret: string, ts: string, rawBody: string) {
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`${ts}.${rawBody}`)
+    .digest('hex');
 }
 
 export async function postTechEvents(
@@ -32,17 +18,38 @@ export async function postTechEvents(
 ): Promise<{ ok: boolean; status: number; text: string }> {
   const ts = String(Date.now());
   const rawBody = JSON.stringify(body);
-  const sig = signTechEventsPayload(cfg.secret, ts, rawBody);
-  const url = buildTechEventsWebhookUrl(cfg.url, ts, sig);
+  const sig = signPayload(cfg.secret, ts, rawBody);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: rawBody,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
-  const text = await res.text().catch(() => '');
-  return { ok: res.ok, status: res.status, text };
+  try {
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-signature': sig,
+        'x-timestamp': ts,
+        'x-source': 'dompis',
+      },
+      body: rawBody,
+      signal: controller.signal,
+    });
+
+    const text = await res.text().catch(() => '');
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      text,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 500,
+      text: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

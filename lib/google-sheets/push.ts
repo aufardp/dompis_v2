@@ -11,53 +11,12 @@ interface PushResult {
 
 interface TicketRow extends RowDataPacket {
   INCIDENT: string;
-  SUMMARY: string;
-  REPORTED_DATE: string;
-  OWNER_GROUP: string;
-  SERVICE_TYPE: string;
-  WORKZONE: string;
-  STATUS: string;
-  TICKET_ID_GAMAS: string;
-  CONTACT_PHONE: string;
-  CONTACT_NAME: string;
-  CUSTOMER_TYPE: string;
-  SERVICE_NO: string;
-  SYMPTOM: string;
-  DESCRIPTION_ACTUAL_SOLUTION: string;
-  DEVICE_NAME: string;
   HASIL_VISIT: string;
-  JENIS_TIKET: string;
   PENDING_REASON: string;
-  ALAMAT: string;
   NAMA_TEKNISI: string;
   rca: string;
   sub_rca: string;
 }
-
-const columnMap: Record<string, string> = {
-  B: 'INCIDENT',
-  C: 'SUMMARY',
-  D: 'REPORTED_DATE',
-  E: 'OWNER_GROUP',
-  F: 'SERVICE_TYPE',
-  G: 'WORKZONE',
-  K: 'STATUS',
-  M: 'TICKET_ID_GAMAS',
-  H: 'CONTACT_PHONE',
-  I: 'CONTACT_NAME',
-  J: 'CUSTOMER_TYPE',
-  L: 'SERVICE_NO',
-  N: 'SYMPTOM',
-  O: 'DESCRIPTION_ACTUAL_SOLUTION',
-  P: 'DEVICE_NAME',
-  V: 'ALAMAT', // ← kolom baru
-  AD: 'HASIL_VISIT', // ← kolom spreadsheet untuk HASIL_VISIT
-  AE: 'PENDING_REASON', // ← kolom spreadsheet untuk PENDING_REASON
-  AF: 'rca', // ← kolom spreadsheet untuk rca
-  AG: 'sub_rca', // ← kolom spreadsheet untuk sub_rca
-  Q: 'JENIS_TIKET',
-  W: 'NAMA_TEKNISI',
-};
 
 let isPushRunning = false;
 
@@ -68,57 +27,129 @@ export async function pushSpreadsheet(): Promise<PushResult> {
   };
 
   if (isPushRunning) {
-    console.log('Push masih berjalan... skip');
+    console.log('[PUSH] Masih berjalan... skip');
     return result;
   }
 
   isPushRunning = true;
 
   try {
-    console.log('Auto Push mulai:', nowWIB());
-
-    const rows = await query<TicketRow[]>(`
-      SELECT 
-        t.*,
-        u.nama AS NAMA_TEKNISI
-      FROM ticket t
-      LEFT JOIN users u
-        ON t.teknisi_user_id = u.id_user
-    `);
-
-    if (rows.length === 0) {
-      console.log('Tidak ada data untuk dipush');
-      result.success = true;
-      result.count = 0;
-      return result;
-    }
-
-    const batchData = Object.entries(columnMap).map(([column, field]) => ({
-      range: `'WorkOrder_SO_1'!${column}8:${column}10000`,
-      values: rows.map((row: { [x: string]: any }) => [
-        String(row[field as keyof TicketRow] ?? ''),
-      ]),
-    }));
+    console.log('[PUSH] Mulai:', nowWIB());
 
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    await sheets.spreadsheets.values.batchUpdate({
+    // 🔹 1️⃣ Ambil semua ticket dari DB
+    const dbRows = await query<TicketRow[]>(`
+      SELECT 
+        t.INCIDENT,
+        t.HASIL_VISIT,
+        t.PENDING_REASON,
+        t.rca,
+        t.sub_rca,
+        u.nama AS NAMA_TEKNISI
+      FROM ticket t
+      LEFT JOIN users u ON t.teknisi_user_id = u.id_user
+    `);
+
+    if (dbRows.length === 0) {
+      result.success = true;
+      return result;
+    }
+
+    // 🔹 2️⃣ Ambil INCIDENT dari spreadsheet
+    const sheetResponse = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      requestBody: {
-        valueInputOption: 'RAW',
-        data: batchData,
-      },
+      range: `'WorkOrder_SO_1'!B8:B10000`,
     });
 
-    result.success = true;
-    result.count = rows.length;
+    const sheetIncidents = sheetResponse.data.values || [];
 
-    console.log(`Push selesai ${rows.length} data ✅`);
+    const incidentMap = new Map<string, number>();
+
+    sheetIncidents.forEach((row, index) => {
+      const incident = row[0];
+      if (incident) {
+        incidentMap.set(incident, index + 8); // row number di sheet
+      }
+    });
+
+    const updates: any[] = [];
+    const inserts: any[] = [];
+
+    for (const row of dbRows) {
+      const rowNumber = incidentMap.get(row.INCIDENT);
+
+      if (rowNumber) {
+        // 🔥 UPDATE hanya 5 kolom
+        updates.push(
+          {
+            range: `'WorkOrder_SO_1'!AD${rowNumber}`,
+            values: [[row.HASIL_VISIT ?? '']],
+          },
+          {
+            range: `'WorkOrder_SO_1'!AE${rowNumber}`,
+            values: [[row.PENDING_REASON ?? '']],
+          },
+          {
+            range: `'WorkOrder_SO_1'!W${rowNumber}`,
+            values: [[row.NAMA_TEKNISI ?? '']],
+          },
+          {
+            range: `'WorkOrder_SO_1'!AF${rowNumber}`,
+            values: [[row.rca ?? '']],
+          },
+          {
+            range: `'WorkOrder_SO_1'!AG${rowNumber}`,
+            values: [[row.sub_rca ?? '']],
+          },
+        );
+      } else {
+        // 🔥 INSERT row baru (append)
+        inserts.push([
+          row.INCIDENT,
+          row.HASIL_VISIT ?? '',
+          row.PENDING_REASON ?? '',
+          row.NAMA_TEKNISI ?? '',
+          row.rca ?? '',
+          row.sub_rca ?? '',
+        ]);
+      }
+    }
+
+    // 🔹 3️⃣ Jalankan UPDATE batch
+    if (updates.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          valueInputOption: 'RAW',
+          data: updates,
+        },
+      });
+    }
+
+    // 🔹 4️⃣ Append row baru jika ada
+    if (inserts.length > 0) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `'WorkOrder_SO_1'!B8`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: inserts,
+        },
+      });
+    }
+
+    result.success = true;
+    result.count = dbRows.length;
+
+    console.log(
+      `[PUSH] Update ${updates.length / 5} rows, Insert ${inserts.length} rows`,
+    );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Push gagal ❌', errorMessage);
-    result.error = errorMessage;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[PUSH] Gagal ❌', message);
+    result.error = message;
   } finally {
     isPushRunning = false;
   }

@@ -4,10 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:server": "node server.ts",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev:server": "tsx server.ts",
+    "build": "next build && tsc",
+    "start": "NODE_ENV=production node dist/server.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -53,6 +52,7 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "prisma": "^7.4.1",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
