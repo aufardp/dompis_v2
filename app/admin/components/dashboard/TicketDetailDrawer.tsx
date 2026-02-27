@@ -90,61 +90,79 @@ const CTYPE_BORDER: Record<TicketCtype, string> = {
 
 const STATUS_CONFIG: Record<
   TicketStatusKey | string,
-  { label: string; color: string; bg: string; dot: string }
+  { label: string; color: string; bg: string; dot: string; icon?: string; border?: string }
 > = {
   OPEN: {
     label: 'Open',
     color: 'text-blue-600',
     bg: 'bg-blue-50',
     dot: 'bg-blue-500',
+    border: 'border-blue-200',
+    icon: '📂',
   },
   ASSIGNED: {
     label: 'Assigned',
     color: 'text-indigo-600',
     bg: 'bg-indigo-50',
     dot: 'bg-indigo-500',
+    border: 'border-indigo-200',
+    icon: '👤',
   },
   ON_PROGRESS: {
     label: 'On Progress',
     color: 'text-amber-600',
     bg: 'bg-amber-50',
     dot: 'bg-amber-500',
+    border: 'border-amber-200',
+    icon: '⚙️',
   },
   IN_PROGRESS: {
     label: 'On Progress',
     color: 'text-amber-600',
     bg: 'bg-amber-50',
     dot: 'bg-amber-500',
+    border: 'border-amber-200',
+    icon: '⚙️',
   },
   PENDING: {
     label: 'Pending',
-    color: 'text-amber-600',
-    bg: 'bg-amber-50',
-    dot: 'bg-amber-500',
+    color: 'text-purple-600',
+    bg: 'bg-purple-50',
+    dot: 'bg-purple-500',
+    border: 'border-purple-200',
+    icon: '⏸',
   },
   ESCALATED: {
     label: 'Escalated',
     color: 'text-orange-600',
     bg: 'bg-orange-50',
     dot: 'bg-orange-500',
+    border: 'border-orange-200',
+    icon: '⚠️',
   },
   CANCELLED: {
     label: 'Cancelled',
     color: 'text-red-600',
     bg: 'bg-red-50',
     dot: 'bg-red-500',
+    border: 'border-red-200',
+    icon: '❌',
   },
   CLOSE: {
     label: 'Closed',
     color: 'text-green-600',
     bg: 'bg-green-50',
     dot: 'bg-green-500',
+    border: 'border-green-200',
+    icon: '✅',
   },
   CLOSED: {
     label: 'Closed',
     color: 'text-green-600',
     bg: 'bg-green-50',
     dot: 'bg-green-500',
+    border: 'border-green-200',
+    icon: '✅',
   },
 };
 
@@ -227,18 +245,18 @@ interface BadgeProps {
   icon?: string;
 }
 
-function StatusBadge({ label, color, bg, dot, icon }: BadgeProps) {
+function StatusBadge({ label, color, bg, dot, icon, border }: BadgeProps & { border?: string }) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm',
         bg,
         color,
-        'border-opacity-20',
+        border || 'border-opacity-20',
       )}
     >
-      {dot && <span className={clsx('h-1.5 w-1.5 rounded-full', dot)} />}
-      {icon && <span>{icon}</span>}
+      {dot && <span className={clsx('h-2 w-2 rounded-full', dot)} />}
+      {icon && <span className='text-sm'>{icon}</span>}
       {label}
     </span>
   );
@@ -296,19 +314,21 @@ interface FieldProps {
   value: string | number | null | undefined;
   mono?: boolean;
   fullWidth?: boolean;
+  highlight?: boolean;
 }
 
-function Field({ label, value, mono, fullWidth }: FieldProps) {
+function Field({ label, value, mono, fullWidth, highlight }: FieldProps) {
   const displayValue = value ?? '—';
   return (
     <div className={clsx(fullWidth ? 'col-span-2' : '')}>
-      <p className='mb-0.5 text-[10.5px] tracking-wider text-slate-400 uppercase'>
+      <p className='mb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase'>
         {label}
       </p>
       <p
         className={clsx(
-          'text-[13.5px] wrap-break-word text-slate-800',
+          'text-[13.5px] wrap-break-word',
           mono && 'font-mono',
+          highlight ? 'font-semibold text-slate-900' : 'text-slate-700',
         )}
       >
         {displayValue}
@@ -322,22 +342,24 @@ interface SectionProps {
   title: string;
   children: React.ReactNode;
   fullWidth?: boolean;
+  variant?: 'default' | 'highlighted';
 }
 
-function Section({ icon, title, children, fullWidth }: SectionProps) {
+function Section({ icon, title, children, fullWidth, variant = 'default' }: SectionProps) {
   return (
     <div
       className={clsx(
-        'mb-5',
+        'mb-5 rounded-xl border bg-white p-4',
+        variant === 'highlighted' ? 'border-slate-300 shadow-md' : 'border-slate-200 shadow-sm',
         fullWidth ? '' : 'grid grid-cols-2 gap-x-4 gap-y-3',
       )}
     >
       <div
         className={clsx(fullWidth ? 'grid grid-cols-2 gap-x-4' : 'col-span-2')}
       >
-        <div className='col-span-2 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2'>
-          <span className='text-slate-400'>{icon}</span>
-          <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase'>
+        <div className='col-span-2 mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
+          <span className='text-slate-500'>{icon}</span>
+          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
             {title}
           </h3>
         </div>
@@ -373,10 +395,10 @@ function TTRCard({ label, value }: TTRCardProps) {
   const urgency = getTTRUrgency(value);
 
   const styles = {
-    overdue: 'border-red-300 bg-red-50',
-    warning: 'border-amber-300 bg-amber-50',
-    safe: 'border-green-300 bg-green-50',
-    unknown: 'border-slate-200 bg-slate-50',
+    overdue: 'border-red-300 bg-gradient-to-br from-red-50 to-red-100',
+    warning: 'border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100',
+    safe: 'border-green-300 bg-gradient-to-br from-green-50 to-green-100',
+    unknown: 'border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100',
   };
 
   const textStyles = {
@@ -387,11 +409,11 @@ function TTRCard({ label, value }: TTRCardProps) {
   };
 
   return (
-    <div className={clsx('rounded-lg border p-3', styles[urgency])}>
-      <p className='mb-1 text-[10.5px] tracking-wider text-slate-500 uppercase'>
+    <div className={clsx('rounded-xl border p-3 shadow-sm', styles[urgency])}>
+      <p className='mb-1 text-[10px] font-bold tracking-wider text-slate-500 uppercase'>
         {label}
       </p>
-      <p className={clsx('text-sm font-medium', textStyles[urgency])}>
+      <p className={clsx('text-sm font-semibold', textStyles[urgency])}>
         {value ? formatDateTime(value) : '—'}
       </p>
     </div>
@@ -478,10 +500,10 @@ export default function TicketDetailDrawer({
       >
         {ticket ? (
           <>
-            <div className='sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4'>
+            <div className='sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4 shadow-sm'>
               <div className='mb-3 flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
-                  <span className='font-mono text-sm font-semibold text-slate-800'>
+                  <span className='font-mono text-base font-bold text-slate-900'>
                     {ticket.ticket}
                   </span>
                   <StatusBadge {...workflowConfig} />
@@ -518,7 +540,31 @@ export default function TicketDetailDrawer({
                 </div>
               </div>
 
-              <div className='flex border-b border-slate-200'>
+              {/* PENDING REASON BANNER */}
+              {ticket.hasilVisit === 'PENDING' && ticket.pendingReason && (
+                <div className='mt-3 rounded-xl border-2 border-purple-200 bg-purple-50 p-4 shadow-sm'>
+                  <div className='flex items-start gap-3'>
+                    <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100'>
+                      <AlertTriangle size={18} className='text-purple-600' />
+                    </div>
+                    <div className='flex-1'>
+                      <h4 className='text-sm font-bold text-purple-900'>
+                        ⏸ Ticket Pending
+                      </h4>
+                      <p className='mt-1 text-sm text-purple-800'>
+                        {ticket.pendingReason}
+                      </p>
+                      {ticket.closedAt && (
+                        <p className='mt-2 text-xs text-purple-600'>
+                          Closed: {formatDateTime(ticket.closedAt)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className='mt-3 flex border-b border-slate-200'>
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
@@ -526,7 +572,7 @@ export default function TicketDetailDrawer({
                     className={clsx(
                       'relative px-4 py-2.5 text-xs font-medium transition-colors',
                       activeTab === tab.key
-                        ? 'text-slate-900'
+                        ? 'text-slate-900 font-semibold'
                         : 'text-slate-500 hover:text-slate-700',
                     )}
                   >
@@ -544,22 +590,22 @@ export default function TicketDetailDrawer({
                 <>
                   <div
                     className={clsx(
-                      'mb-5 rounded-xl border bg-white p-4',
+                      'mb-5 rounded-xl border-2 bg-gradient-to-br from-white p-5 shadow-md',
                       ttrUrgency === 'overdue'
-                        ? 'border-red-200'
+                        ? 'border-red-300 from-red-50 to-red-100'
                         : ttrUrgency === 'warning'
-                          ? 'border-amber-200'
-                          : 'border-slate-200',
+                          ? 'border-amber-300 from-amber-50 to-amber-100'
+                          : 'border-slate-200 from-slate-50 to-slate-100',
                     )}
                   >
-                    <div className='flex items-start justify-between gap-3'>
+                    <div className='flex items-start justify-between gap-4'>
                       <div>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase'>
+                        <p className='text-[10px] font-bold tracking-wider text-slate-400 uppercase'>
                           SLA / TTR
                         </p>
                         <p
                           className={clsx(
-                            'mt-1 text-sm font-semibold',
+                            'mt-1.5 text-base font-bold',
                             ttrUrgency === 'overdue'
                               ? 'text-red-700'
                               : ttrUrgency === 'warning'
@@ -569,36 +615,37 @@ export default function TicketDetailDrawer({
                         >
                           {ttrLabel}
                         </p>
-                        <p className='mt-0.5 text-xs text-slate-500'>
+                        <p className='mt-1 text-xs text-slate-500'>
                           Deadline:{' '}
                           {ttrDeadline ? formatDateTime(ttrDeadline) : '—'}
                         </p>
                       </div>
 
                       <div className='text-right'>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase'>
+                        <p className='text-[10px] font-bold tracking-wider text-slate-400 uppercase'>
                           Reported
                         </p>
-                        <p className='mt-1 text-sm font-semibold text-slate-700'>
+                        <p className='mt-1.5 text-sm font-bold text-slate-700'>
                           {formatShortDistance(ticket.reportedDate)}
                         </p>
-                        <p className='mt-0.5 text-xs text-slate-500'>
+                        <p className='mt-1 text-xs text-slate-500'>
                           {formatDateTime(ticket.reportedDate)}
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className='mb-5 rounded-lg border border-slate-200 bg-white p-4'>
-                    <p className='mb-2 text-xs tracking-wider text-slate-400 uppercase'>
+                  <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+                    <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 uppercase'>
                       Summary
                     </p>
-                    <p className='text-sm text-slate-700'>{ticket.summary}</p>
+                    <p className='text-sm leading-relaxed text-slate-700'>{ticket.summary}</p>
                   </div>
 
                   <Section
                     icon={<Activity size={14} />}
                     title='Informasi Tiket'
+                    variant='highlighted'
                   >
                     <Field label='Ticket' value={ticket.ticket} mono />
                     <Field
@@ -618,24 +665,6 @@ export default function TicketDetailDrawer({
                     <Field label='HASIL_VISIT' value={workflowConfig.label} />
                     {ticket.status && ticket.status !== workflowKey && (
                       <Field label='STATUS' value={ticket.status} />
-                    )}
-                    {ticket.pendingReason && (
-                      <div className='col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3'>
-                        <div className='flex items-start gap-2'>
-                          <AlertTriangle
-                            size={16}
-                            className='mt-0.5 text-amber-500'
-                          />
-                          <div>
-                            <p className='mb-0.5 text-[10.5px] tracking-wider text-amber-600 uppercase'>
-                              Pending Reason
-                            </p>
-                            <p className='text-sm text-amber-800'>
-                              {ticket.pendingReason}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
                     )}
                     <Field
                       label='Closed At'
@@ -833,21 +862,21 @@ export default function TicketDetailDrawer({
               )}
             </div>
 
-            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-white px-5 py-4'>
+            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-gradient-to-t from-white to-slate-50 px-5 py-4 shadow-lg'>
               {onEdit && (
                 <button
                   onClick={() => onEdit(ticket)}
-                  className='flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50'
+                  className='flex-1 rounded-xl border-2 border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98]'
                 >
-                  Edit Tiket
+                  ✏️ Edit Tiket
                 </button>
               )}
               {onUpdateStatus && (
                 <button
                   onClick={() => onUpdateStatus(ticket)}
-                  className='flex-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800'
+                  className='flex-1 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
                 >
-                  Update Status
+                  🔄 Update Status
                 </button>
               )}
             </div>

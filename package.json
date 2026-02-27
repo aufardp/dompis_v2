@@ -6,7 +6,8 @@
     "dev": "next dev",
     "dev:server": "tsx server.ts",
     "build": "next build && tsc",
-    "start": "NODE_ENV=production node dist/server.js"
+    "start": "NODE_ENV=production tsx server.ts",
+    "test:webhook": "tsx scripts/test-webhook.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

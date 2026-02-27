@@ -8,6 +8,7 @@ import {
   type TicketUpdateWorkflow,
 } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { invalidateTicketsCache } from '@/lib/cache';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -67,6 +68,9 @@ export async function POST(req: Request) {
         workflow,
       });
 
+      // Invalidate cache to ensure fresh data on next fetch
+      await invalidateTicketsCache();
+
       return NextResponse.json({ success: true, ...result });
     }
 
@@ -107,6 +111,9 @@ export async function POST(req: Request) {
             workflow,
           },
         );
+
+        // Invalidate cache to ensure fresh data on next fetch
+        await invalidateTicketsCache();
 
         return NextResponse.json({ success: true, ...result });
       }
@@ -168,6 +175,9 @@ export async function POST(req: Request) {
       patch,
       workflow,
     });
+
+    // Invalidate cache to ensure fresh data on next fetch
+    await invalidateTicketsCache();
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {

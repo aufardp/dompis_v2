@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { TechEventWebhookBatch } from './techEventTypes';
 
 export type TechEventWebhookConfig = {
   url: string;
@@ -14,23 +15,26 @@ function signPayload(secret: string, ts: string, rawBody: string) {
 
 export async function postTechEvents(
   cfg: TechEventWebhookConfig,
-  body: unknown,
+  body: TechEventWebhookBatch,
 ): Promise<{ ok: boolean; status: number; text: string }> {
-  const ts = String(Date.now());
+  const ts = Date.now().toString();
   const rawBody = JSON.stringify(body);
-  const sig = signPayload(cfg.secret, ts, rawBody);
+  const signature = signPayload(cfg.secret, ts, rawBody);
+
+  // ✅ Gunakan URL object biar aman
+  const url = new URL(cfg.url);
+  url.searchParams.set('timestamp', ts);
+  url.searchParams.set('signature', signature);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const res = await fetch(cfg.url, {
+    const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-signature': sig,
-        'x-timestamp': ts,
-        'x-source': 'dompis',
+        'x-source': 'dompis', // optional audit
       },
       body: rawBody,
       signal: controller.signal,

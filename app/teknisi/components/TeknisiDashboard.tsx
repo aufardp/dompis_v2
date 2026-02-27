@@ -28,7 +28,8 @@ export default function TeknisiDashboard() {
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetchWithAuth('/api/tickets?limit=100');
+      // Add timestamp to bypass cache and ensure fresh data
+      const res = await fetchWithAuth(`/api/tickets?limit=100&_t=${Date.now()}`);
       if (!res) return;
       const data = await res.json();
 

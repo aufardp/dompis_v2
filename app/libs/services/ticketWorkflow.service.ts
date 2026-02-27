@@ -9,7 +9,7 @@ import {
 import { ActivityType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
-import { randomUUID } from 'crypto';
+import { createTechEvent } from '@/app/libs/createTechEvent';
 
 type TechnicianSnapshot = {
   id_user: number;
@@ -30,37 +30,19 @@ async function getTechnicianSnapshot(
   return { id_user: row.id_user, nik: row.nik ?? null, nama: row.nama ?? null };
 }
 
-async function enqueueTechEvent(
+async function getTicketDetails(
   tx: Prisma.TransactionClient,
-  args: {
-    eventType: string;
-    payload: Record<string, unknown>;
-    occurredAt: Date;
-  },
-) {
-  const enabled = process.env.TECH_EVENTS_WEBHOOK_ENABLED === 'true';
-  const url = process.env.TECH_EVENTS_WEBHOOK_URL;
-  const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET;
-  if (!enabled || !url || !secret) return;
-
-  const eventId = randomUUID();
-  const payload = {
-    event_id: eventId,
-    event_type: args.eventType,
-    occurred_at: args.occurredAt.toISOString(),
-    ...args.payload,
-  };
-
-  await (tx as any).tech_event_outbox.create({
-    data: {
-      event_id: eventId,
-      event_type: args.eventType,
-      payload,
-      status: 'PENDING',
-      attempt_count: 0,
-      next_attempt_at: null,
-    },
+  ticketId: number,
+): Promise<{ service_no: string; customer_name: string } | null> {
+  const row = await tx.ticket.findUnique({
+    where: { id_ticket: ticketId },
+    select: { SERVICE_NO: true, CONTACT_NAME: true },
   });
+  if (!row) return null;
+  return {
+    service_no: row.SERVICE_NO ?? '',
+    customer_name: row.CONTACT_NAME ?? '',
+  };
 }
 
 // ── Service Area Cache (35 items, TTL 1 hour) ────────────────────────────────
@@ -460,6 +442,31 @@ async function handleTechnicianWorkflow(
       ),
     });
 
+    const tech = await getTechnicianSnapshot(tx, actor.id_user);
+    const ticketDetails = await getTicketDetails(tx, ticketId);
+    await createTechEvent(
+      {
+        event_type: 'TICKET_STATUS_CHANGED',
+        ticket: {
+          id: ticketId,
+          incident: ticket.INCIDENT,
+          workzone: ticket.WORKZONE ?? '',
+          service_no: ticketDetails?.service_no ?? '',
+          customer_name: ticketDetails?.customer_name ?? '',
+        },
+        status: {
+          old_hasil_visit: 'ON_PROGRESS',
+          new_hasil_visit: 'PENDING',
+          pending_reason: reasonDb,
+          evidence: null,
+        },
+        old_technician: tech,
+        new_technician: tech,
+        actor: { id_user: actor.id_user, role: actor.role },
+      },
+      tx,
+    );
+
     return {
       ticketUpdate: { HASIL_VISIT: 'PENDING' },
       pendingReason: reasonDb,
@@ -500,6 +507,31 @@ async function handleTechnicianWorkflow(
           : 'Status change: PENDING -> ON_PROGRESS',
       ),
     });
+
+    const tech = await getTechnicianSnapshot(tx, actor.id_user);
+    const ticketDetails = await getTicketDetails(tx, ticketId);
+    await createTechEvent(
+      {
+        event_type: 'TICKET_STATUS_CHANGED',
+        ticket: {
+          id: ticketId,
+          incident: ticket.INCIDENT,
+          workzone: ticket.WORKZONE ?? '',
+          service_no: ticketDetails?.service_no ?? '',
+          customer_name: ticketDetails?.customer_name ?? '',
+        },
+        status: {
+          old_hasil_visit: 'PENDING',
+          new_hasil_visit: 'ON_PROGRESS',
+          pending_reason: null,
+          evidence: null,
+        },
+        old_technician: tech,
+        new_technician: tech,
+        actor: { id_user: actor.id_user, role: actor.role },
+      },
+      tx,
+    );
 
     // Empty string clears PENDING_REASON in DB (column may be NOT NULL)
     return { ticketUpdate: { HASIL_VISIT: 'ON_PROGRESS' }, pendingReason: '' };
@@ -567,6 +599,31 @@ async function handleAdminWorkflow(
         : `Status change: ${current} -> ESCALATED`,
     ),
   });
+
+  const tech = await getTechnicianSnapshot(tx, ticket.teknisi_user_id);
+  const ticketDetails = await getTicketDetails(tx, ticketId);
+  await createTechEvent(
+    {
+      event_type: 'TICKET_STATUS_CHANGED',
+      ticket: {
+        id: ticketId,
+        incident: ticket.INCIDENT,
+        workzone: ticket.WORKZONE ?? '',
+        service_no: ticketDetails?.service_no ?? '',
+        customer_name: ticketDetails?.customer_name ?? '',
+      },
+      status: {
+        old_hasil_visit: current,
+        new_hasil_visit: 'ESCALATED',
+        pending_reason: null,
+        evidence: null,
+      },
+      old_technician: tech,
+      new_technician: tech,
+      actor: { id_user: actor.id_user, role: actor.role },
+    },
+    tx,
+  );
 
   return { ticketUpdate: { HASIL_VISIT: 'ESCALATED' }, pendingReason: '' };
 }
@@ -850,6 +907,34 @@ export class TicketWorkflowService {
         description: assignNote,
       });
 
+      const tech = await getTechnicianSnapshot(tx, technicianId);
+      const oldTech = oldTechnicianId
+        ? await getTechnicianSnapshot(tx, oldTechnicianId)
+        : null;
+      const ticketDetails = await getTicketDetails(tx, ticketId);
+      await createTechEvent(
+        {
+          event_type: 'TICKET_ASSIGNED',
+          ticket: {
+            id: ticketId,
+            incident: ticket.INCIDENT,
+            workzone: ticket.WORKZONE ?? '',
+            service_no: ticketDetails?.service_no ?? '',
+            customer_name: ticketDetails?.customer_name ?? '',
+          },
+          status: {
+            old_hasil_visit: current,
+            new_hasil_visit: 'ASSIGNED',
+            pending_reason: null,
+            evidence: null,
+          },
+          old_technician: oldTech,
+          new_technician: tech,
+          actor: { id_user: actor.id_user, role: actor.role },
+        },
+        tx,
+      );
+
       return {
         message: isReassign
           ? 'Ticket reassigned successfully'
@@ -929,6 +1014,31 @@ export class TicketWorkflowService {
         description: `Unassigned from #${oldTechnicianId}`,
       });
 
+      const tech = await getTechnicianSnapshot(tx, oldTechnicianId);
+      const ticketDetails = await getTicketDetails(tx, ticketId);
+      await createTechEvent(
+        {
+          event_type: 'TICKET_UNASSIGNED',
+          ticket: {
+            id: ticketId,
+            incident: ticket.INCIDENT,
+            workzone: ticket.WORKZONE ?? '',
+            service_no: ticketDetails?.service_no ?? '',
+            customer_name: ticketDetails?.customer_name ?? '',
+          },
+          status: {
+            old_hasil_visit: current,
+            new_hasil_visit: 'OPEN',
+            pending_reason: null,
+            evidence: null,
+          },
+          old_technician: tech,
+          new_technician: null,
+          actor: { id_user: actor.id_user, role: actor.role },
+        },
+        tx,
+      );
+
       return { message: 'Ticket unassigned successfully' };
     });
   }
@@ -987,25 +1097,29 @@ export class TicketWorkflowService {
       });
 
       const tech = await getTechnicianSnapshot(tx, actor.id_user);
-      await enqueueTechEvent(tx, {
-        eventType: 'TICKET_STATUS_CHANGED',
-        occurredAt: now,
-        payload: {
+      const ticketDetails = await getTicketDetails(tx, ticketId);
+      await createTechEvent(
+        {
+          event_type: 'TICKET_STATUS_CHANGED',
           ticket: {
             id: ticketId,
             incident: ticket.INCIDENT,
-            workzone: ticket.WORKZONE,
+            workzone: ticket.WORKZONE ?? '',
+            service_no: ticketDetails?.service_no ?? '',
+            customer_name: ticketDetails?.customer_name ?? '',
           },
           status: {
             old_hasil_visit: 'ASSIGNED',
             new_hasil_visit: 'ON_PROGRESS',
             pending_reason: null,
+            evidence: null,
           },
           old_technician: tech,
           new_technician: tech,
           actor: { id_user: actor.id_user, role: actor.role },
         },
-      });
+        tx,
+      );
 
       return { message: 'Ticket picked up successfully' };
     });
@@ -1099,35 +1213,31 @@ export class TicketWorkflowService {
         },
       });
 
-      await enqueueTechEvent(tx, {
-        eventType: 'TICKET_STATUS_CHANGED',
-        occurredAt: now,
-        payload: {
+      const evidenceUrl = evidence.length > 0 ? evidence[0].file_path : null;
+      const ticketDetails = await getTicketDetails(tx, ticketId);
+
+      await createTechEvent(
+        {
+          event_type: 'TICKET_CLOSED',
           ticket: {
             id: ticketId,
             incident: ticket.INCIDENT,
-            workzone: ticket.WORKZONE,
+            workzone: ticket.WORKZONE ?? '',
+            service_no: ticketDetails?.service_no ?? '',
+            customer_name: ticketDetails?.customer_name ?? '',
           },
           status: {
             old_hasil_visit: 'ON_PROGRESS',
-            new_hasil_visit: 'CLOSE',
+            new_hasil_visit: 'DONE',
             pending_reason: null,
+            evidence: evidenceUrl,
           },
           old_technician: tech,
           new_technician: tech,
           actor: { id_user: actor.id_user, role: actor.role },
-          close: {
-            rca: rcaValue,
-            sub_rca: subRcaValue,
-            evidence: evidence.map((e) => ({
-              fileName: e.file_name,
-              filePath: e.file_path,
-              mimeType: e.mime_type ?? null,
-              fileSize: e.file_size ?? null,
-            })),
-          },
         },
-      });
+        tx,
+      );
 
       return { message: 'Ticket closed successfully' };
     });

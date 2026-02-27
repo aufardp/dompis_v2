@@ -6,23 +6,22 @@ import prisma from '@/app/libs/prisma';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { postTechEvents } from '@/app/libs/integrations/techEvents';
+import {
+  TechEventWebhookBatch,
+  WebhookEvent,
+} from '@/app/libs/integrations/techEventTypes';
 
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   const got = req.headers.get('x-cron-secret') || '';
 
-  if (!expected) {
-    throw new Error('CRON_SECRET is not configured');
-  }
-
-  if (got !== expected) {
-    throw new Error('Forbidden');
-  }
+  if (!expected) throw new Error('CRON_SECRET is not configured');
+  if (got !== expected) throw new Error('Forbidden');
 }
 
 function computeBackoffMs(attempt: number) {
-  const base = 30_000; // 30 detik
-  const max = 15 * 60_000; // 15 menit
+  const base = 30_000;
+  const max = 15 * 60_000;
   const ms = base * Math.pow(2, Math.max(0, attempt - 1));
   return Math.min(max, ms);
 }
@@ -40,18 +39,12 @@ export async function POST(req: NextRequest) {
     const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET;
 
     if (!enabled) {
-      return NextResponse.json({
-        success: true,
-        message: 'Webhook disabled',
-      });
+      return NextResponse.json({ success: true, message: 'Webhook disabled' });
     }
 
     if (!url || !secret) {
       return NextResponse.json(
-        {
-          success: false,
-          message: 'TECH_EVENTS_WEBHOOK_URL/SECRET is not configured',
-        },
+        { success: false, message: 'TECH_EVENTS_WEBHOOK_URL/SECRET not set' },
         { status: 500 },
       );
     }
@@ -59,65 +52,56 @@ export async function POST(req: NextRequest) {
     lockAcquired = await acquireLock(lockKey, ownerId, 55);
 
     if (!lockAcquired) {
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Dispatcher is already running',
-        },
-        { status: 200 },
-      );
+      return NextResponse.json({
+        success: true,
+        message: 'Dispatcher already running',
+      });
     }
 
     const now = new Date();
     const limit = 25;
 
-    const events = await prisma.tech_event_outbox.findMany({
+    // STEP 1: Ambil ID saja dulu (lebih aman)
+    const pendingIds = await prisma.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
         OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
       },
       orderBy: { created_at: 'asc' },
       take: limit,
+      select: { id: true },
     });
 
-    if (events.length === 0) {
+    if (pendingIds.length === 0) {
       return NextResponse.json({
         success: true,
         message: 'No pending events',
       });
     }
 
-    const ids = events.map((e) => e.id);
+    const ids = pendingIds.map((e) => e.id);
 
-    // Mark as SENDING
-    await prisma.tech_event_outbox.updateMany({
+    // STEP 2: Mark SENDING hanya yang masih PENDING
+    const updateResult = await prisma.tech_event_outbox.updateMany({
       where: { id: { in: ids }, status: 'PENDING' },
       data: { status: 'SENDING' },
     });
 
-    const payload = {
-      events: events.map((e) => e.payload),
-    };
+    if (updateResult.count === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'Nothing to process',
+      });
+    }
 
-    const failBatch = async (errorText: string) => {
-      const msg = errorText.slice(0, 2000);
+    // STEP 3: Ambil ulang hanya yang berhasil di-mark SENDING
+    const events = await prisma.tech_event_outbox.findMany({
+      where: { id: { in: ids }, status: 'SENDING' },
+      orderBy: { created_at: 'asc' },
+    });
 
-      for (const e of events) {
-        const attempt = e.attempt_count + 1;
-        const next = new Date(Date.now() + computeBackoffMs(attempt));
-
-        const finalStatus = attempt >= 10 ? 'FAILED' : 'PENDING';
-
-        await prisma.tech_event_outbox.update({
-          where: { id: e.id },
-          data: {
-            status: finalStatus,
-            attempt_count: attempt,
-            next_attempt_at: finalStatus === 'FAILED' ? null : next,
-            last_error: msg,
-          },
-        });
-      }
+    const payload: TechEventWebhookBatch = {
+      events: events.map((e) => e.payload as WebhookEvent),
     };
 
     try {
@@ -125,7 +109,7 @@ export async function POST(req: NextRequest) {
 
       if (res.ok) {
         await prisma.tech_event_outbox.updateMany({
-          where: { id: { in: ids } },
+          where: { id: { in: events.map((e) => e.id) } },
           data: {
             status: 'SENT',
             sent_at: new Date(),
@@ -136,36 +120,42 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           message: 'Dispatched',
-          count: ids.length,
-          webhook: { status: res.status },
+          count: events.length,
         });
       }
 
-      await failBatch(`Webhook error ${res.status}: ${res.text}`);
+      throw new Error(`Webhook ${res.status}: ${res.text}`);
+    } catch (err: any) {
+      const msg = String(err?.message || err).slice(0, 2000);
+
+      for (const e of events) {
+        const attempt = e.attempt_count + 1;
+        const isFinal = attempt >= 10;
+
+        await prisma.tech_event_outbox.update({
+          where: { id: e.id },
+          data: {
+            status: isFinal ? 'FAILED' : 'PENDING',
+            attempt_count: attempt,
+            next_attempt_at: isFinal
+              ? null
+              : new Date(Date.now() + computeBackoffMs(attempt)),
+            last_error: msg,
+          },
+        });
+      }
 
       return NextResponse.json(
         {
           success: false,
           message: 'Webhook failed',
-          count: ids.length,
-        },
-        { status: 502 },
-      );
-    } catch (e: any) {
-      await failBatch(`Webhook request failed: ${String(e?.message || e)}`);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Webhook request failed',
-          count: ids.length,
+          count: events.length,
         },
         { status: 502 },
       );
     }
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Dispatch failed');
-
     const status = message === 'Forbidden' ? 403 : getErrorStatus(error, 500);
 
     return NextResponse.json({ success: false, message }, { status });

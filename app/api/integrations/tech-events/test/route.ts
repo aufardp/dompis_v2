@@ -1,177 +1,103 @@
+// app/api/dev/dispatch-tech-events/route.ts
+// ⚠️ DEVELOPMENT ONLY — Hapus file ini sebelum production
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
-import { postTechEvents, signTechEventsPayload, buildTechEventsWebhookUrl } from '@/app/libs/integrations/techEvents';
+import { NextResponse } from 'next/server';
+import prisma from '@/app/libs/prisma';
+import { postTechEvents } from '@/app/libs/integrations/techEvents';
 
-function requireCronSecret(req: NextRequest) {
-  const expected = process.env.CRON_SECRET;
-  const got = req.headers.get('x-cron-secret') || '';
-  if (!expected) {
-    throw new Error('CRON_SECRET is not configured');
-  }
-  if (got !== expected) {
-    throw new Error('Forbidden');
-  }
+function computeBackoffMs(attempt: number) {
+  const base = 30_000;
+  const max = 15 * 60_000;
+  const ms = base * Math.pow(2, Math.max(0, attempt - 1));
+  return Math.min(max, ms);
 }
 
-function generateTestPayload(customPayload?: Record<string, unknown>) {
-  const now = new Date();
-  const ts = now.toISOString();
-  const eventId = `test-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-
-  const defaultPayload = {
-    event_id: eventId,
-    event_type: 'TICKET_STATUS_CHANGED',
-    occurred_at: ts,
-    ticket: {
-      id: 999,
-      incident: 'TEST_WEBHOOK_EVENT',
-      workzone: 'TEST',
-      service_no: 'TEST-SVC-001',
-      customer_name: 'Test Customer',
-    },
-    status: {
-      old_hasil_visit: 'ASSIGNED',
-      new_hasil_visit: 'ON_PROGRESS',
-      pending_reason: null,
-    },
-    old_technician: {
-      id_user: 1,
-      nik: 'TEST001',
-      nama: 'Test Technician',
-    },
-    new_technician: {
-      id_user: 1,
-      nik: 'TEST001',
-      nama: 'Test Technician',
-    },
-    actor: {
-      id_user: 1,
-      role: 'admin',
-      nama: 'Test Admin',
-    },
-    test_mode: true,
-    test_timestamp: ts,
-  };
-
-  // Merge custom payload if provided
-  return customPayload ? { ...defaultPayload, ...customPayload } : defaultPayload;
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    requireCronSecret(req);
-
-    // Check if webhook is configured
-    const enabled = process.env.TECH_EVENTS_WEBHOOK_ENABLED === 'true';
-    const url = process.env.TECH_EVENTS_WEBHOOK_URL;
-    const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET;
-
-    if (!enabled) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Webhook is disabled (TECH_EVENTS_WEBHOOK_ENABLED is not true)',
-        },
-        { status: 400 },
-      );
-    }
-
-    if (!url || !secret) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Webhook URL or secret is not configured',
-          config: {
-            url: url ? '***configured***' : '***missing***',
-            secret: secret ? '***configured***' : '***missing***',
-          },
-        },
-        { status: 500 },
-      );
-    }
-
-    // Parse optional custom payload
-    let customPayload: Record<string, unknown> | undefined;
-    try {
-      const body = await req.json();
-      if (body && typeof body === 'object') {
-        customPayload = body;
-      }
-    } catch {
-      // No body or invalid JSON, use default test payload
-    }
-
-    // Generate test payload
-    const payload = generateTestPayload(customPayload);
-
-    // Generate signature
-    const ts = String(Date.now());
-    const rawBody = JSON.stringify(payload);
-    const signature = signTechEventsPayload(secret, ts, rawBody);
-    const fullUrl = buildTechEventsWebhookUrl(url, ts, signature);
-
-    // Send webhook
-    const res = await postTechEvents({ url, secret }, payload);
-
-    const response = {
-      success: res.ok,
-      message: res.ok ? 'Test webhook sent successfully' : 'Test webhook failed',
-      test: {
-        payload,
-        webhook: {
-          url: fullUrl,
-          base_url: url,
-          status: res.status,
-          response: res.text.slice(0, 1000),
-        },
-        signature,
-        timestamp: ts,
-        raw_body_preview: rawBody.slice(0, 500),
-      },
-      config: {
-        enabled: true,
-        url_configured: true,
-        secret_configured: true,
-      },
-    };
-
-    return NextResponse.json(response, {
-      status: res.ok ? 200 : 502,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = message === 'Forbidden' ? 403 : 500;
-
+export async function POST() {
+  if (process.env.NODE_ENV === 'production') {
     return NextResponse.json(
-      {
-        success: false,
-        message: message || 'Test webhook failed',
-        error: message,
-      },
-      { status },
+      { success: false, message: 'Not available in production' },
+      { status: 403 },
     );
   }
-}
 
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    message: 'Tech Events Test Endpoint',
-    description: 'POST to this endpoint with x-cron-secret header to send a test webhook',
-    required_headers: {
-      'x-cron-secret': 'Required - Your CRON_SECRET value',
-      'Content-Type': 'application/json (if sending custom payload)',
+  const url = process.env.TECH_EVENTS_WEBHOOK_URL;
+  const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET ?? '';
+
+  if (!url) {
+    return NextResponse.json(
+      { success: false, message: 'TECH_EVENTS_WEBHOOK_URL not configured' },
+      { status: 500 },
+    );
+  }
+
+  const now = new Date();
+
+  const events = await prisma.tech_event_outbox.findMany({
+    where: {
+      status: 'PENDING',
+      OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
     },
-    example_curl: `curl -X POST http://localhost:3000/api/integrations/tech-events/test \\
-  -H "Content-Type: application/json" \\
-  -H "x-cron-secret: ${process.env.CRON_SECRET || 'YOUR_CRON_SECRET'}" \\
-  -d '{"event_type": "TICKET_ASSIGNED"}'`,
-    config: {
-      enabled: process.env.TECH_EVENTS_WEBHOOK_ENABLED === 'true',
-      url_configured: !!process.env.TECH_EVENTS_WEBHOOK_URL,
-      secret_configured: !!process.env.TECH_EVENTS_WEBHOOK_SECRET,
-    },
+    orderBy: { created_at: 'asc' },
+    take: 25,
   });
+
+  if (events.length === 0) {
+    return NextResponse.json({ success: true, message: 'No pending events' });
+  }
+
+  const ids = events.map((e) => e.id);
+
+  await prisma.tech_event_outbox.updateMany({
+    where: { id: { in: ids }, status: 'PENDING' },
+    data: { status: 'SENDING' },
+  });
+
+  const payload = { events: events.map((e) => e.payload) as any };
+
+  const res = await postTechEvents({ url, secret }, payload);
+
+  if (res.ok) {
+    await prisma.tech_event_outbox.updateMany({
+      where: { id: { in: ids } },
+      data: { status: 'SENT', sent_at: new Date(), last_error: null },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Dispatched',
+      count: ids.length,
+      webhook: { status: res.status, body: res.text },
+    });
+  }
+
+  const msg = `Webhook error ${res.status}: ${res.text}`.slice(0, 2000);
+
+  for (const e of events) {
+    const attempt = e.attempt_count + 1;
+    const next = new Date(Date.now() + computeBackoffMs(attempt));
+    const finalStatus = attempt >= 10 ? 'FAILED' : 'PENDING';
+
+    await prisma.tech_event_outbox.update({
+      where: { id: e.id },
+      data: {
+        status: finalStatus,
+        attempt_count: attempt,
+        next_attempt_at: finalStatus === 'FAILED' ? null : next,
+        last_error: msg,
+      },
+    });
+  }
+
+  return NextResponse.json(
+    {
+      success: false,
+      message: 'Webhook failed',
+      count: ids.length,
+      webhook: { status: res.status, body: res.text },
+    },
+    { status: 502 },
+  );
 }

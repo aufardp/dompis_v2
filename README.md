@@ -16,9 +16,57 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Webhook API (For Google Apps Script Integration)
+
+This project includes a generic webhook API that allows teammates to queue events from Google Apps Script or other external services.
+
+### Quick Setup
+
+1. Copy `.env.example` to `.env` and configure:
+   ```bash
+   WEBHOOK_API_KEYS="your_api_key_1,your_api_key_2"
+   TECH_EVENTS_WEBHOOK_URL="https://your-target.com/webhook"
+   TECH_EVENTS_WEBHOOK_ENABLED=true
+   CRON_ENABLED=true
+   ```
+
+2. Start the server (cron must be enabled for dispatch):
+   ```bash
+   npm run dev
+   ```
+
+### Usage from Google Apps Script
+
+```javascript
+function sendWebhook() {
+  UrlFetchApp.fetch('https://your-domain.com/api/webhook/queue', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer YOUR_API_KEY' },
+    payload: JSON.stringify({
+      eventType: 'NOTIFICATION',
+      payload: { message: 'Hello!' }
+    })
+  });
+}
+```
+
+### Documentation
+
+- 📖 **Full API Docs:** [`docs/WEBHOOK_API.md`](docs/WEBHOOK_API.md)
+- 🚀 **Quick Start:** [`docs/WEBHOOK_QUICKSTART.md`](docs/WEBHOOK_QUICKSTART.md)
+- 📝 **Implementation:** [`docs/IMPLEMENTATION_SUMMARY.md`](docs/IMPLEMENTATION_SUMMARY.md)
+
+### Testing
+
+```bash
+export TEST_WEBHOOK_API_KEY="your_api_key_1"
+npm run test:webhook
+```
+
+---
 
 ## Learn More
 

@@ -24,7 +24,11 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization',
+            value: 'Content-Type, Authorization, x-cron-secret, x-signature, x-timestamp, x-source',
+          },
+          {
+            key: 'Access-Control-Expose-Headers',
+            value: 'Content-Length, Retry-After',
           },
         ],
       },
