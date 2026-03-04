@@ -20,6 +20,7 @@ export default function UserMenu({ profileHref }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // Initials from full name (max 2 chars)
   const initials = useMemo(() => {
     const nama = user?.nama?.trim();
     if (!nama) return '?';
@@ -32,16 +33,21 @@ export default function UserMenu({ profileHref }: Props) {
       .slice(0, 2);
   }, [user?.nama]);
 
+  // Close on outside click
   useEffect(() => {
-    function onMouseDown(e: MouseEvent) {
+    const onMouseDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
-    }
-
+    };
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, []);
+
+  // Close dropdown on route change
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
 
   const resolvedProfileHref =
     profileHref ||
@@ -52,7 +58,8 @@ export default function UserMenu({ profileHref }: Props) {
     router.push(resolvedProfileHref);
   };
 
-  const handleLogout = async () => {
+  // Tidak perlu async — hanya set state
+  const handleLogout = () => {
     setIsOpen(false);
     setShowLogoutModal(true);
   };
@@ -64,7 +71,6 @@ export default function UserMenu({ profileHref }: Props) {
         method: 'POST',
         credentials: 'include',
       });
-
       if (res.ok) {
         setShowLogoutModal(false);
         router.push('/login');
@@ -91,11 +97,11 @@ export default function UserMenu({ profileHref }: Props) {
 
       <LogoutConfirmModal
         isOpen={showLogoutModal}
-        title='Logout now?'
-        description='You will need to sign in again to access the dashboard.'
-        hint='Press Esc to cancel'
-        confirmLabel={loggingOut ? 'Logging out…' : 'Yes, logout'}
-        cancelLabel='Stay logged in'
+        title='Keluar dari aplikasi?'
+        description='Anda harus login kembali untuk mengakses aplikasi.'
+        hint='Tekan Esc untuk batal'
+        confirmLabel={loggingOut ? 'Keluar…' : 'Ya, keluar'}
+        cancelLabel='Batal'
         loading={loggingOut}
         onClose={() => {
           if (!loggingOut) setShowLogoutModal(false);

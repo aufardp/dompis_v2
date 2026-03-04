@@ -69,6 +69,32 @@ export async function GET(request: Request) {
           )
         : undefined;
 
+    const byFlaggingB2C = includeByArray.includes('flagging')
+      ? await TicketService.getStatsByFlaggingB2C(
+          user.role,
+          user.id_user,
+          saId,
+          {
+            dept,
+            ticketType,
+            hasilVisit,
+          },
+        )
+      : undefined;
+
+    const byGuaranteeB2C = includeByArray.includes('guarantee')
+      ? await TicketService.getStatsByGuaranteeB2C(
+          user.role,
+          user.id_user,
+          saId,
+          {
+            dept,
+            ticketType,
+            hasilVisit,
+          },
+        )
+      : undefined;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -79,6 +105,8 @@ export async function GET(request: Request) {
         closed: Number(stats?.closed || 0),
         byServiceArea,
         byCustomerType,
+        byFlaggingB2C,
+        byGuaranteeB2C,
       },
     });
   } catch (error: unknown) {

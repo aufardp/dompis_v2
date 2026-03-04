@@ -20,6 +20,16 @@ interface TicketRow extends RowDataPacket {
 
 let isPushRunning = false;
 
+/**
+ * CONFIG
+ */
+const SHEET_NAME = 'WorkOrder_SO_1';
+const START_ROW = 8;
+
+const MAX_INSERT_PER_RUN = 200;
+const BATCH_UPDATE_CHUNK = 500;
+const MAX_SHEET_CELLS = 10000000;
+
 export async function pushSpreadsheet(): Promise<PushResult> {
   const result: PushResult = {
     success: false,
@@ -27,19 +37,21 @@ export async function pushSpreadsheet(): Promise<PushResult> {
   };
 
   if (isPushRunning) {
-    console.log('[PUSH] Masih berjalan... skip');
+    console.log('[PUSH] Skip — masih berjalan');
     return result;
   }
 
   isPushRunning = true;
 
   try {
-    console.log('[PUSH] Mulai:', nowWIB());
+    console.log('[PUSH] Start:', nowWIB());
 
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    // 🔹 1️⃣ Ambil semua ticket dari DB
+    /**
+     * 1️⃣ Ambil data dari DB
+     */
     const dbRows = await query<TicketRow[]>(`
       SELECT 
         t.INCIDENT,
@@ -50,17 +62,21 @@ export async function pushSpreadsheet(): Promise<PushResult> {
         u.nama AS NAMA_TEKNISI
       FROM ticket t
       LEFT JOIN users u ON t.teknisi_user_id = u.id_user
+      WHERE t.INCIDENT IS NOT NULL
     `);
 
-    if (dbRows.length === 0) {
+    if (!dbRows.length) {
+      console.log('[PUSH] Tidak ada data DB');
       result.success = true;
       return result;
     }
 
-    // 🔹 2️⃣ Ambil INCIDENT dari spreadsheet
+    /**
+     * 2️⃣ Ambil semua INCIDENT dari sheet
+     */
     const sheetResponse = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `'WorkOrder_SO_1'!B8:B10000`,
+      range: `'${SHEET_NAME}'!B${START_ROW}:B`,
     });
 
     const sheetIncidents = sheetResponse.data.values || [];
@@ -69,43 +85,63 @@ export async function pushSpreadsheet(): Promise<PushResult> {
 
     sheetIncidents.forEach((row, index) => {
       const incident = row[0];
-      if (incident) {
-        incidentMap.set(incident, index + 8); // row number di sheet
+
+      if (incident && !incidentMap.has(incident)) {
+        incidentMap.set(incident, index + START_ROW);
       }
     });
+
+    const sheetRowCount = sheetIncidents.length + START_ROW - 1;
+
+    console.log('[PUSH] Sheet rows:', sheetRowCount);
+
+    /**
+     * 3️⃣ Proteksi limit Google Sheets
+     */
+
+    const estimatedCells = sheetRowCount * 40;
+
+    if (estimatedCells > MAX_SHEET_CELLS) {
+      throw new Error(
+        `Spreadsheet hampir mencapai limit ${MAX_SHEET_CELLS} cells`,
+      );
+    }
+
+    /**
+     * 4️⃣ Prepare batch update & insert
+     */
 
     const updates: any[] = [];
     const inserts: any[] = [];
 
+    const seenIncident = new Set<string>();
+
     for (const row of dbRows) {
+      if (seenIncident.has(row.INCIDENT)) continue;
+      seenIncident.add(row.INCIDENT);
+
       const rowNumber = incidentMap.get(row.INCIDENT);
 
       if (rowNumber) {
-        // 🔥 UPDATE hanya 5 kolom
-        updates.push(
-          {
-            range: `'WorkOrder_SO_1'!AD${rowNumber}`,
-            values: [[row.HASIL_VISIT ?? '']],
-          },
-          {
-            range: `'WorkOrder_SO_1'!AE${rowNumber}`,
-            values: [[row.PENDING_REASON ?? '']],
-          },
-          {
-            range: `'WorkOrder_SO_1'!W${rowNumber}`,
-            values: [[row.NAMA_TEKNISI ?? '']],
-          },
-          {
-            range: `'WorkOrder_SO_1'!AF${rowNumber}`,
-            values: [[row.rca ?? '']],
-          },
-          {
-            range: `'WorkOrder_SO_1'!AG${rowNumber}`,
-            values: [[row.sub_rca ?? '']],
-          },
-        );
+        updates.push({
+          range: `'${SHEET_NAME}'!W${rowNumber}:AG${rowNumber}`,
+          values: [
+            [
+              row.NAMA_TEKNISI ?? '',
+              '',
+              '',
+              '',
+              '',
+              '',
+              '',
+              row.HASIL_VISIT ?? '',
+              row.PENDING_REASON ?? '',
+              row.rca ?? '',
+              row.sub_rca ?? '',
+            ],
+          ],
+        });
       } else {
-        // 🔥 INSERT row baru (append)
         inserts.push([
           row.INCIDENT,
           row.HASIL_VISIT ?? '',
@@ -117,38 +153,55 @@ export async function pushSpreadsheet(): Promise<PushResult> {
       }
     }
 
-    // 🔹 3️⃣ Jalankan UPDATE batch
-    if (updates.length > 0) {
+    /**
+     * 5️⃣ Batch UPDATE dengan chunk
+     */
+
+    let updatedRows = 0;
+
+    for (let i = 0; i < updates.length; i += BATCH_UPDATE_CHUNK) {
+      const chunk = updates.slice(i, i + BATCH_UPDATE_CHUNK);
+
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId,
         requestBody: {
           valueInputOption: 'RAW',
-          data: updates,
+          data: chunk,
         },
       });
+
+      updatedRows += chunk.length;
     }
 
-    // 🔹 4️⃣ Append row baru jika ada
-    if (inserts.length > 0) {
+    /**
+     * 6️⃣ Insert row baru (limited)
+     */
+
+    const limitedInserts = inserts.slice(0, MAX_INSERT_PER_RUN);
+
+    if (limitedInserts.length > 0) {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: `'WorkOrder_SO_1'!B8`,
+        range: `'${SHEET_NAME}'!B${START_ROW}`,
         valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
         requestBody: {
-          values: inserts,
+          values: limitedInserts,
         },
       });
     }
 
-    result.success = true;
-    result.count = dbRows.length;
-
     console.log(
-      `[PUSH] Update ${updates.length / 5} rows, Insert ${inserts.length} rows`,
+      `[PUSH] Update ${updatedRows} rows, Insert ${limitedInserts.length} rows`,
     );
+
+    result.success = true;
+    result.count = updatedRows + limitedInserts.length;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[PUSH] Gagal ❌', message);
+
+    console.error('[PUSH] ERROR ❌', message);
+
     result.error = message;
   } finally {
     isPushRunning = false;

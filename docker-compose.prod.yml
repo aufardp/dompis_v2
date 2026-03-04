@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: dompis_mysql
+    restart: unless-stopped
+    mem_limit: 1g
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=512M
+      --max-connections=300
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: dompis_db
+      MYSQL_USER: dompis_user
+      MYSQL_PASSWORD: dompis_password
+    volumes:
+      - dompis_mysql_data:/var/lib/mysql
+    networks:
+      - dompis-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: dompis_redis
+    restart: unless-stopped
+    mem_limit: 256m
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - dompis_redis_data:/data
+    networks:
+      - dompis-network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: dompis_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    ports:
+      - '8081:80'
+    depends_on:
+      - mysql
+    networks:
+      - dompis-network
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: dompis_n8n
+    restart: unless-stopped
+    mem_limit: 1g
+    ports:
+      - '127.0.0.1:5678:5678'
+    environment:
+      DB_TYPE: mysqldb
+      DB_MYSQLDB_HOST: mysql
+      DB_MYSQLDB_PORT: 3306
+      DB_MYSQLDB_DATABASE: n8n
+      DB_MYSQLDB_USER: n8n_user
+      DB_MYSQLDB_PASSWORD: CHANGE_DB_PASSWORD
+
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+
+      N8N_ENCRYPTION_KEY: CHANGE_TO_LONG_RANDOM_STRING
+      N8N_BASIC_AUTH_ACTIVE: 'true'
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: CHANGE_ADMIN_PASSWORD
+
+      N8N_HOST: engingeng.optimusakses.org
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://engingeng.optimusakses.org/
+      TZ: Asia/Jakarta
+
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /home/msjbn/dompis_5/dompis_v2/public/assets/evident:/data/evident
+    networks:
+      - dompis-network
+
+volumes:
+  dompis_mysql_data:
+  dompis_redis_data:
+  n8n_data:
+
+networks:
+  dompis-network:
+    driver: bridge

@@ -46,6 +46,8 @@ function mapRow(row: (string | undefined)[]): (string | null)[] {
     row[36] ?? null, // PENDING_REASON
     row[125] ?? null, // rca
     row[126] ?? null, // sub_rca
+    row[127] ?? null, // flagging_manja
+    row[63] ?? null, // GUARANTE_STATUS
   ];
 
   return mapped.map((v) => v ?? '');
@@ -101,7 +103,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       const rawStatus = row[10]?.toString().trim().toLowerCase();
 
       // Hanya ambil status backend
-      if (rawStatus !== 'backend') continue;
+      // if (rawStatus !== 'backend') continue;
 
       const data = mapRow(row);
       const incident = data[0] as string;
@@ -117,7 +119,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     if (mappedData.length === 0) return result;
 
     // 🔥 HASIL_VISIT DIHAPUS → total 34 kolom
-    const COLUMN_COUNT = 34;
+    const COLUMN_COUNT = 36;
 
     const placeholders = mappedData
       .map(() => `(${Array(COLUMN_COUNT).fill('?').join(',')})`)
@@ -148,7 +150,9 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         ALAMAT,
         PENDING_REASON,
         rca,
-        sub_rca
+        sub_rca,
+        FLAGGING_MANJA,
+        GUARANTE_STATUS
       ) VALUES ${placeholders}
       ON DUPLICATE KEY UPDATE
         SUMMARY                     = VALUES(SUMMARY),
@@ -183,7 +187,9 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         ALAMAT                      = VALUES(ALAMAT),
         PENDING_REASON              = VALUES(PENDING_REASON),
         rca                         = VALUES(rca),
-        sub_rca                     = VALUES(sub_rca)
+        sub_rca                     = VALUES(sub_rca),
+        FLAGGING_MANJA              = VALUES(FLAGGING_MANJA),
+        GUARANTE_STATUS             = VALUES(GUARANTE_STATUS)
     `;
 
     const insertResult = await prisma.$executeRawUnsafe(query, ...flatValues);

@@ -3,8 +3,9 @@ import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
+import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { TicketCtype } from '@/app/types/ticket';
-import { formatDateTimeWIB } from '@/app/utils/datetime';
+import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 
 export interface TicketRowProps {
   ticket: {
@@ -30,6 +31,8 @@ export interface TicketRowProps {
     maxTtrGold?: string | null;
     maxTtrPlatinum?: string | null;
     maxTtrDiamond?: string | null;
+    flaggingManja?: string | null;
+    guaranteeStatus?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
@@ -81,6 +84,12 @@ export default function TicketRow({
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
+
+  const isGuarantee =
+    String(ticket.guaranteeStatus ?? '')
+      .trim()
+      .toLowerCase() === 'guarantee';
+  const flagLabel = getEffectiveFlaggingLabel(ticket);
 
   const handleAssignClick = () => {
     onAssign(ticket.idTicket ?? '');
@@ -143,20 +152,29 @@ export default function TicketRow({
           {ticket.ticket}
         </p>
         <p className='mt-0.5 text-[10px] text-(--text-secondary)'>
-          {ticket.reportedDate ? formatDateTimeWIB(ticket.reportedDate) : '-'}
+          {ticket.reportedDate
+            ? formatDateTimeFullWIB(ticket.reportedDate)
+            : '-'}
         </p>
       </td>
 
       {/* Service No */}
       <td className='px-4 py-3 text-center'>
-        <span className='font-mono text-xs text-(--text-primary)'>
-          {ticket.serviceNo ?? '-'}
-        </span>
+        <div className='inline-flex items-center justify-center gap-2'>
+          <span className='font-mono text-xs text-(--text-primary)'>
+            {ticket.serviceNo ?? '-'}
+          </span>
+          {isGuarantee && (
+            <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700'>
+              FFG
+            </span>
+          )}
+        </div>
       </td>
 
       {/* Customer */}
       <td className='px-4 py-3'>
-        <p className='text-sm leading-tight font-semibold text-(--text-primary)'>
+        <p className='text-sm leading-tight font-semibold text-(--text-primary) uppercase'>
           {ticket.contactName || '-'}
         </p>
         <p className='mt-0.5 text-[10px] text-(--text-secondary)'>
@@ -177,9 +195,26 @@ export default function TicketRow({
 
       {/* Booking Date */}
       <td className='px-4 py-3 text-center'>
-        <span className='text-xs text-(--text-secondary)'>
-          {ticket.bookingDate || '-'}
-        </span>
+        <div className='inline-flex flex-wrap items-center justify-center gap-2'>
+          <span className='text-xs text-(--text-secondary)'>
+            {ticket.bookingDate
+              ? formatDateTimeFullWIB(ticket.bookingDate)
+              : '-'}
+          </span>
+          {flagLabel && (
+            <span
+              className={clsx(
+                'rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
+                flagLabel === 'P1'
+                  ? 'bg-red-50 text-red-700'
+                  : 'bg-amber-50 text-amber-700',
+              )}
+              title='Flagging Manja'
+            >
+              {flagLabel}
+            </span>
+          )}
+        </div>
       </td>
 
       {/* Customer Type */}

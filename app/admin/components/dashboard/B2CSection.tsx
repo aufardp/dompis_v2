@@ -10,6 +10,10 @@ interface B2CData {
     closed: number;
     regulerCount: number;
     sqmCount: number;
+    unspecCount: number;
+    ffgCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
   reguler: {
     total: number;
@@ -18,6 +22,10 @@ interface B2CData {
     closed: number;
     regulerCount: number;
     sqmCount: number;
+    unspecCount: number;
+    ffgCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
   hvcGold: {
     total: number;
@@ -26,6 +34,10 @@ interface B2CData {
     closed: number;
     regulerCount: number;
     sqmCount: number;
+    unspecCount: number;
+    ffgCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
   hvcPlatinum: {
     total: number;
@@ -34,6 +46,10 @@ interface B2CData {
     closed: number;
     regulerCount: number;
     sqmCount: number;
+    unspecCount: number;
+    ffgCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
   hvcDiamond: {
     total: number;
@@ -42,6 +58,10 @@ interface B2CData {
     closed: number;
     regulerCount: number;
     sqmCount: number;
+    unspecCount: number;
+    ffgCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
 }
 
@@ -172,6 +192,10 @@ export default function B2CSection({
         closed={data.summary.closed}
         regulerCount={data.summary.regulerCount}
         sqmCount={data.summary.sqmCount}
+        unspecCount={data.summary.unspecCount}
+        ffgCount={data.summary.ffgCount}
+        p1Count={data.summary.p1Count}
+        pPlusCount={data.summary.pPlusCount}
       />
 
       {/* Tier cards */}
@@ -189,6 +213,10 @@ export default function B2CSection({
               closed={d.closed}
               regulerCount={d.regulerCount}
               sqmCount={d.sqmCount}
+              unspecCount={d.unspecCount}
+              ffgCount={d.ffgCount}
+              p1Count={d.p1Count}
+              pPlusCount={d.pPlusCount}
               accentColor={tier.accentColor}
               active={activeType === tier.key}
               onClick={() => onSelectType?.(tier.key)}

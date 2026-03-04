@@ -69,7 +69,7 @@ export default function Topbar({
   };
 
   return (
-    <header className='bg-bg/95 sticky top-0 z-30 flex flex-col border-b border-[var(--border)] backdrop-blur-sm'>
+    <header className='bg-bg/95 sticky top-0 z-30 flex flex-col border-b border-(--border) backdrop-blur-sm'>
       {/* Main Topbar Row */}
       <div className='flex h-14 items-center justify-between px-3 py-2 lg:px-6 lg:py-3'>
         <div className='flex items-center gap-2'>
@@ -78,16 +78,16 @@ export default function Topbar({
             onClick={onMenuClick}
             className='hover:bg-surface-2 rounded-lg p-2 lg:hidden'
           >
-            <Menu className='h-5 w-5 text-[var(--text-secondary)]' />
+            <Menu className='h-5 w-5 text-(--text-secondary)' />
           </button>
 
           {/* Page Title - Desktop */}
-          <h1 className='font-syne hidden text-lg font-bold tracking-tight text-[var(--text-primary)] lg:block'>
+          <h1 className='font-syne hidden text-lg font-bold tracking-tight text-(--text-primary) lg:block'>
             Ticket Management
           </h1>
 
           {/* Page Title - Mobile */}
-          <h1 className='font-syne text-base font-bold tracking-tight text-[var(--text-primary)] lg:hidden'>
+          <h1 className='font-syne text-base font-bold tracking-tight text-(--text-primary) lg:hidden'>
             Dompis
           </h1>
         </div>
@@ -98,7 +98,7 @@ export default function Topbar({
             onClick={() => setShowMobileSearch(true)}
             className='bg-surface-2 hover:bg-surface-3 rounded-lg p-2 lg:hidden'
           >
-            <Search className='h-4 w-4 text-[var(--text-secondary)]' />
+            <Search className='h-4 w-4 text-(--text-secondary)' />
           </button>
 
           {/* Mobile Filter Button */}
@@ -106,7 +106,7 @@ export default function Topbar({
             onClick={() => setShowMobileFilters(!showMobileFilters)}
             className='bg-surface-2 hover:bg-surface-3 rounded-lg p-2 lg:hidden'
           >
-            <Filter className='h-4 w-4 text-[var(--text-secondary)]' />
+            <Filter className='h-4 w-4 text-(--text-secondary)' />
           </button>
 
           {/* Desktop Search */}
@@ -117,9 +117,9 @@ export default function Topbar({
                 placeholder='Search ticket, customer...'
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
-                className='bg-surface-2 w-64 rounded-lg border border-[var(--border)] px-4 py-2 pl-10 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none xl:w-80'
+                className='bg-surface-2 w-64 rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary) focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none xl:w-80'
               />
-              <Search className='absolute top-2.5 left-3 h-4 w-4 text-[var(--text-secondary)]' />
+              <Search className='absolute top-2.5 left-3 h-4 w-4 text-(--text-secondary)' />
             </div>
           </form>
 
@@ -129,7 +129,7 @@ export default function Topbar({
               value={workzone}
               onChange={handleWorkzoneChange}
               disabled={workzoneLoading}
-              className='bg-surface-2 cursor-pointer appearance-none rounded-lg border border-[var(--border)] px-3 py-2 pr-8 text-sm text-[var(--text-secondary)] focus:border-blue-500 focus:outline-none'
+              className='bg-surface-2 cursor-pointer appearance-none rounded-lg border border-(--border) px-3 py-2 pr-8 text-sm text-(--text-secondary) focus:border-blue-500 focus:outline-none'
             >
               <option value=''>All Workzone</option>
               {workzoneOptions.map((option: Option) => (
@@ -138,13 +138,13 @@ export default function Topbar({
                 </option>
               ))}
             </select>
-            <ChevronDown className='pointer-events-none absolute top-2.5 right-2 h-4 w-4 text-[var(--text-secondary)]' />
+            <ChevronDown className='pointer-events-none absolute top-2.5 right-2 h-4 w-4 text-(--text-secondary)' />
           </div>
 
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
-            className='bg-surface-2 hover:bg-surface-3 rounded-lg border border-[var(--border)] p-2 transition-colors'
+            className='bg-surface-2 hover:bg-surface-3 rounded-lg border border-(--border) p-2 transition-colors'
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark ? (
@@ -155,7 +155,7 @@ export default function Topbar({
           </button>
 
           {/* New Ticket Button */}
-          <button className='flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 lg:px-4'>
+          <button className='flex items-center gap-1.5 rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 lg:px-4'>
             <Plus className='h-4 w-4' />
             <span className='hidden lg:inline'>New Ticket</span>
           </button>
@@ -167,18 +167,18 @@ export default function Topbar({
 
       {/* Mobile Filters Row */}
       {showMobileFilters && (
-        <div className='bg-surface flex flex-col gap-2 border-t border-[var(--border)] p-3 lg:hidden'>
+        <div className='bg-surface flex flex-col gap-2 border-t border-(--border) p-3 lg:hidden'>
           <input
             type='text'
             placeholder='Search...'
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            className='bg-surface-2 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]'
+            className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
           />
           <select
             value={workzone}
             onChange={handleWorkzoneChange}
-            className='bg-surface-2 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-secondary)]'
+            className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-secondary)'
           >
             <option value=''>All Workzone</option>
             {workzoneOptions.map((option: Option) => (
@@ -208,16 +208,16 @@ export default function Topbar({
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   autoFocus
-                  className='bg-surface-2 w-full rounded-lg border border-[var(--border)] px-4 py-2 pl-10 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]'
+                  className='bg-surface-2 w-full rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
                 />
-                <Search className='absolute top-2.5 left-3 h-5 w-5 text-[var(--text-secondary)]' />
+                <Search className='absolute top-2.5 left-3 h-5 w-5 text-(--text-secondary)' />
               </div>
               {searchValue && (
                 <button
                   onClick={clearSearch}
                   className='hover:bg-surface-2 rounded-lg p-2'
                 >
-                  <X className='h-5 w-5 text-[var(--text-secondary)]' />
+                  <X className='h-5 w-5 text-(--text-secondary)' />
                 </button>
               )}
               <button
@@ -225,7 +225,7 @@ export default function Topbar({
                   onSearch?.(searchValue);
                   setShowMobileSearch(false);
                 }}
-                className='rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white'
+                className='rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white'
               >
                 Search
               </button>

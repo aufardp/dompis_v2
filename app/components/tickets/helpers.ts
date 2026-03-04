@@ -6,12 +6,7 @@ import {
   getSlaHours,
   TicketAgeColor,
 } from '@/app/utils/datetime';
-import {
-  extractTimeFromDate,
-  isSpoiledTimeSlot,
-  add3Hours,
-  formatDateForDisplay,
-} from '@/app/libs/tickets/timeSlot';
+import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 
 export const formatDate = (dateStr: string) => {
   return formatDateWIB(dateStr, 'dd MMM yyyy');
@@ -37,27 +32,7 @@ export const getStatusColor = (status: string): BadgeColor => {
 };
 
 export function getMaxTtr(ticket: any): string | null {
-  if (!ticket?.customerType && !ticket?.bookingDate) return null;
-
-  if (ticket?.bookingDate) {
-    const bookingTime = extractTimeFromDate(ticket.bookingDate);
-    if (bookingTime && isSpoiledTimeSlot(bookingTime)) {
-      const spoiledTtr = add3Hours(ticket.bookingDate);
-      return spoiledTtr ? formatDateForDisplay(spoiledTtr) : null;
-    }
-  }
-
-  if (!ticket?.customerType) return null;
-
-  const map: Record<string, keyof typeof ticket> = {
-    reguler: 'maxTtrReguler',
-    hvc_gold: 'maxTtrGold',
-    hvc_platinum: 'maxTtrPlatinum',
-    hvc_diamond: 'maxTtrDiamond',
-  };
-
-  const key = map[ticket.customerType.toLowerCase()];
-  return key ? ticket[key] : null;
+  return getEffectiveMaxTtrLabel(ticket);
 }
 
 export function getSlaHoursRemaining(ticket: {

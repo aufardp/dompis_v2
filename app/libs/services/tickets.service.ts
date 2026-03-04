@@ -17,6 +17,8 @@ type TicketFilters = {
   ticketType?: string;
   workzone?: number | string;
   ctype?: string;
+  startDate?: string;
+  endDate?: string;
   page?: number;
   limit?: number;
   sort?: 'asc' | 'desc';
@@ -76,6 +78,8 @@ function mapTicket(t: any) {
     customerSegment: t.CUSTOMER_SEGMENT,
     sourceTicket: t.SOURCE_TICKET,
     jenisTiket: t.JENIS_TIKET,
+    flaggingManja: t.FLAGGING_MANJA,
+    guaranteeStatus: t.GUARANTE_STATUS,
     maxTtrReguler: t.JAM_EXPIRED_24_JAM_REGULER,
     maxTtrGold: t.JAM_EXPIRED_12_JAM_GOLD,
     maxTtrPlatinum: t.JAM_EXPIRED_6_JAM_PLATINUM,
@@ -113,6 +117,10 @@ export class TicketService {
       } else if (ticketType === 'reguler') {
         where.JENIS_TIKET = {
           in: ['reguler', 'REGULER', 'regular', 'REGULAR'],
+        };
+      } else if (ticketType === 'unspec') {
+        where.JENIS_TIKET = {
+          in: ['unspec', 'UNSPEC', 'Unspec'],
         };
       } else {
         where.JENIS_TIKET = { in: [ticketType, ticketType.toUpperCase()] };
@@ -234,6 +242,8 @@ export class TicketService {
       ticketType,
       workzone,
       ctype,
+      startDate,
+      endDate,
       page = 1,
       limit = 20,
       sort = 'asc',
@@ -256,6 +266,41 @@ export class TicketService {
       ];
     }
 
+    if (startDate || endDate) {
+      if (startDate && endDate) {
+        andClauses.push({
+          OR: [
+            {
+              REPORTED_DATE: {
+                gte: startDate,
+                lte: endDate + ' 23:59:59',
+              },
+            },
+            {
+              REPORTED_DATE: {
+                gte: startDate + 'T00:00:00',
+                lte: endDate + 'T23:59:59',
+              },
+            },
+          ],
+        });
+      } else if (startDate) {
+        andClauses.push({
+          OR: [
+            { REPORTED_DATE: { gte: startDate } },
+            { REPORTED_DATE: { contains: startDate } },
+          ],
+        });
+      } else if (endDate) {
+        andClauses.push({
+          OR: [
+            { REPORTED_DATE: { lte: endDate + ' 23:59:59' } },
+            { REPORTED_DATE: { contains: endDate } },
+          ],
+        });
+      }
+    }
+
     if (hasilVisit) applyHasilVisitWhere(where, hasilVisit);
     if (ctype) where.CUSTOMER_TYPE = ctype;
 
@@ -271,6 +316,12 @@ export class TicketService {
         andClauses.push({
           JENIS_TIKET: {
             in: ['reguler', 'REGULER', 'regular', 'REGULAR', 'Reguler'],
+          },
+        });
+      } else if (ticketType === 'unspec') {
+        andClauses.push({
+          JENIS_TIKET: {
+            in: ['unspec', 'UNSPEC', 'Unspec'],
           },
         });
       } else {
@@ -556,7 +607,7 @@ export class TicketService {
         this.applyDashboardFilters(where, opts);
         const counts = await this.countStatuses(where);
 
-        // Count by ticket type (reguler vs sqm)
+        // Count by ticket type (reguler vs sqm vs unspec)
         const regulerWhere = {
           ...where,
           JENIS_TIKET: { in: ['reguler', 'REGULER', 'regular', 'REGULAR'] },
@@ -565,13 +616,161 @@ export class TicketService {
           ...where,
           JENIS_TIKET: { in: ['sqm', 'SQM'] },
         };
+        const unspecWhere = {
+          ...where,
+          JENIS_TIKET: { in: ['unspec', 'UNSPEC', 'Unspec'] },
+        };
 
-        const [regulerTotal, sqmTotal] = await Promise.all([
+        const [
+          regulerTotal,
+          sqmTotal,
+          unspecTotal,
+          ffgCount,
+          p1Count,
+          pPlusCount,
+        ] = await Promise.all([
           prisma.ticket.count({ where: regulerWhere }),
           prisma.ticket.count({ where: sqmWhere }),
+          prisma.ticket.count({ where: unspecWhere }),
+          prisma.ticket.count({
+            where: { ...where, GUARANTE_STATUS: 'guarantee' },
+          }),
+          prisma.ticket.count({ where: { ...where, FLAGGING_MANJA: 'P1' } }),
+          prisma.ticket.count({ where: { ...where, FLAGGING_MANJA: 'P+' } }),
         ]);
 
-        return { ctype, ...counts, regulerTotal, sqmTotal };
+        return {
+          ctype,
+          ...counts,
+          regulerTotal,
+          sqmTotal,
+          unspecTotal,
+          ffg: ffgCount,
+          p1: p1Count,
+          pPlus: pPlusCount,
+        };
+      }),
+    );
+  }
+
+  static async getStatsByFlaggingB2C(
+    role: string,
+    userId: number,
+    saId?: number,
+    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+  ) {
+    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
+    const baseWhere = await this.buildWorkzoneWhere(
+      role,
+      userId,
+      selectedWorkzone,
+    );
+
+    const b2cWhere = {
+      ...baseWhere,
+      OR: [
+        { CUSTOMER_SEGMENT: { in: ['B2C', 'PL_TSEL'] } },
+        {
+          CUSTOMER_TYPE: {
+            in: ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'],
+          },
+        },
+        { AND: [{ CUSTOMER_SEGMENT: null }, { CUSTOMER_TYPE: null }] },
+      ],
+    };
+
+    this.applyDashboardFilters(b2cWhere, opts);
+
+    const [p1Count, pPlusCount] = await Promise.all([
+      prisma.ticket.count({
+        where: { ...b2cWhere, FLAGGING_MANJA: 'P1' },
+      }),
+      prisma.ticket.count({
+        where: { ...b2cWhere, FLAGGING_MANJA: 'P+' },
+      }),
+    ]);
+
+    return { P1: p1Count, PPlus: pPlusCount };
+  }
+
+  static async getStatsByGuaranteeB2C(
+    role: string,
+    userId: number,
+    saId?: number,
+    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+  ) {
+    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
+    const baseWhere = await this.buildWorkzoneWhere(
+      role,
+      userId,
+      selectedWorkzone,
+    );
+
+    const b2cWhere = {
+      ...baseWhere,
+      OR: [
+        { CUSTOMER_SEGMENT: { in: ['B2C', 'PL_TSEL'] } },
+        {
+          CUSTOMER_TYPE: {
+            in: ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'],
+          },
+        },
+        { AND: [{ CUSTOMER_SEGMENT: null }, { CUSTOMER_TYPE: null }] },
+      ],
+    };
+
+    this.applyDashboardFilters(b2cWhere, opts);
+
+    const guaranteeCount = await prisma.ticket.count({
+      where: { ...b2cWhere, GUARANTE_STATUS: 'guarantee' },
+    });
+
+    return { guarantee: guaranteeCount };
+  }
+
+  static async getStatsByFlaggingAndGuaranteeByCustomerType(
+    role: string,
+    userId: number,
+    saId?: number,
+    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+  ) {
+    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
+    const baseWhere = await this.buildWorkzoneWhere(
+      role,
+      userId,
+      selectedWorkzone,
+    );
+
+    const customerTypes = [
+      'REGULER',
+      'HVC_GOLD',
+      'HVC_PLATINUM',
+      'HVC_DIAMOND',
+    ];
+
+    return Promise.all(
+      customerTypes.map(async (ctype) => {
+        const where = { ...baseWhere, CUSTOMER_TYPE: ctype };
+        this.applyDashboardFilters(where, opts);
+
+        const [ffgCount, p1Count, pPlusCount] = await Promise.all([
+          prisma.ticket.count({
+            where: { ...where, GUARANTE_STATUS: 'guarantee' },
+          }),
+          prisma.ticket.count({
+            where: { ...where, FLAGGING_MANJA: 'P1' },
+          }),
+          prisma.ticket.count({
+            where: { ...where, FLAGGING_MANJA: 'P+' },
+          }),
+        ]);
+
+        return {
+          ctype,
+          ffg: ffgCount,
+          p1: p1Count,
+          pPlus: pPlusCount,
+        };
       }),
     );
   }
@@ -691,6 +890,10 @@ export class TicketService {
       reportedDate: t.REPORTED_DATE,
       status: t.HASIL_VISIT,
       technicianName: t.users?.nama,
+      teknisiUserId: t.teknisi_user_id,
+      workzone: t.WORKZONE,
+      contactName: t.CONTACT_NAME,
+      serviceNo: t.SERVICE_NO,
     }));
   }
 }

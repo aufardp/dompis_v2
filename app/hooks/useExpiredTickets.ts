@@ -8,14 +8,24 @@ type ExpiredTicketApiRow = {
   reportedDate?: string | null;
   status?: string | null;
   technicianName?: string | null;
+  teknisiUserId?: number | null;
+  workzone?: string | null;
+  contactName?: string | null;
+  serviceNo?: string | null;
 };
 
 export type ExpiredTicket = {
+  idTicket: number;
   ticketId: string;
   customerType: string;
   reportedAt: Date;
   status: string;
   overdueHours: number;
+  technicianName?: string | null;
+  teknisiUserId?: number | null;
+  workzone?: string | null;
+  contactName?: string | null;
+  serviceNo?: string | null;
 };
 
 const SLA_HOURS: Record<string, number> = {
@@ -81,16 +91,23 @@ export function useExpiredTickets(
   const tickets = useMemo(() => {
     const mapped: ExpiredTicket[] = [];
     for (const t of rows) {
+      const idTicket = t.idTicket || 0;
       const ticketId = String(t.ticket || t.idTicket || '').trim();
       const customerType = String(t.customerType || 'REGULER').toUpperCase();
       const reportedAt = t.reportedDate ? new Date(t.reportedDate) : new Date();
       if (!ticketId) continue;
       mapped.push({
+        idTicket,
         ticketId,
         customerType,
         reportedAt,
         status: String(t.status || 'OPEN'),
         overdueHours: toOverdueHours(customerType, reportedAt),
+        technicianName: t.technicianName,
+        teknisiUserId: t.teknisiUserId,
+        workzone: t.workzone,
+        contactName: t.contactName,
+        serviceNo: t.serviceNo,
       });
     }
 

@@ -58,12 +58,27 @@ export default function LoginForm() {
 
   return (
     <div className='flex min-h-screen'>
-      <div className='hidden w-1/2 flex-col justify-between bg-linear-to-br from-blue-600 to-indigo-700 p-12 text-white lg:flex'>
-        <div>
+      <div className='relative hidden w-1/2 flex-col justify-between overflow-hidden p-12 text-white lg:flex'>
+        {/* Background Image */}
+        <div
+          className='absolute inset-0 bg-cover bg-center bg-no-repeat'
+          style={{ backgroundImage: "url('/assets/bg-log.png')" }}
+        />
+
+        {/* Overlay gelap agar teks tetap terbaca */}
+        <div className='absolute inset-0 bg-black/50' />
+
+        {/* Konten di atas overlay */}
+        <div className='relative z-10 flex items-center gap-2'>
+          <img
+            src='/assets/logo.png'
+            alt='Dompis Logo'
+            className='h-10 w-auto'
+          />
           <h1 className='text-3xl font-bold'>Dompis</h1>
         </div>
 
-        <div>
+        <div className='relative z-10'>
           <h2 className='mb-6 text-4xl leading-snug font-bold'>
             Manage Your Work <br /> Smarter & Faster
           </h2>
@@ -73,7 +88,7 @@ export default function LoginForm() {
           </p>
         </div>
 
-        <div className='text-sm text-blue-200'>
+        <div className='relative z-10 text-sm text-blue-200'>
           © {new Date().getFullYear()} Dompis. All rights reserved.
         </div>
       </div>
@@ -81,7 +96,14 @@ export default function LoginForm() {
       <div className='flex flex-1 items-center justify-center bg-gray-50 px-6 py-12 dark:bg-gray-900'>
         <div className='w-full max-w-md'>
           <div className='rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800'>
-            <div className='mb-8'>
+            <div className='mb-2 flex justify-center'>
+              <img
+                src='/assets/logo.png'
+                alt='Dompis Logo'
+                className='h-16 w-auto'
+              />
+            </div>
+            <div className='mb-8 text-center'>
               <h2 className='text-2xl font-bold text-gray-800 dark:text-white'>
                 Welcome Back 👋
               </h2>
@@ -144,12 +166,12 @@ export default function LoginForm() {
                   Remember me
                 </label>
 
-                <Link
+                {/* <Link
                   href='/reset-password'
                   className='text-blue-600 hover:underline'
                 >
                   Forgot password?
-                </Link>
+                </Link> */}
               </div>
 
               <button
@@ -161,12 +183,12 @@ export default function LoginForm() {
               </button>
             </form>
 
-            <div className='mt-6 text-center text-sm text-gray-600 dark:text-gray-400'>
+            {/* <div className='mt-6 text-center text-sm text-gray-600 dark:text-gray-400'>
               Don't have an account?{' '}
               <Link href='/register' className='text-blue-600 hover:underline'>
                 Sign Up
               </Link>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

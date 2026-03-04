@@ -26,6 +26,7 @@ export async function createTechEvent(
     old_technician: input.old_technician,
     new_technician: input.new_technician,
     actor: input.actor,
+    admin: input.admin ?? null,
   };
 
   const db = tx ?? prisma;

@@ -53,6 +53,8 @@ export interface AdminTicketTableProps {
     maxTtrGold?: string | null;
     maxTtrPlatinum?: string | null;
     maxTtrDiamond?: string | null;
+    flaggingManja?: string | null;
+    guaranteeStatus?: string | null;
   }>;
   loading?: boolean;
   onAssign?: (ticketId: string | number) => void;
@@ -139,7 +141,7 @@ export default function TicketTable({
   pagination,
 }: AdminTicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    field: 'age',
+    field: 'priority',
     order: 'asc',
   });
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
@@ -186,11 +188,18 @@ export default function TicketTable({
     });
   }, [tickets, sortConfig]);
 
+  const currentPage = pagination?.currentPage ?? 1;
+  const pageSize = pagination?.limit ?? 10;
+  const pageOffset = (currentPage - 1) * pageSize;
+  const pageTickets = pagination
+    ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
+    : sortedTickets;
+
   const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
   const handleAssign = onAssign ?? (() => {});
 
   // Selection helpers
-  const allIds = sortedTickets.map((t) => t.idTicket ?? t.ticket ?? '');
+  const allIds = pageTickets.map((t) => t.idTicket ?? t.ticket ?? '');
   const allSelected =
     allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
   const someSelected = selectedIds.size > 0;
@@ -270,7 +279,7 @@ export default function TicketTable({
             No tickets found
           </p>
         ) : (
-          sortedTickets.map((ticket) => (
+          pageTickets.map((ticket) => (
             <TicketCardMobile
               key={ticket.idTicket ?? ticket.ticket}
               ticket={ticket}
@@ -381,7 +390,7 @@ export default function TicketTable({
                     message='Tidak ada tiket ditemukan'
                   />
                 ) : (
-                  sortedTickets.map((ticket) => {
+                  pageTickets.map((ticket) => {
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
                     const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);

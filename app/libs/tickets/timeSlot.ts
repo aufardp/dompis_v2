@@ -7,7 +7,7 @@ export const SPOILED_SLOTS: TimeSlot[] = [
   { start: '09:00', end: '12:00' },
   { start: '11:00', end: '14:00' },
   { start: '13:00', end: '16:00' },
-  { start: '13:00', end: '18:00' },
+  { start: '15:00', end: '18:00' },
 ];
 
 export function extractTimeFromDate(

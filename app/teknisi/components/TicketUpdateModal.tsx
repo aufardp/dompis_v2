@@ -18,111 +18,78 @@ export default function TicketUpdateModal({
   const [pendingReason, setPendingReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
-  const isPendingReasonIncomplete = !pendingReason.trim();
-  const isEvidenceIncomplete = selectedFiles.length < 2;
+  const PHOTO_MIN = 2;
+  const PHOTO_MAX = 5;
 
-  /* =========================
-     FILE HANDLER
-  ========================== */
+  const isReasonIncomplete = !pendingReason.trim();
+  const isEvidenceIncomplete = selectedFiles.length < PHOTO_MIN;
+  const canSubmit = !isReasonIncomplete && !isEvidenceIncomplete && !loading;
+
+  // ── File handlers ─────────────────────────────────────────────────────────
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
-
     const fileArray = Array.from(files);
-
-    if (fileArray.length > 5) {
-      setError('Maksimal 5 foto');
+    if (fileArray.length > PHOTO_MAX) {
+      setError(`Maksimal ${PHOTO_MAX} foto`);
       return;
     }
-
+    setError(null);
     setSelectedFiles(fileArray);
     setPreviewUrls(fileArray.map((f) => URL.createObjectURL(f)));
   };
 
   const removeImage = (index: number) => {
-    const updatedFiles = [...selectedFiles];
-    const updatedPreviews = [...previewUrls];
-
-    updatedFiles.splice(index, 1);
-    updatedPreviews.splice(index, 1);
-
-    setSelectedFiles(updatedFiles);
-    setPreviewUrls(updatedPreviews);
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
-  /* =========================
-     UPLOAD EVIDENCE
-  ========================== */
-  const uploadEvidence = async () => {
-    if (!selectedFiles.length) return;
-
-    return new Promise<void>((resolve, reject) => {
+  // ── Upload ────────────────────────────────────────────────────────────────
+  const uploadEvidence = () =>
+    new Promise<void>((resolve, reject) => {
       const formData = new FormData();
       formData.append('incident', ticket.ticket);
       formData.append('ticketId', String(ticket.idTicket));
-
-      selectedFiles.forEach((file) => {
-        formData.append('files', file);
-      });
+      formData.append('actionType', 'pending');
+      selectedFiles.forEach((file) => formData.append('files', file));
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/tickets/upload-evidence');
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percent);
-        }
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable)
+          setUploadProgress(Math.round((e.loaded / e.total) * 100));
       };
-
       xhr.onload = () => {
         if (xhr.status === 401) {
           window.location.assign('/login');
           return;
         }
-        if (xhr.status === 200) resolve();
-        else reject();
+        xhr.status === 200 ? resolve() : reject();
       };
-
       xhr.onerror = () => reject();
-
       xhr.send(formData);
     });
-  };
 
-  /* =========================
-     HANDLE UPDATE
-  ========================== */
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleUpdate = async () => {
-    if (isPendingReasonIncomplete || isEvidenceIncomplete) return;
-
+    if (!canSubmit) return;
     setLoading(true);
     setError(null);
-
     try {
       setUploading(true);
-
-      // Upload evidence dulu
       await uploadEvidence();
 
-      // Lalu set PENDING
       const res = await fetchWithAuth('/api/tickets/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticketId: ticket.idTicket,
-          pendingReason,
-        }),
+        body: JSON.stringify({ ticketId: ticket.idTicket, pendingReason }),
       });
-
       if (!res) return;
       const data = await res.json();
-
       if (data.success) onUpdated();
       else setError(data.message || 'Gagal update');
     } catch {
@@ -134,116 +101,315 @@ export default function TicketUpdateModal({
     }
   };
 
+  // ── Derived submit label ──────────────────────────────────────────────────
+  const submitLabel = () => {
+    if (uploading) return <UploadingLabel progress={uploadProgress} />;
+    if (loading)
+      return (
+        <>
+          <Spinner /> Memproses...
+        </>
+      );
+    if (isEvidenceIncomplete)
+      return (
+        <>
+          <InfoIcon />
+          Foto {selectedFiles.length}/{PHOTO_MIN} — kurang{' '}
+          {PHOTO_MIN - selectedFiles.length}
+        </>
+      );
+    if (isReasonIncomplete)
+      return (
+        <>
+          <InfoIcon /> Isi Deskripsi dulu
+        </>
+      );
+    return (
+      <>
+        <SaveIcon /> Simpan Update
+      </>
+    );
+  };
+
   return (
+    // Backdrop
     <div
-      className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+      className='fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm'
       onClick={onClose}
     >
+      {/* Bottom sheet */}
       <div
-        className='max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl'
+        className='animate-slide-up flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-2xl'
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className='mb-4 text-lg font-semibold'>Update Progress</h2>
+        {/* Drag handle */}
+        <div className='mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-slate-200' />
 
-        {error && (
-          <div className='mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600'>
-            {error}
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-5 py-4'>
+          <div>
+            <h2 className='text-[16px] font-black text-slate-900'>
+              Update Progress
+            </h2>
+            <p className='mt-0.5 font-mono text-[11px] font-semibold tracking-wider text-slate-400'>
+              {ticket.ticket}
+            </p>
           </div>
-        )}
-
-        {/* DESCRIPTION */}
-        <div className='mb-5'>
-          <label className='text-sm font-medium text-slate-600'>
-            Deskripsi / Alasan
-          </label>
-          <textarea
-            value={pendingReason}
-            onChange={(e) => setPendingReason(e.target.value)}
-            rows={4}
-            className='mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
-            placeholder='Masukkan alasan pending pekerjaan...'
-          />
+          <button
+            onClick={onClose}
+            className='flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200'
+          >
+            ✕
+          </button>
         </div>
 
-        {/* EVIDENCE */}
-        <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4'>
-          <h3 className='text-sm font-semibold text-slate-600'>
-            Evidence Foto (Minimal 2 - Max 5)
-          </h3>
+        {/* ── Scrollable body ──────────────────────────────────────────────── */}
+        <div className='flex-1 space-y-4 overflow-y-auto px-5 py-4'>
+          {/* Error banner */}
+          {error && (
+            <div className='flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600'>
+              <span className='text-base'>⚠️</span>
+              {error}
+            </div>
+          )}
 
-          <label className='flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 hover:bg-slate-50'>
-            + Tambah Foto
-            <input
-              type='file'
-              multiple
-              accept='image/*'
-              hidden
-              onChange={(e) => handleFileChange(e.target.files)}
-            />
-          </label>
+          {/* ── Deskripsi / Alasan ────────────────────────────────────────── */}
+          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white'>
+            {/* Section header */}
+            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3'>
+              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-sm'>
+                📝
+              </div>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase'>
+                Deskripsi / Alasan
+              </span>
+              {/* Required indicator */}
+              <span className='ml-auto text-[10px] font-bold text-red-400'>
+                * Wajib
+              </span>
+            </div>
 
-          {previewUrls.length > 0 && (
-            <div className='grid grid-cols-3 gap-2'>
-              {previewUrls.map((url, index) => (
-                <div key={index} className='relative'>
-                  <img
-                    src={url}
-                    className='h-24 w-full rounded-lg border object-cover'
-                  />
-                  <button
-                    type='button'
-                    onClick={() => removeImage(index)}
-                    className='absolute top-1 right-1 rounded-full bg-black/60 px-2 text-xs text-white'
-                  >
-                    ✕
-                  </button>
+            <div className='px-4 py-3'>
+              <textarea
+                value={pendingReason}
+                onChange={(e) => setPendingReason(e.target.value)}
+                rows={4}
+                placeholder='Jelaskan progress pekerjaan atau alasan pending secara detail...'
+                className={`w-full resize-none rounded-xl border-[1.5px] px-3.5 py-2.5 text-[13.5px] leading-relaxed font-medium text-slate-800 transition-all outline-none placeholder:text-slate-300 ${
+                  pendingReason.trim()
+                    ? 'border-blue-300 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+                    : 'border-slate-200 bg-slate-50 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10'
+                }`}
+              />
+              {/* Char counter */}
+              <div className='mt-1.5 flex justify-end'>
+                <span
+                  className={`text-[11px] font-semibold tabular-nums ${
+                    pendingReason.length > 450
+                      ? 'text-amber-500'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {pendingReason.length} / 500
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Evidence Foto ─────────────────────────────────────────────── */}
+          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white'>
+            {/* Section header */}
+            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3'>
+              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-sm'>
+                📷
+              </div>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase'>
+                Evidence Foto
+              </span>
+              {/* Photo count badge */}
+              <span
+                className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
+                  selectedFiles.length >= PHOTO_MIN
+                    ? 'border-green-200 bg-green-50 text-green-600'
+                    : 'border-red-200 bg-red-50 text-red-600'
+                }`}
+              >
+                {selectedFiles.length}/{PHOTO_MIN} min
+              </span>
+            </div>
+
+            <div className='space-y-3 px-4 py-3'>
+              {/* Upload zone */}
+              <label
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 transition-colors ${
+                  selectedFiles.length > 0
+                    ? 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                    : 'border-blue-200 bg-blue-50/50 hover:bg-blue-50'
+                }`}
+              >
+                <span className='text-2xl'>
+                  {selectedFiles.length > 0 ? '📎' : '📁'}
+                </span>
+                <div className='text-center'>
+                  <p className='text-[13px] font-bold text-slate-600'>
+                    {selectedFiles.length > 0
+                      ? 'Ganti / Tambah Foto'
+                      : 'Pilih Foto'}
+                  </p>
+                  <p className='mt-0.5 text-[11px] text-slate-400'>
+                    Min {PHOTO_MIN} foto · Max {PHOTO_MAX} foto · JPG, PNG
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {uploading && (
-            <div>
-              <div className='h-2 w-full rounded bg-gray-200'>
-                <div
-                  className='h-2 rounded bg-purple-600 transition-all'
-                  style={{ width: `${uploadProgress}%` }}
+                <input
+                  type='file'
+                  multiple
+                  accept='image/*'
+                  hidden
+                  onChange={(e) => handleFileChange(e.target.files)}
                 />
-              </div>
-              <div className='mt-1 text-right text-xs text-slate-500'>
-                Uploading {uploadProgress}%
-              </div>
+              </label>
+
+              {/* Preview grid */}
+              {previewUrls.length > 0 && (
+                <div className='grid grid-cols-3 gap-2'>
+                  {previewUrls.map((url, i) => (
+                    <div key={i} className='group relative aspect-square'>
+                      <img
+                        src={url}
+                        alt={`Evidence ${i + 1}`}
+                        className='h-full w-full rounded-xl border border-slate-200 object-cover'
+                      />
+                      {/* Index badge */}
+                      <span className='absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] font-black text-white'>
+                        {i + 1}
+                      </span>
+                      {/* Remove button */}
+                      <button
+                        type='button'
+                        onClick={() => removeImage(i)}
+                        className='absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 active:opacity-100'
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add more slot — show if below max */}
+                  {selectedFiles.length < PHOTO_MAX && (
+                    <label className='flex aspect-square cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-2xl text-slate-300 transition-colors hover:bg-slate-100'>
+                      +
+                      <input
+                        type='file'
+                        multiple
+                        accept='image/*'
+                        hidden
+                        onChange={(e) => handleFileChange(e.target.files)}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Upload progress bar */}
+              {uploading && (
+                <div className='space-y-1.5'>
+                  <div className='h-2 w-full overflow-hidden rounded-full bg-slate-100'>
+                    <div
+                      className='h-full rounded-full bg-linear-to-r from-blue-500 to-indigo-500 transition-all duration-300'
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <div className='flex items-center justify-between'>
+                    <span className='text-[11px] font-semibold text-slate-500'>
+                      Mengupload foto...
+                    </span>
+                    <span className='text-[11px] font-black text-blue-600 tabular-nums'>
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Bottom spacer for footer */}
+          <div className='h-2' />
         </div>
 
-        {/* FOOTER */}
-        <div className='mt-6 flex gap-3'>
-          <button onClick={onClose} className='flex-1 rounded-xl border py-3'>
+        {/* ── Footer CTA ───────────────────────────────────────────────────── */}
+        <div className='flex shrink-0 gap-2.5 border-t border-slate-100 bg-white px-5 py-4 pb-8'>
+          {/* Cancel */}
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className='flex h-12.5 w-22 shrink-0 items-center justify-center rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50'
+          >
             Batal
           </button>
 
+          {/* Submit — full emphasis */}
           <button
             onClick={handleUpdate}
-            disabled={
-              loading || isPendingReasonIncomplete || isEvidenceIncomplete
-            }
-            className={`flex-1 rounded-xl py-3 text-white ${
-              loading || isPendingReasonIncomplete || isEvidenceIncomplete
-                ? 'cursor-not-allowed bg-gray-400'
-                : 'bg-purple-600 hover:bg-purple-700'
+            disabled={!canSubmit}
+            className={`flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
+              canSubmit
+                ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-[0_4px_14px_rgba(99,102,241,0.30)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.40)]'
+                : 'border-[1.5px] border-slate-200 bg-slate-100 text-slate-400'
             }`}
           >
-            {loading
-              ? 'Memproses...'
-              : isEvidenceIncomplete
-                ? 'Minimal 2 Foto'
-                : isPendingReasonIncomplete
-                  ? 'Isi Alasan'
-                  : '💾 Update'}
+            {submitLabel()}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Micro components ──────────────────────────────────────────────────────────
+
+function Spinner() {
+  return (
+    <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg
+      className='h-3.5 w-3.5 shrink-0'
+      viewBox='0 0 16 16'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='2'
+      strokeLinecap='round'
+    >
+      <circle cx='8' cy='8' r='7' />
+      <path d='M8 5v4M8 11v.5' />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg
+      className='h-4 w-4'
+      viewBox='0 0 16 16'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='2.5'
+      strokeLinecap='round'
+      strokeLinejoin='round'
+    >
+      <path d='M13.5 4.5l-8 8L2 9' />
+    </svg>
+  );
+}
+
+function UploadingLabel({ progress }: { progress: number }) {
+  return (
+    <span className='flex items-center gap-2'>
+      <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+      Upload {progress}%
+    </span>
   );
 }

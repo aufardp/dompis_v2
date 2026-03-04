@@ -10,6 +10,7 @@ import { useAdminTickets } from '@/app/hooks/useAdminTickets';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useTicketStats } from '@/app/hooks/useTicketStats';
 import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
+import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
 import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import TicketStats from '../components/tickets/TicketStats';
 import CustomerTypeTabFilter from '@/app/components/tickets/CustomerTypeTabFilter';
@@ -18,7 +19,7 @@ import TicketAgeAlarm from '@/app/components/tickets/TicketAgeAlarm';
 import { TicketCtype, Ticket } from '@/app/types/ticket';
 
 import StatCard from './components/dashboard/StatCard';
-import { AlertBanner } from './components/dashboard/AlertBanner';
+import { DiamondAlertBanner } from './components/dashboard/AlertBanner';
 import { DeptFilterBar } from './components/dashboard/DeptFilterBar';
 import B2BSection from './components/dashboard/B2BSection';
 import B2CSection from './components/dashboard/B2CSection';
@@ -61,7 +62,7 @@ export default function TicketPage() {
   );
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<
-    'all' | 'reguler' | 'sqm'
+    'all' | 'reguler' | 'sqm' | 'unspec'
   >('all');
   const [hasilVisitFilter, setHasilVisitFilter] = useState<
     | 'all'
@@ -114,6 +115,12 @@ export default function TicketPage() {
       hasilVisit: hasilVisitFilter,
     });
 
+  const { tickets: diamondTickets, refresh: refreshDiamond } =
+    useOpenDiamondTickets(workzoneFilter || undefined, {
+      dept: deptFilter,
+      ticketType: ticketTypeFilter,
+    });
+
   const { tickets, loading, pagination, refresh } = useAdminTickets(
     searchQuery,
     currentPage,
@@ -126,7 +133,7 @@ export default function TicketPage() {
 
   useAutoRefresh({
     intervalMs: 30_000,
-    refreshers: [refresh, refreshStats, refreshExpired],
+    refreshers: [refresh, refreshStats, refreshExpired, refreshDiamond],
     pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
   });
 
@@ -250,7 +257,9 @@ export default function TicketPage() {
     setDeptFilter(dept);
   };
 
-  const handleTicketTypeChange = (type: 'all' | 'reguler' | 'sqm') => {
+  const handleTicketTypeChange = (
+    type: 'all' | 'reguler' | 'sqm' | 'unspec',
+  ) => {
     setTicketTypeFilter(type);
     setCurrentPage(1);
   };
@@ -270,8 +279,8 @@ export default function TicketPage() {
     setCurrentPage(1);
   };
 
-  // IMPORTANT: Ticket table is paginated server-side.
-  // Do not apply additional client-side filters here, otherwise page 1 can appear empty.
+  // IMPORTANT: Admin ticket table pagination happens on the client.
+  // Keep this list as the full dataset for sorting + pagination in TicketTable.
   const filteredTickets = tickets;
 
   // expiredTickets comes from /api/tickets/expired (not paginated)
@@ -353,8 +362,12 @@ export default function TicketPage() {
 
   // Calculate B2B group summaries
   b2bStats.summary.datin = {
-    total: b2bStats.datinK1.total + b2bStats.datinK1K2.total + b2bStats.datinK3.total,
-    open: b2bStats.datinK1.open + b2bStats.datinK1K2.open + b2bStats.datinK3.open,
+    total:
+      b2bStats.datinK1.total +
+      b2bStats.datinK1K2.total +
+      b2bStats.datinK3.total,
+    open:
+      b2bStats.datinK1.open + b2bStats.datinK1K2.open + b2bStats.datinK3.open,
     assigned:
       b2bStats.datinK1.assigned +
       b2bStats.datinK1K2.assigned +
@@ -388,7 +401,8 @@ export default function TicketPage() {
       b2bStats.reseller6.total +
       b2bStats.reseller36.total +
       b2bStats.wifi24.total,
-    open: b2bStats.reseller6.open + b2bStats.reseller36.open + b2bStats.wifi24.open,
+    open:
+      b2bStats.reseller6.open + b2bStats.reseller36.open + b2bStats.wifi24.open,
     assigned:
       b2bStats.reseller6.assigned +
       b2bStats.reseller36.assigned +
@@ -421,6 +435,10 @@ export default function TicketPage() {
         closed: Number(row?.closed || 0),
         regulerCount: Number(row?.regulerTotal || 0),
         sqmCount: Number(row?.sqmTotal || 0),
+        unspecCount: Number(row?.unspecTotal || 0),
+        ffgCount: Number(row?.ffg || 0),
+        p1Count: Number(row?.p1 || 0),
+        pPlusCount: Number(row?.pPlus || 0),
       };
     };
 
@@ -454,6 +472,26 @@ export default function TicketPage() {
         hvcGold.sqmCount +
         hvcPlatinum.sqmCount +
         hvcDiamond.sqmCount,
+      unspecCount:
+        reguler.unspecCount +
+        hvcGold.unspecCount +
+        hvcPlatinum.unspecCount +
+        hvcDiamond.unspecCount,
+      ffgCount:
+        reguler.ffgCount +
+        hvcGold.ffgCount +
+        hvcPlatinum.ffgCount +
+        hvcDiamond.ffgCount,
+      p1Count:
+        reguler.p1Count +
+        hvcGold.p1Count +
+        hvcPlatinum.p1Count +
+        hvcDiamond.p1Count,
+      pPlusCount:
+        reguler.pPlusCount +
+        hvcGold.pPlusCount +
+        hvcPlatinum.pPlusCount +
+        hvcDiamond.pPlusCount,
     };
 
     return {
@@ -519,6 +557,8 @@ export default function TicketPage() {
     maxTtrGold: t.maxTtrGold,
     maxTtrPlatinum: t.maxTtrPlatinum,
     maxTtrDiamond: t.maxTtrDiamond,
+    flaggingManja: t.flaggingManja,
+    guaranteeStatus: t.guaranteeStatus,
   }));
 
   return (
@@ -537,7 +577,37 @@ export default function TicketPage() {
             </div>
             <div className='px-4 py-4 md:px-5 md:py-5'>
               <div className='space-y-4 md:space-y-5'>
-                <AlertBanner tickets={expiredTickets} />
+                <DiamondAlertBanner
+                  tickets={diamondTickets.map((t) => ({
+                    ticketId: t.ticketId,
+                    idTicket: t.idTicket,
+                    customerType: t.customerType,
+                    reportedAt: t.reportedAt,
+                    status: t.status || 'OPEN',
+                    overdueHours: 0,
+                    workzone: t.workzone,
+                  }))}
+                  onAssign={(ticketId, idTicket) => {
+                    const ticket = diamondTickets.find(
+                      (t) =>
+                        t.ticketId === ticketId ||
+                        t.idTicket === idTicket ||
+                        t.idTicket === Number(ticketId),
+                    );
+                    const techId = ticket?.teknisiUserId;
+                    const numericId = idTicket || Number(ticketId);
+                    setAssignModalTicket({
+                      idTicket: numericId,
+                      ticketCode: ticket?.ticketId,
+                      workzone: ticket?.workzone ?? null,
+                      technicianName: ticket?.technicianName ?? null,
+                      teknisiUserId:
+                        techId !== undefined && techId !== null
+                          ? techId
+                          : undefined,
+                    });
+                  }}
+                />
 
                 <div className='grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4'>
                   <StatCard

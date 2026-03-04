@@ -23,11 +23,31 @@ export type TechEventTicket = {
   customer_name: string;
 };
 
+export type TechEventEvidenceFile = {
+  file_name: string;
+  local_path: string;
+  drive_url: string | null;
+};
+
+export type TechEventEvidence = {
+  files: TechEventEvidenceFile[];
+  count: number;
+};
+
+export type TechEventAdminAction = 'ASSIGNED' | 'REASSIGNED' | 'UNASSIGNED';
+
+export type TechEventAdmin = {
+  nama: string | null;
+  action: TechEventAdminAction;
+} | null;
+
 export type TechEventStatus = {
   old_hasil_visit: HasilVisit | null;
   new_hasil_visit: HasilVisit;
   pending_reason: string | null;
-  evidence: string | null;
+  evidence: TechEventEvidence | null;
+  rca?: string | null;
+  sub_rca?: string | null;
 };
 
 export type TechEventTechnician = {
@@ -50,6 +70,7 @@ export type TechEventPayload = {
   old_technician: TechEventTechnician;
   new_technician: TechEventTechnician;
   actor: TechEventActor;
+  admin?: TechEventAdmin;
 };
 
 /**

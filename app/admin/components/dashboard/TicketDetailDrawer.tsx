@@ -24,6 +24,7 @@ import {
   type TicketCtype,
   type TicketVisitStatus,
 } from '@/app/types/ticket';
+import { getEffectiveMaxTtrISO } from '@/app/libs/tickets/effective';
 
 type TicketStatusKey =
   | 'OPEN'
@@ -90,7 +91,14 @@ const CTYPE_BORDER: Record<TicketCtype, string> = {
 
 const STATUS_CONFIG: Record<
   TicketStatusKey | string,
-  { label: string; color: string; bg: string; dot: string; icon?: string; border?: string }
+  {
+    label: string;
+    color: string;
+    bg: string;
+    dot: string;
+    icon?: string;
+    border?: string;
+  }
 > = {
   OPEN: {
     label: 'Open',
@@ -195,21 +203,7 @@ function formatDateTime(dateStr: string | null | undefined): string {
 }
 
 function pickTtrDeadline(ticket: TicketDetail | null): string | null {
-  if (!ticket?.customerType) return null;
-  const ct = String(ticket.customerType).toLowerCase();
-  if (ct.includes('diamond')) return ticket.maxTtrDiamond ?? null;
-  if (ct.includes('platinum')) return ticket.maxTtrPlatinum ?? null;
-  if (ct.includes('gold')) return ticket.maxTtrGold ?? null;
-  if (ct.includes('reguler') || ct.includes('regular'))
-    return ticket.maxTtrReguler ?? null;
-  // fallback: if we only have one filled, use it
-  return (
-    ticket.maxTtrDiamond ||
-    ticket.maxTtrPlatinum ||
-    ticket.maxTtrGold ||
-    ticket.maxTtrReguler ||
-    null
-  );
+  return getEffectiveMaxTtrISO(ticket);
 }
 
 function formatTtrDelta(deadline: string | null | undefined): string {
@@ -245,7 +239,14 @@ interface BadgeProps {
   icon?: string;
 }
 
-function StatusBadge({ label, color, bg, dot, icon, border }: BadgeProps & { border?: string }) {
+function StatusBadge({
+  label,
+  color,
+  bg,
+  dot,
+  icon,
+  border,
+}: BadgeProps & { border?: string }) {
   return (
     <span
       className={clsx(
@@ -345,12 +346,20 @@ interface SectionProps {
   variant?: 'default' | 'highlighted';
 }
 
-function Section({ icon, title, children, fullWidth, variant = 'default' }: SectionProps) {
+function Section({
+  icon,
+  title,
+  children,
+  fullWidth,
+  variant = 'default',
+}: SectionProps) {
   return (
     <div
       className={clsx(
         'mb-5 rounded-xl border bg-white p-4',
-        variant === 'highlighted' ? 'border-slate-300 shadow-md' : 'border-slate-200 shadow-sm',
+        variant === 'highlighted'
+          ? 'border-slate-300 shadow-md'
+          : 'border-slate-200 shadow-sm',
         fullWidth ? '' : 'grid grid-cols-2 gap-x-4 gap-y-3',
       )}
     >
@@ -572,7 +581,7 @@ export default function TicketDetailDrawer({
                     className={clsx(
                       'relative px-4 py-2.5 text-xs font-medium transition-colors',
                       activeTab === tab.key
-                        ? 'text-slate-900 font-semibold'
+                        ? 'font-semibold text-slate-900'
                         : 'text-slate-500 hover:text-slate-700',
                     )}
                   >
@@ -639,7 +648,9 @@ export default function TicketDetailDrawer({
                     <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 uppercase'>
                       Summary
                     </p>
-                    <p className='text-sm leading-relaxed text-slate-700'>{ticket.summary}</p>
+                    <p className='text-sm leading-relaxed text-slate-700'>
+                      {ticket.summary}
+                    </p>
                   </div>
 
                   <Section

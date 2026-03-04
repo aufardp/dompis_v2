@@ -4,7 +4,7 @@ import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X } from 'lucide-react';
 
 type Dept = 'all' | 'b2b' | 'b2c';
-type TicketType = 'all' | 'reguler' | 'sqm';
+type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
 type HasilVisit =
   | 'all'
   | 'OPEN'
@@ -51,6 +51,12 @@ const TYPE_OPTIONS = [
     label: 'SQM',
     dot: 'bg-violet-400',
     activeClass: 'bg-violet-400/15 border-violet-400/40 text-violet-400',
+  },
+  {
+    key: 'unspec',
+    label: 'Unspec',
+    dot: 'bg-gray-400',
+    activeClass: 'bg-gray-400/15 border-gray-400/40 text-gray-400',
   },
   {
     key: 'all',

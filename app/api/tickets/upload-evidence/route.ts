@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { saveFiles } from '@/app/libs/upload';
+import { saveFiles, ActionType } from '@/app/libs/upload';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { normalizeRoleKey, roleKeyToRoleId } from '@/app/libs/roles';
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     const files = formData.getAll('files') as File[];
     const incident = formData.get('incident') as string;
     const ticketId = Number(formData.get('ticketId'));
+    const actionType = (formData.get('actionType') as ActionType) || 'pending';
 
     if (!files.length || !incident || !ticketId) {
       return NextResponse.json(
@@ -32,8 +33,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const savedFiles = await saveFiles(files, incident);
+    // Save files to local storage
+    const savedFiles = await saveFiles(files, incident, actionType);
 
+    // Save to database
     await prisma.$transaction(async (tx) => {
       await tx.ticket_evidence.createMany({
         data: savedFiles.map((file) => ({
@@ -59,7 +62,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      files: savedFiles,
+      files: savedFiles.map((file) => ({
+        fileName: file.fileName,
+        filePath: file.filePath,
+        fileSize: file.fileSize,
+        mimeType: file.mimeType,
+      })),
+      message: 'Files uploaded successfully',
     });
   } catch (error) {
     console.error(error);

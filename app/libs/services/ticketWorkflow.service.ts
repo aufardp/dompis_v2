@@ -10,6 +10,7 @@ import { ActivityType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { upsertTracking, logActivity, logStatusChange } from './ticket.helpers';
 import { createTechEvent } from '@/app/libs/createTechEvent';
+import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 
 type TechnicianSnapshot = {
   id_user: number;
@@ -43,6 +44,35 @@ async function getTicketDetails(
     service_no: row.SERVICE_NO ?? '',
     customer_name: row.CONTACT_NAME ?? '',
   };
+}
+
+async function getLatestAdminAssignment(
+  tx: Prisma.TransactionClient,
+  ticketId: number,
+): Promise<{ nama: string | null } | null> {
+  const assignment = await tx.ticket_assignment_history.findFirst({
+    where: { ticket_id: ticketId },
+    orderBy: { assigned_at: 'desc' },
+    include: {
+      assigner: {
+        select: { nama: true },
+      },
+    },
+  });
+
+  if (!assignment?.assigner) return null;
+  return { nama: assignment.assigner.nama };
+}
+
+async function getUserName(
+  tx: Prisma.TransactionClient,
+  userId: number,
+): Promise<string | null> {
+  const user = await tx.users.findUnique({
+    where: { id_user: userId },
+    select: { nama: true },
+  });
+  return user?.nama ?? null;
 }
 
 // ── Service Area Cache (35 items, TTL 1 hour) ────────────────────────────────
@@ -169,6 +199,7 @@ type LockedTicket = {
   teknisi_user_id: number | null;
   HASIL_VISIT: string | null;
   PENDING_REASON: string | null;
+  ALAMAT: string | null;
 };
 
 type WorkflowResult = {
@@ -249,7 +280,7 @@ async function lockTicketRow(
   ticketId: number,
 ): Promise<LockedTicket | null> {
   const rows = await tx.$queryRaw<LockedTicket[]>`
-    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT, PENDING_REASON
+    SELECT id_ticket, INCIDENT, WORKZONE, teknisi_user_id, HASIL_VISIT, PENDING_REASON, ALAMAT
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -444,6 +475,8 @@ async function handleTechnicianWorkflow(
 
     const tech = await getTechnicianSnapshot(tx, actor.id_user);
     const ticketDetails = await getTicketDetails(tx, ticketId);
+    const adminInfo = await getLatestAdminAssignment(tx, ticketId);
+    const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
     await createTechEvent(
       {
         event_type: 'TICKET_STATUS_CHANGED',
@@ -458,11 +491,14 @@ async function handleTechnicianWorkflow(
           old_hasil_visit: 'ON_PROGRESS',
           new_hasil_visit: 'PENDING',
           pending_reason: reasonDb,
-          evidence: null,
+          evidence,
+          rca: null,
+          sub_rca: null,
         },
         old_technician: tech,
         new_technician: tech,
         actor: { id_user: actor.id_user, role: actor.role },
+        admin: adminInfo ? { nama: adminInfo.nama, action: 'ASSIGNED' } : null,
       },
       tx,
     );
@@ -510,6 +546,8 @@ async function handleTechnicianWorkflow(
 
     const tech = await getTechnicianSnapshot(tx, actor.id_user);
     const ticketDetails = await getTicketDetails(tx, ticketId);
+    const adminInfo = await getLatestAdminAssignment(tx, ticketId);
+    const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
     await createTechEvent(
       {
         event_type: 'TICKET_STATUS_CHANGED',
@@ -524,11 +562,14 @@ async function handleTechnicianWorkflow(
           old_hasil_visit: 'PENDING',
           new_hasil_visit: 'ON_PROGRESS',
           pending_reason: null,
-          evidence: null,
+          evidence,
+          rca: null,
+          sub_rca: null,
         },
         old_technician: tech,
         new_technician: tech,
         actor: { id_user: actor.id_user, role: actor.role },
+        admin: adminInfo ? { nama: adminInfo.nama, action: 'ASSIGNED' } : null,
       },
       tx,
     );
@@ -602,6 +643,8 @@ async function handleAdminWorkflow(
 
   const tech = await getTechnicianSnapshot(tx, ticket.teknisi_user_id);
   const ticketDetails = await getTicketDetails(tx, ticketId);
+  const adminName = await getUserName(tx, actor.id_user);
+  const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
   await createTechEvent(
     {
       event_type: 'TICKET_STATUS_CHANGED',
@@ -616,11 +659,14 @@ async function handleAdminWorkflow(
         old_hasil_visit: current,
         new_hasil_visit: 'ESCALATED',
         pending_reason: null,
-        evidence: null,
+        evidence,
+        rca: null,
+        sub_rca: null,
       },
       old_technician: tech,
       new_technician: tech,
       actor: { id_user: actor.id_user, role: actor.role },
+      admin: { nama: adminName, action: 'ASSIGNED' },
     },
     tx,
   );
@@ -666,7 +712,14 @@ async function applyPatchFields(
 
   for (const [patchKey, dbKey] of FIELD_MAP) {
     if (patch[patchKey] !== undefined) {
-      ticketUpdate[dbKey] = cleanNullableString(patch[patchKey]);
+      const cleaned = cleanNullableString(patch[patchKey]);
+      if (patchKey === 'alamat' && typeof cleaned === 'string') {
+        if (cleaned.length > 255) {
+          throw new Error('Alamat maksimal 255 karakter');
+        }
+      }
+
+      ticketUpdate[dbKey] = cleaned;
       patchChanges.push(patchKey);
     }
   }
@@ -912,6 +965,8 @@ export class TicketWorkflowService {
         ? await getTechnicianSnapshot(tx, oldTechnicianId)
         : null;
       const ticketDetails = await getTicketDetails(tx, ticketId);
+      const adminName = await getUserName(tx, actor.id_user);
+      const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
       await createTechEvent(
         {
           event_type: 'TICKET_ASSIGNED',
@@ -926,11 +981,17 @@ export class TicketWorkflowService {
             old_hasil_visit: current,
             new_hasil_visit: 'ASSIGNED',
             pending_reason: null,
-            evidence: null,
+            evidence,
+            rca: null,
+            sub_rca: null,
           },
           old_technician: oldTech,
           new_technician: tech,
           actor: { id_user: actor.id_user, role: actor.role },
+          admin: {
+            nama: adminName,
+            action: isReassign ? 'REASSIGNED' : 'ASSIGNED',
+          },
         },
         tx,
       );
@@ -1016,6 +1077,8 @@ export class TicketWorkflowService {
 
       const tech = await getTechnicianSnapshot(tx, oldTechnicianId);
       const ticketDetails = await getTicketDetails(tx, ticketId);
+      const adminName = await getUserName(tx, actor.id_user);
+      const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
       await createTechEvent(
         {
           event_type: 'TICKET_UNASSIGNED',
@@ -1030,11 +1093,14 @@ export class TicketWorkflowService {
             old_hasil_visit: current,
             new_hasil_visit: 'OPEN',
             pending_reason: null,
-            evidence: null,
+            evidence,
+            rca: null,
+            sub_rca: null,
           },
           old_technician: tech,
           new_technician: null,
           actor: { id_user: actor.id_user, role: actor.role },
+          admin: { nama: adminName, action: 'UNASSIGNED' },
         },
         tx,
       );
@@ -1098,6 +1164,7 @@ export class TicketWorkflowService {
 
       const tech = await getTechnicianSnapshot(tx, actor.id_user);
       const ticketDetails = await getTicketDetails(tx, ticketId);
+      const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
       await createTechEvent(
         {
           event_type: 'TICKET_STATUS_CHANGED',
@@ -1112,11 +1179,12 @@ export class TicketWorkflowService {
             old_hasil_visit: 'ASSIGNED',
             new_hasil_visit: 'ON_PROGRESS',
             pending_reason: null,
-            evidence: null,
+            evidence,
           },
           old_technician: tech,
           new_technician: tech,
           actor: { id_user: actor.id_user, role: actor.role },
+          admin: null,
         },
         tx,
       );
@@ -1157,6 +1225,9 @@ export class TicketWorkflowService {
 
       const current = normalizeVisitStatus(ticket.HASIL_VISIT);
       assertTransition('CLOSE', current);
+
+      const alamat = cleanNullableString(ticket.ALAMAT);
+      if (!alamat) throw new Error('Alamat wajib diisi sebelum close');
 
       const evidenceCount = await tx.ticket_evidence.count({
         where: { ticket_id: ticketId },
@@ -1210,11 +1281,20 @@ export class TicketWorkflowService {
           file_path: true,
           mime_type: true,
           file_size: true,
+          n8n_web_url: true,
         },
       });
 
-      const evidenceUrl = evidence.length > 0 ? evidence[0].file_path : null;
+      const evidenceData = {
+        files: evidence.map((e) => ({
+          file_name: e.file_name,
+          local_path: e.file_path,
+          drive_url: e.n8n_web_url,
+        })),
+        count: evidence.length,
+      };
       const ticketDetails = await getTicketDetails(tx, ticketId);
+      const adminInfo = await getLatestAdminAssignment(tx, ticketId);
 
       await createTechEvent(
         {
@@ -1230,11 +1310,16 @@ export class TicketWorkflowService {
             old_hasil_visit: 'ON_PROGRESS',
             new_hasil_visit: 'DONE',
             pending_reason: null,
-            evidence: evidenceUrl,
+            evidence: evidenceData,
+            rca: rcaValue,
+            sub_rca: subRcaValue,
           },
           old_technician: tech,
           new_technician: tech,
           actor: { id_user: actor.id_user, role: actor.role },
+          admin: adminInfo
+            ? { nama: adminInfo.nama, action: 'ASSIGNED' }
+            : null,
         },
         tx,
       );
@@ -1262,7 +1347,7 @@ export class TicketWorkflowService {
     const hasWorkflowStatus = workflow?.status !== undefined;
 
     // Validate patch keys against role permissions up-front
-    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution'] as const;
+    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution', 'alamat'] as const;
     const ADMIN_PATCH_KEYS = [
       'summary',
       'ownerGroup',

@@ -1,15 +1,26 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { rcaMapping } from '@/app/types/rca';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import EvidenceSliderModal from './EvidenceSliderModal';
 import {
-  calculateTicketAge,
-  getTicketAgeColor,
   formatDateTimeWIB,
+  getSlaHours,
+  parseWIBDateInput,
+  calculateTicketAge,
 } from '@/app/utils/datetime';
+import { addHours } from 'date-fns';
+
+import ModalHeader from './detail-modal/ModalHeader';
+import ModalFooter from './detail-modal/ModalFooter';
+import SectionCard from './detail-modal/SectionCard';
+import InfoField, { formatPhone } from './detail-modal/InfoField';
+import EvidenceUploader from './detail-modal/EvidenceUploader';
+import EvidenceGallery from './detail-modal/EvidenceGallery';
+import AddressEditor from './detail-modal/AddressEditor';
+import { getMaxTtrInfo } from './TeknisiDashboard/utils/ttr';
 
 interface Props {
   ticket: Ticket;
@@ -50,6 +61,7 @@ export default function TicketDetailModal({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
+  // Status derived values
   const status = useMemo(
     () => ticket.hasilVisit?.toUpperCase() || 'OPEN',
     [ticket.hasilVisit],
@@ -59,11 +71,66 @@ export default function TicketDetailModal({
   const isOnProgress = status === 'ON_PROGRESS';
   const isPending = status === 'PENDING';
   const isClosed = status === 'CLOSE';
-  const isOpen = status === 'OPEN' || !ticket.hasilVisit;
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
   const isEvidenceIncomplete = selectedFiles.length < 2;
+  const photoCount = selectedFiles.length;
+  const photoRequired = 2;
 
+  // Address can be updated when ticket is ON_PROGRESS or PENDING, and not closed
+  const canUpdateAlamat = (isOnProgress || isPending) && !isClosed;
+
+  // ISSUE 3: SLA Progress Bar calculation
+  const slaPercent = useMemo(() => {
+    const start = parseWIBDateInput(ticket.reportedDate)?.getTime() ?? 0;
+    const reported = parseWIBDateInput(ticket.reportedDate);
+    if (!reported || !start) return 0;
+
+    const slaHours = getSlaHours(ticket.customerType);
+    const end = addHours(reported, slaHours).getTime();
+
+    if (!end || end <= start) return 0;
+
+    const now = Date.now();
+    return Math.min(100, Math.round(((now - start) / (end - start)) * 100));
+  }, [ticket.reportedDate, ticket.customerType]);
+
+  const slaBarColor =
+    slaPercent >= 90
+      ? 'bg-red-500'
+      : slaPercent >= 70
+        ? 'bg-orange-400'
+        : slaPercent >= 40
+          ? 'bg-yellow-400'
+          : 'bg-green-400';
+
+  // ISSUE 4: Max TTR remaining time calculation
+  const ttrRemaining = useMemo(() => {
+    const reported = parseWIBDateInput(ticket.reportedDate);
+    if (!reported) return null;
+
+    const slaHours = getSlaHours(ticket.customerType);
+    const deadline = addHours(reported, slaHours);
+    const diff = deadline.getTime() - Date.now();
+    const isOverdue = diff < 0;
+    const abs = Math.abs(diff);
+    const h = Math.floor(abs / 3600000);
+    const m = Math.floor((abs % 3600000) / 60000);
+    return { label: `${isOverdue ? '-' : ''}${h}j ${m}m`, isOverdue };
+  }, [ticket.reportedDate, ticket.customerType]);
+
+  // Ticket age memoized
+  const ticketAge = useMemo(
+    () =>
+      calculateTicketAge(
+        ticket.reportedDate,
+        ticket.hasilVisit,
+        ticket.closedAt,
+      ),
+    [ticket.reportedDate, ticket.hasilVisit, ticket.closedAt],
+  );
+
+  // Fetch evidence for closed tickets
   useEffect(() => {
     if (!isClosed) return;
 
@@ -102,8 +169,8 @@ export default function TicketDetailModal({
     };
   }, [isClosed, ticket.idTicket]);
 
-  //handle resume
-  const handleResume = async () => {
+  // Resume handler
+  const handleResume = useCallback(async () => {
     setActionLoading('resume');
     setError(null);
 
@@ -127,12 +194,10 @@ export default function TicketDetailModal({
     } finally {
       setActionLoading(null);
     }
-  };
+  }, [ticket.idTicket, onUpdated]);
 
-  /* =========================
-     HANDLE PICKUP
-  ========================== */
-  const handlePickup = async () => {
+  // Pickup handler
+  const handlePickup = useCallback(async () => {
     setError(null);
     setActionLoading('pickup');
 
@@ -153,46 +218,37 @@ export default function TicketDetailModal({
     } finally {
       setActionLoading(null);
     }
-  };
+  }, [ticket.idTicket, onUpdated]);
 
-  /* =========================
-     FILE HANDLER
-  ========================== */
-  const handleFileChange = (files: FileList | null) => {
-    if (!files) return;
+  // File handlers
+  const handleFileChange = useCallback((files: File[]) => {
+    setSelectedFiles(files);
+    setPreviewUrls(files.map((f) => URL.createObjectURL(f)));
+  }, []);
 
-    const fileArray = Array.from(files);
+  const handleRemoveImage = useCallback(
+    (index: number) => {
+      const updatedFiles = [...selectedFiles];
+      const updatedPreviews = [...previewUrls];
 
-    if (fileArray.length > 5) {
-      setError('Maksimal 5 foto');
-      return;
-    }
+      updatedFiles.splice(index, 1);
+      updatedPreviews.splice(index, 1);
 
-    setSelectedFiles(fileArray);
-    setPreviewUrls(fileArray.map((f) => URL.createObjectURL(f)));
-  };
+      setSelectedFiles(updatedFiles);
+      setPreviewUrls(updatedPreviews);
+    },
+    [selectedFiles, previewUrls],
+  );
 
-  const removeImage = (index: number) => {
-    const updatedFiles = [...selectedFiles];
-    const updatedPreviews = [...previewUrls];
-
-    updatedFiles.splice(index, 1);
-    updatedPreviews.splice(index, 1);
-
-    setSelectedFiles(updatedFiles);
-    setPreviewUrls(updatedPreviews);
-  };
-
-  /* =========================
-     UPLOAD WITH PROGRESS
-  ========================== */
-  const uploadEvidence = async () => {
+  // Upload evidence
+  const uploadEvidence = useCallback(async () => {
     if (!selectedFiles.length) return;
 
     return new Promise<void>((resolve, reject) => {
       const formData = new FormData();
       formData.append('incident', ticket.ticket);
       formData.append('ticketId', String(ticket.idTicket));
+      formData.append('actionType', 'close');
 
       selectedFiles.forEach((file) => {
         formData.append('files', file);
@@ -221,12 +277,10 @@ export default function TicketDetailModal({
 
       xhr.send(formData);
     });
-  };
+  }, [selectedFiles, ticket.ticket, ticket.idTicket]);
 
-  /* =========================
-     HANDLE CLOSE
-  ========================== */
-  const handleCloseTicket = async () => {
+  // Close ticket handler
+  const handleCloseTicket = useCallback(async () => {
     if (isRcaIncomplete) return;
 
     setError(null);
@@ -260,419 +314,263 @@ export default function TicketDetailModal({
       setUploadProgress(0);
       setActionLoading(null);
     }
-  };
+  }, [
+    isRcaIncomplete,
+    uploadEvidence,
+    ticket.idTicket,
+    selectedRca,
+    selectedSubRca,
+    onUpdated,
+  ]);
 
-  const getStatusColor = () => {
-    switch (status) {
-      case 'ASSIGNED':
-        return 'bg-amber-100 text-amber-700';
-      case 'ON_PROGRESS':
-        return 'bg-blue-100 text-blue-700';
-      case 'PENDING':
-        return 'bg-purple-100 text-purple-700';
-      case 'CLOSE':
-        return 'bg-green-100 text-green-700';
-      default:
-        return 'bg-gray-100 text-gray-700';
+  const handlePhotoClick = useCallback(() => {
+    // Scroll to evidence uploader section
+    const evidenceSection = document.getElementById('evidence-uploader');
+    if (evidenceSection) {
+      evidenceSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  };
+  }, []);
 
   return (
     <div
-      className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+      className='fixed inset-0 z-50 flex items-end bg-black/50 backdrop-blur-sm'
       onClick={onClose}
     >
+      {/* Bottom Sheet */}
       <div
-        className='max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl'
+        className='animate-slide-up flex max-h-[88vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl'
         onClick={(e) => e.stopPropagation()}
       >
-        {/* HEADER */}
-        <div className='sticky top-0 border-b bg-white p-5'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <div className='mb-2 flex flex-wrap items-center gap-2'>
-                <span className='font-mono text-lg font-bold text-slate-500'>
-                  {ticket.ticket}
-                </span>
-                <span
-                  className={`rounded-full px-3 py-1 text-sm font-medium ${getStatusColor()}`}
-                >
-                  {status}
-                </span>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                    getTicketAgeColor(
-                      ticket.reportedDate,
-                      ticket.hasilVisit,
-                      ticket.closedAt,
-                    ) === 'green'
-                      ? 'bg-green-100 text-green-700'
-                      : getTicketAgeColor(
-                            ticket.reportedDate,
-                            ticket.hasilVisit,
-                            ticket.closedAt,
-                          ) === 'yellow'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : getTicketAgeColor(
-                              ticket.reportedDate,
-                              ticket.hasilVisit,
-                              ticket.closedAt,
-                            ) === 'orange'
-                          ? 'bg-orange-100 text-orange-700'
-                          : getTicketAgeColor(
-                                ticket.reportedDate,
-                                ticket.hasilVisit,
-                                ticket.closedAt,
-                              ) === 'red'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {calculateTicketAge(
-                    ticket.reportedDate,
-                    ticket.hasilVisit,
-                    ticket.closedAt,
-                  )}
-                </span>
-              </div>
-              <h2 className='text-base font-semibold text-slate-800'>
-                {ticket.summary || ticket.symptom || 'Tanpa deskripsi'}
-              </h2>
-            </div>
-            <button
-              onClick={onClose}
-              className='rounded-lg p-2 hover:bg-slate-100'
-            >
-              ✕
-            </button>
+        {/* Drag Handle */}
+        <div className='mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-slate-200' />
+
+        {/* Header */}
+        <ModalHeader
+          ticket={ticket.ticket}
+          summary={ticket.summary}
+          symptom={ticket.symptom}
+          status={status}
+          reportedDate={ticket.reportedDate}
+          hasilVisit={ticket.hasilVisit}
+          closedAt={ticket.closedAt}
+          jenisTiket={ticket.jenisTiket}
+          onClose={onClose}
+        />
+
+        {/* ISSUE 3: SLA Progress Bar */}
+        <div className='shrink-0 border-b border-slate-100 px-5 py-3'>
+          <div className='mb-1.5 flex justify-between'>
+            <span className='text-[10px] font-semibold tracking-wide text-slate-400 uppercase'>
+              Laporan:{' '}
+              {ticket.reportedDate
+                ? formatDateTimeWIB(ticket.reportedDate)
+                : '-'}
+            </span>
+            <span className='text-[10px] font-semibold tracking-wide text-orange-500 uppercase'>
+              Max TTR: {getMaxTtrInfo(ticket)} ⚠
+            </span>
+          </div>
+          <div className='h-1.5 overflow-hidden rounded-full bg-slate-100'>
+            <div
+              className={`h-full rounded-full transition-all ${slaBarColor}`}
+              style={{ width: `${slaPercent}%` }}
+            />
           </div>
         </div>
 
-        {error && (
-          <div className='mx-5 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
-            {error}
-          </div>
-        )}
-
-        <div className='space-y-6 p-5'>
-          {/* INFORMASI PELANGGAN */}
-          <div className='rounded-xl bg-slate-50 p-4'>
-            <h3 className='mb-3 text-sm font-semibold text-slate-500 uppercase'>
-              Informasi Pelanggan
-            </h3>
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <div className='text-xs text-slate-400'>Nama</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.contactName || '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Telepon</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.contactPhone || '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>No. Service</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.serviceNo || '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Tgl. Laporan</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.reportedDate
-                    ? formatDateTimeWIB(ticket.reportedDate)
-                    : '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Umur Ticket</div>
-                <div className='text-sm text-slate-700'>
-                  {calculateTicketAge(
-                    ticket.reportedDate,
-                    ticket.hasilVisit,
-                    ticket.closedAt,
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Alamat</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.alamat || '-'}
-                </div>
-              </div>
+        {/* Scrollable Body */}
+        <div className='flex-1 space-y-3 overflow-y-auto scroll-smooth p-5 pb-2'>
+          {/* Error Banner */}
+          {error && (
+            <div className='rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
+              {error}
             </div>
-          </div>
+          )}
 
-          {/* DETAIL TICKET */}
-          <div className='rounded-xl bg-slate-50 p-4'>
-            <h3 className='mb-3 text-sm font-semibold text-slate-500 uppercase'>
-              Detail Ticket
-            </h3>
-            <div className='grid grid-cols-2 gap-4'>
+          {/* ISSUE 4: MAX TTR Warning Box */}
+          {ttrRemaining && (
+            <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3'>
               <div>
-                <div className='text-xs text-slate-400'>Jenis Layanan</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.serviceType || '-'}
-                </div>
+                <p className='mb-0.5 text-[10px] font-bold tracking-wide text-orange-500 uppercase'>
+                  ⚠ Batas Waktu (Max TTR)
+                </p>
+                <p className='text-sm font-bold text-orange-800'>
+                  {getMaxTtrInfo(ticket)}
+                </p>
               </div>
-              <div>
-                <div className='text-xs text-slate-400'>Jenis Pelanggan</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.customerType || '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Device</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.deviceName || '-'}
-                </div>
-              </div>
-              <div>
-                <div className='text-xs text-slate-400'>Workzone</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.workzone || '-'}
-                </div>
-              </div>
-              <div className='col-span-2'>
-                <div className='text-xs text-slate-400'>Symptom</div>
-                <div className='text-sm text-slate-700'>
-                  {ticket.symptom || '-'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RCA */}
-          {isOnProgress && (
-            <div className='space-y-4 rounded-xl bg-slate-50 p-4'>
-              <h3 className='text-sm font-semibold text-slate-500 uppercase'>
-                RCA
-              </h3>
-
-              <select
-                value={selectedRca}
-                onChange={(e) => {
-                  setSelectedRca(e.target.value);
-                  setSelectedSubRca('');
-                }}
-                className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
-              >
-                <option value=''>-- Pilih RCA --</option>
-                {Object.keys(rcaMapping).map((rca) => (
-                  <option key={rca} value={rca}>
-                    {rca}
-                  </option>
-                ))}
-              </select>
-
-              {selectedRca && (
-                <select
-                  value={selectedSubRca}
-                  onChange={(e) => setSelectedSubRca(e.target.value)}
-                  className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm'
+              <div className='text-right'>
+                <p className='mb-0.5 text-[10px] font-semibold tracking-wide text-orange-400 uppercase'>
+                  {ttrRemaining.isOverdue ? 'Terlewat' : 'Sisa Waktu'}
+                </p>
+                <p
+                  className={`text-xl font-black tabular-nums ${ttrRemaining.isOverdue ? 'text-red-600' : 'text-orange-700'}`}
                 >
-                  <option value=''>-- Pilih Sub RCA --</option>
-                  {rcaMapping[selectedRca].map((sub) => (
-                    <option key={sub} value={sub}>
-                      {sub}
+                  {ttrRemaining.label}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ISSUE 5: Completion Checklist */}
+          <div className='flex gap-2'>
+            {/* Photo status */}
+            <div
+              className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
+                photoCount >= photoRequired
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-600'
+              }`}
+            >
+              <span className='text-sm'>📷</span>
+              <div>
+                <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
+                  Foto
+                </p>
+                <p className='text-xs font-bold'>
+                  {photoCount} / {photoRequired}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Customer Info Section */}
+          <SectionCard title='Informasi Pelanggan' icon='👤' iconBgColor='blue'>
+            <div className='space-y-3'>
+              <InfoField label='Nama' value={ticket.contactName} />
+              <InfoField
+                label='Telepon'
+                value={ticket.contactPhone}
+                variant='phone'
+              />
+              <InfoField label='No. Service' value={ticket.serviceNo} />
+              <InfoField
+                label='Tgl. Laporan'
+                value={
+                  ticket.reportedDate
+                    ? formatDateTimeWIB(ticket.reportedDate)
+                    : '-'
+                }
+              />
+              <InfoField label='Umur Ticket' value={ticketAge} />
+
+              {/* Address - with new AddressEditor component */}
+              <div className='border-t border-slate-100 pt-2'>
+                <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                  Alamat
+                </p>
+                <AddressEditor
+                  ticketId={ticket.idTicket}
+                  initialAddress={ticket.alamat}
+                  canEdit={canUpdateAlamat}
+                  onError={(err) => setError(err)}
+                />
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Detail Ticket Section */}
+          <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
+            <div className='space-y-3'>
+              <InfoField label='Jenis Layanan' value={ticket.serviceType} />
+              <InfoField label='Jenis Pelanggan' value={ticket.customerType} />
+              <InfoField label='Device' value={ticket.deviceName} />
+              <InfoField label='Workzone' value={ticket.workzone} />
+              <InfoField label='Symptom' value={ticket.symptom} />
+            </div>
+          </SectionCard>
+
+          {/* RCA Section */}
+          {isOnProgress && (
+            <SectionCard title='RCA' icon='🔍' iconBgColor='purple'>
+              <div className='space-y-3'>
+                <select
+                  value={selectedRca}
+                  onChange={(e) => {
+                    setSelectedRca(e.target.value);
+                    setSelectedSubRca('');
+                  }}
+                  className='w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:outline-none'
+                >
+                  <option value=''>-- Pilih RCA --</option>
+                  {Object.keys(rcaMapping).map((rca) => (
+                    <option key={rca} value={rca}>
+                      {rca}
                     </option>
                   ))}
                 </select>
-              )}
-            </div>
-          )}
 
-          {/* CLOSED: RCA RESULT */}
-          {isClosed && (
-            <div className='rounded-xl bg-slate-50 p-4'>
-              <h3 className='mb-3 text-sm font-semibold text-slate-500 uppercase'>
-                Closing Results
-              </h3>
-              <div className='grid grid-cols-2 gap-4'>
-                <div>
-                  <div className='text-xs text-slate-400'>RCA</div>
-                  <div className='text-sm font-medium text-slate-700'>
-                    {ticket.rca || '-'}
-                  </div>
-                </div>
-                <div>
-                  <div className='text-xs text-slate-400'>Sub RCA</div>
-                  <div className='text-sm font-medium text-slate-700'>
-                    {ticket.subRca || '-'}
-                  </div>
-                </div>
+                {selectedRca && (
+                  <select
+                    value={selectedSubRca}
+                    onChange={(e) => setSelectedSubRca(e.target.value)}
+                    className='w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:outline-none'
+                  >
+                    <option value=''>-- Pilih Sub RCA --</option>
+                    {rcaMapping[selectedRca].map((sub) => (
+                      <option key={sub} value={sub}>
+                        {sub}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
-            </div>
+            </SectionCard>
           )}
 
-          {/* EVIDENCE */}
-          {isOnProgress && (
-            <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4'>
-              <h3 className='text-sm font-semibold text-slate-600'>
-                Evidence Foto (Max 5)
-              </h3>
-
-              <label className='flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 hover:bg-slate-50'>
-                + Tambah Foto
-                <input
-                  type='file'
-                  multiple
-                  accept='image/*'
-                  hidden
-                  onChange={(e) => handleFileChange(e.target.files)}
-                />
-              </label>
-
-              {previewUrls.length > 0 && (
-                <div className='grid grid-cols-3 gap-2'>
-                  {previewUrls.map((url, index) => (
-                    <div key={index} className='relative'>
-                      <img
-                        src={url}
-                        className='h-24 w-full rounded-lg border object-cover'
-                      />
-                      <button
-                        type='button'
-                        onClick={() => removeImage(index)}
-                        className='absolute top-1 right-1 rounded-full bg-black/60 px-2 text-xs text-white'
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {uploading && (
-                <div>
-                  <div className='h-2 w-full rounded bg-gray-200'>
-                    <div
-                      className='h-2 rounded bg-blue-500 transition-all'
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                  <div className='mt-1 text-right text-xs text-slate-500'>
-                    Uploading {uploadProgress}%
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* CLOSED: EVIDENCE GALLERY */}
+          {/* Closed: RCA Result */}
           {isClosed && (
-            <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4'>
-              <h3 className='text-sm font-semibold text-slate-600'>
-                Evidence Foto
-              </h3>
+            <SectionCard title='Closing Results' icon='✅' iconBgColor='green'>
+              <div className='space-y-3'>
+                <InfoField label='RCA' value={ticket.rca} />
+                <InfoField label='Sub RCA' value={ticket.subRca} />
+              </div>
+            </SectionCard>
+          )}
 
-              {evidenceError && (
-                <div className='rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
-                  {evidenceError}
-                </div>
-              )}
-
-              {evidenceLoading ? (
-                <div className='text-sm text-slate-500'>Memuat evidence...</div>
-              ) : evidence.length === 0 ? (
-                <div className='text-sm text-slate-500'>Tidak ada evidence</div>
-              ) : (
-                <div className='grid grid-cols-3 gap-2'>
-                  {evidence.map((ev, idx) => (
-                    <button
-                      key={ev.id}
-                      type='button'
-                      onClick={() => {
-                        setViewerIndex(idx);
-                        setViewerOpen(true);
-                      }}
-                      className='relative overflow-hidden rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'
-                      aria-label={`Open evidence ${idx + 1}`}
-                    >
-                      <img
-                        src={ev.filePath}
-                        alt={ev.fileName}
-                        className='h-24 w-full object-cover'
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
+          {/* Evidence Upload */}
+          {isOnProgress && (
+            <div id='evidence-uploader'>
+              <EvidenceUploader
+                onFilesChange={handleFileChange}
+                onRemoveImage={handleRemoveImage}
+                previewUrls={previewUrls}
+                uploadProgress={uploadProgress}
+                uploading={uploading}
+              />
             </div>
+          )}
+
+          {/* Evidence Gallery */}
+          {isClosed && (
+            <EvidenceGallery
+              evidence={evidence}
+              loading={evidenceLoading}
+              error={evidenceError}
+              onImageClick={(idx) => {
+                setViewerIndex(idx);
+                setViewerOpen(true);
+              }}
+            />
           )}
         </div>
 
-        {/* FOOTER */}
-        <div className='sticky bottom-0 flex gap-3 border-t bg-white p-5'>
-          {/* UPDATE BUTTON */}
-          {isOnProgress && (
-            <button
-              onClick={onUpdateClick}
-              className='flex-1 rounded-xl bg-purple-600 py-3 text-white hover:bg-purple-700'
-            >
-              ✏️ Update
-            </button>
-          )}
-
-          {/* PICKUP */}
-          {isAssigned && (
-            <button
-              onClick={handlePickup}
-              disabled={actionLoading === 'pickup'}
-              className='flex-1 rounded-xl bg-blue-600 py-3 text-white hover:bg-blue-700 disabled:opacity-50'
-            >
-              {actionLoading === 'pickup' ? 'Memproses...' : '🚀 Pickup'}
-            </button>
-          )}
-
-          {/* RESUME (PENDING → ON_PROGRESS) */}
-          {isPending && (
-            <button
-              onClick={handleResume}
-              disabled={actionLoading === 'resume'}
-              className='flex-1 rounded-xl bg-blue-600 py-3 text-white hover:bg-blue-700 disabled:opacity-50'
-            >
-              {actionLoading === 'resume' ? 'Memproses...' : '▶ Resume'}
-            </button>
-          )}
-
-          {/* CLOSE */}
-          {isOnProgress && (
-            <button
-              onClick={handleCloseTicket}
-              disabled={
-                actionLoading === 'close' ||
-                isRcaIncomplete ||
-                isEvidenceIncomplete
-              }
-              className={`flex-1 rounded-xl py-3 font-medium text-white transition ${
-                actionLoading === 'close' ||
-                isRcaIncomplete ||
-                isEvidenceIncomplete
-                  ? 'cursor-not-allowed bg-gray-400'
-                  : 'bg-green-600 hover:bg-green-700'
-              }`}
-            >
-              {actionLoading === 'close'
-                ? 'Memproses...'
-                : isEvidenceIncomplete
-                  ? 'Minimal 2 Foto'
-                  : isRcaIncomplete
-                    ? 'Lengkapi RCA'
-                    : '✅ Close'}
-            </button>
-          )}
-
-          {/* CLOSED STATE */}
-          {isClosed && (
-            <div className='flex-1 rounded-xl bg-green-100 py-3 text-center font-medium text-green-700'>
-              ✓ Ticket Close
-            </div>
-          )}
-        </div>
+        {/* Footer */}
+        <ModalFooter
+          isOnProgress={isOnProgress}
+          isAssigned={isAssigned}
+          isPending={isPending}
+          isClosed={isClosed}
+          actionLoading={actionLoading}
+          isRcaIncomplete={isRcaIncomplete}
+          isEvidenceIncomplete={isEvidenceIncomplete}
+          photoCount={photoCount}
+          photoRequired={photoRequired}
+          onUpdateClick={onUpdateClick}
+          onPickup={handlePickup}
+          onResume={handleResume}
+          onClose={handleCloseTicket}
+          onPhotoClick={handlePhotoClick}
+        />
       </div>
 
       <EvidenceSliderModal

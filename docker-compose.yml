@@ -41,11 +41,6 @@ services:
       - dompis_redis_data:/data
     networks:
       - dompis-network
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 20s
-      timeout: 10s
-      retries: 5
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -64,9 +59,43 @@ services:
     networks:
       - dompis-network
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: dompis_n8n
+    restart: always
+    ports:
+      - '5678:5678'
+    environment:
+      DB_TYPE: mysqldb
+      DB_MYSQLDB_HOST: mysql
+      DB_MYSQLDB_PORT: 3306
+      DB_MYSQLDB_DATABASE: dompis_db
+      DB_MYSQLDB_USER: dompis_user
+      DB_MYSQLDB_PASSWORD: dompis_password
+
+      N8N_HOST: engingeng.optimusakses.org
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: https://engingeng.optimusakses.org/
+      TZ: Asia/Jakarta
+
+      N8N_ENABLE_FILESYSTEM_ACCESS: 'true'
+      N8N_FILESYSTEM_ALLOW_PATHS: /data
+      N8N_DEFAULT_BINARY_DATA_MODE: filesystem
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - dompis_n8n_data:/home/node/.n8n
+      - ./uploads:/data/uploads
+    networks:
+      - dompis-network
+
 volumes:
   dompis_mysql_data:
   dompis_redis_data:
+  dompis_n8n_data:
 
 networks:
   dompis-network:

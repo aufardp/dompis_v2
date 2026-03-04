@@ -14,33 +14,61 @@ import { id } from 'date-fns/locale';
 
 export const WIB_TIMEZONE = 'Asia/Jakarta';
 
-function parseDateInput(dateStr: string | null | undefined): Date | null {
+/**
+ * Parses a date string that may come from Sheets or API, normalizing it to a
+ * real instant in time. Strings without an explicit timezone are interpreted
+ * as WIB (Asia/Jakarta).
+ */
+export function parseWIBDateInput(
+  dateStr: string | null | undefined,
+): Date | null {
   if (!dateStr) return null;
 
+  const raw = String(dateStr).trim();
+  if (!raw) return null;
+
   try {
-    // Handle DD/MM/YYYY HH:mm format
-    if (dateStr.includes('/')) {
-      const [day, month, yearAndTime] = dateStr.split('/');
-      const [year, time] = yearAndTime.split(' ');
+    // Handle DD/MM/YYYY HH:mm format (assumed WIB)
+    if (raw.includes('/')) {
+      const [day, month, yearAndTime] = raw.split('/');
+      const [year, time] = (yearAndTime || '').split(' ');
       const [hour, minute] = time ? time.split(':') : ['0', '0'];
-      const parsed = new Date(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day),
-        parseInt(hour),
-        parseInt(minute),
-      );
-      if (!isNaN(parsed.getTime())) return parsed;
+
+      const dd = String(day || '').padStart(2, '0');
+      const mm = String(month || '').padStart(2, '0');
+      const yyyy = String(year || '').padStart(4, '0');
+      const hh = String(hour || '0').padStart(2, '0');
+      const mi = String(minute || '0').padStart(2, '0');
+
+      const asWib = `${yyyy}-${mm}-${dd} ${hh}:${mi}:00`;
+      const d = fromZonedTime(asWib, WIB_TIMEZONE);
+      return isNaN(d.getTime()) ? null : d;
     }
 
-    // Try standard Date parsing
-    const standard = new Date(dateStr);
-    if (!isNaN(standard.getTime())) return standard;
+    // Explicit timezone in string -> parse as-is
+    if (
+      /[zZ]$/.test(raw) ||
+      /[+-]\d\d:?\d\d$/.test(raw) ||
+      /[+-]\d\d:?\d\d\s*$/.test(raw)
+    ) {
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    }
 
-    return null;
+    // No timezone -> interpret as WIB
+    const wib = fromZonedTime(raw, WIB_TIMEZONE);
+    if (!isNaN(wib.getTime())) return wib;
+
+    // Last resort
+    const standard = new Date(raw);
+    return isNaN(standard.getTime()) ? null : standard;
   } catch {
     return null;
   }
+}
+
+function parseDateInput(dateStr: string | null | undefined): Date | null {
+  return parseWIBDateInput(dateStr);
 }
 
 export function nowUTC(): Date {
@@ -65,11 +93,8 @@ export function formatDateWIB(
 
   try {
     let parsed: Date | null = null;
-    if (typeof date === 'string') {
-      parsed = parseDateInput(date);
-    } else if (date instanceof Date) {
-      parsed = date;
-    }
+    if (typeof date === 'string') parsed = parseDateInput(date);
+    else if (date instanceof Date) parsed = date;
 
     if (!parsed) return '-';
 
@@ -207,4 +232,27 @@ export function getTicketAgeColor(
   } catch {
     return 'gray';
   }
+}
+
+export function getWIBDayKey(
+  date: Date | string | null | undefined,
+): string | null {
+  if (!date) return null;
+  const d = typeof date === 'string' ? parseWIBDateInput(date) : date;
+  if (!d || isNaN(d.getTime())) return null;
+  try {
+    return formatInTimeZone(d, WIB_TIMEZONE, 'yyyy-MM-dd');
+  } catch {
+    return null;
+  }
+}
+
+export function isDifferentWIBDay(
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined,
+): boolean {
+  const ka = getWIBDayKey(a);
+  const kb = getWIBDayKey(b);
+  if (!ka || !kb) return false;
+  return ka !== kb;
 }

@@ -5,6 +5,10 @@ interface B2CSummaryCardProps {
   closed: number;
   regulerCount: number;
   sqmCount: number;
+  unspecCount: number;
+  ffgCount: number;
+  p1Count: number;
+  pPlusCount: number;
 }
 
 function ResolutionRing({ pct }: { pct: number }) {
@@ -50,10 +54,15 @@ export default function B2CSummaryCard({
   closed,
   regulerCount,
   sqmCount,
+  unspecCount,
+  ffgCount,
+  p1Count,
+  pPlusCount,
 }: B2CSummaryCardProps) {
   const pctClosed = total > 0 ? (closed / total) * 100 : 0;
   const regulerPct = total > 0 ? ((regulerCount / total) * 100).toFixed(0) : 0;
   const sqmPct = total > 0 ? ((sqmCount / total) * 100).toFixed(0) : 0;
+  const unspecPct = total > 0 ? ((unspecCount / total) * 100).toFixed(0) : 0;
 
   return (
     <div
@@ -88,7 +97,7 @@ export default function B2CSummaryCard({
         {/* Divider */}
         <div className='hidden h-14 w-px bg-white/10 sm:block' />
 
-        {/* Reguler + SQM breakdown */}
+        {/* Reguler + SQM + Unspec breakdown */}
         <div className='flex gap-8'>
           <div>
             <p className='mb-1 text-[10px] text-blue-300'>📋 Reguler</p>
@@ -105,6 +114,15 @@ export default function B2CSummaryCard({
               {sqmCount.toLocaleString()}
             </p>
             <p className='text-[10px] text-blue-300/60'>{sqmPct}% of total</p>
+          </div>
+          <div>
+            <p className='mb-1 text-[10px] text-blue-300'>❓ Unspec</p>
+            <p className='text-2xl font-bold text-white'>
+              {unspecCount.toLocaleString()}
+            </p>
+            <p className='text-[10px] text-blue-300/60'>
+              {unspecPct}% of total
+            </p>
           </div>
         </div>
 
@@ -141,6 +159,44 @@ export default function B2CSummaryCard({
               {closed}
             </p>
             <p className='text-[10px] text-blue-300/60'>Closed</p>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className='hidden h-14 w-px bg-white/10 sm:block' />
+
+        {/* Flagging counts */}
+        <div className='flex gap-6'>
+          <div className='text-center'>
+            <p
+              className='text-2xl font-black'
+              style={{
+                color: ffgCount > 0 ? '#a855f7' : 'rgba(168,85,247,0.4)',
+              }}
+            >
+              {ffgCount}
+            </p>
+            <p className='text-[10px] text-purple-300/60'>🔥 FFG</p>
+          </div>
+          <div className='text-center'>
+            <p
+              className='text-2xl font-black'
+              style={{ color: p1Count > 0 ? '#ef4444' : 'rgba(239,68,68,0.4)' }}
+            >
+              {p1Count}
+            </p>
+            <p className='text-[10px] text-red-300/60'>⚡ P1</p>
+          </div>
+          <div className='text-center'>
+            <p
+              className='text-2xl font-black'
+              style={{
+                color: pPlusCount > 0 ? '#f59e0b' : 'rgba(245,158,11,0.4)',
+              }}
+            >
+              {pPlusCount}
+            </p>
+            <p className='text-[10px] text-amber-300/60'>⚡ P+</p>
           </div>
         </div>
 

@@ -73,10 +73,12 @@ model ticket {
   MANJA_EXPIRED               String?                     @db.VarChar(255)
   ALAMAT                      String?                     @db.VarChar(255)
   PENDING_REASON              String?                     @db.VarChar(255)
+  GUARANTE_STATUS             String?                     @db.VarChar(50)
+  FLAGGING_MANJA              String?                     @db.VarChar(50)
   rca                         String?                     @db.VarChar(100)
   sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
-  closed_at                   DateTime                    @default(now()) @db.Timestamp(0)
+  closed_at                   DateTime?                   @db.Timestamp(0)
   users                       users?                      @relation(fields: [teknisi_user_id], references: [id_user], onUpdate: NoAction, map: "fk_ticket_user")
   ticket_evidence             ticket_evidence[]
   ticketTracking              ticket_tracking?
@@ -90,18 +92,26 @@ model ticket {
 
 
 model ticket_evidence {
-  id         Int       @id @default(autoincrement())
-  ticket_id  Int
-  incident   String    @db.VarChar(100)
-  file_name  String    @db.VarChar(255)
-  file_path  String    @db.VarChar(255)
-  file_size  Int?
-  mime_type  String?   @db.VarChar(100)
-  created_at DateTime? @default(now()) @db.Timestamp(0)
-  ticket     ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket")
+  id                Int       @id @default(autoincrement())
+  ticket_id         Int
+  incident          String    @db.VarChar(100)
+  file_name         String    @db.VarChar(255)
+  file_path         String    @db.VarChar(255)
+  file_size         Int?
+  mime_type         String?   @db.VarChar(100)
+
+  // n8n / Google Drive sync fields
+  n8n_file_id       String?   @db.VarChar(255)
+  n8n_web_url       String?   @db.VarChar(500)
+  n8n_sync_status   String    @default("PENDING") @db.VarChar(25) // PENDING, SYNCED, FAILED, FAILED_PERMANENT
+  n8n_attempt       Int       @default(0)
+
+  created_at        DateTime? @default(now()) @db.Timestamp(0)
+  ticket            ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket")
 
   @@index([incident], map: "idx_incident")
   @@index([ticket_id], map: "idx_ticket_id")
+  @@index([n8n_sync_status], map: "idx_n8n_sync_status")
 }
 
 model user_sa {

@@ -61,7 +61,7 @@ export default function EvidenceSliderModal({
 
   return (
     <div
-      className='fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm'
+      className='fixed inset-0 z-60 bg-black/80 backdrop-blur-sm'
       onClick={(e) => e.stopPropagation()}
     >
       <div
@@ -72,7 +72,7 @@ export default function EvidenceSliderModal({
         }}
       />
 
-      <div className='relative z-[61] flex h-full w-full items-center justify-center p-4'>
+      <div className='relative z-61 flex h-full w-full items-center justify-center p-4'>
         <div className='w-full max-w-5xl'>
           <div className='mb-3 flex items-center justify-between text-white'>
             <div className='text-sm'>
@@ -153,7 +153,7 @@ export default function EvidenceSliderModal({
                     key={`${img.src}-thumb-${i}`}
                     type='button'
                     onClick={() => setIndex(i)}
-                    className={`h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border transition ${
+                    className={`h-14 w-20 shrink-0 overflow-hidden rounded-lg border transition ${
                       active
                         ? 'border-white'
                         : 'border-white/20 opacity-70 hover:opacity-100'

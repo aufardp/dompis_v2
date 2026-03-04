@@ -11,6 +11,10 @@ interface CustomerTypeCardProps {
   onClick?: () => void;
   regulerCount?: number;
   sqmCount?: number;
+  unspecCount?: number;
+  ffgCount?: number;
+  p1Count?: number;
+  pPlusCount?: number;
   totalAll?: number;
 }
 
@@ -91,6 +95,10 @@ export default function CustomerTypeCard({
   onClick,
   regulerCount,
   sqmCount,
+  unspecCount,
+  ffgCount,
+  p1Count,
+  pPlusCount,
   totalAll,
 }: CustomerTypeCardProps) {
   const shareOfAll =
@@ -148,8 +156,10 @@ export default function CustomerTypeCard({
         {shareOfAll ? `${shareOfAll}% of total` : 'tickets'}
       </p>
 
-      {/* Pills */}
-      {(regulerCount !== undefined || sqmCount !== undefined) && (
+      {/* Pills - Reguler, SQM, Unspec */}
+      {(regulerCount !== undefined ||
+        sqmCount !== undefined ||
+        unspecCount !== undefined) && (
         <div className='mb-3 flex flex-wrap gap-2'>
           {regulerCount !== undefined && (
             <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500'>
@@ -168,11 +178,41 @@ export default function CustomerTypeCard({
               📊 SQM: {sqmCount}
             </span>
           )}
+          {unspecCount !== undefined && (
+            <span className='flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500'>
+              ❓ Unspec: {unspecCount}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Flagging Pills - FFG, P1, P+ */}
+      {(ffgCount !== undefined ||
+        p1Count !== undefined ||
+        pPlusCount !== undefined) && (
+        <div className='mb-3 flex flex-wrap gap-2'>
+          {ffgCount !== undefined && ffgCount > 0 && (
+            <span className='flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-600'>
+              🔥 FFG: {ffgCount}
+            </span>
+          )}
+          {p1Count !== undefined && p1Count > 0 && (
+            <span className='flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600'>
+              ⚡ P1: {p1Count}
+            </span>
+          )}
+          {pPlusCount !== undefined && pPlusCount > 0 && (
+            <span className='flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600'>
+              ⚡ P+: {pPlusCount}
+            </span>
+          )}
         </div>
       )}
 
       {/* Mini bars */}
-      {(regulerCount !== undefined || sqmCount !== undefined) && (
+      {(regulerCount !== undefined ||
+        sqmCount !== undefined ||
+        unspecCount !== undefined) && (
         <div className='mb-4 space-y-1.5'>
           {regulerCount !== undefined && (
             <div className='flex items-center gap-2'>
@@ -193,6 +233,18 @@ export default function CustomerTypeCard({
               <MiniBar value={sqmCount} max={total} color={accentColor} />
               <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
                 {total > 0 ? Math.round((sqmCount / total) * 100) : 0}%
+              </span>
+            </div>
+          )}
+
+          {unspecCount !== undefined && (
+            <div className='flex items-center gap-2'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+                Unspec
+              </span>
+              <MiniBar value={unspecCount} max={total} color='#94a3b8' />
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+                {total > 0 ? Math.round((unspecCount / total) * 100) : 0}%
               </span>
             </div>
           )}

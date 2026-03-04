@@ -36,10 +36,10 @@ export default function TicketCardMobile({
   const maxTtr = getMaxTtr(ticket) || '-';
 
   return (
-    <div className='group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md'>
-      <div className='flex items-start justify-between gap-3'>
-        <div className='min-w-0'>
-          <div className='flex items-center gap-2'>
+    <div className='group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4'>
+      <div className='flex items-start justify-between gap-2 sm:gap-3'>
+        <div className='min-w-0 flex-1'>
+          <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
             <p className='truncate text-sm font-semibold text-slate-900'>
               {ticket.ticket || '-'}
             </p>
@@ -52,48 +52,49 @@ export default function TicketCardMobile({
           </p>
         </div>
 
-        <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
-          {ticket.hasilVisit || '-'}
-        </Badge>
-
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
-        >
-          {getTicketAge(ticket)}
-        </span>
+        <div className='flex shrink-0 flex-col items-end gap-1'>
+          <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
+            {ticket.hasilVisit || '-'}
+          </Badge>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
+          >
+            {getTicketAge(ticket)}
+          </span>
+        </div>
       </div>
 
-      <div className='mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700'>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <Hash className='h-4 w-4 text-slate-500' />
+      <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 sm:grid-cols-2'>
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <Hash className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Service</p>
             <p className='truncate font-semibold'>{ticket.serviceNo || '-'}</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <MapPin className='h-4 w-4 text-slate-500' />
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <MapPin className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Workzone</p>
             <p className='truncate font-semibold'>{ticket.workzone || '-'}</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <User className='h-4 w-4 text-slate-500' />
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <User className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Type</p>
             <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <Clock3 className='h-4 w-4 text-slate-500' />
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <Clock3 className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Max TTR</p>
             <p className='truncate font-semibold'>{maxTtr}</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <Calendar className='h-4 w-4 text-slate-500' />
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <Calendar className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Booking Date</p>
             <p className='truncate font-semibold'>
@@ -101,8 +102,8 @@ export default function TicketCardMobile({
             </p>
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
-          <MapPinned className='h-4 w-4 text-slate-500' />
+        <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
+          <MapPinned className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Address</p>
             <p className='truncate font-semibold'>{ticket.alamat || '-'}</p>
@@ -110,24 +111,24 @@ export default function TicketCardMobile({
         </div>
       </div>
 
-      <div className='mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2'>
+      <div className='mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
         <div className='min-w-0'>
           <p className='text-[11px] text-slate-500'>Customer</p>
           <p className='truncate text-sm font-semibold text-slate-900'>
             {ticket.contactName || '-'}
           </p>
         </div>
-        <div className='shrink-0 text-right'>
+        <div className='min-w-0 text-right sm:shrink-0'>
           <p className='text-[11px] text-slate-500'>Phone</p>
           <p className='inline-flex items-center gap-1 text-sm font-medium text-slate-700'>
-            <Phone className='h-4 w-4 text-slate-500' />
+            <Phone className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
             <span className='tabular-nums'>{ticket.contactPhone || '-'}</span>
           </p>
         </div>
       </div>
 
       <div className='mt-3 flex items-center justify-between gap-3'>
-        <div className='min-w-0'>
+        <div className='min-w-0 flex-1'>
           <p className='text-[11px] text-slate-500'>Technician</p>
           <p className='truncate text-sm font-medium text-slate-800'>
             {ticket.technicianName || (
@@ -142,14 +143,14 @@ export default function TicketCardMobile({
         {!isClosed && (
           <Button
             onClick={() => onAssign(ticket.idTicket)}
-            className={`shrink-0 px-4 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] ${
+            className={`shrink-0 px-3 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] sm:px-4 sm:py-2 ${
               isAssigned
                 ? 'bg-amber-500 text-white hover:bg-amber-600'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
           >
-            {isAssigned ? <RefreshCw size={16} /> : <UserPlus size={16} />}
-            <span className='hidden sm:inline'>
+            {isAssigned ? <RefreshCw size={14} /> : <UserPlus size={14} />}
+            <span className='ml-1.5 hidden text-xs sm:inline sm:text-sm'>
               {isAssigned ? 'Reassign' : 'Assign'}
             </span>
           </Button>

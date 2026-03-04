@@ -820,10 +820,23 @@ span.flatpickr-weekday,
   }
 }
 
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @utility animate-fade-up {
   animation: fadeUp 0.4s ease both;
 }
 
 @utility animate-pulse-border {
   animation: pulseBorder 2s infinite;
+}
+
+@utility animate-slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
