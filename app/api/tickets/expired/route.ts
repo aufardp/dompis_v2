@@ -30,14 +30,16 @@ export async function GET(request: Request) {
       searchParams.get('ticketType') ||
       searchParams.get('jenisTiket') ||
       undefined;
-    const hasilVisit =
-      searchParams.get('hasilVisit') || searchParams.get('status') || undefined;
+    const statusUpdate =
+      searchParams.get('statusUpdate') ||
+      searchParams.get('status') ||
+      undefined;
 
     const expiredTickets = await TicketService.getExpiredTickets(
       user.role,
       user.id_user,
       saId,
-      { dept, ticketType, hasilVisit },
+      { dept, ticketType, statusUpdate },
     );
 
     return NextResponse.json({

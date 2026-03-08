@@ -178,7 +178,7 @@ export async function GET(
     const assignedTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: techId,
-        HASIL_VISIT: { not: 'CLOSE' },
+        OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'closed' } }],
       },
       select: {
         id_ticket: true,
@@ -187,7 +187,7 @@ export async function GET(
         CUSTOMER_TYPE: true,
         SERVICE_NO: true,
         REPORTED_DATE: true,
-        HASIL_VISIT: true,
+        STATUS_UPDATE: true,
       },
       orderBy: { REPORTED_DATE: 'asc' },
     });
@@ -195,7 +195,7 @@ export async function GET(
     const closedToday = await prisma.ticket.count({
       where: {
         teknisi_user_id: techId,
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: 'CLOSE',
         closed_at: {
           gte: today,
           lte: todayEnd,
@@ -212,33 +212,33 @@ export async function GET(
         ctype: t.CUSTOMER_TYPE,
         serviceNo: t.SERVICE_NO,
         reportedDate: t.REPORTED_DATE,
-        hasilVisit: t.HASIL_VISIT,
+        STATUS_UPDATE: t.STATUS_UPDATE,
         age,
         ageHours: hours,
       };
     });
 
     const assignedCount = assignedTickets.filter(
-      (t) => t.HASIL_VISIT === 'ASSIGNED',
+      (t) => t.STATUS_UPDATE === 'ASSIGNED',
     ).length;
     const onProgressCount = assignedTickets.filter(
-      (t) => t.HASIL_VISIT === 'ON_PROGRESS',
+      (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
     ).length;
     const pendingCount = assignedTickets.filter(
-      (t) => t.HASIL_VISIT === 'PENDING',
+      (t) => t.STATUS_UPDATE === 'PENDING',
     ).length;
 
     const totalClosed = await prisma.ticket.count({
       where: {
         teknisi_user_id: techId,
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: 'CLOSE',
       },
     });
 
     const closedTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: techId,
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
         closed_at: { not: undefined },
       },
       select: {

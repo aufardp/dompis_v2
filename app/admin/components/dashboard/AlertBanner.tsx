@@ -114,7 +114,7 @@ export function DiamondAlertBanner({
             key={ticket.ticketId || ticket.idTicket || index}
             className='flex flex-wrap items-center gap-2 rounded-lg border border-cyan-500/10 bg-cyan-500/5 px-3 py-2'
           >
-            <span className='font-syne min-w-[100px] font-bold text-cyan-400'>
+            <span className='font-syne min-w-25 font-bold text-cyan-400'>
               {ticket.ticketId}
             </span>
             <span className='text-cyan-300'>⚡ {ticket.customerType}</span>

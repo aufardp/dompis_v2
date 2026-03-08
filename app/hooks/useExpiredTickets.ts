@@ -43,7 +43,7 @@ function toOverdueHours(customerType: string, reportedAt: Date) {
 
 export function useExpiredTickets(
   workzoneId?: string,
-  opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+  opts?: { dept?: string; ticketType?: string; statusUpdate?: string },
 ) {
   const [rows, setRows] = useState<ExpiredTicketApiRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,8 +59,8 @@ export function useExpiredTickets(
       if (opts?.ticketType && opts.ticketType !== 'all') {
         params.set('ticketType', opts.ticketType);
       }
-      if (opts?.hasilVisit && opts.hasilVisit !== 'all') {
-        params.set('hasilVisit', opts.hasilVisit);
+      if (opts?.statusUpdate && opts.statusUpdate !== 'all') {
+        params.set('statusUpdate', opts.statusUpdate);
       }
 
       const res = await fetchWithAuth(
@@ -82,7 +82,7 @@ export function useExpiredTickets(
     } finally {
       setLoading(false);
     }
-  }, [opts?.dept, opts?.hasilVisit, opts?.ticketType, workzoneId]);
+  }, [opts?.dept, opts?.statusUpdate, opts?.ticketType, workzoneId]);
 
   useEffect(() => {
     fetchExpired();

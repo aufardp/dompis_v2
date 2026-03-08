@@ -1,3 +1,5 @@
+import { StatusUpdateValue } from '@/app/libs/ticket-utils';
+
 export type TicketVisitStatus =
   | 'OPEN'
   | 'ASSIGNED'
@@ -6,6 +8,17 @@ export type TicketVisitStatus =
   | 'ESCALATED'
   | 'CANCELLED'
   | 'CLOSE';
+
+export type TicketType =
+  | 'reguler'
+  | 'sqm'
+  | 'hvc'
+  | 'unspec'
+  | 'sqm-ccan'
+  | 'indibiz'
+  | 'datin'
+  | 'reseller'
+  | 'wifi-id';
 
 export type TicketCtype =
   | 'REGULER'
@@ -65,6 +78,7 @@ export interface Ticket {
   alamat?: string | null;
 
   status: string;
+  STATUS_UPDATE?: StatusUpdateValue | null;
   hasilVisit?: TicketVisitStatus;
 
   bookingDate?: string;
@@ -88,4 +102,55 @@ export interface Ticket {
   technicianName?: string | null;
 
   closedAt?: string | null;
+
+  // Sync metadata fields
+  syncDate?: string | null;
+  syncedAt?: string | null;
+  importBatch?: string | null;
 }
+
+export type LockedTicket = {
+  id_ticket: number;
+  INCIDENT: string;
+  WORKZONE: string | null;
+  teknisi_user_id: number | null;
+  STATUS_UPDATE: string | null;
+  PENDING_REASON: string | null;
+  ALAMAT: string | null;
+  SERVICE_NO: string | null;
+  CONTACT_NAME: string | null;
+};
+
+export type ActorContext = {
+  id_user: number;
+  role: string;
+};
+
+export type TicketUpdatePatch = {
+  summary?: string | null;
+  ownerGroup?: string | null;
+  status?: string | null;
+  workzone?: string | null;
+  serviceType?: string | null;
+  customerSegment?: string | null;
+  customerType?: string | null;
+  serviceNo?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  deviceName?: string | null;
+  symptom?: string | null;
+  alamat?: string | null;
+  descriptionActualSolution?: string | null;
+  pendingReason?: string | null;
+};
+
+export type TicketUpdateWorkflow = {
+  status?: string;
+  pendingReason?: string | null;
+  note?: string | null;
+};
+
+export type UpdateTicketInput = {
+  patch?: TicketUpdatePatch;
+  workflow?: TicketUpdateWorkflow;
+};

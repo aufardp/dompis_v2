@@ -13,20 +13,46 @@ export async function GET(req: Request) {
     ]);
 
     const { searchParams } = new URL(req.url);
-    const incident = searchParams.get('incident');
+    const q = searchParams.get('q');
+    const type = searchParams.get('type') || 'incident';
 
-    if (!incident) {
+    if (!q) {
       return NextResponse.json(
-        { success: false, message: 'Incident parameter is required' },
+        { success: false, message: 'Search query parameter "q" is required' },
         { status: 400 },
       );
     }
 
-    const result = await TicketService.search(
-      incident,
-      user.role,
-      user.id_user,
-    );
+    let result;
+
+    switch (type) {
+      case 'incident':
+        result = await TicketService.search(q, user.role, user.id_user);
+        break;
+      case 'contact':
+        result = await TicketService.searchByContactName(
+          q,
+          user.role,
+          user.id_user,
+        );
+        break;
+      case 'service':
+        result = await TicketService.searchByServiceNo(
+          q,
+          user.role,
+          user.id_user,
+        );
+        break;
+      default:
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Invalid type parameter. Must be "incident", "contact", or "service"',
+          },
+          { status: 400 },
+        );
+    }
 
     return NextResponse.json({
       success: true,

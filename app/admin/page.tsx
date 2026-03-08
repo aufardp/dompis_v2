@@ -5,26 +5,28 @@ import { useSearchParams } from 'next/navigation';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
-import Select from '@/app/components/form/Select';
-import { useAdminTickets } from '@/app/hooks/useAdminTickets';
+import { useDailyTickets } from '@/app/hooks/useDailyTickets';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
-import { useTicketStats } from '@/app/hooks/useTicketStats';
 import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
 import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
 import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
-import TicketStats from '../components/tickets/TicketStats';
-import CustomerTypeTabFilter from '@/app/components/tickets/CustomerTypeTabFilter';
-import CustomerTypeBadge from '@/app/components/tickets/CustomerTypeBadge';
-import TicketAgeAlarm from '@/app/components/tickets/TicketAgeAlarm';
+import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { TicketCtype, Ticket } from '@/app/types/ticket';
+import {
+  normalizeJenis,
+  isB2CJenis,
+  isB2BJenis,
+} from '@/app/libs/tickets/jenis';
 
 import StatCard from './components/dashboard/StatCard';
 import { DiamondAlertBanner } from './components/dashboard/AlertBanner';
-import { DeptFilterBar } from './components/dashboard/DeptFilterBar';
+import { FilterBarB2C } from './components/dashboard/filterbarb2c';
+import { FilterBarB2B } from './components/dashboard/filterbarb2b';
 import B2BSection from './components/dashboard/B2BSection';
 import B2CSection from './components/dashboard/B2CSection';
 import ServiceAreaTable from './components/dashboard/ServiceAreaTable';
 import TicketTable from './components/dashboard/TicketTable';
+import TicketTableB2B from './components/dashboard/TicketTableB2B';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 
 interface TicketData {
@@ -41,6 +43,25 @@ interface CtypeCounts {
   HVC_GOLD: number;
   HVC_PLATINUM: number;
   HVC_DIAMOND: number;
+}
+
+interface JenisCounts {
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+  ffgCount: number;
+  p1Count: number;
+  pPlusCount: number;
+}
+
+interface B2BData {
+  sqmCcan: JenisCounts;
+  indibiz: JenisCounts;
+  datin: JenisCounts;
+  reseller: JenisCounts;
+  wifiId: JenisCounts;
+  summary: JenisCounts;
 }
 
 export default function TicketPage() {
@@ -61,18 +82,21 @@ export default function TicketPage() {
     null,
   );
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
-  const [ticketTypeFilter, setTicketTypeFilter] = useState<
-    'all' | 'reguler' | 'sqm' | 'unspec'
+
+  // B2C filter state
+  const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<
+    'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec'
   >('all');
-  const [hasilVisitFilter, setHasilVisitFilter] = useState<
-    | 'all'
-    | 'OPEN'
-    | 'ASSIGNED'
-    | 'ON_PROGRESS'
-    | 'PENDING'
-    | 'ESCALATED'
-    | 'CANCELLED'
-    | 'CLOSE'
+  const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<
+    'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
+  >('all');
+
+  // B2B filter state
+  const [b2bTicketTypeFilter, setB2bTicketTypeFilter] = useState<
+    'all' | 'sqm-ccan' | 'indibiz' | 'datin' | 'reseller' | 'wifi-id'
+  >('all');
+  const [b2bHasilVisitFilter, setB2bHasilVisitFilter] = useState<
+    'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
   >('all');
 
   // Read dept from URL query param
@@ -88,54 +112,164 @@ export default function TicketPage() {
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
 
-  const {
-    data: statsApi,
-    byServiceArea,
-    byCustomerType,
-    refresh: refreshStats,
-  } = useTicketStats(workzoneFilter || undefined, {
-    dept: deptFilter,
-    ticketType: ticketTypeFilter,
-    hasilVisit: hasilVisitFilter,
-  });
-
-  const { byCustomerType: byCustomerTypeAll } = useTicketStats(
-    workzoneFilter || undefined,
-    {
-      dept: 'all',
-      ticketType: ticketTypeFilter,
-      hasilVisit: hasilVisitFilter,
-    },
-  );
-
   const { tickets: expiredTickets, refresh: refreshExpired } =
     useExpiredTickets(workzoneFilter || undefined, {
       dept: deptFilter,
-      ticketType: ticketTypeFilter,
-      hasilVisit: hasilVisitFilter,
+      ticketType: 'all',
+      statusUpdate: 'all',
     });
 
   const { tickets: diamondTickets, refresh: refreshDiamond } =
     useOpenDiamondTickets(workzoneFilter || undefined, {
       dept: deptFilter,
-      ticketType: ticketTypeFilter,
+      ticketType: 'all',
     });
 
-  const { tickets, loading, pagination, refresh } = useAdminTickets(
+  // Use Daily Tickets for the operational working board
+  const { tickets, loading, pagination, refresh } = useDailyTickets(
     searchQuery,
     currentPage,
     workzoneFilter || undefined,
     ctypeFilter !== 'all' ? ctypeFilter : undefined,
-    hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
+    undefined, // hasilVisitFilter - now handled per section
     deptFilter !== 'all' ? deptFilter : undefined,
-    ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+    undefined, // ticketTypeFilter - now handled per section
   );
 
+  // SSE-based real-time updates (primary mechanism)
+  useTicketEvents({
+    onInvalidate: () => {
+      // Only refresh if no modal is open
+      if (!showNewTicketModal && !assignModalTicket) {
+        refresh();
+      }
+    },
+    enabled: true,
+    debounceMs: 500,
+  });
+
+  // Polling as fallback (reduced frequency since SSE handles real-time)
   useAutoRefresh({
-    intervalMs: 30_000,
-    refreshers: [refresh, refreshStats, refreshExpired, refreshDiamond],
+    intervalMs: 60_000,
+    refreshers: [refresh, refreshExpired, refreshDiamond],
     pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // DAILY OPERATIONAL SUMMARY — computed from daily tickets (NOT stats API)
+  // This ensures summary and table are ALWAYS in sync (same data scope)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Filter B2C tickets from daily dataset - USE SAME LOGIC AS TABLE
+  const b2cDailyTickets = useMemo(
+    () => tickets.filter((t) => isB2CJenis(t.jenisTiket)),
+    [tickets],
+  );
+
+  // Compute summary from B2C daily tickets
+  const b2cDailySummary = useMemo(() => {
+    const summary = {
+      total: b2cDailyTickets.length,
+      open: 0,
+      assigned: 0,
+      close: 0,
+      regulerCount: 0,
+      sqmCount: 0,
+      unspecCount: 0,
+      ffgCount: 0,
+      p1Count: 0,
+      pPlusCount: 0,
+    };
+
+    for (const t of b2cDailyTickets) {
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      const isClose = s === 'close';
+      const isAssigned =
+        s === 'assigned' || s === 'on_progress' || s === 'pending';
+      const jenisType = normalizeJenis(t.jenisTiket);
+
+      // Status counts
+      if (isClose) {
+        summary.close++;
+      } else if (isAssigned) {
+        summary.assigned++;
+      } else {
+        summary.open++;
+      }
+
+      // Jenis breakdown
+      if (jenisType === 'reguler') summary.regulerCount++;
+      else if (jenisType === 'sqm') summary.sqmCount++;
+      else summary.unspecCount++;
+
+      // Flagging counts
+      if (t.guaranteeStatus?.toLowerCase() === 'guarantee') summary.ffgCount++;
+      if (t.flaggingManja === 'P1') summary.p1Count++;
+      if (t.flaggingManja === 'P+') summary.pPlusCount++;
+    }
+
+    return summary;
+  }, [b2cDailyTickets]);
+
+  // Customer type breakdown from daily B2C tickets
+  const b2cDailyByType = useMemo(() => {
+    const typeMap = new Map<
+      string,
+      {
+        total: number;
+        open: number;
+        assigned: number;
+        close: number;
+        regulerCount: number;
+        sqmCount: number;
+        unspecCount: number;
+        ffgCount: number;
+        p1Count: number;
+        pPlusCount: number;
+      }
+    >();
+
+    const initType = () => ({
+      total: 0,
+      open: 0,
+      assigned: 0,
+      close: 0,
+      regulerCount: 0,
+      sqmCount: 0,
+      unspecCount: 0,
+      ffgCount: 0,
+      p1Count: 0,
+      pPlusCount: 0,
+    });
+
+    for (const t of b2cDailyTickets) {
+      const type = (t.ctype || t.customerType || 'Unspec').toUpperCase();
+      if (!typeMap.has(type)) typeMap.set(type, initType());
+
+      const data = typeMap.get(type)!;
+      data.total++;
+
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      const isClose = s === 'close';
+      const isAssigned =
+        s === 'assigned' || s === 'on_progress' || s === 'pending';
+      const jenisType = normalizeJenis(t.jenisTiket);
+
+      if (isClose) data.close++;
+      else if (isAssigned) data.assigned++;
+      else data.open++;
+
+      if (jenisType === 'reguler') data.regulerCount++;
+      else if (jenisType === 'sqm') data.sqmCount++;
+      else data.unspecCount++;
+
+      if (t.guaranteeStatus?.toLowerCase() === 'guarantee') data.ffgCount++;
+      if (t.flaggingManja === 'P1') data.p1Count++;
+      if (t.flaggingManja === 'P+') data.pPlusCount++;
+    }
+
+    return typeMap;
+  }, [b2cDailyTickets]);
 
   const inferDept = useCallback((t: Ticket) => {
     const seg = (t.customerSegment ?? '').toUpperCase();
@@ -167,35 +301,45 @@ export default function TicketPage() {
   }, []);
 
   const normalizeVisitStatus = useCallback((t: Ticket) => {
-    const raw = ((t.hasilVisit ?? t.status) || '').toString();
+    const raw = (
+      (t.STATUS_UPDATE ?? t.hasilVisit ?? t.status) ||
+      ''
+    ).toString();
     return raw.trim().toUpperCase().replace(/\s+/g, '_');
   }, []);
 
   const normalizeTicketType = useCallback((t: Ticket) => {
-    const raw = (t.jenisTiket || '').toString();
-    const normalized = raw.trim().toLowerCase().replace(/\s+/g, '_');
-    if (!normalized) return '';
-    if (normalized.includes('sqm')) return 'sqm';
-    if (normalized.includes('reguler') || normalized.includes('regular')) {
-      return 'reguler';
-    }
-    return normalized;
+    return normalizeJenis(t.jenisTiket);
   }, []);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // STATS — computed from daily tickets (NOT separate API call)
+  // This ensures StatCards are ALWAYS in sync with the table
+  // ═══════════════════════════════════════════════════════════════════════
+
   const stats = useMemo(() => {
-    const total = Number(statsApi?.total || 0);
-    const unassigned = Number(statsApi?.unassigned || 0);
-    const assigned = Number(statsApi?.assigned || 0);
-    const closed = Number(statsApi?.closed || 0);
+    const b2cTickets = tickets.filter((t) => isB2CJenis(t.jenisTiket));
+    const b2bTickets = tickets.filter((t) => isB2BJenis(t.jenisTiket));
 
-    const b2c = byCustomerType.reduce(
-      (acc, row) => acc + Number(row.total || 0),
-      0,
-    );
-    const other = Math.max(0, total - b2c);
+    const total = tickets.length;
+    const unassigned = tickets.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return !s || s === 'open';
+    }).length;
+    const assigned = tickets.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return s === 'assigned' || s === 'on_progress' || s === 'pending';
+    }).length;
+    const close = tickets.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return s === 'close';
+    }).length;
 
-    return { total, unassigned, assigned, closed, b2c, other };
-  }, [byCustomerType, statsApi]);
+    const b2c = b2cTickets.length;
+    const b2b = b2bTickets.length;
+
+    return { total, unassigned, assigned, close, b2c, b2b };
+  }, [tickets]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -257,25 +401,31 @@ export default function TicketPage() {
     setDeptFilter(dept);
   };
 
-  const handleTicketTypeChange = (
-    type: 'all' | 'reguler' | 'sqm' | 'unspec',
+  const handleB2cTicketTypeChange = (
+    type: 'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec',
   ) => {
-    setTicketTypeFilter(type);
+    setB2cTicketTypeFilter(type);
     setCurrentPage(1);
   };
 
-  const handleHasilVisitChange = (
-    status:
-      | 'all'
-      | 'OPEN'
-      | 'ASSIGNED'
-      | 'ON_PROGRESS'
-      | 'PENDING'
-      | 'ESCALATED'
-      | 'CANCELLED'
-      | 'CLOSE',
+  const handleB2cHasilVisitChange = (
+    status: 'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close',
   ) => {
-    setHasilVisitFilter(status);
+    setB2cHasilVisitFilter(status);
+    setCurrentPage(1);
+  };
+
+  const handleB2bTicketTypeChange = (
+    type: 'all' | 'sqm-ccan' | 'indibiz' | 'datin' | 'reseller' | 'wifi-id',
+  ) => {
+    setB2bTicketTypeFilter(type);
+    setCurrentPage(1);
+  };
+
+  const handleB2bHasilVisitChange = (
+    status: 'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close',
+  ) => {
+    setB2bHasilVisitFilter(status);
     setCurrentPage(1);
   };
 
@@ -287,14 +437,17 @@ export default function TicketPage() {
 
   const getCounts = (arr: Ticket[]) => ({
     total: arr.length,
-    open: arr.filter((t) => normalizeVisitStatus(t) === 'OPEN').length,
-    assigned: arr.filter((t) => {
-      const st = normalizeVisitStatus(t);
-      return st === 'ASSIGNED' || st === 'ON_PROGRESS';
+    open: arr.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return !s || s === 'open';
     }).length,
-    closed: arr.filter((t) => {
-      const st = normalizeVisitStatus(t);
-      return st === 'CLOSE' || st === 'CLOSED';
+    assigned: arr.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return s === 'assigned' || s === 'on_progress' || s === 'pending';
+    }).length,
+    close: arr.filter((t) => {
+      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return s === 'close';
     }).length,
     regulerCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
@@ -302,237 +455,171 @@ export default function TicketPage() {
     }).length,
     sqmCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
+      // ← CHANGED: normalizeJenis correctly handles sqm vs sqm-ccan separation
+      // 'sqm-ccan' maps to 'sqm-ccan', NOT 'sqm', so no false positives
       return jt === 'sqm';
     }).length,
+    ffgCount: arr.filter(
+      (t) => t.guaranteeStatus?.toLowerCase() === 'guarantee',
+    ).length,
+    p1Count: arr.filter((t) => t.flaggingManja === 'P1').length,
+    pPlusCount: arr.filter((t) => t.flaggingManja === 'P+').length,
   });
 
-  const b2bStats = {
-    datinK1: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k1'),
-    ),
-    datinK1K2: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k1k2'),
-    ),
-    datinK3: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'datin_k3'),
-    ),
-    indibiz4: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'indibiz_4'),
-    ),
-    indibiz24: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'indibiz_24'),
-    ),
-    reseller6: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'reseller_6'),
-    ),
-    reseller36: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'reseller_36'),
-    ),
-    wifi24: getCounts(
-      filteredTickets.filter((t) => normalizeCustomerType(t) === 'wifi_24'),
-    ),
-    // Summary calculations for each group
+  // ← CHANGED: b2bStats now uses jenis-based filtering with countJenis helper
+  function countJenis(tickets: Ticket[], jenisKey: string) {
+    const arr = tickets.filter(
+      (t) => normalizeJenis(t.jenisTiket) === jenisKey,
+    );
+    return getCounts(arr);
+  }
+
+  const sqmCcan = countJenis(filteredTickets, 'sqm-ccan');
+  const indibiz = countJenis(filteredTickets, 'indibiz');
+  const datin = countJenis(filteredTickets, 'datin');
+  const reseller = countJenis(filteredTickets, 'reseller');
+  const wifiId = countJenis(filteredTickets, 'wifi-id');
+
+  const b2bStats: B2BData = {
+    sqmCcan,
+    indibiz,
+    datin,
+    reseller,
+    wifiId,
     summary: {
-      datin: {
-        total: 0,
-        open: 0,
-        assigned: 0,
-        closed: 0,
-        regulerCount: 0,
-        sqmCount: 0,
-      },
-      indibiz: {
-        total: 0,
-        open: 0,
-        assigned: 0,
-        closed: 0,
-        regulerCount: 0,
-        sqmCount: 0,
-      },
-      resellerWifi: {
-        total: 0,
-        open: 0,
-        assigned: 0,
-        closed: 0,
-        regulerCount: 0,
-        sqmCount: 0,
-      },
+      total:
+        sqmCcan.total +
+        indibiz.total +
+        datin.total +
+        reseller.total +
+        wifiId.total,
+      open:
+        sqmCcan.open + indibiz.open + datin.open + reseller.open + wifiId.open,
+      assigned:
+        sqmCcan.assigned +
+        indibiz.assigned +
+        datin.assigned +
+        reseller.assigned +
+        wifiId.assigned,
+      close:
+        sqmCcan.close +
+        indibiz.close +
+        datin.close +
+        reseller.close +
+        wifiId.close,
+      ffgCount:
+        sqmCcan.ffgCount +
+        indibiz.ffgCount +
+        datin.ffgCount +
+        reseller.ffgCount +
+        wifiId.ffgCount,
+      p1Count:
+        sqmCcan.p1Count +
+        indibiz.p1Count +
+        datin.p1Count +
+        reseller.p1Count +
+        wifiId.p1Count,
+      pPlusCount:
+        sqmCcan.pPlusCount +
+        indibiz.pPlusCount +
+        datin.pPlusCount +
+        reseller.pPlusCount +
+        wifiId.pPlusCount,
     },
   };
 
-  // Calculate B2B group summaries
-  b2bStats.summary.datin = {
-    total:
-      b2bStats.datinK1.total +
-      b2bStats.datinK1K2.total +
-      b2bStats.datinK3.total,
-    open:
-      b2bStats.datinK1.open + b2bStats.datinK1K2.open + b2bStats.datinK3.open,
-    assigned:
-      b2bStats.datinK1.assigned +
-      b2bStats.datinK1K2.assigned +
-      b2bStats.datinK3.assigned,
-    closed:
-      b2bStats.datinK1.closed +
-      b2bStats.datinK1K2.closed +
-      b2bStats.datinK3.closed,
-    regulerCount:
-      b2bStats.datinK1.regulerCount +
-      b2bStats.datinK1K2.regulerCount +
-      b2bStats.datinK3.regulerCount,
-    sqmCount:
-      b2bStats.datinK1.sqmCount +
-      b2bStats.datinK1K2.sqmCount +
-      b2bStats.datinK3.sqmCount,
-  };
-
-  b2bStats.summary.indibiz = {
-    total: b2bStats.indibiz4.total + b2bStats.indibiz24.total,
-    open: b2bStats.indibiz4.open + b2bStats.indibiz24.open,
-    assigned: b2bStats.indibiz4.assigned + b2bStats.indibiz24.assigned,
-    closed: b2bStats.indibiz4.closed + b2bStats.indibiz24.closed,
-    regulerCount:
-      b2bStats.indibiz4.regulerCount + b2bStats.indibiz24.regulerCount,
-    sqmCount: b2bStats.indibiz4.sqmCount + b2bStats.indibiz24.sqmCount,
-  };
-
-  b2bStats.summary.resellerWifi = {
-    total:
-      b2bStats.reseller6.total +
-      b2bStats.reseller36.total +
-      b2bStats.wifi24.total,
-    open:
-      b2bStats.reseller6.open + b2bStats.reseller36.open + b2bStats.wifi24.open,
-    assigned:
-      b2bStats.reseller6.assigned +
-      b2bStats.reseller36.assigned +
-      b2bStats.wifi24.assigned,
-    closed:
-      b2bStats.reseller6.closed +
-      b2bStats.reseller36.closed +
-      b2bStats.wifi24.closed,
-    regulerCount:
-      b2bStats.reseller6.regulerCount +
-      b2bStats.reseller36.regulerCount +
-      b2bStats.wifi24.regulerCount,
-    sqmCount:
-      b2bStats.reseller6.sqmCount +
-      b2bStats.reseller36.sqmCount +
-      b2bStats.wifi24.sqmCount,
-  };
-
+  // ═══════════════════════════════════════════════════════════════════════
+  // B2C STATS — NOW USING DAILY OPERATIONAL SCOPE (aligned with table)
+  // ═══════════════════════════════════════════════════════════════════════
   const b2cStats = useMemo(() => {
-    const map = new Map(
-      (byCustomerTypeAll || []).map((row) => [String(row.ctype), row] as const),
-    );
-
-    const pick = (ctype: string) => {
-      const row = map.get(ctype);
-      return {
-        total: Number(row?.total || 0),
-        open: Number(row?.open || 0),
-        assigned: Number(row?.assigned || 0),
-        closed: Number(row?.closed || 0),
-        regulerCount: Number(row?.regulerTotal || 0),
-        sqmCount: Number(row?.sqmTotal || 0),
-        unspecCount: Number(row?.unspecTotal || 0),
-        ffgCount: Number(row?.ffg || 0),
-        p1Count: Number(row?.p1 || 0),
-        pPlusCount: Number(row?.pPlus || 0),
-      };
+    const getTypeData = (type: string) => {
+      const data = b2cDailyByType.get(type);
+      return (
+        data || {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          close: 0,
+          regulerCount: 0,
+          sqmCount: 0,
+          unspecCount: 0,
+          ffgCount: 0,
+          p1Count: 0,
+          pPlusCount: 0,
+        }
+      );
     };
 
-    const reguler = pick('REGULER');
-    const hvcGold = pick('HVC_GOLD');
-    const hvcPlatinum = pick('HVC_PLATINUM');
-    const hvcDiamond = pick('HVC_DIAMOND');
-
-    // Calculate summary totals
-    const summary = {
-      total:
-        reguler.total + hvcGold.total + hvcPlatinum.total + hvcDiamond.total,
-      open: reguler.open + hvcGold.open + hvcPlatinum.open + hvcDiamond.open,
-      assigned:
-        reguler.assigned +
-        hvcGold.assigned +
-        hvcPlatinum.assigned +
-        hvcDiamond.assigned,
-      closed:
-        reguler.closed +
-        hvcGold.closed +
-        hvcPlatinum.closed +
-        hvcDiamond.closed,
-      regulerCount:
-        reguler.regulerCount +
-        hvcGold.regulerCount +
-        hvcPlatinum.regulerCount +
-        hvcDiamond.regulerCount,
-      sqmCount:
-        reguler.sqmCount +
-        hvcGold.sqmCount +
-        hvcPlatinum.sqmCount +
-        hvcDiamond.sqmCount,
-      unspecCount:
-        reguler.unspecCount +
-        hvcGold.unspecCount +
-        hvcPlatinum.unspecCount +
-        hvcDiamond.unspecCount,
-      ffgCount:
-        reguler.ffgCount +
-        hvcGold.ffgCount +
-        hvcPlatinum.ffgCount +
-        hvcDiamond.ffgCount,
-      p1Count:
-        reguler.p1Count +
-        hvcGold.p1Count +
-        hvcPlatinum.p1Count +
-        hvcDiamond.p1Count,
-      pPlusCount:
-        reguler.pPlusCount +
-        hvcGold.pPlusCount +
-        hvcPlatinum.pPlusCount +
-        hvcDiamond.pPlusCount,
-    };
+    const reguler = getTypeData('REGULER');
+    const hvcGold = getTypeData('HVC_GOLD');
+    const hvcPlatinum = getTypeData('HVC_PLATINUM');
+    const hvcDiamond = getTypeData('HVC_DIAMOND');
 
     return {
-      summary,
+      summary: b2cDailySummary,
       reguler,
       hvcGold,
       hvcPlatinum,
       hvcDiamond,
     };
-  }, [byCustomerTypeAll]);
+  }, [b2cDailySummary, b2cDailyByType]);
 
   const b2cTypeCounts = useMemo(() => {
-    const map = new Map(
-      (byCustomerTypeAll || []).map((row) => [String(row.ctype), row] as const),
-    );
-    const totalB2c = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND']
-      .map((k) => Number(map.get(k)?.total || 0))
-      .reduce((a, b) => a + b, 0);
+    const b2cTickets = tickets.filter((t) => isB2CJenis(t.jenisTiket));
+    const typeMap = new Map<string, number>();
+
+    for (const t of b2cTickets) {
+      const type = (t.ctype || t.customerType || 'Unspec').toUpperCase();
+      typeMap.set(type, (typeMap.get(type) || 0) + 1);
+    }
+
+    const totalB2c = b2cTickets.length;
 
     return {
       all: totalB2c,
-      REGULER: Number(map.get('REGULER')?.total || 0),
-      HVC_GOLD: Number(map.get('HVC_GOLD')?.total || 0),
-      HVC_PLATINUM: Number(map.get('HVC_PLATINUM')?.total || 0),
-      HVC_DIAMOND: Number(map.get('HVC_DIAMOND')?.total || 0),
+      REGULER: typeMap.get('REGULER') || 0,
+      HVC_GOLD: typeMap.get('HVC_GOLD') || 0,
+      HVC_PLATINUM: typeMap.get('HVC_PLATINUM') || 0,
+      HVC_DIAMOND: typeMap.get('HVC_DIAMOND') || 0,
     };
-  }, [byCustomerTypeAll]);
+  }, [tickets]);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SERVICE AREAS — computed from daily tickets per workzone
+  // ═══════════════════════════════════════════════════════════════════════
 
   const serviceAreas = useMemo(() => {
-    const rows = (byServiceArea || []).map((row) => ({
-      name: row.nama_sa,
-      total: Number(row.total || 0),
-      open: Number(row.open || 0),
-      assigned: Number(row.assigned || 0),
-      closed: Number(row.closed || 0),
-      unassigned: Number(row.unassigned || 0),
+    const workzoneMap = new Map<string, typeof tickets>();
+
+    for (const t of tickets) {
+      const wz = (t.workzone ?? '').trim();
+      if (!wz) continue;
+      if (!workzoneMap.has(wz)) workzoneMap.set(wz, []);
+      workzoneMap.get(wz)!.push(t);
+    }
+
+    const rows = Array.from(workzoneMap.entries()).map(([name, arr]) => ({
+      name,
+      total: arr.length,
+      unassigned: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return !s || s === 'open';
+      }).length,
+      open: arr.filter((t) => (t.STATUS_UPDATE ?? '').toLowerCase() === 'open')
+        .length,
+      assigned: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return s === 'assigned' || s === 'on_progress' || s === 'pending';
+      }).length,
+      close: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return s === 'close';
+      }).length,
     }));
 
     rows.sort((a, b) => b.total - a.total);
     return rows.slice(0, 5);
-  }, [byServiceArea]);
+  }, [tickets]);
 
   const ticketTableData = filteredTickets.map((t) => ({
     idTicket: t.idTicket,
@@ -549,7 +636,7 @@ export default function TicketPage() {
     workzone: t.workzone,
     technicianName: t.technicianName,
     teknisiUserId: t.teknisiUserId,
-    hasilVisit: t.hasilVisit,
+    STATUS_UPDATE: t.STATUS_UPDATE,
     closedAt: t.closedAt,
     reportedDate: t.reportedDate,
     status: t.status,
@@ -560,6 +647,55 @@ export default function TicketPage() {
     flaggingManja: t.flaggingManja,
     guaranteeStatus: t.guaranteeStatus,
   }));
+
+  // ← ADDED: Split tickets into B2C and B2B arrays with local filtering
+  const b2cTicketTableData = ticketTableData
+    .filter((t) => isB2CJenis(t.jenisTiket))
+    .filter((t) => {
+      if (b2cTicketTypeFilter === 'all') return true;
+      const normalized = normalizeJenis(t.jenisTiket);
+      return normalized === b2cTicketTypeFilter;
+    })
+    .filter((t) => {
+      if (b2cHasilVisitFilter === 'all') return true;
+      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return status === b2cHasilVisitFilter;
+    });
+
+  const b2bTicketTableData = ticketTableData
+    .filter((t) => isB2BJenis(t.jenisTiket))
+    .filter((t) => {
+      if (b2bTicketTypeFilter === 'all') return true;
+      const normalized = normalizeJenis(t.jenisTiket);
+      return normalized === b2bTicketTypeFilter;
+    })
+    .filter((t) => {
+      if (b2bHasilVisitFilter === 'all') return true;
+      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
+      return status === b2bHasilVisitFilter;
+    });
+
+  // ← ADDED: Helper to derive summary from ticket array
+  function deriveSummary(arr: typeof ticketTableData) {
+    return {
+      total: arr.length,
+      open: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return !s || s === 'open';
+      }).length,
+      assigned: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return s === 'assigned' || s === 'on_progress' || s === 'pending';
+      }).length,
+      close: arr.filter((t) => {
+        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        return s === 'close';
+      }).length,
+    };
+  }
+
+  const b2cTableSummary = deriveSummary(b2cTicketTableData);
+  const b2bTableSummary = deriveSummary(b2bTicketTableData);
 
   return (
     <>
@@ -614,7 +750,7 @@ export default function TicketPage() {
                     label='Total'
                     value={stats.total}
                     variant='total'
-                    subInfo={`B2C: ${stats.b2c} · Other: ${stats.other}`}
+                    subInfo={`B2C: ${stats.b2c} · B2B: ${stats.b2b}`}
                   />
                   <StatCard
                     label='Unassigned'
@@ -631,11 +767,7 @@ export default function TicketPage() {
                     value={stats.assigned}
                     variant='assigned'
                   />
-                  <StatCard
-                    label='Closed'
-                    value={stats.closed}
-                    variant='closed'
-                  />
+                  <StatCard label='Close' value={stats.close} variant='close' />
                 </div>
               </div>
             </div>
@@ -646,50 +778,67 @@ export default function TicketPage() {
             storageKey='admin:dashboard:sections'
             items={[
               {
+                id: 'service-areas',
+                title: 'Service Areas',
+                children: <ServiceAreaTable areas={serviceAreas} />,
+              },
+              {
                 id: 'b2b',
                 title: 'B2B Cards',
                 defaultOpen: true,
-                children: <B2BSection data={b2bStats} />,
+                children: (
+                  <div className='flex flex-col gap-4 space-y-3 md:space-y-4'>
+                    <B2BSection data={b2bStats} />,
+                    <FilterBarB2B
+                      ticketType={b2bTicketTypeFilter as any}
+                      statusUpdate={b2bHasilVisitFilter as any}
+                      onTypeChange={handleB2bTicketTypeChange}
+                      onStatusChange={handleB2bHasilVisitChange}
+                    />
+                    <TicketTableB2B
+                      tickets={b2bTicketTableData}
+                      tableSummary={b2bTableSummary}
+                      loading={loading}
+                      onAssign={handleAssignClick}
+                      pagination={{
+                        currentPage: pagination.currentPage,
+                        totalPages: pagination.totalPages,
+                        total: b2bTicketTableData.length,
+                        limit: pagination.limit,
+                        onPageChange: setCurrentPage,
+                      }}
+                    />
+                  </div>
+                ),
               },
               {
                 id: 'b2c',
                 title: 'B2C Cards',
                 defaultOpen: true,
                 children: (
-                  <div className='space-y-3 md:space-y-4'>
+                  <div className='flex flex-col gap-4 space-y-3 md:space-y-4'>
                     <B2CSection
                       data={b2cStats}
                       activeType={ctypeFilter}
                       onSelectType={handleB2cCustomerTypeSelect}
                     />
-                  </div>
-                ),
-              },
-              {
-                id: 'service-areas',
-                title: 'Service Areas',
-                children: <ServiceAreaTable areas={serviceAreas} />,
-              },
-              {
-                id: 'tickets',
-                title: 'Tickets',
-                defaultOpen: true,
-                children: (
-                  <div className='flex flex-col gap-4'>
-                    <DeptFilterBar
-                      onDeptChange={handleDeptChange}
-                      onTypeChange={handleTicketTypeChange}
-                      onStatusChange={handleHasilVisitChange}
+
+                    <FilterBarB2C
+                      ticketType={b2cTicketTypeFilter as any}
+                      statusUpdate={b2cHasilVisitFilter as any}
+                      onTypeChange={handleB2cTicketTypeChange}
+                      onStatusChange={handleB2cHasilVisitChange}
                     />
 
                     <TicketTable
-                      tickets={ticketTableData}
+                      tickets={b2cTicketTableData}
+                      tableSummary={b2cTableSummary}
                       loading={loading}
                       onAssign={handleAssignClick}
                       pagination={{
                         currentPage: pagination.currentPage,
                         totalPages: pagination.totalPages,
-                        total: pagination.total,
+                        total: b2cTicketTableData.length,
                         limit: pagination.limit,
                         onPageChange: setCurrentPage,
                       }}

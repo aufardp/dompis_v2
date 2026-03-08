@@ -6,7 +6,7 @@ import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
-import { getWorkzonesForUser } from '@/app/libs/services/ticket.helpers';
+import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 
 function normalizeStatus(value: unknown) {
   return String(value ?? '')
@@ -93,8 +93,9 @@ export async function GET(
       symptom: row.SYMPTOM,
       workzone: row.WORKZONE,
       alamat: row.ALAMAT,
-      status: row.STATUS || normalizeStatus(row.HASIL_VISIT) || 'OPEN',
-      hasilVisit: row.HASIL_VISIT,
+      status: row.STATUS || normalizeStatus(row.STATUS_UPDATE) || 'OPEN',
+      STATUS_UPDATE: row.STATUS_UPDATE,
+      hasilVisit: row.STATUS_UPDATE,
       bookingDate: row.BOOKING_DATE,
       sourceTicket: row.SOURCE_TICKET,
       jenisTiket: row.JENIS_TIKET,

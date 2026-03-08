@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:server": "tsx server.ts",
-    "build": "next build && tsc",
+    "build": "NODE_OPTIONS='--max-old-space-size=8192' next build",
     "start": "NODE_ENV=production tsx server.ts",
     "test:webhook": "tsx scripts/test-webhook.ts"
   },
@@ -42,11 +42,16 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.4",
     "@tailwindcss/postcss": "^4",
+    "@types/estree": "^1.0.8",
+    "@types/geojson": "^7946.0.16",
+    "@types/json-schema": "^7.0.15",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^20.19.33",
+    "@types/node": "^20.19.35",
     "@types/node-cron": "^3.0.11",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
     "cross-env": "^10.1.0",
     "eslint": "^10.0.2",
     "eslint-config-next": "^0.2.4",
@@ -55,6 +60,6 @@
     "prisma": "^7.4.1",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }

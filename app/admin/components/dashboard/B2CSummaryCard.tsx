@@ -1,14 +1,17 @@
+import { Info } from 'lucide-react';
+
 interface B2CSummaryCardProps {
   total: number;
   open: number;
   assigned: number;
-  closed: number;
+  close: number;
   regulerCount: number;
   sqmCount: number;
   unspecCount: number;
   ffgCount: number;
   p1Count: number;
   pPlusCount: number;
+  isDailyScope?: boolean; // NEW: indicates daily operational scope
 }
 
 function ResolutionRing({ pct }: { pct: number }) {
@@ -51,15 +54,16 @@ export default function B2CSummaryCard({
   total,
   open,
   assigned,
-  closed,
+  close,
   regulerCount,
   sqmCount,
   unspecCount,
   ffgCount,
   p1Count,
   pPlusCount,
+  isDailyScope = false,
 }: B2CSummaryCardProps) {
-  const pctClosed = total > 0 ? (closed / total) * 100 : 0;
+  const pctClosed = total > 0 ? (close / total) * 100 : 0;
   const regulerPct = total > 0 ? ((regulerCount / total) * 100).toFixed(0) : 0;
   const sqmPct = total > 0 ? ((sqmCount / total) * 100).toFixed(0) : 0;
   const unspecPct = total > 0 ? ((unspecCount / total) * 100).toFixed(0) : 0;
@@ -85,13 +89,32 @@ export default function B2CSummaryCard({
       <div className='relative flex flex-wrap items-center gap-6 md:gap-10'>
         {/* Total */}
         <div className='shrink-0'>
-          <p className='mb-1 text-[10px] font-bold tracking-[2px] text-blue-300 uppercase'>
-            B2C Total Summary
-          </p>
+          <div className='flex items-center gap-1.5'>
+            <p className='mb-1 text-[10px] font-bold tracking-[2px] text-blue-300 uppercase'>
+              B2C Total Summary
+            </p>
+            {isDailyScope && (
+              <div
+                className='group relative flex items-center justify-center'
+                title='Daily Operational Only: Tickets synced today or with pending reason'
+              >
+                <Info className='h-3.5 w-3.5 text-blue-300/70 cursor-help' />
+                <div className='absolute left-1/2 top-full z-50 hidden w-64 -translate-x-1/2 rounded-lg border border-blue-200 bg-blue-900 px-3 py-2 text-[10px] text-blue-100 shadow-xl group-hover:block'>
+                  <p className='font-semibold mb-0.5'>Daily Operational Scope</p>
+                  <p className='text-blue-200/80'>
+                    Angka ini hanya mencakup tiket operasional hari ini dan tiket pending. 
+                    Bukan total keseluruhan database.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
           <p className='text-5xl font-black tracking-tight text-white md:text-6xl'>
             {total.toLocaleString()}
           </p>
-          <p className='mt-1 text-xs text-blue-300/70'>Total Tickets</p>
+          <p className='mt-1 text-xs text-blue-300/70'>
+            {isDailyScope ? 'Daily Operational Tickets' : 'Total Tickets'}
+          </p>
         </div>
 
         {/* Divider */}
@@ -154,11 +177,11 @@ export default function B2CSummaryCard({
           <div className='text-center'>
             <p
               className='text-2xl font-black'
-              style={{ color: closed > 0 ? '#34d399' : 'rgba(52,211,153,0.4)' }}
+              style={{ color: close > 0 ? '#34d399' : 'rgba(52,211,153,0.4)' }}
             >
-              {closed}
+              {close}
             </p>
-            <p className='text-[10px] text-blue-300/60'>Closed</p>
+            <p className='text-[10px] text-blue-300/60'>Close</p>
           </div>
         </div>
 
@@ -201,10 +224,10 @@ export default function B2CSummaryCard({
         </div>
 
         {/* Resolution ring — pushed to right */}
-        <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
+        {/* <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
           <p className='text-[10px] text-blue-300/70'>Resolution Rate</p>
           <ResolutionRing pct={pctClosed} />
-        </div>
+        </div> */}
       </div>
     </div>
   );

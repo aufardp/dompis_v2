@@ -65,6 +65,7 @@ export async function GET(
         file_path: true,
         file_size: true,
         mime_type: true,
+        n8n_web_url: true,
         created_at: true,
       },
     });
@@ -73,6 +74,8 @@ export async function GET(
       id: r.id,
       fileName: r.file_name,
       filePath: r.file_path,
+      url: `/uploads/evidence/${r.file_path.replace(/^.*?evidence\//, '')}`,
+      driveUrl: r.n8n_web_url ?? null,
       fileSize: r.file_size ?? null,
       mimeType: r.mime_type ?? null,
       createdAt: toISODateString(r.created_at),

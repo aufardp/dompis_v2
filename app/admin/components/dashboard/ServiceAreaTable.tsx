@@ -4,7 +4,7 @@ interface ServiceArea {
   total: number;
   open: number;
   assigned: number;
-  closed: number;
+  close: number;
   unassigned: number;
 }
 
@@ -17,7 +17,7 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
           <span>Service Area</span>
           <span className='text-center'>Total</span>
           <span className='text-center'>Assigned</span>
-          <span className='text-center'>Closed</span>
+          <span className='text-center'>Close</span>
           <span className='text-center'>Unassigned</span>
         </div>
       </div>
@@ -28,7 +28,7 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
           {areas.map((area, index) => (
             <div
               key={area.name}
-              className={`hover:bg-surface-2 grid grid-cols-5 items-center px-4 py-3.5 text-sm transition-colors ${
+              className={`hover:bg-surface-2 grid min-w-150 grid-cols-5 items-center px-4 py-3.5 text-sm transition-colors ${
                 index !== areas.length - 1 ? 'border-b border-(--border)' : ''
               }`}
             >
@@ -55,7 +55,7 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
                 {area.assigned}
               </span>
               <span className='text-center font-bold text-emerald-400'>
-                {area.closed}
+                {area.close}
               </span>
               <span className='text-center font-bold text-red-400'>
                 {area.unassigned}

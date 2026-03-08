@@ -69,6 +69,7 @@ interface TicketDetail {
   teknisiUserId?: number | null;
   technicianName?: string | null;
   closedAt?: string | null;
+  statusUpdate?: string | null;
 }
 
 interface TicketDetailDrawerProps {
@@ -483,7 +484,7 @@ export default function TicketDetailDrawer({
     { key: 'sla', label: 'SLA' },
   ] as const;
 
-  const workflowKey = normalizeKey(ticket?.hasilVisit || ticket?.status);
+  const workflowKey = normalizeKey(ticket?.statusUpdate || ticket?.status);
   const workflowConfig = STATUS_CONFIG[workflowKey] || {
     label: workflowKey || '—',
     color: 'text-slate-600',
@@ -599,7 +600,7 @@ export default function TicketDetailDrawer({
                 <>
                   <div
                     className={clsx(
-                      'mb-5 rounded-xl border-2 bg-gradient-to-br from-white p-5 shadow-md',
+                      'mb-5 rounded-xl border-2 bg-linear-to-br from-white p-5 shadow-md',
                       ttrUrgency === 'overdue'
                         ? 'border-red-300 from-red-50 to-red-100'
                         : ttrUrgency === 'warning'
@@ -873,7 +874,7 @@ export default function TicketDetailDrawer({
               )}
             </div>
 
-            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-gradient-to-t from-white to-slate-50 px-5 py-4 shadow-lg'>
+            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-linear-to-t from-white to-slate-50 px-5 py-4 shadow-lg'>
               {onEdit && (
                 <button
                   onClick={() => onEdit(ticket)}
@@ -885,7 +886,7 @@ export default function TicketDetailDrawer({
               {onUpdateStatus && (
                 <button
                   onClick={() => onUpdateStatus(ticket)}
-                  className='flex-1 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
+                  className='flex-1 rounded-xl bg-linear-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
                 >
                   🔄 Update Status
                 </button>

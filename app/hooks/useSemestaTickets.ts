@@ -14,7 +14,7 @@ export function useSemestaTickets(
   page: number,
   workzone?: string,
   ctype?: string,
-  hasilVisit?: string,
+  statusUpdate?: string,
   dept?: string,
   ticketType?: string,
   startDate?: string,
@@ -53,8 +53,8 @@ export function useSemestaTickets(
         params.append('ctype', ctype);
       }
 
-      if (hasilVisit) {
-        params.append('hasilVisit', hasilVisit);
+      if (statusUpdate) {
+        params.append('statusUpdate', statusUpdate);
       }
 
       if (dept) {
@@ -113,7 +113,7 @@ export function useSemestaTickets(
     page,
     workzone,
     ctype,
-    hasilVisit,
+    statusUpdate,
     dept,
     ticketType,
     startDate,

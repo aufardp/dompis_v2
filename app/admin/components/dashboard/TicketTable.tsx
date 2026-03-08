@@ -13,6 +13,7 @@ import {
   sortByPriority,
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
+import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
 
 export type SortField =
   | 'ticket'
@@ -66,6 +67,13 @@ export interface AdminTicketTableProps {
     total: number;
     limit?: number;
     onPageChange: (page: number) => void;
+  };
+  tableSummary?: {
+    // ← ADDED
+    total: number;
+    open: number;
+    assigned: number;
+    close: number;
   };
 }
 
@@ -139,6 +147,7 @@ export default function TicketTable({
   onDetail,
   onBulkAssign,
   pagination,
+  tableSummary, // ← ADDED
 }: AdminTicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'priority',
@@ -337,6 +346,11 @@ export default function TicketTable({
               )}
             </div>
           </div>
+
+          {/* ← ADDED: Summary bar */}
+          {tableSummary && (
+            <TicketTableSummaryBar label='B2C Tickets' {...tableSummary} />
+          )}
 
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>

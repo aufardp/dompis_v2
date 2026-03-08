@@ -5,6 +5,8 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { invalidateTicketsCache } from '@/lib/cache';
+import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 
 export async function GET() {
   try {
@@ -52,6 +54,9 @@ export async function POST(req: Request) {
       Number(ticketId),
       user,
     );
+
+    await invalidateTicketsCache();
+    broadcastTicketInvalidate('unassign');
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {

@@ -4,6 +4,7 @@ import { Ticket } from '@/app/types/ticket';
 import { calculateTicketAge, getTicketAgeColor } from '@/app/utils/datetime';
 import { getMaxTtrInfo } from '../utils/ttr';
 import { TICKET_AGE_COLORS } from '../constants/ticket';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -11,6 +12,12 @@ interface TicketCardProps {
 }
 
 const STATUS_BORDER_COLORS: Record<string, string> = {
+  // STATUS_UPDATE lowercase values
+  assigned: 'border-l-amber-400',
+  on_progress: 'border-l-blue-500',
+  pending: 'border-l-purple-400',
+  closed: 'border-l-green-500',
+  // Legacy HASIL_VISIT uppercase fallback
   ASSIGNED: 'border-l-amber-400',
   ON_PROGRESS: 'border-l-blue-500',
   PENDING: 'border-l-purple-400',
@@ -21,6 +28,12 @@ const STATUS_ACTION_COLORS: Record<
   string,
   { bg: string; text: string; icon: string }
 > = {
+  // STATUS_UPDATE lowercase values
+  assigned: { bg: 'bg-amber-50', text: 'text-amber-700', icon: '⏳' },
+  on_progress: { bg: 'bg-blue-50', text: 'text-blue-700', icon: '🔧' },
+  pending: { bg: 'bg-purple-50', text: 'text-purple-700', icon: '⏸' },
+  closed: { bg: 'bg-green-50', text: 'text-green-700', icon: '✓' },
+  // Legacy HASIL_VISIT uppercase fallback
   ASSIGNED: { bg: 'bg-amber-50', text: 'text-amber-700', icon: '⏳' },
   ON_PROGRESS: { bg: 'bg-blue-50', text: 'text-blue-700', icon: '🔧' },
   PENDING: { bg: 'bg-purple-50', text: 'text-purple-700', icon: '⏸' },
@@ -50,9 +63,18 @@ function formatPhoneNumber(phone: string): string {
 }
 
 export default function TicketCard({ ticket, onClick }: TicketCardProps) {
-  const status = ticket.hasilVisit || '';
-  const borderColor = STATUS_BORDER_COLORS[status] || 'border-l-slate-300';
-  const actionColor = STATUS_ACTION_COLORS[status];
+  const status = (
+    ticket.STATUS_UPDATE ??
+    ticket.hasilVisit ??
+    ''
+  ).toLowerCase();
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const borderColor = isClosed
+    ? 'border-l-green-500'
+    : STATUS_BORDER_COLORS[status] || 'border-l-slate-300';
+  const actionColor = isClosed
+    ? STATUS_ACTION_COLORS['closed']
+    : STATUS_ACTION_COLORS[status];
   const ageColor = getTicketAgeColor(
     ticket.reportedDate,
     ticket.hasilVisit,
@@ -96,25 +118,25 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
         <div className='flex flex-wrap items-center gap-1'>
           <span
             className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-              status === 'ASSIGNED'
-                ? 'border-amber-200 bg-amber-100 text-amber-700'
-                : status === 'ON_PROGRESS'
-                  ? 'border-blue-200 bg-blue-100 text-blue-700'
-                  : status === 'PENDING'
-                    ? 'border-purple-200 bg-purple-100 text-purple-700'
-                    : status === 'CLOSE'
-                      ? 'border-green-200 bg-green-100 text-green-700'
+              isClosed
+                ? 'border-green-200 bg-green-100 text-green-700'
+                : status === 'assigned'
+                  ? 'border-amber-200 bg-amber-100 text-amber-700'
+                  : status === 'on_progress'
+                    ? 'border-blue-200 bg-blue-100 text-blue-700'
+                    : status === 'pending'
+                      ? 'border-purple-200 bg-purple-100 text-purple-700'
                       : 'border-slate-200 bg-slate-100 text-slate-600'
             }`}
           >
-            {status === 'ASSIGNED'
-              ? 'Menunggu'
-              : status === 'ON_PROGRESS'
-                ? 'Dikerjakan'
-                : status === 'PENDING'
-                  ? 'Pending'
-                  : status === 'CLOSE'
-                    ? 'Selesai'
+            {isClosed
+              ? 'Selesai'
+              : status === 'assigned'
+                ? 'Menunggu'
+                : status === 'on_progress'
+                  ? 'Dikerjakan'
+                  : status === 'pending'
+                    ? 'Pending'
                     : status}
           </span>
           {ticket.jenisTiket && (

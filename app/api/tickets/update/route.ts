@@ -2,13 +2,11 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import {
-  TicketWorkflowService,
-  type TicketUpdatePatch,
-  type TicketUpdateWorkflow,
-} from '@/app/libs/services/ticketWorkflow.service';
+import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { invalidateTicketsCache } from '@/lib/cache';
+import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { TicketUpdatePatch, TicketUpdateWorkflow } from '@/app/types/ticket';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -70,6 +68,7 @@ export async function POST(req: Request) {
 
       // Invalidate cache to ensure fresh data on next fetch
       await invalidateTicketsCache();
+      broadcastTicketInvalidate('update');
 
       return NextResponse.json({ success: true, ...result });
     }
@@ -114,6 +113,7 @@ export async function POST(req: Request) {
 
         // Invalidate cache to ensure fresh data on next fetch
         await invalidateTicketsCache();
+        broadcastTicketInvalidate('update');
 
         return NextResponse.json({ success: true, ...result });
       }
@@ -151,6 +151,7 @@ export async function POST(req: Request) {
 
     const rawWorkflowStatus =
       (wfSrc.status as any) ??
+      (wfSrc.statusUpdate as any) ??
       (wfSrc.hasilVisit as any) ??
       (wfSrc.hasil_visit as any) ??
       (wfSrc.newStatus as any);
@@ -178,6 +179,7 @@ export async function POST(req: Request) {
 
     // Invalidate cache to ensure fresh data on next fetch
     await invalidateTicketsCache();
+    broadcastTicketInvalidate('update');
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: unknown) {

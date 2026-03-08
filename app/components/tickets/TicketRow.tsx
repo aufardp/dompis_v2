@@ -3,10 +3,11 @@ import clsx from 'clsx';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
 import CustomerTypeBadge from './CustomerTypeBadge';
-import { getStatusColor, getMaxTtr } from './helpers';
+import { getStatusColor, getStatusLabel, getMaxTtr } from './helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeWIB } from '@/app/utils/datetime';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 interface TicketRowProps {
   ticket: {
@@ -24,6 +25,7 @@ interface TicketRowProps {
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
+    STATUS_UPDATE?: string | null;
     hasilVisit?: string | null;
     closedAt?: string | null;
     reportedDate?: string | null;
@@ -123,8 +125,8 @@ export default function TicketRow({
       </td>
 
       <td className='px-5 py-4 text-center'>
-        <Badge size='sm' color={getStatusColor(ticket.hasilVisit || '')}>
-          {ticket.hasilVisit || '-'}
+        <Badge size='sm' color={getStatusColor(ticket.STATUS_UPDATE || '')}>
+          {getStatusLabel(ticket.STATUS_UPDATE || '')}
         </Badge>
       </td>
 
@@ -141,22 +143,26 @@ export default function TicketRow({
       </td>
 
       <td className='px-3 py-4 text-center'>
-        <Button
-          onClick={() => onAssign(String(ticket.idTicket))}
-          className={clsx(
-            'flex items-center gap-2 transition-all duration-200',
-            ticket.teknisiUserId
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
-              : 'bg-blue-600 text-white hover:bg-blue-700',
-          )}
-          size='sm'
-        >
-          {ticket.teknisiUserId ? (
-            <RefreshCw size={16} />
-          ) : (
-            <UserPlus size={16} />
-          )}
-        </Button>
+        {isTicketClosed(ticket.STATUS_UPDATE) ? (
+          <span className='text-xs text-gray-400'>Closed</span>
+        ) : (
+          <Button
+            onClick={() => onAssign(String(ticket.idTicket))}
+            className={clsx(
+              'flex items-center gap-2 transition-all duration-200',
+              ticket.teknisiUserId
+                ? 'bg-amber-500 text-white hover:bg-amber-600'
+                : 'bg-blue-600 text-white hover:bg-blue-700',
+            )}
+            size='sm'
+          >
+            {ticket.teknisiUserId ? (
+              <RefreshCw size={16} />
+            ) : (
+              <UserPlus size={16} />
+            )}
+          </Button>
+        )}
       </td>
     </tr>
   );

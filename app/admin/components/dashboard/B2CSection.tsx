@@ -7,7 +7,7 @@ interface B2CData {
     total: number;
     open: number;
     assigned: number;
-    closed: number;
+    close: number;
     regulerCount: number;
     sqmCount: number;
     unspecCount: number;
@@ -19,7 +19,7 @@ interface B2CData {
     total: number;
     open: number;
     assigned: number;
-    closed: number;
+    close: number;
     regulerCount: number;
     sqmCount: number;
     unspecCount: number;
@@ -31,7 +31,7 @@ interface B2CData {
     total: number;
     open: number;
     assigned: number;
-    closed: number;
+    close: number;
     regulerCount: number;
     sqmCount: number;
     unspecCount: number;
@@ -43,7 +43,7 @@ interface B2CData {
     total: number;
     open: number;
     assigned: number;
-    closed: number;
+    close: number;
     regulerCount: number;
     sqmCount: number;
     unspecCount: number;
@@ -55,7 +55,7 @@ interface B2CData {
     total: number;
     open: number;
     assigned: number;
-    closed: number;
+    close: number;
     regulerCount: number;
     sqmCount: number;
     unspecCount: number;
@@ -69,6 +69,7 @@ interface B2CSectionProps {
   data: B2CData;
   activeType?: TicketCtype | 'all';
   onSelectType?: (type: TicketCtype | 'all') => void;
+  isDailyScope?: boolean; // NEW: indicates daily operational scope
 }
 
 const filterTabs: {
@@ -130,6 +131,7 @@ export default function B2CSection({
   data,
   activeType = 'all',
   onSelectType,
+  isDailyScope = true, // DEFAULT to true for daily operational scope
 }: B2CSectionProps) {
   const totalAll = data.summary.total;
 
@@ -189,13 +191,14 @@ export default function B2CSection({
         total={data.summary.total}
         open={data.summary.open}
         assigned={data.summary.assigned}
-        closed={data.summary.closed}
+        close={data.summary.close}
         regulerCount={data.summary.regulerCount}
         sqmCount={data.summary.sqmCount}
         unspecCount={data.summary.unspecCount}
         ffgCount={data.summary.ffgCount}
         p1Count={data.summary.p1Count}
         pPlusCount={data.summary.pPlusCount}
+        isDailyScope={isDailyScope}
       />
 
       {/* Tier cards */}
@@ -210,7 +213,7 @@ export default function B2CSection({
               total={d.total}
               open={d.open}
               assigned={d.assigned}
-              closed={d.closed}
+              close={d.close}
               regulerCount={d.regulerCount}
               sqmCount={d.sqmCount}
               unspecCount={d.unspecCount}

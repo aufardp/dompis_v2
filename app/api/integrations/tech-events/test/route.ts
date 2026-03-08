@@ -48,14 +48,14 @@ export async function POST() {
     return NextResponse.json({ success: true, message: 'No pending events' });
   }
 
-  const ids = events.map((e) => e.id);
+  const ids = events.map((e: { id: number }) => e.id);
 
   await prisma.tech_event_outbox.updateMany({
     where: { id: { in: ids }, status: 'PENDING' },
     data: { status: 'SENDING' },
   });
 
-  const payload = { events: events.map((e) => e.payload) as any };
+  const payload = { events: events.map((e: { id: number; payload: any }) => e.payload) as any };
 
   const res = await postTechEvents({ url, secret }, payload);
 

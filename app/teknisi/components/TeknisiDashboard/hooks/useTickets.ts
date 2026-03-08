@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 interface UseTicketsReturn {
   tickets: Ticket[];
@@ -51,29 +52,39 @@ export function useTickets(
     fetchTickets();
   }, [fetchTickets]);
 
+  // Refetch on window focus (real-time update)
+  useEffect(() => {
+    const onFocus = () => {
+      fetchTickets();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchTickets]);
+
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
-      if (filter === 'all') return t.hasilVisit !== 'CLOSE';
-      if (filter === 'assigned') return t.hasilVisit === 'ASSIGNED';
-      if (filter === 'on_progress') return t.hasilVisit === 'ON_PROGRESS';
-      if (filter === 'pending') return t.hasilVisit === 'PENDING';
-      if (filter === 'closed') return t.hasilVisit === 'CLOSE';
+      if (filter === 'all') return !isTicketClosed(t.STATUS_UPDATE);
+      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
+      if (filter === 'assigned') return status === 'assigned';
+      if (filter === 'on_progress') return status === 'on_progress';
+      if (filter === 'pending') return status === 'pending';
+      if (filter === 'closed') return isTicketClosed(t.STATUS_UPDATE);
       return true;
     });
   }, [tickets, filter]);
 
-  const stats = useMemo(
-    () => ({
-      assigned: tickets.filter((t) => t.hasilVisit === 'ASSIGNED').length,
-      onProgress: tickets.filter((t) => t.hasilVisit === 'ON_PROGRESS').length,
-      pending: tickets.filter((t) => t.hasilVisit === 'PENDING').length,
-      closed: tickets.filter((t) => t.hasilVisit === 'CLOSE').length,
+  const stats = useMemo(() => {
+    const getStatus = (t: Ticket) => (t.STATUS_UPDATE ?? '').toLowerCase();
+    return {
+      assigned: tickets.filter((t) => getStatus(t) === 'assigned').length,
+      onProgress: tickets.filter((t) => getStatus(t) === 'on_progress').length,
+      pending: tickets.filter((t) => getStatus(t) === 'pending').length,
+      closed: tickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
       totalAktif:
-        tickets.filter((t) => t.hasilVisit === 'ASSIGNED').length +
-        tickets.filter((t) => t.hasilVisit === 'ON_PROGRESS').length,
-    }),
-    [tickets],
-  );
+        tickets.filter((t) => getStatus(t) === 'assigned').length +
+        tickets.filter((t) => getStatus(t) === 'on_progress').length,
+    };
+  }, [tickets]);
 
   return {
     tickets,

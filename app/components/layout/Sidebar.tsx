@@ -10,6 +10,11 @@ const MENU_ITEMS = [
     icon: '📋',
   },
   {
+    label: 'Database Semesta',
+    path: '/admin/semesta',
+    icon: '🗄️',
+  },
+  {
     label: 'Technicians',
     path: '/admin/technicians',
     icon: '👨‍🔧',

@@ -62,7 +62,7 @@ export default function LoginForm() {
         {/* Background Image */}
         <div
           className='absolute inset-0 bg-cover bg-center bg-no-repeat'
-          style={{ backgroundImage: "url('/assets/bg-log.png')" }}
+          style={{ backgroundImage: "url('/assets/bg-log.webp')" }}
         />
 
         {/* Overlay gelap agar teks tetap terbaca */}
@@ -71,7 +71,7 @@ export default function LoginForm() {
         {/* Konten di atas overlay */}
         <div className='relative z-10 flex items-center gap-2'>
           <img
-            src='/assets/logo.png'
+            src='/assets/logo.webp'
             alt='Dompis Logo'
             className='h-10 w-auto'
           />
@@ -98,7 +98,7 @@ export default function LoginForm() {
           <div className='rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800'>
             <div className='mb-2 flex justify-center'>
               <img
-                src='/assets/logo.png'
+                src='/assets/logo.webp'
                 alt='Dompis Logo'
                 className='h-16 w-auto'
               />

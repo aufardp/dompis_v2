@@ -4,6 +4,8 @@ interface EvidenceItem {
   id: number;
   fileName: string;
   filePath: string;
+  url: string;
+  driveUrl: string | null;
 }
 
 interface EvidenceGalleryProps {
@@ -46,7 +48,7 @@ export default function EvidenceGallery({
               aria-label={`Open evidence ${idx + 1}`}
             >
               <img
-                src={ev.filePath}
+                src={ev.driveUrl ?? ev.url}
                 alt={ev.fileName}
                 loading='lazy'
                 decoding='async'

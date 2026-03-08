@@ -1,7 +1,3 @@
-/**
- * Prisma Client Configuration (Production Safe)
- */
-
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 
@@ -11,11 +7,14 @@ const globalForPrisma = global as unknown as {
 
 function getAdapter() {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not set');
+
+  if (!url) throw new Error('DATABASE_URL missing');
 
   const u = new URL(url);
+
   const database = u.pathname.replace(/^\//, '');
-  const connectionLimit = Number(u.searchParams.get('connection_limit')) || 5;
+
+  const connectionLimit = Number(u.searchParams.get('connection_limit')) || 25;
 
   return new PrismaMariaDb({
     host: u.hostname,
@@ -24,21 +23,32 @@ function getAdapter() {
     password: decodeURIComponent(u.password),
     database,
     connectionLimit,
-    connectTimeout: 10000,
-    idleTimeout: 60000, // ✅ 60 detik (jangan 5000)
+    connectTimeout: 15000,
   });
 }
 
-function createPrismaClient() {
-  return new PrismaClient({
-    adapter: getAdapter(),
-    log: ['error'],
+function createPrisma() {
+  const adapter = getAdapter();
+
+  const client = new PrismaClient({
+    adapter,
+    log: ['error', 'warn'],
   });
+
+  client.$on('error', (e) => {
+    console.error('[Prisma] Error:', e.message);
+  });
+
+  client.$on('warn', (e) => {
+    console.warn('[Prisma] Warning:', e.message);
+  });
+
+  return client;
 }
 
-export function getPrisma(): PrismaClient {
+export function getPrisma() {
   if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrismaClient();
+    globalForPrisma.prisma = createPrisma();
   }
 
   return globalForPrisma.prisma;
@@ -47,6 +57,7 @@ export function getPrisma(): PrismaClient {
 const prisma = new Proxy({} as PrismaClient, {
   get(_, prop) {
     const client = getPrisma();
+
     return (client as any)[prop];
   },
 });

@@ -357,3 +357,41 @@ export async function changePassword(
 
   return true;
 }
+
+export type UserRow = {
+  id_user: number;
+  username: string;
+  password: string | null;
+  role_id: number;
+  role_key: string | null;
+};
+
+export async function findUserByUsername(
+  username: string,
+): Promise<UserRow | null> {
+  const user = await prisma.users.findFirst({
+    where: { username },
+    include: { roles: { select: { key: true } } },
+  });
+
+  if (!user) return null;
+
+  return {
+    id_user: user.id_user,
+    username: user.username || '',
+    password: user.password,
+    role_id: user.role_id || 0,
+    role_key: user.roles?.key || null,
+  };
+}
+
+export async function findUserWorkzones(userId: number): Promise<string[]> {
+  const userSas = await prisma.user_sa.findMany({
+    where: { user_id: userId },
+    include: { service_area: { select: { nama_sa: true } } },
+  });
+
+  return userSas
+    .map((usa) => usa.service_area?.nama_sa)
+    .filter((sa): sa is string => sa !== null && sa !== undefined);
+}

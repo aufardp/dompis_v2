@@ -19,6 +19,7 @@ import {
   getTicketAge,
   getTicketAgeColorClass,
 } from './helpers';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 export default function TicketCardMobile({
   ticket,
@@ -28,11 +29,7 @@ export default function TicketCardMobile({
   onAssign: (ticketId: string | number) => void;
 }) {
   const isAssigned = Boolean(ticket?.teknisiUserId);
-  const visit = String(ticket?.hasilVisit ?? ticket?.status ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '_');
-  const isClosed = visit === 'CLOSE' || visit === 'CLOSED';
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE ?? ticket.hasilVisit);
   const maxTtr = getMaxTtr(ticket) || '-';
 
   return (
@@ -53,8 +50,8 @@ export default function TicketCardMobile({
         </div>
 
         <div className='flex shrink-0 flex-col items-end gap-1'>
-          <Badge size='sm' color={getStatusColor(ticket.hasilVisit)}>
-            {ticket.hasilVisit || '-'}
+          <Badge size='sm' color={getStatusColor(ticket.STATUS_UPDATE ?? ticket.hasilVisit)}>
+            {(ticket.STATUS_UPDATE ?? ticket.hasilVisit) || '-'}
           </Badge>
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}

@@ -4,8 +4,10 @@ import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
+import { getJenisStyle } from '@/app/libs/tickets/jenis'; // ← ADDED
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 export interface TicketRowProps {
   ticket: {
@@ -23,6 +25,7 @@ export interface TicketRowProps {
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
+    STATUS_UPDATE?: string | null;
     hasilVisit?: string | null;
     closedAt?: string | null;
     reportedDate?: string | null;
@@ -55,11 +58,6 @@ const SLA_STYLES = {
   Overdue: { badge: 'bg-red-50 text-red-600', dot: 'bg-red-500' },
 };
 
-const JENIS_STYLES: Record<string, string> = {
-  SQM: 'bg-blue-50 text-blue-600',
-  Reguler: 'bg-emerald-50 text-emerald-600',
-};
-
 export default function TicketRow({
   ticket,
   onAssign,
@@ -75,11 +73,7 @@ export default function TicketRow({
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const visit = String(ticket.hasilVisit ?? ticket.status ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '_');
-  const isClosed = visit === 'CLOSE' || visit === 'CLOSED';
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
 
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
@@ -264,7 +258,7 @@ export default function TicketRow({
           <span
             className={clsx(
               'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-              JENIS_STYLES[ticket.jenisTiket] ?? 'bg-slate-100 text-slate-500',
+              getJenisStyle(ticket.jenisTiket), // ← CHANGED: use centralized utility
             )}
           >
             {ticket.jenisTiket}
@@ -300,21 +294,21 @@ export default function TicketRow({
       </td>
 
       {/* Status */}
-      <td className='px-4 py-3 text-center'>
+      <td className='px-4 py-3 text-center uppercase'>
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            `badge-${getStatusColor(ticket.hasilVisit || '')}`,
+            getStatusColor(ticket.STATUS_UPDATE ?? ''),
           )}
         >
-          {ticket.hasilVisit || '-'}
+          {ticket.STATUS_UPDATE || '-'}
         </span>
       </td>
 
       {/* ── Merged Action: Detail + Assign ── */}
       <td className='px-3 py-3 text-center'>
         {isClosed ? (
-          /* Closed: only Detail button */
+          /* CLOSED → Detail only */
           <button
             onClick={handleDetailClick}
             title='Lihat Detail'
@@ -323,9 +317,9 @@ export default function TicketRow({
             <Eye size={13} />
           </button>
         ) : (
-          /* Active: split button — Detail | Assign/Reassign */
+          /* ACTIVE → Detail + Assign */
           <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
-            {/* Detail half */}
+            {/* Detail */}
             <button
               onClick={handleDetailClick}
               title='Lihat Detail'
@@ -334,7 +328,7 @@ export default function TicketRow({
               <Eye size={13} />
             </button>
 
-            {/* Assign / Reassign half */}
+            {/* Assign / Reassign */}
             <button
               onClick={handleAssignClick}
               title={
@@ -348,13 +342,9 @@ export default function TicketRow({
               )}
             >
               {ticket.teknisiUserId ? (
-                <>
-                  <RefreshCw size={12} />
-                </>
+                <RefreshCw size={12} />
               ) : (
-                <>
-                  <UserPlus size={12} />
-                </>
+                <UserPlus size={12} />
               )}
             </button>
           </div>

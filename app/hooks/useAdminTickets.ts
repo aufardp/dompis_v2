@@ -20,7 +20,7 @@ export function useAdminTickets(
   page: number,
   workzone?: string,
   ctype?: string,
-  hasilVisit?: string,
+  statusUpdate?: string,
   dept?: string,
   ticketType?: string,
 ) {
@@ -57,8 +57,8 @@ export function useAdminTickets(
         params.append('ctype', ctype);
       }
 
-      if (hasilVisit) {
-        params.append('hasilVisit', hasilVisit);
+      if (statusUpdate) {
+        params.append('statusUpdate', statusUpdate);
       }
 
       if (dept) {
@@ -142,7 +142,7 @@ export function useAdminTickets(
       if (requestId !== requestIdRef.current) return;
       setLoading(false);
     }
-  }, [search, workzone, ctype, hasilVisit, dept, ticketType]);
+  }, [search, workzone, ctype, statusUpdate, dept, ticketType]);
 
   useEffect(() => {
     fetchData();

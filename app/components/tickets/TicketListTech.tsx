@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { isTicketClosed, getStatusLabel } from '@/app/libs/ticket-utils';
 import { calculateTicketAge, getTicketAgeColor } from '@/app/utils/datetime';
+import Badge from '../ui/badge/Badge';
+import { getStatusColor } from './helpers';
 
 interface Props {
   limit?: number;
@@ -62,19 +65,15 @@ export default function TicketListTech({ limit }: Props) {
                 <span className='font-mono text-sm font-medium text-slate-500'>
                   #{ticket.ticket}
                 </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    ticket.hasilVisit === 'ASSIGNED'
-                      ? 'bg-amber-100 text-amber-700'
-                      : ticket.hasilVisit === 'ON_PROGRESS'
-                        ? 'bg-blue-100 text-blue-700'
-                        : ticket.hasilVisit === 'CLOSE'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-700'
-                  }`}
+                <Badge
+                  color={
+                    isTicketClosed(ticket.STATUS_UPDATE)
+                      ? 'success'
+                      : getStatusColor(ticket.STATUS_UPDATE || '')
+                  }
                 >
-                  {ticket.hasilVisit || 'Open'}
-                </span>
+                  {getStatusLabel(ticket.STATUS_UPDATE || '')}
+                </Badge>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     getTicketAgeColor(

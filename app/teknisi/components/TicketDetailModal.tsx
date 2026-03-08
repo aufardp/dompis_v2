@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { rcaMapping } from '@/app/types/rca';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 import EvidenceSliderModal from './EvidenceSliderModal';
 import {
   formatDateTimeWIB,
@@ -43,6 +44,8 @@ export default function TicketDetailModal({
       id: number;
       fileName: string;
       filePath: string;
+      url: string;
+      driveUrl: string | null;
       fileSize: number | null;
       mimeType: string | null;
       createdAt: string | null;
@@ -70,7 +73,7 @@ export default function TicketDetailModal({
   const isAssigned = status === 'ASSIGNED';
   const isOnProgress = status === 'ON_PROGRESS';
   const isPending = status === 'PENDING';
-  const isClosed = status === 'CLOSE';
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
   const isEvidenceIncomplete = selectedFiles.length < 2;
@@ -574,7 +577,7 @@ export default function TicketDetailModal({
       </div>
 
       <EvidenceSliderModal
-        images={evidence.map((e) => ({ src: e.filePath, alt: e.fileName }))}
+        images={evidence.map((e) => ({ src: e.driveUrl ?? e.url, alt: e.fileName }))}
         isOpen={viewerOpen}
         startIndex={viewerIndex}
         onClose={() => setViewerOpen(false)}

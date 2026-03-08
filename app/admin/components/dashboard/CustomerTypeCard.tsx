@@ -4,7 +4,7 @@ interface CustomerTypeCardProps {
   total: number;
   open: number;
   assigned: number;
-  closed: number;
+  close: number;
   accentColor: string;
   ttrLabel?: string;
   active?: boolean;
@@ -89,7 +89,7 @@ export default function CustomerTypeCard({
   total,
   open,
   assigned,
-  closed,
+  close,
   accentColor,
   active = false,
   onClick,
@@ -263,7 +263,7 @@ export default function CustomerTypeCard({
         </span>
         <span className='flex items-center gap-1.5'>
           <span className='h-2 w-2 rounded-full bg-emerald-400' />
-          {closed} Closed
+          {close} Close
         </span>
       </div>
     </button>

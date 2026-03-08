@@ -2,7 +2,7 @@ interface StatCardProps {
   label: string;
   value: number;
   subInfo?: string;
-  variant: 'total' | 'unassigned' | 'assigned' | 'closed';
+  variant: 'total' | 'unassigned' | 'assigned' | 'close';
 }
 
 const accentMap = {
@@ -21,7 +21,7 @@ const accentMap = {
     valueClass: 'text-amber-400',
     bgAccent: 'bg-amber-500/10',
   },
-  closed: {
+  close: {
     gradient: '#10b981',
     valueClass: 'text-emerald-400',
     bgAccent: 'bg-emerald-500/10',

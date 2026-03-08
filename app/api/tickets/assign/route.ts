@@ -6,6 +6,7 @@ import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.servic
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import { invalidateTicketsCache } from '@/lib/cache';
+import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 
 export async function POST(req: Request) {
   const lockKey = 'ticket-lock';
@@ -32,13 +33,15 @@ export async function POST(req: Request) {
     ]);
 
     const body = await req.json();
-    const { ticketId, teknisiUserId } = body;
+    // Accept both teknisiUserId and teknisiId for backwards compatibility
+    const teknisiUserId = Number(body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id);
+    const ticketId = Number(body.ticketId);
 
     if (!ticketId || !teknisiUserId) {
       return NextResponse.json(
         {
           success: false,
-          message: 'ticketId dan teknisiUserId wajib diisi',
+          message: 'ticketId and teknisiUserId (or teknisiId) are required',
         },
         { status: 400 },
       );
@@ -51,6 +54,7 @@ export async function POST(req: Request) {
     );
 
     await invalidateTicketsCache();
+    broadcastTicketInvalidate('assign');
 
     return NextResponse.json({
       success: true,

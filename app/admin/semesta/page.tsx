@@ -12,15 +12,14 @@ import { SlidersHorizontal, X, ChevronDown, ChevronRight } from 'lucide-react';
 
 type Dept = 'all' | 'b2b' | 'b2c';
 type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
-type HasilVisit =
+type StatusFilter =
   | 'all'
-  | 'OPEN'
-  | 'ASSIGNED'
-  | 'ON_PROGRESS'
-  | 'PENDING'
-  | 'ESCALATED'
-  | 'CANCELLED'
-  | 'CLOSE';
+  | 'open'
+  | 'assigned'
+  | 'on_progress'
+  | 'pending'
+  | 'escalated'
+  | 'closed';
 
 const DEPT_OPTIONS = [
   { key: 'all', label: 'Semua' },
@@ -243,17 +242,25 @@ export default function SemestaPage() {
   const [ctypeFilter, setCtypeFilter] = useState<TicketCtype | 'all'>('all');
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<
-    'all' | 'reguler' | 'sqm' | 'unspec'
+    | 'all'
+    | 'reguler'
+    | 'sqm'
+    | 'hvc'
+    | 'unspec'
+    | 'sqm-ccan'
+    | 'indibiz'
+    | 'datin'
+    | 'reseller'
+    | 'wifi-id'
   >('all');
   const [hasilVisitFilter, setHasilVisitFilter] = useState<
     | 'all'
-    | 'OPEN'
-    | 'ASSIGNED'
-    | 'ON_PROGRESS'
-    | 'PENDING'
-    | 'ESCALATED'
-    | 'CANCELLED'
-    | 'CLOSE'
+    | 'open'
+    | 'assigned'
+    | 'on_progress'
+    | 'pending'
+    | 'escalated'
+    | 'closed'
   >('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -281,7 +288,7 @@ export default function SemestaPage() {
   const { data: statsApi } = useTicketStats(workzoneFilter || undefined, {
     dept: deptFilter,
     ticketType: ticketTypeFilter,
-    hasilVisit: hasilVisitFilter,
+    statusUpdate: hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
   });
 
   const byCustomerType = useMemo(() => {
@@ -307,12 +314,24 @@ export default function SemestaPage() {
   };
 
   const handleTicketTypeChange = (type: string) => {
-    setTicketTypeFilter(type as 'all' | 'reguler' | 'sqm' | 'unspec');
+    setTicketTypeFilter(
+      type as
+        | 'all'
+        | 'reguler'
+        | 'sqm'
+        | 'hvc'
+        | 'unspec'
+        | 'sqm-ccan'
+        | 'indibiz'
+        | 'datin'
+        | 'reseller'
+        | 'wifi-id',
+    );
     setCurrentPage(1);
   };
 
   const handleHasilVisitChange = (status: string) => {
-    setHasilVisitFilter(status as HasilVisit);
+    setHasilVisitFilter(status as StatusFilter);
     setCurrentPage(1);
   };
 
@@ -367,6 +386,7 @@ export default function SemestaPage() {
     workzone: t.workzone,
     technicianName: t.technicianName,
     teknisiUserId: t.teknisiUserId,
+    STATUS_UPDATE: t.STATUS_UPDATE,
     hasilVisit: t.hasilVisit,
     closedAt: t.closedAt,
     reportedDate: t.reportedDate,

@@ -72,16 +72,49 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
 }
 
 export async function invalidateTicketsCache(): Promise<void> {
-  await deleteCachePattern('tickets:*');
-  await deleteCachePattern('stats:*');
-  await deleteCachePattern('dashboard:*');
+  // Skip if Redis is not ready (non-blocking)
+  if (!isRedisReady()) {
+    return;
+  }
+
+  // Fire-and-forget: don't block on cache invalidation
+  // Errors are silently ignored to prevent disrupting main operation
+  (async () => {
+    try {
+      await Promise.all([
+        deleteCachePattern('tickets:*'),
+        deleteCachePattern('stats:*'),
+        deleteCachePattern('dashboard:*'),
+      ]);
+    } catch (error) {
+      // Silently ignore cache invalidation errors
+      // Main operation (ticket mutation) should not fail due to cache issues
+    }
+  })();
 }
 
 export async function invalidateTicketById(ticketId: number): Promise<void> {
-  await deleteCache(`ticket:${ticketId}`);
+  if (!isRedisReady()) return;
+  
+  try {
+    await deleteCache(`ticket:${ticketId}`);
+  } catch {
+    // Silently ignore
+  }
 }
 
 export async function invalidateTechniciansCache(): Promise<void> {
-  await deleteCachePattern('technicians:*');
-  await deleteCachePattern('attendance:*');
+  if (!isRedisReady()) return;
+  
+  // Fire-and-forget
+  (async () => {
+    try {
+      await Promise.all([
+        deleteCachePattern('technicians:*'),
+        deleteCachePattern('attendance:*'),
+      ]);
+    } catch {
+      // Silently ignore
+    }
+  })();
 }

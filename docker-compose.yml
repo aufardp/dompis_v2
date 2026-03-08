@@ -88,7 +88,7 @@ services:
         condition: service_healthy
     volumes:
       - dompis_n8n_data:/home/node/.n8n
-      - ./uploads:/data/uploads
+      - ./public/uploads:/data/uploads
     networks:
       - dompis-network
 

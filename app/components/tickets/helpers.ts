@@ -24,11 +24,30 @@ const STATUS_COLOR_MAP: Record<string, BadgeColor> = {
   ESCALATED: 'dark',
 };
 
+const STATUS_LABEL_MAP: Record<string, string> = {
+  OPEN: 'Open',
+  ASSIGNED: 'Assigned',
+  ON_PROGRESS: 'On Progress',
+  IN_PROGRESS: 'On Progress',
+  CLOSE: 'Closed',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
+  PENDING: 'Pending',
+  ESCALATED: 'Escalated',
+};
+
 export const getStatusColor = (status: string): BadgeColor => {
   const key = String(status || '')
     .trim()
     .toUpperCase();
   return STATUS_COLOR_MAP[key] ?? 'error';
+};
+
+export const getStatusLabel = (status: string): string => {
+  const key = String(status || '')
+    .trim()
+    .toUpperCase();
+  return STATUS_LABEL_MAP[key] ?? status ?? '-';
 };
 
 export function getMaxTtr(ticket: any): string | null {

@@ -89,7 +89,7 @@ export function useOpenDiamondTickets(
       }
       // Always filter for Diamond and OPEN
       params.set('ctype', 'HVC_DIAMOND');
-      params.set('hasilVisit', 'OPEN');
+      params.set('statusUpdate', 'open');
       params.set('limit', '100'); // Get more tickets
 
       console.log(
@@ -151,9 +151,7 @@ export function useOpenDiamondTickets(
         }
       }
 
-      const status = String(
-        t.hasilVisit || t.HASIL_VISIT || t.status || 'OPEN',
-      );
+      const status = String(t.hasilVisit || t.status || 'OPEN');
 
       // Extract customer name and service number from summary/SUMMARY if not available directly
       let contactName = t.contactName || t.CONTACT_NAME || '';

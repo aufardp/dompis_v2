@@ -47,6 +47,7 @@ interface TicketTableProps {
     technicianName?: string | null;
     teknisiUserId?: number | null;
     hasilVisit?: string | null;
+    STATUS_UPDATE?: string | null;
     closedAt?: string | null;
     reportedDate?: string | null;
     status?: string;

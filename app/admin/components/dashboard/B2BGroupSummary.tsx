@@ -4,9 +4,12 @@ interface B2BGroupSummaryProps {
   total: number;
   open: number;
   assigned: number;
-  closed: number;
+  close: number;
   regulerCount: number;
   sqmCount: number;
+  ffgCount: number;
+  p1Count: number;
+  pPlusCount: number;
   accentColor: string;
 }
 
@@ -52,14 +55,20 @@ export default function B2BGroupSummary({
   total,
   open,
   assigned,
-  closed,
+  close,
   regulerCount,
   sqmCount,
+  ffgCount,
+  p1Count,
+  pPlusCount,
   accentColor,
 }: B2BGroupSummaryProps) {
-  const pctClosed = total > 0 ? (closed / total) * 100 : 0;
+  const pctClosed = total > 0 ? (close / total) * 100 : 0;
   const regulerPct = total > 0 ? Math.round((regulerCount / total) * 100) : 0;
   const sqmPct = total > 0 ? Math.round((sqmCount / total) * 100) : 0;
+  const ffgPct = total > 0 ? Math.round((ffgCount / total) * 100) : 0;
+  const p1Pct = total > 0 ? Math.round((p1Count / total) * 100) : 0;
+  const pPlusPct = total > 0 ? Math.round((pPlusCount / total) * 100) : 0;
 
   return (
     <div
@@ -110,7 +119,7 @@ export default function B2BGroupSummary({
           style={{ background: accentColor + '25' }}
         />
 
-        {/* Reguler + SQM */}
+        {/* Reguler + SQM + Priority */}
         <div className='flex gap-6'>
           <div>
             <p className='mb-1 text-[9px] font-semibold text-slate-400'>
@@ -129,6 +138,33 @@ export default function B2BGroupSummary({
               {sqmCount.toLocaleString()}
             </p>
             <p className='text-[9px] text-slate-400'>{sqmPct}% of total</p>
+          </div>
+          <div>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+              🛡️ FFG
+            </p>
+            <p className='text-xl font-bold text-slate-700'>
+              {ffgCount.toLocaleString()}
+            </p>
+            <p className='text-[9px] text-slate-400'>{ffgPct}% of total</p>
+          </div>
+          <div>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+              ⚠️ P1
+            </p>
+            <p className='text-xl font-bold text-slate-700'>
+              {p1Count.toLocaleString()}
+            </p>
+            <p className='text-[9px] text-slate-400'>{p1Pct}% of total</p>
+          </div>
+          <div>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+              📈 P+
+            </p>
+            <p className='text-xl font-bold text-slate-700'>
+              {pPlusCount.toLocaleString()}
+            </p>
+            <p className='text-[9px] text-slate-400'>{pPlusPct}% of total</p>
           </div>
         </div>
 
@@ -161,11 +197,11 @@ export default function B2BGroupSummary({
           <div className='text-center'>
             <p
               className='text-xl font-black'
-              style={{ color: closed > 0 ? '#10b981' : '#10b98140' }}
+              style={{ color: close > 0 ? '#10b981' : '#10b98140' }}
             >
-              {closed}
+              {close}
             </p>
-            <p className='text-[9px] text-slate-400'>Closed</p>
+            <p className='text-[9px] text-slate-400'>Close</p>
           </div>
         </div>
 
@@ -200,14 +236,14 @@ export default function B2BGroupSummary({
             <div
               className='h-full transition-all duration-700'
               style={{
-                width: `${total > 0 ? (closed / total) * 100 : 0}%`,
+                width: `${total > 0 ? (close / total) * 100 : 0}%`,
                 background: accentColor,
               }}
             />
           </div>
         </div>
         <div className='mt-1 flex justify-between text-[9px] text-slate-300'>
-          <span>Open · Assigned · Closed</span>
+          <span>Open · Assigned · Close</span>
           <span>{total} total</span>
         </div>
       </div>

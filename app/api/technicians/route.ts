@@ -74,7 +74,7 @@ function mapTechnicianTicket(t: {
   CUSTOMER_TYPE: string | null;
   SERVICE_NO: string | null;
   REPORTED_DATE: string | null;
-  HASIL_VISIT: string | null;
+  STATUS_UPDATE: string | null;
 }) {
   const { age, hours } = calculateAge(t.REPORTED_DATE);
   return {
@@ -84,7 +84,7 @@ function mapTechnicianTicket(t: {
     ctype: t.CUSTOMER_TYPE,
     serviceNo: t.SERVICE_NO,
     reportedDate: t.REPORTED_DATE,
-    hasilVisit: t.HASIL_VISIT,
+    STATUS_UPDATE: t.STATUS_UPDATE,
     age,
     ageHours: hours,
   };
@@ -231,7 +231,7 @@ export async function GET(request: NextRequest) {
         CUSTOMER_TYPE: true,
         SERVICE_NO: true,
         REPORTED_DATE: true,
-        HASIL_VISIT: true,
+        STATUS_UPDATE: true,
         teknisi_user_id: true,
         closed_at: true,
       },
@@ -242,7 +242,7 @@ export async function GET(request: NextRequest) {
       ? await prisma.ticket.findMany({
           where: {
             teknisi_user_id: { in: uniqueTechnicianIds },
-            HASIL_VISIT: 'CLOSE',
+            STATUS_UPDATE: 'closed',
             closed_at: {
               gte: today,
               lte: todayEnd,
@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
             CUSTOMER_TYPE: true,
             SERVICE_NO: true,
             REPORTED_DATE: true,
-            HASIL_VISIT: true,
+            STATUS_UPDATE: true,
             teknisi_user_id: true,
             closed_at: true,
           },
@@ -267,7 +267,7 @@ export async function GET(request: NextRequest) {
       by: ['teknisi_user_id'],
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
         closed_at: {
           gte: today,
           lte: todayEnd,
@@ -313,17 +313,20 @@ export async function GET(request: NextRequest) {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
         const assignedTickets = tickets.filter(
-          (t) => t.HASIL_VISIT === 'ASSIGNED',
+          (t) => t.STATUS_UPDATE === 'ASSIGNED',
         );
         const onProgressTickets = tickets.filter(
-          (t) => t.HASIL_VISIT === 'ON_PROGRESS',
+          (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
         );
         const pendingTickets = tickets.filter(
-          (t) => t.HASIL_VISIT === 'PENDING',
+          (t) => t.STATUS_UPDATE === 'PENDING',
         );
-        const closedTickets = tickets.filter((t) => t.HASIL_VISIT === 'CLOSE');
-
-        const activeTickets = tickets.filter((t) => t.HASIL_VISIT !== 'CLOSE');
+        const closedTickets = tickets.filter(
+          (t) => t.STATUS_UPDATE === 'CLOSE',
+        );
+        const activeTickets = tickets.filter(
+          (t) => t.STATUS_UPDATE !== 'CLOSE',
+        );
         const mappedTickets = activeTickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
         const techStatus = getTechnicianStatus(ticketCount);

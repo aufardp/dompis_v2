@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
-import { getWorkzonesForUser } from '@/app/libs/services/ticket.helpers';
+import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -164,7 +164,7 @@ export async function GET(req: NextRequest) {
     // Closed counts from ticket table
     const closedWhere: Prisma.ticketWhereInput = {
       teknisi_user_id: { in: finalTechnicianIds },
-      HASIL_VISIT: 'CLOSE',
+      STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
       closed_at: { gte: start, lt: end },
       ...(wzFilter ? wzFilter : {}),
     };
@@ -209,7 +209,7 @@ export async function GET(req: NextRequest) {
         AND tt.closed_at IS NOT NULL
         AND tt.closed_at >= ${start}
         AND tt.closed_at < ${end}
-        AND t.HASIL_VISIT = 'CLOSE'
+        AND t.STATUS_UPDATE = {in:['close','closed','CLOSE','CLOSED']}
         AND t.teknisi_user_id = tt.assigned_to
         AND t.teknisi_user_id IN (${Prisma.join(finalTechnicianIds)})
         ${wzSql}

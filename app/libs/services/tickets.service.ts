@@ -2,17 +2,20 @@
 
 import prisma from '@/app/libs/prisma';
 import { isAdminRole } from '@/app/libs/rolesUtil';
-import { getWorkzonesForUser, resolveWorkzoneName } from './ticket.helpers';
 import {
-  TicketWorkflowService,
-  type ActorContext,
-} from './ticketWorkflow.service';
+  getWorkzonesForUser,
+  resolveWorkzoneName,
+} from '../../helpers/ticket.helpers';
+import { TicketWorkflowService } from './ticketWorkflow.service';
+import { ActorContext } from '@/app/types/ticket';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+import { getJenisWhereClause } from '@/lib/jenis';
+
 type TicketFilters = {
   search?: string;
-  hasilVisit?: string;
+  statusUpdate?: string;
   dept?: string;
   ticketType?: string;
   workzone?: number | string;
@@ -24,33 +27,49 @@ type TicketFilters = {
   sort?: 'asc' | 'desc';
 };
 
-function normalizeHasilVisitFilter(value: unknown): string {
+function normalizeStatusUpdateFilter(value: unknown): string {
   return String(value ?? '')
     .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '_');
+    .toLowerCase();
 }
 
-function applyHasilVisitWhere(where: Record<string, any>, hasilVisit?: string) {
-  const hv = normalizeHasilVisitFilter(hasilVisit);
-  if (!hv) return;
+function applyStatusUpdateWhere(
+  where: Record<string, any>,
+  statusUpdate?: string,
+) {
+  const su = normalizeStatusUpdateFilter(statusUpdate);
+  if (!su || su === 'all') return;
 
-  if (hv === 'ON_PROGRESS' || hv === 'IN_PROGRESS') {
-    where.HASIL_VISIT = { in: ['ON_PROGRESS', 'IN_PROGRESS'] };
-    return;
+  switch (su) {
+    case 'open':
+      where.OR = [{ STATUS_UPDATE: null }, { STATUS_UPDATE: 'open' }];
+      break;
+
+    case 'assigned':
+      where.STATUS_UPDATE = 'assigned';
+      break;
+
+    case 'on_progress':
+      where.STATUS_UPDATE = 'on_progress';
+      break;
+
+    case 'pending':
+      where.STATUS_UPDATE = 'pending';
+      break;
+
+    case 'escalated':
+      where.STATUS_UPDATE = 'escalated';
+      break;
+
+    case 'close':
+      where.STATUS_UPDATE = 'close';
+      break;
+
+    default:
+      // Fallback: try direct match
+      where.STATUS_UPDATE = su;
+      break;
   }
-
-  if (hv === 'CLOSE' || hv === 'CLOSED') {
-    where.HASIL_VISIT = { in: ['CLOSE', 'CLOSED'] };
-    return;
-  }
-
-  if (hv === 'CANCELLED' || hv === 'CANCELED') {
-    where.HASIL_VISIT = { in: ['CANCELLED', 'CANCELED'] };
-    return;
-  }
-
-  where.HASIL_VISIT = hv;
 }
 
 // ── Mapper ────────────────────────────────────────────────────────────────────
@@ -70,7 +89,11 @@ function mapTicket(t: any) {
     contactPhone: t.CONTACT_PHONE,
     deviceName: t.DEVICE_NAME,
     status: t.STATUS,
-    hasilVisit: t.HASIL_VISIT,
+    STATUS_UPDATE: (() => {
+      const v = String(t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      return v || null;
+    })(),
+    hasilVisit: t.STATUS_UPDATE,
     bookingDate: t.BOOKING_DATE,
     symptom: t.SYMPTOM,
     descriptionActualSolution: t.DESCRIPTION_ACTUAL_SOLUTION,
@@ -101,30 +124,19 @@ export class TicketService {
 
   private static applyDashboardFilters(
     where: Record<string, any>,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+    opts?: { dept?: string; ticketType?: string; statusUpdate?: string },
   ) {
     const dept = opts?.dept;
     const ticketType = opts?.ticketType;
-    const hasilVisit = opts?.hasilVisit;
+    const statusUpdate = opts?.statusUpdate;
 
-    if (hasilVisit && hasilVisit !== 'all') {
-      applyHasilVisitWhere(where, hasilVisit);
+    if (statusUpdate && statusUpdate !== 'all') {
+      applyStatusUpdateWhere(where, statusUpdate);
     }
 
     if (ticketType && ticketType !== 'all') {
-      if (ticketType === 'sqm') {
-        where.JENIS_TIKET = { in: ['sqm', 'SQM'] };
-      } else if (ticketType === 'reguler') {
-        where.JENIS_TIKET = {
-          in: ['reguler', 'REGULER', 'regular', 'REGULAR'],
-        };
-      } else if (ticketType === 'unspec') {
-        where.JENIS_TIKET = {
-          in: ['unspec', 'UNSPEC', 'Unspec'],
-        };
-      } else {
-        where.JENIS_TIKET = { in: [ticketType, ticketType.toUpperCase()] };
-      }
+      const jenisClause = getJenisWhereClause(ticketType);
+      Object.assign(where, jenisClause);
     }
 
     if (dept && dept !== 'all') {
@@ -192,44 +204,7 @@ export class TicketService {
     return resolveWorkzoneName(id);
   }
 
-  /** Counts tickets across all statuses for a given `where` clause. */
-  private static async countStatuses(where: Record<string, any>) {
-    const missingTechnicianName = {
-      OR: [
-        { teknisi_user_id: null },
-        { users: { is: null } },
-        { users: { is: { nama: null } } },
-        { users: { is: { nama: { equals: '' } } } },
-      ],
-    };
-
-    const [total, unassigned, open, assigned, closed] = await Promise.all([
-      prisma.ticket.count({ where }),
-      prisma.ticket.count({
-        where: {
-          AND: [
-            where,
-            { HASIL_VISIT: { not: 'CLOSE' } },
-            missingTechnicianName,
-          ],
-        },
-      }),
-      prisma.ticket.count({ where: { AND: [where, { HASIL_VISIT: 'OPEN' }] } }),
-      prisma.ticket.count({
-        where: {
-          AND: [where, { HASIL_VISIT: { in: ['ASSIGNED', 'ON_PROGRESS'] } }],
-        },
-      }),
-      prisma.ticket.count({
-        where: { AND: [where, { HASIL_VISIT: 'CLOSE' }] },
-      }),
-    ]);
-
-    return { total, unassigned, open, assigned, closed };
-  }
-
   // ── Read ─────────────────────────────────────────────────────────────────────
-
   static async getTickets(
     role: string,
     userId: number,
@@ -237,7 +212,7 @@ export class TicketService {
   ) {
     const {
       search = '',
-      hasilVisit,
+      statusUpdate,
       dept,
       ticketType,
       workzone,
@@ -248,15 +223,18 @@ export class TicketService {
       limit = 20,
       sort = 'asc',
     } = filters ?? {};
+
     const offset = (page - 1) * limit;
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
+
     const where: Record<string, any> = {
       ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
     };
 
     const andClauses: Record<string, any>[] = [];
 
+    /* SEARCH */
     if (search) {
       where.OR = [
         { INCIDENT: { contains: search } },
@@ -266,96 +244,50 @@ export class TicketService {
       ];
     }
 
+    /* DATE FILTER */
     if (startDate || endDate) {
       if (startDate && endDate) {
         andClauses.push({
-          OR: [
-            {
-              REPORTED_DATE: {
-                gte: startDate,
-                lte: endDate + ' 23:59:59',
-              },
-            },
-            {
-              REPORTED_DATE: {
-                gte: startDate + 'T00:00:00',
-                lte: endDate + 'T23:59:59',
-              },
-            },
-          ],
+          REPORTED_DATE: {
+            gte: startDate,
+            lte: endDate + ' 23:59:59',
+          },
         });
       } else if (startDate) {
         andClauses.push({
-          OR: [
-            { REPORTED_DATE: { gte: startDate } },
-            { REPORTED_DATE: { contains: startDate } },
-          ],
+          REPORTED_DATE: { gte: startDate },
         });
       } else if (endDate) {
         andClauses.push({
-          OR: [
-            { REPORTED_DATE: { lte: endDate + ' 23:59:59' } },
-            { REPORTED_DATE: { contains: endDate } },
-          ],
+          REPORTED_DATE: { lte: endDate + ' 23:59:59' },
         });
       }
     }
 
-    if (hasilVisit) applyHasilVisitWhere(where, hasilVisit);
+    /* STATUS */
+    if (statusUpdate) applyStatusUpdateWhere(where, statusUpdate);
+
+    /* CUSTOMER TYPE */
     if (ctype) where.CUSTOMER_TYPE = ctype;
 
+    /* JENIS TIKET */
     if (ticketType && ticketType !== 'all') {
-      if (ticketType === 'sqm') {
-        andClauses.push({
-          OR: [
-            { JENIS_TIKET: { contains: 'sqm' } },
-            { JENIS_TIKET: { contains: 'SQM' } },
-          ],
-        });
-      } else if (ticketType === 'reguler') {
-        andClauses.push({
-          JENIS_TIKET: {
-            in: ['reguler', 'REGULER', 'regular', 'REGULAR', 'Reguler'],
-          },
-        });
-      } else if (ticketType === 'unspec') {
-        andClauses.push({
-          JENIS_TIKET: {
-            in: ['unspec', 'UNSPEC', 'Unspec'],
-          },
-        });
-      } else {
-        andClauses.push({
-          JENIS_TIKET: { in: [ticketType, ticketType.toUpperCase()] },
-        });
-      }
+      andClauses.push(getJenisWhereClause(ticketType));
     }
 
+    /* DEPT FILTER */
     if (dept && dept !== 'all') {
       const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
 
-      const unknownClause = {
-        AND: [{ CUSTOMER_SEGMENT: null }, { CUSTOMER_TYPE: null }],
-      };
-
       if (dept === 'b2c') {
         andClauses.push({
-          OR: [
-            { CUSTOMER_SEGMENT: { in: ['B2C', 'PL_TSEL'] } },
-            { CUSTOMER_TYPE: { in: B2C_CTYPES } },
-            unknownClause,
-          ],
+          CUSTOMER_TYPE: { in: B2C_CTYPES },
         });
       }
 
       if (dept === 'b2b') {
         andClauses.push({
-          OR: [
-            { CUSTOMER_SEGMENT: 'B2B' },
-            { CUSTOMER_TYPE: { notIn: B2C_CTYPES } },
-            { CUSTOMER_TYPE: null },
-            unknownClause,
-          ],
+          CUSTOMER_TYPE: { notIn: B2C_CTYPES },
         });
       }
     }
@@ -364,12 +296,39 @@ export class TicketService {
       where.AND = [...(where.AND ?? []), ...andClauses];
     }
 
+    /* QUERY DATABASE */
+
     const [total, tickets] = await Promise.all([
       prisma.ticket.count({ where }),
+
       prisma.ticket.findMany({
         where,
-        include: { users: { select: { nama: true } } },
+
+        select: {
+          id_ticket: true,
+          INCIDENT: true,
+          SUMMARY: true,
+          REPORTED_DATE: true,
+          SERVICE_NO: true,
+          CONTACT_NAME: true,
+          CONTACT_PHONE: true,
+          BOOKING_DATE: true,
+          WORKZONE: true,
+          CUSTOMER_TYPE: true,
+          JENIS_TIKET: true,
+          FLAGGING_MANJA: true,
+          GUARANTE_STATUS: true,
+          STATUS_UPDATE: true,
+          teknisi_user_id: true,
+          users: {
+            select: {
+              nama: true,
+            },
+          },
+        },
+
         orderBy: [{ REPORTED_DATE: sort }, { id_ticket: 'asc' }],
+
         skip: offset,
         take: limit,
       }),
@@ -379,7 +338,9 @@ export class TicketService {
       total,
       page,
       limit,
+
       totalPages: Math.ceil(total / limit),
+
       data: tickets.map(mapTicket),
     };
   }
@@ -389,7 +350,11 @@ export class TicketService {
     if (!isAdminRole(role)) return [];
 
     const roleWhere = await this.buildWorkzoneWhere(role, userId);
-    const where = { ...roleWhere, teknisi_user_id: null, HASIL_VISIT: 'OPEN' };
+    const where = {
+      ...roleWhere,
+      teknisi_user_id: null,
+      OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'close' } }],
+    };
 
     return prisma.ticket.findMany({
       where,
@@ -414,7 +379,7 @@ export class TicketService {
       contactPhone: t.CONTACT_PHONE,
       serviceNo: t.SERVICE_NO,
       workzone: t.WORKZONE,
-      hasilVisit: t.HASIL_VISIT,
+      hasilVisit: t.STATUS_UPDATE,
     }));
   }
 
@@ -439,7 +404,7 @@ export class TicketService {
       contactPhone: t.CONTACT_PHONE,
       serviceNo: t.SERVICE_NO,
       workzone: t.WORKZONE,
-      hasilVisit: t.HASIL_VISIT,
+      hasilVisit: t.STATUS_UPDATE,
     }));
   }
 
@@ -464,7 +429,7 @@ export class TicketService {
       contactName: t.CONTACT_NAME,
       contactPhone: t.CONTACT_PHONE,
       workzone: t.WORKZONE,
-      hasilVisit: t.HASIL_VISIT,
+      hasilVisit: t.STATUS_UPDATE,
     }));
   }
 
@@ -483,7 +448,7 @@ export class TicketService {
       summary: t.SUMMARY,
       reportedDate: t.REPORTED_DATE,
       workzone: t.WORKZONE,
-      hasilVisit: t.HASIL_VISIT,
+      hasilVisit: t.STATUS_UPDATE,
       teknisiUserId: t.teknisi_user_id,
     }));
   }
@@ -505,274 +470,6 @@ export class TicketService {
     });
 
     return tickets.map((t) => ({ customerType: t.CUSTOMER_TYPE }));
-  }
-
-  // ── Stats ─────────────────────────────────────────────────────────────────────
-
-  static async getStats(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
-    const where = await this.buildWorkzoneWhere(role, userId, selectedWorkzone);
-    this.applyDashboardFilters(where, opts);
-    return this.countStatuses(where);
-  }
-
-  static async getStatsByServiceArea(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    if (!isAdminRole(role)) return [];
-
-    const userSas = await prisma.user_sa.findMany({
-      where: { user_id: userId },
-      select: { sa_id: true },
-    });
-
-    const userSaIds = userSas
-      .map((us) => us.sa_id)
-      .filter((id): id is number => id !== null);
-
-    // When the admin has no service-area assignment, we treat it as "see all"
-    // (this matches buildWorkzoneWhere() behavior).
-    const canSeeAllServiceAreas = userSaIds.length === 0;
-
-    if (
-      saId &&
-      saId > 0 &&
-      !canSeeAllServiceAreas &&
-      !userSaIds.includes(saId)
-    ) {
-      return [];
-    }
-
-    const serviceAreaFilter =
-      saId && saId > 0
-        ? { id_sa: Number(saId) }
-        : canSeeAllServiceAreas
-          ? {}
-          : { id_sa: { in: userSaIds } };
-
-    const serviceAreas = await prisma.service_area.findMany({
-      where: serviceAreaFilter,
-    });
-
-    const userWorkzones = await getWorkzonesForUser(userId);
-    const canSeeAllWorkzones = userWorkzones.length === 0;
-
-    return Promise.all(
-      serviceAreas.map(async (sa) => {
-        const saName = sa.nama_sa ?? '';
-        const where: Record<string, any> =
-          canSeeAllWorkzones || userWorkzones.includes(saName)
-            ? { WORKZONE: { contains: saName } }
-            : { id_ticket: 0 };
-
-        this.applyDashboardFilters(where, opts);
-
-        const counts = await this.countStatuses(where);
-        return { id_sa: sa.id_sa, nama_sa: sa.nama_sa, ...counts };
-      }),
-    );
-  }
-
-  static async getStatsByCustomerType(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
-    const baseWhere = await this.buildWorkzoneWhere(
-      role,
-      userId,
-      selectedWorkzone,
-    );
-
-    const customerTypes = [
-      'REGULER',
-      'HVC_GOLD',
-      'HVC_PLATINUM',
-      'HVC_DIAMOND',
-    ];
-
-    return Promise.all(
-      customerTypes.map(async (ctype) => {
-        const where = { ...baseWhere, CUSTOMER_TYPE: ctype };
-        this.applyDashboardFilters(where, opts);
-        const counts = await this.countStatuses(where);
-
-        // Count by ticket type (reguler vs sqm vs unspec)
-        const regulerWhere = {
-          ...where,
-          JENIS_TIKET: { in: ['reguler', 'REGULER', 'regular', 'REGULAR'] },
-        };
-        const sqmWhere = {
-          ...where,
-          JENIS_TIKET: { in: ['sqm', 'SQM'] },
-        };
-        const unspecWhere = {
-          ...where,
-          JENIS_TIKET: { in: ['unspec', 'UNSPEC', 'Unspec'] },
-        };
-
-        const [
-          regulerTotal,
-          sqmTotal,
-          unspecTotal,
-          ffgCount,
-          p1Count,
-          pPlusCount,
-        ] = await Promise.all([
-          prisma.ticket.count({ where: regulerWhere }),
-          prisma.ticket.count({ where: sqmWhere }),
-          prisma.ticket.count({ where: unspecWhere }),
-          prisma.ticket.count({
-            where: { ...where, GUARANTE_STATUS: 'guarantee' },
-          }),
-          prisma.ticket.count({ where: { ...where, FLAGGING_MANJA: 'P1' } }),
-          prisma.ticket.count({ where: { ...where, FLAGGING_MANJA: 'P+' } }),
-        ]);
-
-        return {
-          ctype,
-          ...counts,
-          regulerTotal,
-          sqmTotal,
-          unspecTotal,
-          ffg: ffgCount,
-          p1: p1Count,
-          pPlus: pPlusCount,
-        };
-      }),
-    );
-  }
-
-  static async getStatsByFlaggingB2C(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
-    const baseWhere = await this.buildWorkzoneWhere(
-      role,
-      userId,
-      selectedWorkzone,
-    );
-
-    const b2cWhere = {
-      ...baseWhere,
-      OR: [
-        { CUSTOMER_SEGMENT: { in: ['B2C', 'PL_TSEL'] } },
-        {
-          CUSTOMER_TYPE: {
-            in: ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'],
-          },
-        },
-        { AND: [{ CUSTOMER_SEGMENT: null }, { CUSTOMER_TYPE: null }] },
-      ],
-    };
-
-    this.applyDashboardFilters(b2cWhere, opts);
-
-    const [p1Count, pPlusCount] = await Promise.all([
-      prisma.ticket.count({
-        where: { ...b2cWhere, FLAGGING_MANJA: 'P1' },
-      }),
-      prisma.ticket.count({
-        where: { ...b2cWhere, FLAGGING_MANJA: 'P+' },
-      }),
-    ]);
-
-    return { P1: p1Count, PPlus: pPlusCount };
-  }
-
-  static async getStatsByGuaranteeB2C(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
-    const baseWhere = await this.buildWorkzoneWhere(
-      role,
-      userId,
-      selectedWorkzone,
-    );
-
-    const b2cWhere = {
-      ...baseWhere,
-      OR: [
-        { CUSTOMER_SEGMENT: { in: ['B2C', 'PL_TSEL'] } },
-        {
-          CUSTOMER_TYPE: {
-            in: ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'],
-          },
-        },
-        { AND: [{ CUSTOMER_SEGMENT: null }, { CUSTOMER_TYPE: null }] },
-      ],
-    };
-
-    this.applyDashboardFilters(b2cWhere, opts);
-
-    const guaranteeCount = await prisma.ticket.count({
-      where: { ...b2cWhere, GUARANTE_STATUS: 'guarantee' },
-    });
-
-    return { guarantee: guaranteeCount };
-  }
-
-  static async getStatsByFlaggingAndGuaranteeByCustomerType(
-    role: string,
-    userId: number,
-    saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
-  ) {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
-    const baseWhere = await this.buildWorkzoneWhere(
-      role,
-      userId,
-      selectedWorkzone,
-    );
-
-    const customerTypes = [
-      'REGULER',
-      'HVC_GOLD',
-      'HVC_PLATINUM',
-      'HVC_DIAMOND',
-    ];
-
-    return Promise.all(
-      customerTypes.map(async (ctype) => {
-        const where = { ...baseWhere, CUSTOMER_TYPE: ctype };
-        this.applyDashboardFilters(where, opts);
-
-        const [ffgCount, p1Count, pPlusCount] = await Promise.all([
-          prisma.ticket.count({
-            where: { ...where, GUARANTE_STATUS: 'guarantee' },
-          }),
-          prisma.ticket.count({
-            where: { ...where, FLAGGING_MANJA: 'P1' },
-          }),
-          prisma.ticket.count({
-            where: { ...where, FLAGGING_MANJA: 'P+' },
-          }),
-        ]);
-
-        return {
-          ctype,
-          ffg: ffgCount,
-          p1: p1Count,
-          pPlus: pPlusCount,
-        };
-      }),
-    );
   }
 
   // ── Workflow Delegation ───────────────────────────────────────────────────────
@@ -846,7 +543,7 @@ export class TicketService {
     role: string,
     userId: number,
     saId?: number,
-    opts?: { dept?: string; ticketType?: string; hasilVisit?: string },
+    opts?: { dept?: string; ticketType?: string; statusUpdate?: string },
   ) {
     const selectedWorkzone = await this.resolveSelectedWorkzone(saId);
     const baseWhere = await this.buildWorkzoneWhere(
@@ -860,7 +557,7 @@ export class TicketService {
     const tickets = await prisma.ticket.findMany({
       where: {
         ...baseWhere,
-        HASIL_VISIT: { not: 'CLOSE' },
+        OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'close' } }],
       },
       include: { users: { select: { nama: true } } },
       orderBy: { REPORTED_DATE: 'asc' },
@@ -888,7 +585,7 @@ export class TicketService {
       ticket: t.INCIDENT,
       customerType: t.CUSTOMER_TYPE,
       reportedDate: t.REPORTED_DATE,
-      status: t.HASIL_VISIT,
+      status: t.STATUS_UPDATE,
       technicianName: t.users?.nama,
       teknisiUserId: t.teknisi_user_id,
       workzone: t.WORKZONE,

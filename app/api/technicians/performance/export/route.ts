@@ -6,7 +6,7 @@ import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
-import { getWorkzonesForUser } from '@/app/libs/services/ticket.helpers';
+import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     if (type === 'tickets') {
       const where: any = {
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: { in: ['closed', 'close', 'CLOSE', 'CLOSED'] },
         closed_at: { gte: start, lt: end },
         ...(wzFilter ? wzFilter : {}),
       };
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
         'CONTACT_NAME',
         'CUSTOMER_TYPE',
         'WORKZONE',
-        'HASIL_VISIT',
+        'STATUS_UPDATE',
         'CLOSED_AT',
         'TEKNISI_NAME',
         'TEKNISI_NIK',
@@ -105,7 +105,6 @@ export async function GET(req: NextRequest) {
             t.CONTACT_NAME,
             t.CUSTOMER_TYPE,
             t.WORKZONE,
-            t.HASIL_VISIT,
             t.closed_at ? t.closed_at.toISOString() : '',
             t.users?.nama,
             t.users?.nik,
@@ -191,7 +190,7 @@ export async function GET(req: NextRequest) {
       by: ['teknisi_user_id'],
       where: {
         teknisi_user_id: { in: finalTechIds },
-        HASIL_VISIT: 'CLOSE',
+        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
         closed_at: { gte: start, lt: end },
         ...(wzFilter ? wzFilter : {}),
       },

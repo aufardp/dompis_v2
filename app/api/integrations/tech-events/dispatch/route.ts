@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const ids = pendingIds.map((e) => e.id);
+    const ids = pendingIds.map((e: { id: number }) => e.id);
 
     // STEP 2: Mark SENDING hanya yang masih PENDING
     const updateResult = await prisma.tech_event_outbox.updateMany({
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     });
 
     const payload: TechEventWebhookBatch = {
-      events: events.map((e) => e.payload as WebhookEvent),
+      events: events.map((e: { id: number; payload: any }) => e.payload as WebhookEvent),
     };
 
     try {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
       if (res.ok) {
         await prisma.tech_event_outbox.updateMany({
-          where: { id: { in: events.map((e) => e.id) } },
+          where: { id: { in: events.map((e: { id: number }) => e.id) } },
           data: {
             status: 'SENT',
             sent_at: new Date(),

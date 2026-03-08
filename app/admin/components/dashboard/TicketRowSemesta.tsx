@@ -6,6 +6,7 @@ import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 export interface TicketRowSemestaProps {
   ticket: {
@@ -27,6 +28,7 @@ export interface TicketRowSemestaProps {
     closedAt?: string | null;
     reportedDate?: string | null;
     status?: string | null;
+    STATUS_UPDATE?: string | null;
     maxTtrReguler?: string | null;
     maxTtrGold?: string | null;
     maxTtrPlatinum?: string | null;
@@ -67,11 +69,7 @@ export default function TicketRowSemesta({
 }: TicketRowSemestaProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const visit = String(ticket.hasilVisit ?? ticket.status ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '_');
-  const isClosed = visit === 'CLOSE' || visit === 'CLOSED';
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
 
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
@@ -278,10 +276,10 @@ export default function TicketRowSemesta({
           <span
             className={clsx(
               'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-              `badge-${getStatusColor(ticket.hasilVisit || '')}`,
+              `badge-${getStatusColor(ticket.STATUS_UPDATE || '')}`,
             )}
           >
-            {ticket.hasilVisit || '-'}
+            {ticket.STATUS_UPDATE || '-'}
           </span>
         </td>
 

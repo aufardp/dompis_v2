@@ -18,11 +18,11 @@ export async function GET() {
 
     const areas = await prisma.area.findMany();
 
-    const options = areas.map((area) => ({
-      value: area.id_area,
-      label: area.nama_area,
-      created_at: area.created_at,
-      updated_at: area.updated_at,
+    const options = areas.map((a: { id_area: number; nama_area: string; created_at: Date; updated_at: Date }) => ({
+      value: a.id_area,
+      label: a.nama_area,
+      created_at: a.created_at,
+      updated_at: a.updated_at,
     }));
 
     return NextResponse.json({

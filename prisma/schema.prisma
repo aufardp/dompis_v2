@@ -49,7 +49,7 @@ model ticket {
   WORKZONE                    String?                     @db.VarChar(100)
   STATUS                      String?                     @db.VarChar(100)
   TICKET_ID_GAMAS             String?                     @db.VarChar(100)
-  CONTACT_PHONE               String?                     @db.VarChar(16)
+  CONTACT_PHONE               String?                     @db.VarChar(50)
   CONTACT_NAME                String?                     @db.VarChar(100)
   BOOKING_DATE                String?                     @db.VarChar(100)
   SOURCE_TICKET               String?                     @db.VarChar(100)
@@ -58,15 +58,6 @@ model ticket {
   SYMPTOM                     String?                     @db.Text
   DESCRIPTION_ACTUAL_SOLUTION String?                     @db.Text
   DEVICE_NAME                 String?                     @db.VarChar(100)
-  HASIL_VISIT                 String                      @default("OPEN") @db.VarChar(100)
-  JAM_EXPIRED_12_JAM_GOLD     String?                     @db.VarChar(255)
-  STATUS_TTR_12_GOLD          String?                     @db.VarChar(255)
-  JAM_EXPIRED_3_JAM_DIAMOND   String?                     @db.VarChar(255)
-  STATUS_TTR_3_DIAMOND        String?                     @db.VarChar(255)
-  JAM_EXPIRED_24_JAM_REGULER  String?                     @db.VarChar(255)
-  STATUS_TTR_24_REGULER       String?                     @db.VarChar(255)
-  JAM_EXPIRED_6_JAM_PLATINUM  String?                     @db.VarChar(255)
-  STATUS_TTR_6_PLATINUM       String?                     @db.VarChar(100)
   JENIS_TIKET                 String?                     @db.VarChar(255)
   JAM_EXPIRED                 String?                     @db.VarChar(255)
   REDAMAN                     String?                     @db.VarChar(255)
@@ -75,10 +66,39 @@ model ticket {
   PENDING_REASON              String?                     @db.VarChar(255)
   GUARANTE_STATUS             String?                     @db.VarChar(50)
   FLAGGING_MANJA              String?                     @db.VarChar(50)
+  LAPUL                       String?                     @db.VarChar(255)
+  GAUL                        String?                     @db.VarChar(255)
+  ONU_RX                      String?                     @db.VarChar(100)
+  STATUS_UPDATE               String?                     @db.VarChar(100)
+  STATUS_MANJA                String?                     @db.VarChar(100)
+
+  JAM_EXPIRED_12_JAM_GOLD     String?                     @db.VarChar(255)
+  STATUS_TTR_12_GOLD          String?                     @db.VarChar(255)
+  JAM_EXPIRED_3_JAM_DIAMOND   String?                     @db.VarChar(255)
+  STATUS_TTR_3_DIAMOND        String?                     @db.VarChar(255)
+  JAM_EXPIRED_24_JAM_REGULER  String?                     @db.VarChar(255)
+  STATUS_TTR_24_REGULER       String?                     @db.VarChar(255)
+  JAM_EXPIRED_6_JAM_PLATINUM  String?                     @db.VarChar(255)
+  STATUS_TTR_6_PLATINUM       String?                     @db.VarChar(100)
+  TTR_K1_DATIN_1_5_JAM        String?                     @db.VarChar(100)
+  TTR_K1_REPAIR_K2_DATIN_3_6_JAM  String?                 @db.VarChar(100)
+  TTR_K3_DATIN_7_2_JAM        String?                     @db.VarChar(100)
+  TTR_INDIBIZ_4_JAM           String?                     @db.VarChar(100)
+  TTR_INDIBIZ_24_JAM          String?                     @db.VarChar(100)
+  TTR_INDIHOME_RESELLER_6_JAM String?                     @db.VarChar(100)
+  TTR_INDIHOME_RESELLER_36_JAM String?                    @db.VarChar(100)
+  TTR_WIFI_24_JAM             String?                     @db.VarChar(100)
+
   rca                         String?                     @db.VarChar(100)
   sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
   closed_at                   DateTime?                   @db.Timestamp(0)
+  
+  // Sync metadata fields
+  sync_date                   DateTime?                   @db.Date
+  synced_at                   DateTime?                   @db.Timestamp(0)
+  import_batch                String?                     @db.VarChar(50)
+  
   users                       users?                      @relation(fields: [teknisi_user_id], references: [id_user], onUpdate: NoAction, map: "fk_ticket_user")
   ticket_evidence             ticket_evidence[]
   ticketTracking              ticket_tracking?
@@ -87,7 +107,19 @@ model ticket {
   ticket_activity_log         ticket_activity_log[]
 
   @@index([teknisi_user_id], map: "fk_ticket_user")
-  @@index([WORKZONE], map: "idx_workzone")
+  @@index([WORKZONE], map: "idx_ticket_workzone")
+  @@index([sync_date], map: "idx_sync_date")
+  @@index([PENDING_REASON, sync_date], map: "idx_pending_sync")
+  @@index([sync_date, WORKZONE], map: "idx_sync_workzone")
+  @@index([CUSTOMER_TYPE, sync_date], map: "idx_ctype_sync")
+  @@index([STATUS_UPDATE], map: "idx_status_update")
+  @@index([teknisi_user_id, STATUS_UPDATE], map: "idx_tech_status")
+  @@index([sync_date, STATUS_UPDATE], map: "idx_sync_status")
+  @@index([JENIS_TIKET], map: "idx_jenis_tiket")
+  @@index([CUSTOMER_TYPE], map: "idx_customer_type")
+  @@index([FLAGGING_MANJA], map: "idx_ticket_flagging")
+  @@index([GUARANTE_STATUS], map: "idx_ticket_guarantee")
+  @@index([REPORTED_DATE], map: "idx_ticket_reported")
 }
 
 
