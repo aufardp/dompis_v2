@@ -127,9 +127,18 @@ export class DailyTicketService {
             },
           },
           {
-            PENDING_REASON: {
-              not: null,
-            },
+            AND: [
+              {
+                PENDING_REASON: {
+                  not: null,
+                },
+              },
+              {
+                PENDING_REASON: {
+                  not: '',
+                },
+              },
+            ],
           },
         ],
       },
@@ -209,7 +218,6 @@ export class DailyTicketService {
       assigned: 0,
       onProgress: 0,
       pending: 0,
-      escalated: 0,
       close: 0,
     };
 
@@ -224,7 +232,6 @@ export class DailyTicketService {
       if (status === 'assigned') stats.assigned += count;
       if (status === 'on_progress') stats.onProgress += count;
       if (status === 'pending') stats.pending += count;
-      if (status === 'escalated') stats.escalated += count;
       if (status === 'close') stats.close += count;
     }
 
@@ -406,7 +413,6 @@ export class DailyTicketService {
       assigned: number;
       onProgress: number;
       pending: number;
-      escalated: number;
       close: number;
     }>
   > {
@@ -463,7 +469,6 @@ export class DailyTicketService {
           assigned: statusCounts.assigned,
           onProgress: statusCounts.onProgress ?? 0,
           pending: statusCounts.pending ?? 0,
-          escalated: statusCounts.escalated ?? 0,
           close: statusCounts.close,
         };
       }),

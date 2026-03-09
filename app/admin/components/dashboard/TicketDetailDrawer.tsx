@@ -32,7 +32,6 @@ type TicketStatusKey =
   | 'ON_PROGRESS'
   | 'IN_PROGRESS'
   | 'PENDING'
-  | 'ESCALATED'
   | 'CANCELLED'
   | 'CLOSE'
   | 'CLOSED';
@@ -140,14 +139,6 @@ const STATUS_CONFIG: Record<
     dot: 'bg-purple-500',
     border: 'border-purple-200',
     icon: '⏸',
-  },
-  ESCALATED: {
-    label: 'Escalated',
-    color: 'text-orange-600',
-    bg: 'bg-orange-50',
-    dot: 'bg-orange-500',
-    border: 'border-orange-200',
-    icon: '⚠️',
   },
   CANCELLED: {
     label: 'Cancelled',
@@ -444,6 +435,14 @@ export default function TicketDetailDrawer({
     'umum' | 'customer' | 'teknis' | 'sla'
   >('umum');
   const [isVisible, setIsVisible] = useState(false);
+  const [evidence, setEvidence] = useState<
+    Array<{
+      id: number;
+      fileName: string;
+      filePath: string;
+      driveUrl: string | null;
+    }>
+  >([]);
 
   useEffect(() => {
     if (open) setActiveTab('umum');
@@ -467,6 +466,31 @@ export default function TicketDetailDrawer({
   const ttrLabel = formatTtrDelta(ttrDeadline);
 
   useEffect(() => {
+    if (!open || !ticket?.idTicket) {
+      setEvidence([]);
+      return;
+    }
+
+    const isClosed = (ticket.statusUpdate || ticket?.status || '')
+      .toLowerCase()
+      .includes('close');
+
+    if (!isClosed) {
+      setEvidence([]);
+      return;
+    }
+
+    fetch(`/api/tickets/${ticket.idTicket}/evidence`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setEvidence(d.data ?? []);
+      })
+      .catch(() => {
+        /* silent */
+      });
+  }, [open, ticket?.idTicket, ticket?.statusUpdate]);
+
+  useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') handleClose();
@@ -484,7 +508,8 @@ export default function TicketDetailDrawer({
     { key: 'sla', label: 'SLA' },
   ] as const;
 
-  const workflowKey = normalizeKey(ticket?.statusUpdate || ticket?.status);
+  const rawStatus = ticket?.statusUpdate || ticket?.status || '';
+  const workflowKey = normalizeKey(rawStatus);
   const workflowConfig = STATUS_CONFIG[workflowKey] || {
     label: workflowKey || '—',
     color: 'text-slate-600',
@@ -779,6 +804,56 @@ export default function TicketDetailDrawer({
                       <Field label='Sub RCA' value={ticket.subRca} fullWidth />
                     </div>
                   </Section>
+
+                  {/* Evidence Foto — hanya tampil jika ada data */}
+                  {evidence.length > 0 && (
+                    <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+                      <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
+                        <span className='text-slate-500'>📷</span>
+                        <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
+                          Evidence Foto
+                        </h3>
+                        <span className='ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500'>
+                          {evidence.length} foto
+                        </span>
+                      </div>
+                      <div className='grid grid-cols-2 gap-2'>
+                        {evidence.map((e) => {
+                          const imageUrl =
+                            e.driveUrl ??
+                            `/uploads/evidence/${e.filePath.replace(
+                              /^.*?evidence\//,
+                              '',
+                            )}`;
+                          return (
+                            <a
+                              key={e.id}
+                              href={imageUrl}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              className='group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100'
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={e.fileName}
+                                className='h-full w-full object-cover transition-opacity group-hover:opacity-80'
+                                onError={(el) => {
+                                  (
+                                    el.target as HTMLImageElement
+                                  ).style.display = 'none';
+                                }}
+                              />
+                              <div className='absolute right-0 bottom-0 left-0 bg-black/50 px-2 py-1'>
+                                <p className='truncate text-[10px] text-white'>
+                                  {e.fileName}
+                                </p>
+                              </div>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <Section icon={<UserCircle size={14} />} title='Teknisi'>
                     <Field

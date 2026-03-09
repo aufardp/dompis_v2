@@ -77,11 +77,6 @@ const STATUS_CONFIG: Record<
     bg: 'bg-amber-50',
   },
   PENDING: { label: 'Pending', color: 'text-amber-600', bg: 'bg-amber-50' },
-  ESCALATED: {
-    label: 'Escalated',
-    color: 'text-orange-600',
-    bg: 'bg-orange-50',
-  },
   CANCELLED: { label: 'Cancelled', color: 'text-red-600', bg: 'bg-red-50' },
   CLOSE: { label: 'Closed', color: 'text-green-600', bg: 'bg-green-50' },
 };

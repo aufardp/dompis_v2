@@ -10,7 +10,7 @@ export type TicketVisitStatus =
   | 'CLOSE';
 
 export type TicketType =
-  | 'reguler'
+  | 'reg'
   | 'sqm'
   | 'hvc'
   | 'unspec'

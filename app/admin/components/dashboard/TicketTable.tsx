@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import TicketRow from './TicketRow';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
@@ -154,6 +154,9 @@ export default function TicketTable({
     order: 'asc',
   });
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
+  const [drawerDetail, setDrawerDetail] = useState<any | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
     new Set(),
   );
@@ -171,6 +174,37 @@ export default function TicketTable({
   const toggleExpand = useCallback((ticketId: number) => {
     setExpandedTicketId((prev) => (prev === ticketId ? null : ticketId));
   }, []);
+
+  // Fetch ticket detail when drawer opens
+  useEffect(() => {
+    if (!expandedTicketId) {
+      setDrawerDetail(null);
+      setDrawerError(null);
+      return;
+    }
+
+    setDrawerLoading(true);
+    setDrawerError(null);
+
+    fetch(`/api/tickets/${expandedTicketId}/detail`)
+      .then((res) => {
+        if (res.status === 401) {
+          window.location.assign('/login');
+          return null;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!data) return;
+        if (data.success) {
+          setDrawerDetail(data.data);
+        } else {
+          setDrawerError(data.message || 'Gagal memuat detail tiket');
+        }
+      })
+      .catch(() => setDrawerError('Terjadi kesalahan jaringan'))
+      .finally(() => setDrawerLoading(false));
+  }, [expandedTicketId]);
 
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
@@ -469,12 +503,27 @@ export default function TicketTable({
       {/* Detail Drawer */}
       <TicketDetailDrawer
         open={expandedTicketId !== null}
-        onClose={() => setExpandedTicketId(null)}
-        ticket={
-          (sortedTickets.find(
-            (t) => (t.idTicket ?? t.ticket) === expandedTicketId,
-          ) as any) || null
-        }
+        onClose={() => {
+          setExpandedTicketId(null);
+          setDrawerDetail(null);
+        }}
+        ticket={drawerDetail}
+        loading={drawerLoading}
+        error={drawerError}
+        onRetry={() => {
+          if (expandedTicketId) {
+            setDrawerDetail(null);
+            setDrawerError(null);
+            setDrawerLoading(true);
+            fetch(`/api/tickets/${expandedTicketId}/detail`)
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success) setDrawerDetail(d.data);
+              })
+              .catch(() => setDrawerError('Gagal retry'))
+              .finally(() => setDrawerLoading(false));
+          }
+        }}
       />
 
       {/* SLA Legend */}

@@ -48,6 +48,7 @@ export const JENIS_ALIAS_MAP: Record<JenisKey, string[]> = {
     'reguler',
     'regular',      // Common typo
     'reular',       // Typo
+    'reg',          // Short form
     'reguler',      // Typo
   ],
   sqm: [

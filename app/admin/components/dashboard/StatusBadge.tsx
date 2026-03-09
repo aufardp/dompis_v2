@@ -20,11 +20,6 @@ const statusConfig = {
     dotClass: 'bg-orange-400',
     textClass: 'text-orange-400',
   },
-  escalated: {
-    label: 'Escalated',
-    dotClass: 'bg-purple-400',
-    textClass: 'text-purple-400',
-  },
   closed: {
     label: 'Closed',
     dotClass: 'bg-emerald-400',

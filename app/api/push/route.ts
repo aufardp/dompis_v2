@@ -3,13 +3,27 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
 
-export async function GET() {
+async function handlePush() {
   try {
     const result = await pushSpreadsheet();
 
+    if (!result) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Push tidak dijalankan (mungkin sedang berjalan)',
+        },
+        { status: 409 },
+      );
+    }
+
     if (!result.success) {
       return NextResponse.json(
-        { success: false, message: 'Push gagal', error: result.error },
+        {
+          success: false,
+          message: 'Push gagal',
+          error: result.error,
+        },
         { status: 500 },
       );
     }
@@ -17,38 +31,28 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       message: 'Push berhasil',
-      count: result.count,
+      updated: result.updated ?? 0,
+      inserted: result.inserted ?? 0,
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Push error:', error);
+    console.error('Push API Error:', error);
+
     return NextResponse.json(
-      { success: false, message: 'Push gagal', error: String(error) },
+      {
+        success: false,
+        message: 'Push gagal',
+        error: String(error),
+      },
       { status: 500 },
     );
   }
 }
 
+export async function GET() {
+  return handlePush();
+}
+
 export async function POST() {
-  try {
-    const result = await pushSpreadsheet();
-
-    if (!result.success) {
-      return NextResponse.json(
-        { success: false, message: 'Push gagal', error: result.error },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Manual push berhasil',
-      count: result.count,
-    });
-  } catch (error) {
-    console.error('Manual push error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Push gagal', error: String(error) },
-      { status: 500 },
-    );
-  }
+  return handlePush();
 }

@@ -21,11 +21,6 @@ const MENU_ITEMS = [
   },
 ];
 
-const DEPT_ITEMS = [
-  { label: 'B2B', path: '/admin?dept=b2b', dotColor: '#3b82f6' },
-  { label: 'B2C', path: '/admin?dept=b2c', dotColor: '#8b5cf6' },
-];
-
 interface NavItemProps {
   label: string;
   active?: boolean;
@@ -117,20 +112,6 @@ export default function Sidebar({
               />
             );
           })}
-        </nav>
-
-        <p className='mb-2 px-2 text-[10px] font-bold tracking-[1.5px] text-(--text-muted) uppercase'>
-          Departemen
-        </p>
-        <nav className='flex flex-col gap-1'>
-          {DEPT_ITEMS.map((item) => (
-            <NavItem
-              key={item.label}
-              label={item.label}
-              dotColor={item.dotColor}
-              onClick={() => handleNavigate(item.path)}
-            />
-          ))}
         </nav>
       </div>
 

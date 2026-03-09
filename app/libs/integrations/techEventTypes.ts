@@ -10,7 +10,6 @@ export type HasilVisit =
   | 'ASSIGNED'
   | 'ON_PROGRESS'
   | 'PENDING'
-  | 'ESCALATED'
   | 'DONE'
   | 'CLOSE'
   | 'CANCELLED';

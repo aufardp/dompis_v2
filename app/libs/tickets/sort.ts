@@ -147,7 +147,6 @@ export const STATUS_PRIORITY: Record<string, number> = {
   on_progress: 2,
   in_progress: 2,
   pending: 1,
-  escalated: 1,
   cancelled: 0,
   close: -1,
   closed: -1,

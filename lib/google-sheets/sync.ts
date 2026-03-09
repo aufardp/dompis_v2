@@ -16,32 +16,6 @@ interface SyncResult {
 
 let isSyncRunning = false;
 
-function deriveStatusUpdate(row: {
-  STATUS?: string | null;
-  closed_at?: string | null;
-}): string {
-  const CLOSED_KEYWORDS = [
-    'closed',
-    'close',
-    'selesai',
-    'done',
-    'tutup',
-    'resolved',
-    'complete',
-    'completed',
-  ];
-
-  if (row.closed_at) return 'closed';
-
-  const st = (row.STATUS ?? '').toLowerCase().trim();
-
-  if (CLOSED_KEYWORDS.includes(st)) {
-    return 'closed';
-  }
-
-  return 'open';
-}
-
 /* ----------------------------- RETRY GOOGLE API ----------------------------- */
 
 async function fetchSheet(sheets: any, spreadsheetId: string) {
@@ -248,17 +222,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       const statusUpdate = row[29];
       const status = row[6];
 
-      // Normalize STATUS_UPDATE from sheet (handle inconsistent casing)
-      if (statusUpdate && statusUpdate !== '') {
-        const normalized = statusUpdate.toLowerCase().trim();
-        // Normalize to 'open' or 'closed' only
-        row[29] =
-          normalized === 'closed' || normalized === 'close' ? 'closed' : 'open';
-      } else {
-        row[29] = deriveStatusUpdate({
-          STATUS: status,
-        });
-      }
+      row[29] = statusUpdate ?? null;
 
       if (existingSet.has(incident)) result.updated++;
       else result.inserted++;
@@ -312,13 +276,7 @@ SUMMARY       = VALUES(SUMMARY),
 STATUS        = VALUES(STATUS),
 WORKZONE      = VALUES(WORKZONE),
 OWNER_GROUP   = VALUES(OWNER_GROUP),
-STATUS_UPDATE = IF(
-  STATUS_UPDATE IS NULL
-  OR STATUS_UPDATE = ''
-  OR STATUS_UPDATE = 'open',
-  VALUES(STATUS_UPDATE),
-  STATUS_UPDATE
-),
+STATUS_UPDATE = VALUES(STATUS_UPDATE),
 sync_date     = VALUES(sync_date),
 import_batch  = VALUES(import_batch),
 synced_at     = NOW()

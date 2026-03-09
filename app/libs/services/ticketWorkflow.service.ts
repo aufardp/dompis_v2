@@ -206,7 +206,6 @@ type VisitStatus =
   | 'ASSIGNED'
   | 'ON_PROGRESS'
   | 'PENDING'
-  | 'ESCALATED'
   | 'CANCELLED'
   | 'CLOSE';
 
@@ -232,7 +231,6 @@ function normalizeVisitStatus(value: unknown): VisitStatus {
   if (s === 'ASSIGNED') return 'ASSIGNED';
   if (s === 'ON_PROGRESS' || s === 'IN_PROGRESS') return 'ON_PROGRESS';
   if (s === 'PENDING') return 'PENDING';
-  if (s === 'ESCALATED') return 'ESCALATED';
   if (s === 'CANCELLED' || s === 'CANCELED') return 'CANCELLED';
   if (s === 'CLOSE' || s === 'CLOSED') return 'CLOSE';
 
@@ -270,7 +268,7 @@ function assertTransition(
 ) {
   const allowed: Record<typeof action, VisitStatus[]> = {
     ASSIGN: ['OPEN', 'ASSIGNED', 'PENDING'],
-    UNASSIGN: ['ASSIGNED', 'ON_PROGRESS', 'PENDING', 'ESCALATED'],
+    UNASSIGN: ['ASSIGNED', 'ON_PROGRESS', 'PENDING'],
     PICKUP: ['ASSIGNED'],
     CLOSE: ['ON_PROGRESS'],
     OPEN: [],
@@ -580,114 +578,16 @@ async function handleTechnicianWorkflow(
       tx,
     );
 
-    // Empty string clears PENDING_REASON in DB (column may be NOT NULL)
+    // Clear PENDING_REASON by setting to NULL (column is nullable)
     return {
       ticketUpdate: {
         STATUS_UPDATE: 'on_progress', // single source of truth
       },
-      pendingReason: '',
+      pendingReason: null,
     };
   }
 
   throw new Error('Invalid status transition');
-}
-
-/**
- * Handles escalation for admin / helpdesk / superadmin roles.
- */
-async function handleAdminWorkflow(
-  tx: Prisma.TransactionClient,
-  ticket: LockedTicket,
-  ticketId: number,
-  actor: ActorContext,
-  roleId: number,
-  workflow: TicketUpdateWorkflow,
-  current: VisitStatus,
-  now: Date,
-  resolvePendingReason: () => Promise<string | null>,
-): Promise<WorkflowResult> {
-  const rawNext = cleanNullableString(workflow.status);
-  if (!rawNext) throw new Error('status is required');
-
-  const next = normalizeVisitStatus(rawNext);
-
-  if (next === current) throw new Error('Ticket already has that status');
-  if (current === 'CLOSE') throw new Error('Ticket already closed');
-  if (next !== 'ESCALATED') throw new Error('Invalid status transition');
-
-  if (!['ASSIGNED', 'ON_PROGRESS', 'PENDING'].includes(current)) {
-    throw new Error('Invalid status transition');
-  }
-  if (ticket.teknisi_user_id == null) throw new Error('Ticket is not assigned');
-
-  const previousReason =
-    current === 'PENDING' ? await resolvePendingReason() : null;
-
-  await upsertTracking(tx, {
-    ticketId,
-    assignedTo: ticket.teknisi_user_id,
-    isActive: true,
-    now,
-    extra: { pendingReason: null },
-  });
-
-  await logStatusChange(tx, {
-    ticketId,
-    oldStatus: current,
-    newStatus: 'ESCALATED',
-    changedBy: actor.id_user,
-    roleId,
-    note: workflow.note ? String(workflow.note).trim() : 'Escalated',
-  });
-
-  await logActivity(tx, {
-    ticketId,
-    userId: actor.id_user,
-    roleId,
-    type: ActivityType.STATUS_CHANGE,
-    description: truncate255(
-      previousReason
-        ? `Status change: ${current} -> ESCALATED | cleared reason: ${previousReason}`
-        : `Status change: ${current} -> ESCALATED`,
-    ),
-  });
-
-  const tech = await getTechnicianSnapshot(tx, ticket.teknisi_user_id);
-  const ticketDetails = await getTicketDetails(tx, ticketId);
-  const adminName = await getUserName(tx, actor.id_user);
-  const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
-  await createTechEvent(
-    {
-      event_type: 'TICKET_STATUS_CHANGED',
-      ticket: {
-        id: ticketId,
-        incident: ticket.INCIDENT,
-        workzone: ticket.WORKZONE ?? '',
-        service_no: ticketDetails?.service_no ?? '',
-        customer_name: ticketDetails?.customer_name ?? '',
-      },
-      status: {
-        old_hasil_visit: current,
-        new_hasil_visit: 'ESCALATED',
-        pending_reason: null,
-        evidence,
-        rca: null,
-        sub_rca: null,
-      },
-      old_technician: tech,
-      new_technician: tech,
-      actor: { id_user: actor.id_user, role: actor.role },
-      admin: { nama: adminName, action: 'ASSIGNED' },
-    },
-    tx,
-  );
-
-  return {
-    ticketUpdate: {
-      STATUS_UPDATE: 'escalated', // single source of truth
-    },
-    pendingReason: '',
-  };
 }
 
 /**
@@ -1461,29 +1361,17 @@ export class TicketWorkflowService {
         let workflowPendingReason: string | null | undefined;
 
         if (hasWorkflowStatus) {
-          const result = await (roleKey === 'teknisi'
-            ? handleTechnicianWorkflow(
-                tx,
-                ticket,
-                ticketId,
-                actor,
-                roleId,
-                workflow!,
-                current,
-                now,
-                resolvePendingReason,
-              )
-            : handleAdminWorkflow(
-                tx,
-                ticket,
-                ticketId,
-                actor,
-                roleId,
-                workflow!,
-                current,
-                now,
-                resolvePendingReason,
-              ));
+          const result = await handleTechnicianWorkflow(
+            tx,
+            ticket,
+            ticketId,
+            actor,
+            roleId,
+            workflow!,
+            current,
+            now,
+            resolvePendingReason,
+          );
 
           Object.assign(ticketUpdate, result.ticketUpdate);
           workflowPendingReason = result.pendingReason;

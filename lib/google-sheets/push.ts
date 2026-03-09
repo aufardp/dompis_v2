@@ -1,166 +1,161 @@
-import { query } from '../../app/libs/db';
-import { RowDataPacket } from 'mysql2/promise';
+import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 
-interface PushResult {
-  success: boolean;
-  count: number;
-  error?: string;
-}
-
-interface TicketRow extends RowDataPacket {
-  INCIDENT: string;
-  HASIL_VISIT: string;
-  PENDING_REASON: string;
-  NAMA_TEKNISI: string;
-  rca: string;
-  sub_rca: string;
-}
+const SHEET_NAME = 'Dummy_Dompis';
+const START_ROW = 2;
+const BATCH_SIZE = 400;
 
 let isPushRunning = false;
 
-/**
- * CONFIG
- */
-const SHEET_NAME = 'WorkOrder_SO_1';
-const START_ROW = 8;
+function buildColumnMap(header: string[]) {
+  const find = (name: string) => header.indexOf(name);
 
-const MAX_INSERT_PER_RUN = 200;
-const BATCH_UPDATE_CHUNK = 500;
-const MAX_SHEET_CELLS = 10000000;
-
-export async function pushSpreadsheet(): Promise<PushResult> {
-  const result: PushResult = {
-    success: false,
-    count: 0,
+  return {
+    INCIDENT: find('INCIDENT'),
+    SUMMARY: find('SUMMARY'),
+    REPORTED_DATE: find('REPORTED DATE'),
+    OWNER_GROUP: find('OWNER GROUP'),
+    SERVICE_TYPE: find('SERVICE TYPE'),
+    WORKZONE: find('WORKZONE'),
+    CONTACT_PHONE: find('CONTACT PHONE'),
+    CONTACT_NAME: find('CONTACT NAME'),
+    CUSTOMER_TYPE: find('CUSTOMER TYPE'),
+    SERVICE_NO: find('SERVICE NO'),
+    SYMPTOM: find('SYMPTOM'),
+    DEVICE_NAME: find('DEVICE NAME'),
+    STATUS_UPDATE: find('STATUS UPDATE'),
+    HASIL_VISIT: find('HASIL VISIT'),
+    TEKNISI: find('TEKNISI'),
+    RCA: find('RCA'),
+    SUB_RCA: find('SUB_RCA'),
+    ALAMAT: find('ALAMAT'),
   };
+}
 
+export async function pushSpreadsheet() {
   if (isPushRunning) {
-    console.log('[PUSH] Skip — masih berjalan');
-    return result;
+    return { success: false, message: 'Push sedang berjalan' };
   }
 
   isPushRunning = true;
 
   try {
-    console.log('[PUSH] Start:', nowWIB());
+    console.log('PUSH START', nowWIB());
 
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
     /**
-     * 1️⃣ Ambil data dari DB
+     * 1️⃣ Load header
      */
-    const dbRows = await query<TicketRow[]>(`
-      SELECT 
-        t.INCIDENT,
-        t.HASIL_VISIT,
-        t.PENDING_REASON,
-        t.rca,
-        t.sub_rca,
-        u.nama AS NAMA_TEKNISI
-      FROM ticket t
-      LEFT JOIN users u ON t.teknisi_user_id = u.id_user
-      WHERE t.INCIDENT IS NOT NULL
-    `);
 
-    if (!dbRows.length) {
-      console.log('[PUSH] Tidak ada data DB');
-      result.success = true;
-      return result;
-    }
-
-    /**
-     * 2️⃣ Ambil semua INCIDENT dari sheet
-     */
-    const sheetResponse = await sheets.spreadsheets.values.get({
+    const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `'${SHEET_NAME}'!B${START_ROW}:B`,
+      range: `'${SHEET_NAME}'!B6:AZ6`,
     });
 
-    const sheetIncidents = sheetResponse.data.values || [];
+    const header = headerRes.data.values?.[0] || [];
+
+    const col = buildColumnMap(header);
+
+    /**
+     * 2️⃣ Load INCIDENT dari sheet
+     */
+
+    const sheetRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${SHEET_NAME}'!A${START_ROW}:A`,
+    });
+
+    const sheetRows = sheetRes.data.values || [];
 
     const incidentMap = new Map<string, number>();
 
-    sheetIncidents.forEach((row, index) => {
-      const incident = row[0];
-
-      if (incident && !incidentMap.has(incident)) {
-        incidentMap.set(incident, index + START_ROW);
+    sheetRows.forEach((r, i) => {
+      const incident = r[0];
+      if (incident) {
+        incidentMap.set(incident, i + START_ROW);
       }
     });
 
-    const sheetRowCount = sheetIncidents.length + START_ROW - 1;
-
-    console.log('[PUSH] Sheet rows:', sheetRowCount);
-
     /**
-     * 3️⃣ Proteksi limit Google Sheets
+     * 3️⃣ Load data DB
      */
 
-    const estimatedCells = sheetRowCount * 40;
-
-    if (estimatedCells > MAX_SHEET_CELLS) {
-      throw new Error(
-        `Spreadsheet hampir mencapai limit ${MAX_SHEET_CELLS} cells`,
-      );
-    }
-
-    /**
-     * 4️⃣ Prepare batch update & insert
-     */
+    const tickets = await prisma.ticket.findMany({
+      select: {
+        INCIDENT: true,
+        SUMMARY: true,
+        REPORTED_DATE: true,
+        OWNER_GROUP: true,
+        SERVICE_TYPE: true,
+        WORKZONE: true,
+        CONTACT_PHONE: true,
+        CONTACT_NAME: true,
+        CUSTOMER_TYPE: true,
+        SERVICE_NO: true,
+        SYMPTOM: true,
+        DEVICE_NAME: true,
+        STATUS_UPDATE: true,
+        ALAMAT: true,
+        rca: true,
+        sub_rca: true,
+        users: {
+          select: { nama: true },
+        },
+      },
+    });
 
     const updates: any[] = [];
     const inserts: any[] = [];
 
-    const seenIncident = new Set<string>();
+    /**
+     * 4️⃣ Mapping row
+     */
 
-    for (const row of dbRows) {
-      if (seenIncident.has(row.INCIDENT)) continue;
-      seenIncident.add(row.INCIDENT);
+    for (const t of tickets) {
+      const teknisi = t.users?.nama ?? '';
 
-      const rowNumber = incidentMap.get(row.INCIDENT);
+      const row = new Array(header.length).fill('');
 
-      if (rowNumber) {
-        updates.push({
-          range: `'${SHEET_NAME}'!W${rowNumber}:AG${rowNumber}`,
-          values: [
-            [
-              row.NAMA_TEKNISI ?? '',
-              '',
-              '',
-              '',
-              '',
-              '',
-              '',
-              row.HASIL_VISIT ?? '',
-              row.PENDING_REASON ?? '',
-              row.rca ?? '',
-              row.sub_rca ?? '',
-            ],
-          ],
-        });
+      row[col.INCIDENT] = t.INCIDENT;
+      row[col.SUMMARY] = t.SUMMARY ?? '';
+      row[col.REPORTED_DATE] = t.REPORTED_DATE ?? '';
+      row[col.OWNER_GROUP] = t.OWNER_GROUP ?? '';
+      row[col.SERVICE_TYPE] = t.SERVICE_TYPE ?? '';
+      row[col.WORKZONE] = t.WORKZONE ?? '';
+      row[col.CONTACT_PHONE] = t.CONTACT_PHONE ?? '';
+      row[col.CONTACT_NAME] = t.CONTACT_NAME ?? '';
+      row[col.CUSTOMER_TYPE] = t.CUSTOMER_TYPE ?? '';
+      row[col.SERVICE_NO] = t.SERVICE_NO ?? '';
+      row[col.SYMPTOM] = t.SYMPTOM ?? '';
+      row[col.DEVICE_NAME] = t.DEVICE_NAME ?? '';
+      row[col.STATUS_UPDATE] = t.STATUS_UPDATE ?? '';
+      row[col.HASIL_VISIT] = t.STATUS_UPDATE ?? '';
+      row[col.TEKNISI] = teknisi;
+      row[col.RCA] = t.rca ?? '';
+      row[col.SUB_RCA] = t.sub_rca ?? '';
+      row[col.ALAMAT] = t.ALAMAT ?? '';
+
+      const sheetRow = incidentMap.get(t.INCIDENT);
+
+      if (!sheetRow) {
+        inserts.push(row);
       } else {
-        inserts.push([
-          row.INCIDENT,
-          row.HASIL_VISIT ?? '',
-          row.PENDING_REASON ?? '',
-          row.NAMA_TEKNISI ?? '',
-          row.rca ?? '',
-          row.sub_rca ?? '',
-        ]);
+        updates.push({
+          range: `'${SHEET_NAME}'!A${sheetRow}`,
+          values: [row],
+        });
       }
     }
 
     /**
-     * 5️⃣ Batch UPDATE dengan chunk
+     * 5️⃣ UPDATE
      */
 
-    let updatedRows = 0;
-
-    for (let i = 0; i < updates.length; i += BATCH_UPDATE_CHUNK) {
-      const chunk = updates.slice(i, i + BATCH_UPDATE_CHUNK);
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const chunk = updates.slice(i, i + BATCH_SIZE);
 
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId,
@@ -169,43 +164,41 @@ export async function pushSpreadsheet(): Promise<PushResult> {
           data: chunk,
         },
       });
-
-      updatedRows += chunk.length;
     }
 
     /**
-     * 6️⃣ Insert row baru (limited)
+     * 6️⃣ INSERT
      */
 
-    const limitedInserts = inserts.slice(0, MAX_INSERT_PER_RUN);
-
-    if (limitedInserts.length > 0) {
+    if (inserts.length) {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: `'${SHEET_NAME}'!B${START_ROW}`,
+        range: `'${SHEET_NAME}'!A${START_ROW}`,
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
-          values: limitedInserts,
+          values: inserts,
         },
       });
     }
 
     console.log(
-      `[PUSH] Update ${updatedRows} rows, Insert ${limitedInserts.length} rows`,
+      `PUSH DONE | update:${updates.length} insert:${inserts.length}`,
     );
 
-    result.success = true;
-    result.count = updatedRows + limitedInserts.length;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: true,
+      updated: updates.length,
+      inserted: inserts.length,
+    };
+  } catch (err: any) {
+    console.error('PUSH ERROR', err);
 
-    console.error('[PUSH] ERROR ❌', message);
-
-    result.error = message;
+    return {
+      success: false,
+      error: err.message,
+    };
   } finally {
     isPushRunning = false;
   }
-
-  return result;
 }

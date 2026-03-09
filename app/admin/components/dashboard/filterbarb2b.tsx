@@ -17,12 +17,15 @@ type StatusUpdate =
   | 'on_progress'
   | 'pending'
   | 'close';
+type FlaggingManja = 'all' | 'P1' | 'P+';
 
 interface FilterBarB2BProps {
   ticketType?: TicketType;
   statusUpdate?: StatusUpdate;
+  flagging?: FlaggingManja;
   onTypeChange?: (type: TicketType) => void;
   onStatusChange?: (status: StatusUpdate) => void;
+  onFlaggingChange?: (f: FlaggingManja) => void;
 }
 
 const B2B_TYPE_OPTIONS = [
@@ -103,22 +106,49 @@ const STATUS_OPTIONS = [
   },
 ] as const;
 
+const FLAGGING_OPTIONS = [
+  {
+    key: 'P1',
+    label: 'P1',
+    dot: 'bg-red-400',
+    activeClass: 'bg-red-400/15 border-red-400/40 text-red-400',
+  },
+  {
+    key: 'P+',
+    label: 'P+',
+    dot: 'bg-pink-400',
+    activeClass: 'bg-pink-400/15 border-pink-400/40 text-pink-400',
+  },
+  {
+    key: 'all',
+    label: 'Semua',
+    dot: 'bg-current',
+    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
+  },
+] as const;
+
 export function FilterBarB2B({
   ticketType: ticketTypeProp,
   statusUpdate: statusUpdateProp,
+  flagging: flaggingProp,
   onTypeChange,
   onStatusChange,
+  onFlaggingChange,
 }: FilterBarB2BProps) {
   const ticketType = ticketTypeProp ?? 'all';
   const statusUpdate = statusUpdateProp ?? 'all';
+  const flagging = flaggingProp ?? 'all';
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const activeCount =
-    (ticketType !== 'all' ? 1 : 0) + (statusUpdate !== 'all' ? 1 : 0);
+    (ticketType !== 'all' ? 1 : 0) +
+    (statusUpdate !== 'all' ? 1 : 0) +
+    (flagging !== 'all' ? 1 : 0);
 
   function resetAll() {
     onTypeChange?.('all');
     onStatusChange?.('all');
+    onFlaggingChange?.('all');
   }
 
   return (
@@ -205,6 +235,36 @@ export function FilterBarB2B({
                   className={cn(
                     'h-1.5 w-1.5 rounded-full',
                     statusUpdate === key ? dot : 'bg-current opacity-30',
+                  )}
+                />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className='flex items-center gap-2 border-t border-(--border) px-4 py-2.5 lg:border-t-0 lg:border-l'>
+          <span className='w-14 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+            Flagging
+          </span>
+          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+            {FLAGGING_OPTIONS.map(({ key, label, dot, activeClass }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  onFlaggingChange?.(key as FlaggingManja);
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
+                  flagging === key
+                    ? activeClass
+                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
+                )}
+              >
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    flagging === key ? dot : 'bg-current opacity-30',
                   )}
                 />
                 {label}

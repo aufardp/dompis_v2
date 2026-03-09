@@ -57,10 +57,6 @@ function applyStatusUpdateWhere(
       where.STATUS_UPDATE = 'pending';
       break;
 
-    case 'escalated':
-      where.STATUS_UPDATE = 'escalated';
-      break;
-
     case 'close':
       where.STATUS_UPDATE = 'close';
       break;
