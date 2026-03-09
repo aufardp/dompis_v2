@@ -98,15 +98,15 @@ export const JENIS_ALIAS_MAP: Record<JenisKey, string[]> = {
 };
 
 export const JENIS_STYLES: Record<JenisKey, string> = {
-  reguler: 'bg-emerald-50 text-emerald-600',
-  sqm: 'bg-blue-50 text-blue-600',
-  'sqm-ccan': 'bg-fuchsia-50 text-fuchsia-600',
-  hvc: 'bg-amber-50 text-amber-600',
-  unspec: 'bg-slate-100 text-slate-500',
-  indibiz: 'bg-sky-50 text-sky-600',
-  datin: 'bg-cyan-50 text-cyan-600',
-  reseller: 'bg-purple-50 text-purple-600',
-  'wifi-id': 'bg-teal-50 text-teal-600',
+  reguler: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+  sqm: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
+  'sqm-ccan': 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400',
+  hvc: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
+  unspec: 'bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400',
+  indibiz: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
+  datin: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400',
+  reseller: 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
+  'wifi-id': 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400',
 };
 
 // ← ADDED: Display labels for each jenis type

@@ -29,7 +29,7 @@ function MiniBar({
 }) {
   const pct = max === 0 ? 0 : (value / max) * 100;
   return (
-    <div className='h-1 flex-1 overflow-hidden rounded-full bg-slate-200'>
+    <div className='h-1 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700'>
       <div
         className='h-full rounded-full transition-all duration-700'
         style={{ width: `${pct}%`, background: color }}
@@ -62,7 +62,7 @@ function ProgressRing({
           cy='22'
           r={radius}
           fill='none'
-          stroke='#e2e8f0'
+          className='stroke-slate-200 dark:stroke-slate-700'
           strokeWidth='3'
         />
         <circle
@@ -109,13 +109,17 @@ export default function CustomerTypeCard({
       type='button'
       onClick={onClick}
       aria-pressed={active}
-      className='w-full cursor-pointer rounded-2xl bg-white p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md'
-      style={{
-        border: `${active ? 2 : 1}px solid ${active ? accentColor : '#e2e8f0'}`,
-        boxShadow: active
-          ? `0 4px 20px ${accentColor}28`
-          : '0 1px 4px rgba(0,0,0,0.06)',
-      }}
+      className={[
+        'w-full cursor-pointer rounded-2xl p-5 text-left transition-all duration-200',
+        'hover:-translate-y-0.5',
+        'bg-white dark:bg-slate-800/70',
+        'shadow-sm hover:shadow-md dark:shadow-none',
+        !active && 'border border-slate-200 dark:border-slate-700/60',
+      ].filter(Boolean).join(' ')}
+      style={active ? {
+        border: `2px solid ${accentColor}`,
+        boxShadow: `0 4px 20px ${accentColor}28`,
+      } : undefined}
     >
       {/* Header */}
       <div className='mb-3 flex items-start justify-between'>
@@ -152,7 +156,7 @@ export default function CustomerTypeCard({
       >
         {total.toLocaleString()}
       </p>
-      <p className='mb-4 text-xs text-slate-400'>
+      <p className='mb-4 text-xs text-slate-400 dark:text-slate-500'>
         {shareOfAll ? `${shareOfAll}% of total` : 'tickets'}
       </p>
 
@@ -162,7 +166,7 @@ export default function CustomerTypeCard({
         unspecCount !== undefined) && (
         <div className='mb-3 flex flex-wrap gap-2'>
           {regulerCount !== undefined && (
-            <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500'>
+            <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-300'>
               📋 Reguler: {regulerCount}
             </span>
           )}
@@ -179,7 +183,7 @@ export default function CustomerTypeCard({
             </span>
           )}
           {unspecCount !== undefined && (
-            <span className='flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500'>
+            <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-400'>
               ❓ Unspec: {unspecCount}
             </span>
           )}
@@ -192,17 +196,17 @@ export default function CustomerTypeCard({
         pPlusCount !== undefined) && (
         <div className='mb-3 flex flex-wrap gap-2'>
           {ffgCount !== undefined && ffgCount > 0 && (
-            <span className='flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-600'>
+            <span className='flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-600 dark:border-purple-700/50 dark:bg-purple-900/30 dark:text-purple-300'>
               🔥 FFG: {ffgCount}
             </span>
           )}
           {p1Count !== undefined && p1Count > 0 && (
-            <span className='flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600'>
+            <span className='flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:border-red-700/50 dark:bg-red-900/30 dark:text-red-300'>
               ⚡ P1: {p1Count}
             </span>
           )}
           {pPlusCount !== undefined && pPlusCount > 0 && (
-            <span className='flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600'>
+            <span className='flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-300'>
               ⚡ P+: {pPlusCount}
             </span>
           )}
@@ -216,22 +220,22 @@ export default function CustomerTypeCard({
         <div className='mb-4 space-y-1.5'>
           {regulerCount !== undefined && (
             <div className='flex items-center gap-2'>
-              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400 dark:text-slate-500'>
                 Reguler
               </span>
               <MiniBar value={regulerCount} max={total} color='#94a3b8' />
-              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400 dark:text-slate-500'>
                 {total > 0 ? Math.round((regulerCount / total) * 100) : 0}%
               </span>
             </div>
           )}
           {sqmCount !== undefined && (
             <div className='flex items-center gap-2'>
-              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400 dark:text-slate-500'>
                 SQM
               </span>
               <MiniBar value={sqmCount} max={total} color={accentColor} />
-              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400 dark:text-slate-500'>
                 {total > 0 ? Math.round((sqmCount / total) * 100) : 0}%
               </span>
             </div>
@@ -239,11 +243,11 @@ export default function CustomerTypeCard({
 
           {unspecCount !== undefined && (
             <div className='flex items-center gap-2'>
-              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400'>
+              <span className='w-10 shrink-0 text-right text-[10px] text-slate-400 dark:text-slate-500'>
                 Unspec
               </span>
               <MiniBar value={unspecCount} max={total} color='#94a3b8' />
-              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400'>
+              <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400 dark:text-slate-500'>
                 {total > 0 ? Math.round((unspecCount / total) * 100) : 0}%
               </span>
             </div>
@@ -252,7 +256,7 @@ export default function CustomerTypeCard({
       )}
 
       {/* Status dots */}
-      <div className='flex flex-wrap gap-3 text-[11px] text-slate-400'>
+      <div className='flex flex-wrap gap-3 text-[11px] text-slate-400 dark:text-slate-500'>
         <span className='flex items-center gap-1.5'>
           <span className='h-2 w-2 rounded-full bg-amber-400' />
           {open} Open

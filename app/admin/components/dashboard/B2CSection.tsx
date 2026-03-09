@@ -145,13 +145,13 @@ export default function B2CSection({
             👥
           </div>
           <div>
-            <p className='text-sm font-bold text-slate-800'>B2C Overview</p>
-            <p className='text-[10px] text-slate-400'>Customer Type Overview</p>
+            <p className='text-sm font-bold text-slate-800 dark:text-slate-100'>B2C Overview</p>
+            <p className='text-[10px] text-slate-400 dark:text-slate-500'>Customer Type Overview</p>
           </div>
         </div>
 
         {/* Right: filter tabs */}
-        <div className='flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1'>
+        <div className='flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800/80'>
           {filterTabs.map((tab) => {
             const count =
               tab.key === 'all'
@@ -165,12 +165,13 @@ export default function B2CSection({
                 key={tab.key}
                 type='button'
                 onClick={() => onSelectType?.(tab.key)}
-                className='flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all duration-150'
-                style={{
-                  background: isActive ? '#fff' : 'transparent',
-                  color: isActive ? '#0f172a' : '#64748b',
-                  boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-                }}
+                className={[
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold',
+                  'transition-all duration-150',
+                  isActive
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                    : 'text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/60 dark:hover:text-slate-200',
+                ].join(' ')}
               >
                 {tab.icon && <span>{tab.icon}</span>}
                 <span>{tab.label}</span>

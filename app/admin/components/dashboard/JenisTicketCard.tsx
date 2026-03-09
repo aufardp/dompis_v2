@@ -21,7 +21,7 @@ function StatusDot({
   label: string;
 }) {
   return (
-    <div className='flex items-center gap-1.5 text-[10px] text-slate-400'>
+    <div className='flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500'>
       <span
         className='h-2 w-2 rounded-full'
         style={{
@@ -54,9 +54,15 @@ export default function JenisTicketCard({
 
   return (
     <div
-      className='group relative flex flex-col overflow-hidden rounded-2xl bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md'
+      className={[
+        'group relative flex flex-col overflow-hidden rounded-2xl p-4',
+        'transition-all duration-200 hover:-translate-y-0.5',
+        'bg-white dark:bg-slate-800/60',
+        'shadow-sm hover:shadow-md dark:shadow-none dark:hover:shadow-none',
+        'border dark:border-slate-700/60',
+      ].join(' ')}
       style={{
-        border: `1px solid ${accentColor}30`,
+        borderColor: accentColor + '30',
       }}
     >
       {/* Header: icon + label + ttrLabel */}
@@ -100,10 +106,10 @@ export default function JenisTicketCard({
       </p>
 
       {/* % of group subtitle */}
-      <p className='mb-2 text-[10px] text-slate-400'>{shareOfGroup}% of group</p>
+      <p className='mb-2 text-[10px] text-slate-400 dark:text-slate-500'>{shareOfGroup}% of group</p>
 
       {/* Mini horizontal progress bar */}
-      <div className='mb-3 h-1 w-full overflow-hidden rounded-full bg-slate-200'>
+      <div className='mb-3 h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700'>
         <div
           className='h-full transition-all duration-700'
           style={{

@@ -51,11 +51,17 @@ export interface TicketRowProps {
 
 const SLA_STYLES = {
   'On Track': {
-    badge: 'bg-emerald-50 text-emerald-600',
+    badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
-  'At Risk': { badge: 'bg-amber-50 text-amber-600', dot: 'bg-amber-500' },
-  Overdue: { badge: 'bg-red-50 text-red-600', dot: 'bg-red-500' },
+  'At Risk': {
+    badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    dot: 'bg-amber-500',
+  },
+  Overdue: {
+    badge: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400',
+    dot: 'bg-red-500',
+  },
 };
 
 export default function TicketRow({
@@ -103,7 +109,7 @@ export default function TicketRow({
         'group transition-colors duration-100',
         'border-l-4',
         severityStyles.border,
-        selected ? 'bg-blue-50/60' : 'hover:bg-surface-2',
+        selected ? 'bg-blue-50/60 dark:bg-blue-500/10' : 'hover:bg-surface-2',
       )}
     >
       {/* Checkbox */}
@@ -159,7 +165,7 @@ export default function TicketRow({
             {ticket.serviceNo ?? '-'}
           </span>
           {isGuarantee && (
-            <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700'>
+            <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/15 dark:text-rose-400'>
               FFG
             </span>
           )}
@@ -200,8 +206,8 @@ export default function TicketRow({
               className={clsx(
                 'rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
                 flagLabel === 'P1'
-                  ? 'bg-red-50 text-red-700'
-                  : 'bg-amber-50 text-amber-700',
+                  ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
               )}
               title='Flagging Manja'
             >
@@ -219,7 +225,7 @@ export default function TicketRow({
       {/* Max TTR */}
       <td className='px-4 py-3 text-center'>
         {maxTtr ? (
-          <span className='rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600'>
+          <span className='rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400'>
             ⏱ {maxTtr}
           </span>
         ) : (
@@ -287,7 +293,7 @@ export default function TicketRow({
             </span>
           </div>
         ) : (
-          <span className='rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600'>
+          <span className='rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:border-amber-400/20 dark:bg-amber-500/15 dark:text-amber-400'>
             Unassigned
           </span>
         )}
@@ -312,7 +318,7 @@ export default function TicketRow({
           <button
             onClick={handleDetailClick}
             title='Lihat Detail'
-            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600'
+            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
           >
             <Eye size={13} />
           </button>
@@ -323,7 +329,7 @@ export default function TicketRow({
             <button
               onClick={handleDetailClick}
               title='Lihat Detail'
-              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600'
+              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
             >
               <Eye size={13} />
             </button>

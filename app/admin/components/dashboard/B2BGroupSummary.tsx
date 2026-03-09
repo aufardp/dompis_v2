@@ -26,7 +26,7 @@ function ResolutionRing({ pct, color }: { pct: number; color: string }) {
           cy='28'
           r={radius}
           fill='none'
-          stroke='rgba(0,0,0,0.06)'
+          className='stroke-slate-200 dark:stroke-slate-700'
           strokeWidth='3.5'
         />
         <circle
@@ -110,7 +110,7 @@ export default function B2BGroupSummary({
           >
             {total.toLocaleString()}
           </p>
-          <p className='mt-0.5 text-[10px] text-slate-400'>Total Tickets</p>
+          <p className='mt-0.5 text-[10px] text-slate-400 dark:text-slate-500'>Total Tickets</p>
         </div>
 
         {/* Divider */}
@@ -122,49 +122,49 @@ export default function B2BGroupSummary({
         {/* Reguler + SQM + Priority */}
         <div className='flex gap-6'>
           <div>
-            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
               📋 Reguler
             </p>
-            <p className='text-xl font-bold text-slate-700'>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
               {regulerCount.toLocaleString()}
             </p>
-            <p className='text-[9px] text-slate-400'>{regulerPct}% of total</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{regulerPct}% of total</p>
           </div>
           <div>
-            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
               📊 SQM
             </p>
-            <p className='text-xl font-bold text-slate-700'>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
               {sqmCount.toLocaleString()}
             </p>
-            <p className='text-[9px] text-slate-400'>{sqmPct}% of total</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{sqmPct}% of total</p>
           </div>
           <div>
-            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
               🛡️ FFG
             </p>
-            <p className='text-xl font-bold text-slate-700'>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
               {ffgCount.toLocaleString()}
             </p>
-            <p className='text-[9px] text-slate-400'>{ffgPct}% of total</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{ffgPct}% of total</p>
           </div>
           <div>
-            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
               ⚠️ P1
             </p>
-            <p className='text-xl font-bold text-slate-700'>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
               {p1Count.toLocaleString()}
             </p>
-            <p className='text-[9px] text-slate-400'>{p1Pct}% of total</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{p1Pct}% of total</p>
           </div>
           <div>
-            <p className='mb-1 text-[9px] font-semibold text-slate-400'>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
               📈 P+
             </p>
-            <p className='text-xl font-bold text-slate-700'>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
               {pPlusCount.toLocaleString()}
             </p>
-            <p className='text-[9px] text-slate-400'>{pPlusPct}% of total</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{pPlusPct}% of total</p>
           </div>
         </div>
 
@@ -183,7 +183,7 @@ export default function B2BGroupSummary({
             >
               {open}
             </p>
-            <p className='text-[9px] text-slate-400'>Open</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>Open</p>
           </div>
           <div className='text-center'>
             <p
@@ -192,7 +192,7 @@ export default function B2BGroupSummary({
             >
               {assigned}
             </p>
-            <p className='text-[9px] text-slate-400'>Assigned</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>Assigned</p>
           </div>
           <div className='text-center'>
             <p
@@ -201,23 +201,20 @@ export default function B2BGroupSummary({
             >
               {close}
             </p>
-            <p className='text-[9px] text-slate-400'>Close</p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>Close</p>
           </div>
         </div>
 
         {/* Resolution ring */}
         <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
-          <p className='text-[9px] text-slate-400'>Resolution</p>
+          <p className='text-[9px] text-slate-400 dark:text-slate-500'>Resolution</p>
           <ResolutionRing pct={pctClosed} color={accentColor} />
         </div>
       </div>
 
       {/* Bottom stacked progress bar */}
       <div className='mt-4'>
-        <div
-          className='h-1 overflow-hidden rounded-full'
-          style={{ background: accentColor + '12' }}
-        >
+        <div className='h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700/60'>
           <div className='flex h-full'>
             <div
               className='h-full transition-all duration-700'
@@ -242,7 +239,7 @@ export default function B2BGroupSummary({
             />
           </div>
         </div>
-        <div className='mt-1 flex justify-between text-[9px] text-slate-300'>
+        <div className='mt-1 flex justify-between text-[9px] text-slate-300 dark:text-slate-500'>
           <span>Open · Assigned · Close</span>
           <span>{total} total</span>
         </div>

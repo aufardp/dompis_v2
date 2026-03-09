@@ -49,15 +49,15 @@ export function getTicketSeverity(
 export const SEVERITY_COLORS = {
   critical: {
     border: 'border-l-red-500',
-    badge: 'bg-red-100 text-red-700',
+    badge: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300',
   },
   warning: {
     border: 'border-l-amber-500',
-    badge: 'bg-amber-100 text-amber-700',
+    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
   },
   normal: {
     border: 'border-l-green-500',
-    badge: 'bg-green-100 text-green-700',
+    badge: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300',
   },
 } as const;
 

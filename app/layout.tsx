@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Dompis',
   description: 'Semangat Pagi Pagi Pagi ...',
+  icons: {
+    icon: '/assets/logo.webp?v=1',
+  },
 };
 
 export default function RootLayout({
