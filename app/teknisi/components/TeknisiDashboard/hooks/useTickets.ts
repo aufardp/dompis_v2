@@ -1,6 +1,6 @@
 // app/teknisi/components/TeknisiDashboard/hooks/useTickets.ts
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
@@ -29,22 +29,46 @@ export function useTickets(
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TicketFilter>(initialFilter);
 
+  // Guard concurrent requests with requestId pattern
+  const requestIdRef = useRef(0);
+  // Debounce timer ref
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const fetchTickets = useCallback(async () => {
+    // Debounce: cancel if called repeatedly within 300ms
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    await new Promise<void>((resolve) => {
+      debounceRef.current = setTimeout(resolve, 300);
+    });
+
+    const requestId = ++requestIdRef.current;
+
     try {
       setLoading(true);
-      const res = await fetchWithAuth(
-        `/api/tickets?limit=100&_t=${Date.now()}`,
-      );
+      // No _t cache-buster — let Redis cache work
+      const res = await fetchWithAuth('/api/tickets?limit=100');
       if (!res) return;
+
+      // Cancel if this request is stale (a newer one was made)
+      if (requestId !== requestIdRef.current) return;
+
       const data = await res.json();
 
       if (data.success && data.data?.data) {
+        // Cancel if this request is stale
+        if (requestId !== requestIdRef.current) return;
         setTickets(data.data.data);
       }
     } catch (err) {
+      // Cancel if this request is stale
+      if (requestId !== requestIdRef.current) return;
       console.error('Failed to fetch tickets:', err);
     } finally {
-      setLoading(false);
+      // Only update loading if this is still the current request
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 

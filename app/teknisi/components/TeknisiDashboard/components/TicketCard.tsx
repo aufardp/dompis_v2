@@ -62,6 +62,16 @@ function formatPhoneNumber(phone: string): string {
   return phone;
 }
 
+function formatCustomerType(raw?: string | null): string {
+  if (!raw) return '';
+  const upper = raw.toUpperCase();
+  if (upper.includes('DIAMOND')) return 'HVC Diamond';
+  if (upper.includes('PLATINUM')) return 'HVC Platinum';
+  if (upper.includes('GOLD')) return 'HVC Gold';
+  if (upper.includes('REGULER') || upper.includes('REGULAR')) return 'Reguler';
+  return raw;
+}
+
 export default function TicketCard({ ticket, onClick }: TicketCardProps) {
   const status = (
     ticket.STATUS_UPDATE ??
@@ -220,7 +230,7 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
                 Customer Type
               </p>
               <p className='text-xs font-semibold text-slate-800 sm:text-sm'>
-                {ticket.customerType || '-'}
+                {formatCustomerType(ticket.customerType) || '-'}
               </p>
             </div>
             <div className='min-w-0 text-right'>

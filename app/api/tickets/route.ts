@@ -20,6 +20,7 @@ function buildTicketCacheKey(
   isMonitoring: boolean = false,
 ): string {
   const filterParams = new URLSearchParams(params);
+  filterParams.delete('_t');  // Exclude timestamp param to prevent cache bypass
   filterParams.sort();
   return `tickets:${isMonitoring ? 'monitoring' : role}:${userId}:${filterParams.toString()}`;
 }

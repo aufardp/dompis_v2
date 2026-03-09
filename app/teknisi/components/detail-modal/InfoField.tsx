@@ -86,7 +86,11 @@ export default function InfoField({
       <p className='mb-1 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
         {label}
       </p>
-      <p className='text-sm font-semibold text-slate-800'>{value || '-'}</p>
+      {value ? (
+        <p className='text-sm font-semibold text-slate-800'>{value}</p>
+      ) : (
+        <p className='text-sm font-medium italic text-slate-300'>Tidak tersedia</p>
+      )}
     </div>
   );
 }

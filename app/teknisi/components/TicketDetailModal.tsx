@@ -64,6 +64,33 @@ export default function TicketDetailModal({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
+  // Helper: compress image in browser before upload
+  const compressImage = useCallback(async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, maxWidthPx / img.width);
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { resolve(file); return; }
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+          },
+          'image/jpeg',
+          quality,
+        );
+      };
+      img.onerror = () => resolve(file); // fallback: use original file
+      img.src = url;
+    });
+  }, []);
+
   // Status derived values
   const status = useMemo(
     () => ticket.hasilVisit?.toUpperCase() || 'OPEN',
@@ -223,11 +250,17 @@ export default function TicketDetailModal({
     }
   }, [ticket.idTicket, onUpdated]);
 
-  // File handlers
-  const handleFileChange = useCallback((files: File[]) => {
-    setSelectedFiles(files);
-    setPreviewUrls(files.map((f) => URL.createObjectURL(f)));
-  }, []);
+  // File handlers — compress images before storing
+  const handleFileChange = useCallback(async (files: File[]) => {
+    // Compress all images in parallel before preview
+    const compressed = await Promise.all(
+      files.map((f) =>
+        f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)
+      ),
+    );
+    setSelectedFiles(compressed);
+    setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
+  }, [compressImage]);
 
   const handleRemoveImage = useCallback(
     (index: number) => {
@@ -474,48 +507,103 @@ export default function TicketDetailModal({
           {/* Detail Ticket Section */}
           <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
             <div className='space-y-3'>
+              
+              {/* Customer Type — format label that's more readable */}
+              <InfoField 
+                label='Jenis Pelanggan' 
+                value={
+                  ticket.customerType === 'HVC_GOLD' ? 'HVC Gold' :
+                  ticket.customerType === 'HVC_PLATINUM' ? 'HVC Platinum' :
+                  ticket.customerType === 'HVC_DIAMOND' ? 'HVC Diamond' :
+                  ticket.customerType === 'REGULER' ? 'Reguler' :
+                  ticket.customerType
+                } 
+              />
+
               <InfoField label='Jenis Layanan' value={ticket.serviceType} />
-              <InfoField label='Jenis Pelanggan' value={ticket.customerType} />
               <InfoField label='Device' value={ticket.deviceName} />
               <InfoField label='Workzone' value={ticket.workzone} />
-              <InfoField label='Symptom' value={ticket.symptom} />
+              
+              {/* Symptom — only show if available */}
+              {ticket.symptom && (
+                <InfoField label='Gejala / Symptom' value={ticket.symptom} />
+              )}
+
+              {/* Pending Reason — show if ticket is PENDING */}
+              {isPending && ticket.pendingReason && (
+                <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5'>
+                  <p className='mb-1 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
+                    Alasan Pending
+                  </p>
+                  <p className='text-sm font-semibold text-purple-900'>
+                    {ticket.pendingReason}
+                  </p>
+                </div>
+              )}
+
             </div>
           </SectionCard>
 
           {/* RCA Section */}
           {isOnProgress && (
             <SectionCard title='RCA' icon='🔍' iconBgColor='purple'>
-              <div className='space-y-3'>
-                <select
-                  value={selectedRca}
-                  onChange={(e) => {
-                    setSelectedRca(e.target.value);
-                    setSelectedSubRca('');
-                  }}
-                  className='w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:outline-none'
-                >
-                  <option value=''>-- Pilih RCA --</option>
-                  {Object.keys(rcaMapping).map((rca) => (
-                    <option key={rca} value={rca}>
-                      {rca}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedRca && (
+              <div className='space-y-4'>
+                
+                {/* Label + Select RCA */}
+                <div>
+                  <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                    Root Cause Analysis (RCA)
+                  </label>
                   <select
-                    value={selectedSubRca}
-                    onChange={(e) => setSelectedSubRca(e.target.value)}
-                    className='w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/30 focus:outline-none'
+                    value={selectedRca}
+                    onChange={(e) => {
+                      setSelectedRca(e.target.value);
+                      setSelectedSubRca('');
+                    }}
+                    className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
                   >
-                    <option value=''>-- Pilih Sub RCA --</option>
-                    {rcaMapping[selectedRca].map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
+                    <option value=''>-- Pilih RCA --</option>
+                    {Object.keys(rcaMapping).map((rca) => (
+                      <option key={rca} value={rca}>
+                        {rca}
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Label + Select Sub RCA — only show after RCA is chosen */}
+                {selectedRca && (
+                  <div>
+                    <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                      Sub RCA
+                    </label>
+                    <select
+                      value={selectedSubRca}
+                      onChange={(e) => setSelectedSubRca(e.target.value)}
+                      className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                    >
+                      <option value=''>-- Pilih Sub RCA --</option>
+                      {rcaMapping[selectedRca].map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
+
+                {/* Preview card when both RCA + Sub RCA are selected */}
+                {selectedRca && selectedSubRca && (
+                  <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3'>
+                    <p className='mb-0.5 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
+                      RCA dipilih
+                    </p>
+                    <p className='text-sm font-bold text-purple-900'>
+                      {selectedRca} → {selectedSubRca}
+                    </p>
+                  </div>
+                )}
+
               </div>
             </SectionCard>
           )}

@@ -1,4 +1,5 @@
 import prisma from '@/app/libs/prisma';
+import { Prisma } from '@prisma/client';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import {
   getWorkzonesForUser,
@@ -104,17 +105,51 @@ function mapTicket(t: any) {
 
 export class DailyTicketService {
   /**
+   * Get latest operational sync_date from DB
+   */
+  private static async getLatestSyncDate(
+    tx?: Prisma.TransactionClient,
+  ): Promise<Date | null> {
+    const db = tx ?? prisma;
+
+    const result = await db.ticket.aggregate({
+      _max: { sync_date: true },
+    });
+
+    return result._max.sync_date ?? null;
+  }
+
+  /**
    * Daily filter
    *
-   * tickets synced today OR pending
+   * tickets from latest operational sync_date OR pending
+   *
+   * Uses MAX(sync_date) from DB as reference (not server time) to avoid
+   * timezone mismatch. Server may be UTC while data is WIB-based.
    */
+  static async applyDailyTicketFilter(
+    where: Record<string, any>,
+    tx?: Prisma.TransactionClient,
+    latestSyncDateOverride?: Date | null,
+  ) {
+    const latestSyncDate =
+      latestSyncDateOverride !== undefined
+        ? latestSyncDateOverride
+        : await DailyTicketService.getLatestSyncDate(tx);
 
-  static applyDailyTicketFilter(where: Record<string, any>) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    if (!latestSyncDate) {
+      where.AND = [...(where.AND ?? []), { sync_date: null }];
+      return;
+    }
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Use latestSyncDate directly from DB (already a DATE column value).
+    // Prisma returns DATE columns as midnight UTC for that date.
+    // E.g., sync_date='2026-03-09' → Date(2026-03-09T00:00:00.000Z)
+    const startOfDay = new Date(latestSyncDate);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setUTCDate(endOfDay.getUTCDate() + 1);
 
     where.AND = [
       ...(where.AND ?? []),
@@ -122,8 +157,8 @@ export class DailyTicketService {
         OR: [
           {
             sync_date: {
-              gte: today,
-              lt: tomorrow,
+              gte: startOfDay,
+              lt: endOfDay,
             },
           },
           {
@@ -269,7 +304,7 @@ export class DailyTicketService {
       ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
     };
 
-    this.applyDailyTicketFilter(where);
+    await this.applyDailyTicketFilter(where);
 
     if (search) {
       where.AND = [
@@ -361,7 +396,7 @@ export class DailyTicketService {
 
     const where = await this.buildWorkzoneWhere(role, userId, selectedWorkzone);
 
-    this.applyDailyTicketFilter(where);
+    await this.applyDailyTicketFilter(where);
 
     // Apply dept filter (B2B/B2C)
     if (p0?.dept && p0.dept !== 'all') {
@@ -440,7 +475,7 @@ export class DailyTicketService {
           WORKZONE: { contains: sa.nama_sa },
         };
 
-        this.applyDailyTicketFilter(where);
+        await this.applyDailyTicketFilter(where);
 
         if (options?.statusUpdate && options.statusUpdate !== 'all') {
           applyStatusUpdateWhere(where, options.statusUpdate);

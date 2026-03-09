@@ -335,15 +335,40 @@ export default function ModalFooter({
 
       {/* ── ASSIGNED ────────────────────────────────────────────────────── */}
       {isAssigned && (
-        <ActionButton
-          variant='primary'
-          onClick={onPickup}
-          disabled={anyLoading}
-          loading={isLoading('pickup')}
-          className='w-full'
-        >
-          🚀 Pickup Ticket
-        </ActionButton>
+        <div className='flex flex-col gap-2'>
+          {/* Context text */}
+          <p className='text-center text-[11px] font-semibold text-slate-400'>
+            Tiket ini telah di-assign ke Anda
+          </p>
+
+          {/* Big Pickup Button */}
+          <button
+            onClick={onPickup}
+            disabled={anyLoading}
+            className='flex h-[72px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-[0_6px_20px_rgba(99,102,241,0.35)] transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 hover:shadow-[0_8px_28px_rgba(99,102,241,0.45)] hover:-translate-y-0.5'
+          >
+            {anyLoading ? (
+              <>
+                <span className='h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                <span className='text-[12px] font-bold tracking-wide opacity-80'>
+                  Memproses...
+                </span>
+              </>
+            ) : (
+              <>
+                <div className='flex items-center gap-2'>
+                  <span className='text-xl'>🚀</span>
+                  <span className='text-[18px] font-black tracking-wide'>
+                    Pickup Ticket
+                  </span>
+                </div>
+                <span className='text-[11px] font-semibold text-white/70'>
+                  Mulai kerjakan tiket ini
+                </span>
+              </>
+            )}
+          </button>
+        </div>
       )}
 
       {/* ── PENDING ─────────────────────────────────────────────────────── */}

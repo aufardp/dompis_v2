@@ -3,39 +3,40 @@ import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 
 const SHEET_NAME = 'Dummy_Dompis';
-const START_ROW = 2;
-const BATCH_SIZE = 400;
+const START_ROW = 6;
+
+const BATCH_SIZE = 200;
+const RETRY_MAX = 3;
+
+const MAX_READ_ROW = 50000;
 
 let isPushRunning = false;
 
-function buildColumnMap(header: string[]) {
-  const find = (name: string) => header.indexOf(name);
+function hashRow(data: any[]) {
+  return data.join('|');
+}
 
-  return {
-    INCIDENT: find('INCIDENT'),
-    SUMMARY: find('SUMMARY'),
-    REPORTED_DATE: find('REPORTED DATE'),
-    OWNER_GROUP: find('OWNER GROUP'),
-    SERVICE_TYPE: find('SERVICE TYPE'),
-    WORKZONE: find('WORKZONE'),
-    CONTACT_PHONE: find('CONTACT PHONE'),
-    CONTACT_NAME: find('CONTACT NAME'),
-    CUSTOMER_TYPE: find('CUSTOMER TYPE'),
-    SERVICE_NO: find('SERVICE NO'),
-    SYMPTOM: find('SYMPTOM'),
-    DEVICE_NAME: find('DEVICE NAME'),
-    STATUS_UPDATE: find('STATUS UPDATE'),
-    HASIL_VISIT: find('HASIL VISIT'),
-    TEKNISI: find('TEKNISI'),
-    RCA: find('RCA'),
-    SUB_RCA: find('SUB_RCA'),
-    ALAMAT: find('ALAMAT'),
-  };
+async function retryGoogle(fn: () => Promise<any>) {
+  let attempt = 0;
+
+  while (attempt < RETRY_MAX) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+
+      if (attempt >= RETRY_MAX) throw err;
+
+      console.log(`Retry Google API ${attempt}`);
+      await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
+  }
 }
 
 export async function pushSpreadsheet() {
   if (isPushRunning) {
-    return { success: false, message: 'Push sedang berjalan' };
+    console.log('PUSH skip — masih running');
+    return { success: false };
   }
 
   isPushRunning = true;
@@ -47,58 +48,13 @@ export async function pushSpreadsheet() {
     const spreadsheetId = getSpreadsheetId();
 
     /**
-     * 1️⃣ Load header
-     */
-
-    const headerRes = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'${SHEET_NAME}'!B6:AZ6`,
-    });
-
-    const header = headerRes.data.values?.[0] || [];
-
-    const col = buildColumnMap(header);
-
-    /**
-     * 2️⃣ Load INCIDENT dari sheet
-     */
-
-    const sheetRes = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'${SHEET_NAME}'!A${START_ROW}:A`,
-    });
-
-    const sheetRows = sheetRes.data.values || [];
-
-    const incidentMap = new Map<string, number>();
-
-    sheetRows.forEach((r, i) => {
-      const incident = r[0];
-      if (incident) {
-        incidentMap.set(incident, i + START_ROW);
-      }
-    });
-
-    /**
-     * 3️⃣ Load data DB
+     * 1️⃣ GET DB
      */
 
     const tickets = await prisma.ticket.findMany({
       select: {
         INCIDENT: true,
-        SUMMARY: true,
-        REPORTED_DATE: true,
-        OWNER_GROUP: true,
-        SERVICE_TYPE: true,
-        WORKZONE: true,
-        CONTACT_PHONE: true,
-        CONTACT_NAME: true,
-        CUSTOMER_TYPE: true,
-        SERVICE_NO: true,
-        SYMPTOM: true,
-        DEVICE_NAME: true,
         STATUS_UPDATE: true,
-        ALAMAT: true,
         rca: true,
         sub_rca: true,
         users: {
@@ -107,89 +63,174 @@ export async function pushSpreadsheet() {
       },
     });
 
+    /**
+     * 2️⃣ GET SHEET
+     */
+
+    const sheetRes = await retryGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${SHEET_NAME}'!B${START_ROW}:AI${MAX_READ_ROW}`,
+      }),
+    );
+
+    const sheetRows = sheetRes.data.values || [];
+
+    const sheetMap = new Map<string, { row: number; hash: string }>();
+
+    sheetRows.forEach((r: any[], i: number) => {
+      const incident = r[0];
+      if (!incident) return;
+
+      const hasilVisit = r[30] || '';
+      const teknisi = r[32] || '';
+      const rca = r[33] || '';
+      const subrca = r[34] || '';
+
+      const hash = hashRow([hasilVisit, teknisi, rca, subrca]);
+
+      sheetMap.set(incident, {
+        row: START_ROW + i,
+        hash,
+      });
+    });
+
+    /**
+     * 3️⃣ COMPARE
+     */
+
     const updates: any[] = [];
     const inserts: any[] = [];
 
-    /**
-     * 4️⃣ Mapping row
-     */
+    let skipped = 0;
 
     for (const t of tickets) {
       const teknisi = t.users?.nama ?? '';
 
-      const row = new Array(header.length).fill('');
+      const dbData = [
+        t.STATUS_UPDATE ?? '',
+        teknisi,
+        t.rca ?? '',
+        t.sub_rca ?? '',
+      ];
 
-      row[col.INCIDENT] = t.INCIDENT;
-      row[col.SUMMARY] = t.SUMMARY ?? '';
-      row[col.REPORTED_DATE] = t.REPORTED_DATE ?? '';
-      row[col.OWNER_GROUP] = t.OWNER_GROUP ?? '';
-      row[col.SERVICE_TYPE] = t.SERVICE_TYPE ?? '';
-      row[col.WORKZONE] = t.WORKZONE ?? '';
-      row[col.CONTACT_PHONE] = t.CONTACT_PHONE ?? '';
-      row[col.CONTACT_NAME] = t.CONTACT_NAME ?? '';
-      row[col.CUSTOMER_TYPE] = t.CUSTOMER_TYPE ?? '';
-      row[col.SERVICE_NO] = t.SERVICE_NO ?? '';
-      row[col.SYMPTOM] = t.SYMPTOM ?? '';
-      row[col.DEVICE_NAME] = t.DEVICE_NAME ?? '';
-      row[col.STATUS_UPDATE] = t.STATUS_UPDATE ?? '';
-      row[col.HASIL_VISIT] = t.STATUS_UPDATE ?? '';
-      row[col.TEKNISI] = teknisi;
-      row[col.RCA] = t.rca ?? '';
-      row[col.SUB_RCA] = t.sub_rca ?? '';
-      row[col.ALAMAT] = t.ALAMAT ?? '';
+      const dbHash = hashRow(dbData);
 
-      const sheetRow = incidentMap.get(t.INCIDENT);
+      const sheetRow = sheetMap.get(t.INCIDENT);
 
       if (!sheetRow) {
-        inserts.push(row);
-      } else {
-        updates.push({
-          range: `'${SHEET_NAME}'!A${sheetRow}`,
-          values: [row],
-        });
+        inserts.push([
+          t.INCIDENT,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          t.STATUS_UPDATE ?? '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          t.STATUS_UPDATE ?? '',
+          '',
+          teknisi,
+          t.rca ?? '',
+          t.sub_rca ?? '',
+        ]);
+
+        continue;
       }
+
+      if (sheetRow.hash === dbHash) {
+        skipped++;
+        continue;
+      }
+
+      const row = sheetRow.row;
+
+      updates.push({
+        range: `'${SHEET_NAME}'!AE${row}:AI${row}`,
+        values: [
+          [t.STATUS_UPDATE ?? '', '', teknisi, t.rca ?? '', t.sub_rca ?? ''],
+        ],
+      });
     }
 
     /**
-     * 5️⃣ UPDATE
+     * 4️⃣ UPDATE
      */
+
+    let updated = 0;
 
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
       const chunk = updates.slice(i, i + BATCH_SIZE);
 
-      await sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          valueInputOption: 'RAW',
-          data: chunk,
-        },
-      });
+      await retryGoogle(() =>
+        sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            valueInputOption: 'RAW',
+            data: chunk,
+          },
+        }),
+      );
+
+      updated += chunk.length;
     }
 
     /**
-     * 6️⃣ INSERT
+     * 5️⃣ INSERT
      */
 
     if (inserts.length) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: `'${SHEET_NAME}'!A${START_ROW}`,
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: {
-          values: inserts,
-        },
-      });
+      const startInsertRow = START_ROW + sheetRows.length;
+
+      const insertBatch = inserts.map((row, i) => ({
+        range: `'${SHEET_NAME}'!B${startInsertRow + i}`,
+        values: [row],
+      }));
+
+      await retryGoogle(() =>
+        sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            valueInputOption: 'RAW',
+            data: insertBatch,
+          },
+        }),
+      );
     }
 
-    console.log(
-      `PUSH DONE | update:${updates.length} insert:${inserts.length}`,
-    );
+    console.log(`
+      PUSH DONE
+      updated : ${updated}
+      inserted: ${inserts.length}
+      skipped : ${skipped}
+    `);
 
     return {
       success: true,
-      updated: updates.length,
+      updated,
       inserted: inserts.length,
+      skipped,
     };
   } catch (err: any) {
     console.error('PUSH ERROR', err);

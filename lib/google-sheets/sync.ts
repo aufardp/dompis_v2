@@ -2,10 +2,8 @@ import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 
-// Expanded range to cover more rows — adjust based on actual sheet size
-// If sheet has > 10000 rows, increase this number or use open-ended range
 const RANGE = 'WO_B2B_B2C!A1:HZ10000';
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 25;
 const RETRY_MAX = 3;
 
 interface SyncResult {
@@ -190,7 +188,6 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     const spreadsheetId = getSpreadsheetId();
 
     const response = await fetchSheet(sheets, spreadsheetId);
-
     const rows = response.data.values || [];
 
     if (rows.length <= 1) return result;
@@ -206,21 +203,30 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       mappedRows.push(mapped);
     }
 
+    /* ------------------- CHECK EXISTING INCIDENTS (OPTIMIZED) ------------------- */
+
+    const incidentList = mappedRows.map((r) => r[0]);
+
     const existing = await prisma.ticket.findMany({
       select: { INCIDENT: true },
+      where: {
+        INCIDENT: {
+          in: incidentList,
+        },
+      },
     });
 
     const existingSet = new Set(existing.map((r) => r.INCIDENT));
 
-    const finalRows: any[] = [];
+    /* -------------------------- PREPARE FINAL DATA -------------------------- */
 
+    const finalRows: any[] = [];
     const syncDate = new Date().toISOString().split('T')[0];
     const batchId = `SYNC_${syncDate}_${Date.now()}`;
 
     for (const row of mappedRows) {
       const incident = row[0];
       const statusUpdate = row[29];
-      const status = row[6];
 
       row[29] = statusUpdate ?? null;
 
@@ -229,6 +235,8 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
       finalRows.push([...row, syncDate, batchId]);
     }
+
+    /* ------------------------------ INSERT BATCH ----------------------------- */
 
     const batches = chunkArray(finalRows, BATCH_SIZE);
 
@@ -248,41 +256,44 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       }
 
       const query = `
-INSERT INTO ticket (
-INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
-CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
-TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
-BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
-SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
-DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
-MANJA_EXPIRED,ALAMAT,PENDING_REASON,
-GUARANTE_STATUS,FLAGGING_MANJA,
-LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
-STATUS_MANJA,
-JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
-JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
-JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
-JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
-TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
-TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
-TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
-TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
-rca,sub_rca,
-sync_date,import_batch
-) VALUES ${placeholders}
+      INSERT INTO ticket (
+      INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
+      CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
+      TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
+      BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
+      SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
+      DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
+      MANJA_EXPIRED,ALAMAT,PENDING_REASON,
+      GUARANTE_STATUS,FLAGGING_MANJA,
+      LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
+      STATUS_MANJA,
+      JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
+      JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
+      JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
+      JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
+      TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
+      TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
+      TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
+      TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
+      rca,sub_rca,
+      sync_date,import_batch
+      ) VALUES ${placeholders}
 
-ON DUPLICATE KEY UPDATE
-SUMMARY       = VALUES(SUMMARY),
-STATUS        = VALUES(STATUS),
-WORKZONE      = VALUES(WORKZONE),
-OWNER_GROUP   = VALUES(OWNER_GROUP),
-STATUS_UPDATE = VALUES(STATUS_UPDATE),
-sync_date     = VALUES(sync_date),
-import_batch  = VALUES(import_batch),
-synced_at     = NOW()
-`;
+      ON DUPLICATE KEY UPDATE
+      SUMMARY       = VALUES(SUMMARY),
+      STATUS        = VALUES(STATUS),
+      WORKZONE      = VALUES(WORKZONE),
+      OWNER_GROUP   = VALUES(OWNER_GROUP),
+      STATUS_UPDATE = VALUES(STATUS_UPDATE),
+      sync_date     = VALUES(sync_date),
+      import_batch  = VALUES(import_batch),
+      synced_at     = NOW()
+      `;
 
       await prisma.$executeRawUnsafe(query, ...values);
+
+      // small delay to prevent mysql overload
+      await new Promise((r) => setTimeout(r, 50));
     }
 
     console.log(
