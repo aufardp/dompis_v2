@@ -86,7 +86,9 @@ function mapTicket(t: any) {
     deviceName: t.DEVICE_NAME,
     status: t.STATUS,
     STATUS_UPDATE: (() => {
-      const v = String(t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      const v = String(t.STATUS_UPDATE ?? '')
+        .trim()
+        .toLowerCase();
       return v || null;
     })(),
     hasilVisit: t.STATUS_UPDATE,
@@ -108,7 +110,7 @@ function mapTicket(t: any) {
     rca: t.rca,
     subRca: t.sub_rca,
     alamat: t.ALAMAT,
-    closedAt: t.closed_at,
+    closedAt: t.closed_at ? t.closed_at.toISOString() : null,
     technicianName: t.users?.nama,
   };
 }
@@ -149,11 +151,6 @@ export class TicketService {
     }
   }
 
-  /**
-   * Builds a Prisma `where` fragment that restricts results to tickets the
-   * caller is allowed to see. Returns `{ id_ticket: 0 }` as a zero-result
-   * sentinel whenever access should be denied.
-   */
   private static async buildWorkzoneWhere(
     role: string,
     userId: number,
@@ -305,16 +302,32 @@ export class TicketService {
           INCIDENT: true,
           SUMMARY: true,
           REPORTED_DATE: true,
+          OWNER_GROUP: true,
+          SERVICE_TYPE: true,
           SERVICE_NO: true,
           CONTACT_NAME: true,
           CONTACT_PHONE: true,
           BOOKING_DATE: true,
           WORKZONE: true,
           CUSTOMER_TYPE: true,
+          CUSTOMER_SEGMENT: true,
           JENIS_TIKET: true,
           FLAGGING_MANJA: true,
           GUARANTE_STATUS: true,
           STATUS_UPDATE: true,
+          SYMPTOM: true,
+          ALAMAT: true,
+          DEVICE_NAME: true,
+          PENDING_REASON: true,
+          SOURCE_TICKET: true,
+          DESCRIPTION_ACTUAL_SOLUTION: true,
+          JAM_EXPIRED_24_JAM_REGULER: true,
+          JAM_EXPIRED_12_JAM_GOLD: true,
+          JAM_EXPIRED_6_JAM_PLATINUM: true,
+          JAM_EXPIRED_3_JAM_DIAMOND: true,
+          rca: true,
+          sub_rca: true,
+          closed_at: true,
           teknisi_user_id: true,
           users: {
             select: {

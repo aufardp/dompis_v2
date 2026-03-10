@@ -73,11 +73,9 @@ function formatCustomerType(raw?: string | null): string {
 }
 
 export default function TicketCard({ ticket, onClick }: TicketCardProps) {
-  const status = (
-    ticket.STATUS_UPDATE ??
-    ticket.hasilVisit ??
-    ''
-  ).toLowerCase();
+  const status = (ticket.hasilVisit ?? ticket.STATUS_UPDATE ?? '')
+    .toUpperCase()
+    .trim();
   const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
   const borderColor = isClosed
     ? 'border-l-green-500'
@@ -106,7 +104,7 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
       <div className='flex flex-col gap-2 sm:gap-3'>
         {/* Incident Number */}
         <div className='flex items-center justify-between'>
-          <span className='font-mono text-[11px] font-bold text-slate-500'>
+          <span className='font-mono text-[14px] font-bold text-slate-500'>
             {ticket.ticket}
           </span>
           <svg
@@ -130,22 +128,22 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
             className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
               isClosed
                 ? 'border-green-200 bg-green-100 text-green-700'
-                : status === 'assigned'
+                : status === 'ASSIGNED'
                   ? 'border-amber-200 bg-amber-100 text-amber-700'
-                  : status === 'on_progress'
+                  : status === 'ON_PROGRESS'
                     ? 'border-blue-200 bg-blue-100 text-blue-700'
-                    : status === 'pending'
+                    : status === 'PENDING'
                       ? 'border-purple-200 bg-purple-100 text-purple-700'
                       : 'border-slate-200 bg-slate-100 text-slate-600'
             }`}
           >
             {isClosed
               ? 'Selesai'
-              : status === 'assigned'
+              : status === 'ASSIGNED'
                 ? 'Menunggu'
-                : status === 'on_progress'
+                : status === 'ON_PROGRESS'
                   ? 'Dikerjakan'
-                  : status === 'pending'
+                  : status === 'PENDING'
                     ? 'Pending'
                     : status}
           </span>
@@ -194,7 +192,7 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
                   target='_blank'
                   rel='noopener noreferrer'
                   onClick={handleWhatsAppClick}
-                  className='inline-flex items-center gap-0.5 text-[10px] font-semibold break-all text-emerald-600 hover:text-emerald-700 sm:text-sm'
+                  className='inline-flex items-center gap-0.5 text-[13px] font-semibold break-all text-emerald-600 hover:text-emerald-700 sm:text-sm'
                 >
                   <svg
                     className='h-3 w-3 shrink-0'

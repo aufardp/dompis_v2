@@ -14,6 +14,19 @@ interface SyncResult {
 
 let isSyncRunning = false;
 
+const WORKFLOW_PROTECTED_STATUSES = new Set([
+  'assigned',
+  'on_progress',
+  'pending',
+  'close',
+  'closed', // legacy value, tetap dilindungi
+]);
+
+function isWorkflowProtected(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return WORKFLOW_PROTECTED_STATUSES.has(status.toLowerCase().trim());
+}
+
 /* ----------------------------- RETRY GOOGLE API ----------------------------- */
 
 async function fetchSheet(sheets: any, spreadsheetId: string) {
@@ -116,55 +129,55 @@ function mapRow(row: string[], col: any) {
   };
 
   return [
-    get('INCIDENT'),
-    get('SUMMARY'),
-    get('REPORTED_DATE'),
-    get('OWNER_GROUP'),
-    get('CUSTOMER_SEGMENT'),
-    get('SERVICE_TYPE'),
-    get('WORKZONE'),
-    get('STATUS'),
-    get('TICKET_ID_GAMAS'),
-    get('CONTACT_PHONE'),
-    get('CONTACT_NAME'),
-    get('BOOKING_DATE'),
-    get('SOURCE_TICKET'),
-    get('CUSTOMER_TYPE'),
-    get('SERVICE_NO'),
-    get('SYMPTOM'),
-    get('DESCRIPTION_ACTUAL_SOLUTION'),
-    get('DEVICE_NAME'),
-    get('JENIS_TIKET'),
-    get('JAM_EXPIRED'),
-    get('REDAMAN'),
-    get('MANJA_EXPIRED'),
-    get('ALAMAT'),
-    get('PENDING_REASON'),
-    get('GUARANTE_STATUS'),
-    get('FLAGGING_MANJA'),
-    get('LAPUL'),
-    get('GAUL'),
-    get('ONU_RX'),
-    get('STATUS_UPDATE'),
-    get('STATUS_MANJA'),
-    get('JAM_EXPIRED_12_JAM_GOLD'),
-    get('STATUS_TTR_12_GOLD'),
-    get('JAM_EXPIRED_3_JAM_DIAMOND'),
-    get('STATUS_TTR_3_DIAMOND'),
-    get('JAM_EXPIRED_24_JAM_REGULER'),
-    get('STATUS_TTR_24_REGULER'),
-    get('JAM_EXPIRED_6_JAM_PLATINUM'),
-    get('STATUS_TTR_6_PLATINUM'),
-    get('TTR_K1_DATIN_1_5_JAM'),
-    get('TTR_K1_REPAIR_K2_DATIN_3_6_JAM'),
-    get('TTR_K3_DATIN_7_2_JAM'),
-    get('TTR_INDIBIZ_4_JAM'),
-    get('TTR_INDIBIZ_24_JAM'),
-    get('TTR_INDIHOME_RESELLER_6_JAM'),
-    get('TTR_INDIHOME_RESELLER_36_JAM'),
-    get('TTR_WIFI_24_JAM'),
-    get('rca'),
-    get('sub_rca'),
+    get('INCIDENT'), // [0]
+    get('SUMMARY'), // [1]
+    get('REPORTED_DATE'), // [2]
+    get('OWNER_GROUP'), // [3]
+    get('CUSTOMER_SEGMENT'), // [4]
+    get('SERVICE_TYPE'), // [5]
+    get('WORKZONE'), // [6]
+    get('STATUS'), // [7]
+    get('TICKET_ID_GAMAS'), // [8]
+    get('CONTACT_PHONE'), // [9]
+    get('CONTACT_NAME'), // [10]
+    get('BOOKING_DATE'), // [11]
+    get('SOURCE_TICKET'), // [12]
+    get('CUSTOMER_TYPE'), // [13]
+    get('SERVICE_NO'), // [14]
+    get('SYMPTOM'), // [15]
+    get('DESCRIPTION_ACTUAL_SOLUTION'), // [16]
+    get('DEVICE_NAME'), // [17]
+    get('JENIS_TIKET'), // [18]
+    get('JAM_EXPIRED'), // [19]
+    get('REDAMAN'), // [20]
+    get('MANJA_EXPIRED'), // [21]
+    get('ALAMAT'), // [22]
+    get('PENDING_REASON'), // [23]
+    get('GUARANTE_STATUS'), // [24]
+    get('FLAGGING_MANJA'), // [25]
+    get('LAPUL'), // [26]
+    get('GAUL'), // [27]
+    get('ONU_RX'), // [28]
+    get('STATUS_UPDATE'), // [29] ← nilai dari sheet, bisa null/empty/'open'
+    get('STATUS_MANJA'), // [30]
+    get('JAM_EXPIRED_12_JAM_GOLD'), // [31]
+    get('STATUS_TTR_12_GOLD'), // [32]
+    get('JAM_EXPIRED_3_JAM_DIAMOND'), // [33]
+    get('STATUS_TTR_3_DIAMOND'), // [34]
+    get('JAM_EXPIRED_24_JAM_REGULER'), // [35]
+    get('STATUS_TTR_24_REGULER'), // [36]
+    get('JAM_EXPIRED_6_JAM_PLATINUM'), // [37]
+    get('STATUS_TTR_6_PLATINUM'), // [38]
+    get('TTR_K1_DATIN_1_5_JAM'), // [39]
+    get('TTR_K1_REPAIR_K2_DATIN_3_6_JAM'), // [40]
+    get('TTR_K3_DATIN_7_2_JAM'), // [41]
+    get('TTR_INDIBIZ_4_JAM'), // [42]
+    get('TTR_INDIBIZ_24_JAM'), // [43]
+    get('TTR_INDIHOME_RESELLER_6_JAM'), // [44]
+    get('TTR_INDIHOME_RESELLER_36_JAM'), // [45]
+    get('TTR_WIFI_24_JAM'), // [46]
+    get('rca'), // [47]
+    get('sub_rca'), // [48]
   ];
 }
 
@@ -203,101 +216,211 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       mappedRows.push(mapped);
     }
 
-    /* ------------------- CHECK EXISTING INCIDENTS (OPTIMIZED) ------------------- */
+    /* ------------------- CHECK EXISTING INCIDENTS ------------------- */
 
     const incidentList = mappedRows.map((r) => r[0]);
 
     const existing = await prisma.ticket.findMany({
-      select: { INCIDENT: true },
+      select: {
+        INCIDENT: true,
+        STATUS_UPDATE: true, // ← fetch current DB status untuk proteksi
+      },
       where: {
-        INCIDENT: {
-          in: incidentList,
-        },
+        INCIDENT: { in: incidentList },
       },
     });
 
-    const existingSet = new Set(existing.map((r) => r.INCIDENT));
+    // Map: INCIDENT → STATUS_UPDATE saat ini di DB
+    const existingMap = new Map(
+      existing.map((r) => [r.INCIDENT, r.STATUS_UPDATE]),
+    );
 
     /* -------------------------- PREPARE FINAL DATA -------------------------- */
 
-    const finalRows: any[] = [];
+    const newRows: any[] = []; // INSERT baru
+    const safeRows: any[] = []; // UPDATE aman (status belum di-workflow)
+    const protectedRows: any[] = []; // UPDATE dengan STATUS_UPDATE dikunci
+
     const syncDate = new Date().toISOString().split('T')[0];
     const batchId = `SYNC_${syncDate}_${Date.now()}`;
 
     for (const row of mappedRows) {
       const incident = row[0];
-      const statusUpdate = row[29];
+      const sheetStatusUpdate = row[29]; // nilai STATUS_UPDATE dari Google Sheet
+      const dbStatusUpdate = existingMap.get(incident); // nilai saat ini di DB
 
-      row[29] = statusUpdate ?? null;
-
-      if (existingSet.has(incident)) result.updated++;
-      else result.inserted++;
-
-      finalRows.push([...row, syncDate, batchId]);
+      if (!existingMap.has(incident)) {
+        // ── INSERT baru: ticket belum ada di DB ────────────────────────────
+        // Gunakan nilai dari sheet apa adanya (normalkan ke null jika kosong)
+        row[29] = sheetStatusUpdate?.trim() || null;
+        result.inserted++;
+        newRows.push([...row, syncDate, batchId]);
+      } else if (isWorkflowProtected(dbStatusUpdate)) {
+        result.updated++;
+        protectedRows.push([...row, syncDate, batchId]);
+      } else {
+        row[29] = sheetStatusUpdate?.trim() || null;
+        result.updated++;
+        safeRows.push([...row, syncDate, batchId]);
+      }
     }
 
     /* ------------------------------ INSERT BATCH ----------------------------- */
 
-    const batches = chunkArray(finalRows, BATCH_SIZE);
+    // INSERT baru: semua kolom termasuk STATUS_UPDATE dari sheet
+    if (newRows.length > 0) {
+      const batches = chunkArray(newRows, BATCH_SIZE);
 
-    for (const batch of batches) {
-      const columnCount = batch[0].length;
+      for (const batch of batches) {
+        const columnCount = batch[0].length;
+        const placeholders = batch
+          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+          .join(',');
 
-      const placeholders = batch
-        .map(() => `(${Array(columnCount).fill('?').join(',')})`)
-        .join(',');
+        const values: any[] = batch.flat();
 
-      const values: any[] = [];
+        const query = `
+        INSERT INTO ticket (
+        INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
+        CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
+        TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
+        BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
+        SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
+        DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
+        MANJA_EXPIRED,ALAMAT,PENDING_REASON,
+        GUARANTE_STATUS,FLAGGING_MANJA,
+        LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
+        STATUS_MANJA,
+        JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
+        JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
+        JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
+        JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
+        TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
+        TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
+        TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
+        TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
+        rca,sub_rca,
+        sync_date,import_batch
+        ) VALUES ${placeholders}
+        `;
 
-      for (const row of batch) {
-        for (const v of row) {
-          values.push(v);
-        }
+        await prisma.$executeRawUnsafe(query, ...values);
+        await new Promise((r) => setTimeout(r, 50));
       }
+    }
 
-      const query = `
-      INSERT INTO ticket (
-      INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
-      CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
-      TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
-      BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
-      SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
-      DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
-      MANJA_EXPIRED,ALAMAT,PENDING_REASON,
-      GUARANTE_STATUS,FLAGGING_MANJA,
-      LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
-      STATUS_MANJA,
-      JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
-      JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
-      JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
-      JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
-      TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
-      TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
-      TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
-      TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
-      rca,sub_rca,
-      sync_date,import_batch
-      ) VALUES ${placeholders}
+    /* -------------------- UPDATE SAFE (status masih open/null) -------------------- */
 
-      ON DUPLICATE KEY UPDATE
-      SUMMARY       = VALUES(SUMMARY),
-      STATUS        = VALUES(STATUS),
-      WORKZONE      = VALUES(WORKZONE),
-      OWNER_GROUP   = VALUES(OWNER_GROUP),
-      STATUS_UPDATE = VALUES(STATUS_UPDATE),
-      sync_date     = VALUES(sync_date),
-      import_batch  = VALUES(import_batch),
-      synced_at     = NOW()
-      `;
+    // UPDATE normal: STATUS_UPDATE boleh di-overwrite dari sheet
+    if (safeRows.length > 0) {
+      const batches = chunkArray(safeRows, BATCH_SIZE);
 
-      await prisma.$executeRawUnsafe(query, ...values);
+      for (const batch of batches) {
+        const columnCount = batch[0].length;
+        const placeholders = batch
+          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+          .join(',');
 
-      // small delay to prevent mysql overload
-      await new Promise((r) => setTimeout(r, 50));
+        const values: any[] = batch.flat();
+
+        const query = `
+        INSERT INTO ticket (
+        INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
+        CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
+        TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
+        BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
+        SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
+        DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
+        MANJA_EXPIRED,ALAMAT,PENDING_REASON,
+        GUARANTE_STATUS,FLAGGING_MANJA,
+        LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
+        STATUS_MANJA,
+        JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
+        JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
+        JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
+        JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
+        TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
+        TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
+        TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
+        TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
+        rca,sub_rca,
+        sync_date,import_batch
+        ) VALUES ${placeholders}
+
+        ON DUPLICATE KEY UPDATE
+        SUMMARY       = VALUES(SUMMARY),
+        STATUS        = VALUES(STATUS),
+        WORKZONE      = VALUES(WORKZONE),
+        OWNER_GROUP   = VALUES(OWNER_GROUP),
+        STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        sync_date     = VALUES(sync_date),
+        import_batch  = VALUES(import_batch),
+        synced_at     = NOW()
+        `;
+
+        await prisma.$executeRawUnsafe(query, ...values);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    /* -------------------- UPDATE PROTECTED (status sudah di-workflow) -------------------- */
+
+    // UPDATE terlindungi: STATUS_UPDATE TIDAK di-update, hanya metadata teknis
+    if (protectedRows.length > 0) {
+      const batches = chunkArray(protectedRows, BATCH_SIZE);
+
+      for (const batch of batches) {
+        const columnCount = batch[0].length;
+        const placeholders = batch
+          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+          .join(',');
+
+        const values: any[] = batch.flat();
+
+        const query = `
+        INSERT INTO ticket (
+        INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
+        CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
+        TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
+        BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
+        SERVICE_NO,SYMPTOM,DESCRIPTION_ACTUAL_SOLUTION,
+        DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
+        MANJA_EXPIRED,ALAMAT,PENDING_REASON,
+        GUARANTE_STATUS,FLAGGING_MANJA,
+        LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
+        STATUS_MANJA,
+        JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
+        JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,
+        JAM_EXPIRED_24_JAM_REGULER,STATUS_TTR_24_REGULER,
+        JAM_EXPIRED_6_JAM_PLATINUM,STATUS_TTR_6_PLATINUM,
+        TTR_K1_DATIN_1_5_JAM,TTR_K1_REPAIR_K2_DATIN_3_6_JAM,
+        TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
+        TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
+        TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
+        rca,sub_rca,
+        sync_date,import_batch
+        ) VALUES ${placeholders}
+
+        ON DUPLICATE KEY UPDATE
+        SUMMARY       = VALUES(SUMMARY),
+        STATUS        = VALUES(STATUS),
+        WORKZONE      = VALUES(WORKZONE),
+        OWNER_GROUP   = VALUES(OWNER_GROUP),
+        -- ✅ STATUS_UPDATE tidak disentuh: workflow app yang pegang kendali
+        -- STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        sync_date     = VALUES(sync_date),
+        import_batch  = VALUES(import_batch),
+        synced_at     = NOW()
+        `;
+
+        await prisma.$executeRawUnsafe(query, ...values);
+        await new Promise((r) => setTimeout(r, 50));
+      }
     }
 
     console.log(
-      `SYNC DONE | INSERT ${result.inserted} | UPDATE ${result.updated}`,
+      `SYNC DONE | INSERT ${result.inserted} | UPDATE ${result.updated}` +
+        ` (safe: ${safeRows.length}, protected: ${protectedRows.length})`,
     );
   } catch (err: any) {
     result.errors.push(err.message);

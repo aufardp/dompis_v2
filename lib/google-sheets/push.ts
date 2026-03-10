@@ -82,8 +82,8 @@ export async function pushSpreadsheet() {
       const incident = r[0];
       if (!incident) return;
 
+      const teknisi = r[22] || '';
       const hasilVisit = r[30] || '';
-      const teknisi = r[32] || '';
       const rca = r[33] || '';
       const subrca = r[34] || '';
 

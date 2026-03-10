@@ -69,9 +69,9 @@ export default function TeknisiLayout({
       <header className='border-border bg-surface shadow-theme-sm sticky top-0 z-40 border-b'>
         <div className='mx-auto flex h-16 max-w-5xl items-center justify-between px-4'>
           {/* ── Brand ─────────────────────────────────────────────────── */}
-          <div className='flex items-center gap-2.5'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-blue-500 to-indigo-500 text-white shadow-[0_4px_10px_rgba(99,102,241,0.28)]'>
-              <Ticket size={19} />
+          <div className='flex items-center gap-1'>
+            <div className='flex h-10 w-10 items-center justify-center rounded-xl'>
+              <img src='/assets/logo.webp' alt='Dompis Logo' />
             </div>
             <div>
               <h1 className='text-text-primary text-[17px] leading-none font-black tracking-tight'>
@@ -129,10 +129,6 @@ export default function TeknisiLayout({
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AttendancePill — uses exact color tokens from globals.css @theme
-// ─────────────────────────────────────────────────────────────────────────────
 
 interface AttendancePillProps {
   status: 'PRESENT' | 'LATE' | null;

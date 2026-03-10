@@ -1,6 +1,6 @@
 // app/teknisi/components/TeknisiDashboard/hooks/useTickets.ts
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
@@ -22,6 +22,13 @@ interface UseTicketsReturn {
   refresh: () => Promise<void>;
 }
 
+// Normalize status ke uppercase untuk perbandingan yang konsisten
+function normalizeStatus(t: Ticket): string {
+  // hasilVisit diisi dari STATUS_UPDATE (lowercase), normalize ke uppercase
+  const raw = t.hasilVisit ?? t.STATUS_UPDATE ?? '';
+  return raw.toUpperCase().trim();
+}
+
 export function useTickets(
   initialFilter: TicketFilter = 'all',
 ): UseTicketsReturn {
@@ -29,46 +36,21 @@ export function useTickets(
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TicketFilter>(initialFilter);
 
-  // Guard concurrent requests with requestId pattern
-  const requestIdRef = useRef(0);
-  // Debounce timer ref
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const fetchTickets = useCallback(async () => {
-    // Debounce: cancel if called repeatedly within 300ms
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    await new Promise<void>((resolve) => {
-      debounceRef.current = setTimeout(resolve, 300);
-    });
-
-    const requestId = ++requestIdRef.current;
-
     try {
       setLoading(true);
-      // No _t cache-buster — let Redis cache work
+      // Hapus _t cache buster — merusak Redis cache
       const res = await fetchWithAuth('/api/tickets?limit=100');
       if (!res) return;
-
-      // Cancel if this request is stale (a newer one was made)
-      if (requestId !== requestIdRef.current) return;
-
       const data = await res.json();
 
       if (data.success && data.data?.data) {
-        // Cancel if this request is stale
-        if (requestId !== requestIdRef.current) return;
         setTickets(data.data.data);
       }
     } catch (err) {
-      // Cancel if this request is stale
-      if (requestId !== requestIdRef.current) return;
       console.error('Failed to fetch tickets:', err);
     } finally {
-      // Only update loading if this is still the current request
-      if (requestId === requestIdRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   }, []);
 
@@ -76,37 +58,54 @@ export function useTickets(
     fetchTickets();
   }, [fetchTickets]);
 
-  // Refetch on window focus (real-time update)
-  useEffect(() => {
-    const onFocus = () => {
-      fetchTickets();
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [fetchTickets]);
-
   const filteredTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      if (filter === 'all') return !isTicketClosed(t.STATUS_UPDATE);
-      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
-      if (filter === 'assigned') return status === 'assigned';
-      if (filter === 'on_progress') return status === 'on_progress';
-      if (filter === 'pending') return status === 'pending';
-      if (filter === 'closed') return isTicketClosed(t.STATUS_UPDATE);
+    const filtered = tickets.filter((t) => {
+      const status = normalizeStatus(t);
+      const closed = isTicketClosed(t.STATUS_UPDATE);
+
+      if (filter === 'all')         return !closed;
+      if (filter === 'assigned')    return status === 'ASSIGNED';
+      if (filter === 'on_progress') return status === 'ON_PROGRESS';
+      if (filter === 'pending')     return status === 'PENDING';
+      if (filter === 'closed')      return closed;
       return true;
+    });
+
+    // Sort: tiket terbaru / terpenting di atas
+    return [...filtered].sort((a, b) => {
+      if (filter === 'closed') {
+        const aTime = a.closedAt ? new Date(a.closedAt).getTime() : 0;
+        const bTime = b.closedAt ? new Date(b.closedAt).getTime() : 0;
+        return bTime - aTime;
+      }
+
+      // Tab aktif: on_progress dulu, lalu assigned, lalu pending
+      const PRIORITY: Record<string, number> = {
+        ON_PROGRESS: 0,
+        ASSIGNED: 1,
+        PENDING: 2,
+      };
+      const aPriority = PRIORITY[normalizeStatus(a)] ?? 9;
+      const bPriority = PRIORITY[normalizeStatus(b)] ?? 9;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      // Same status: reportedDate DESC (terbaru di atas)
+      const aDate = a.reportedDate ? new Date(a.reportedDate as string).getTime() : 0;
+      const bDate = b.reportedDate ? new Date(b.reportedDate as string).getTime() : 0;
+      return bDate - aDate;
     });
   }, [tickets, filter]);
 
   const stats = useMemo(() => {
-    const getStatus = (t: Ticket) => (t.STATUS_UPDATE ?? '').toLowerCase();
+    const norm = (t: Ticket) => normalizeStatus(t);
     return {
-      assigned: tickets.filter((t) => getStatus(t) === 'assigned').length,
-      onProgress: tickets.filter((t) => getStatus(t) === 'on_progress').length,
-      pending: tickets.filter((t) => getStatus(t) === 'pending').length,
-      closed: tickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
+      assigned:   tickets.filter((t) => norm(t) === 'ASSIGNED').length,
+      onProgress: tickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
+      pending:    tickets.filter((t) => norm(t) === 'PENDING').length,
+      closed:     tickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
       totalAktif:
-        tickets.filter((t) => getStatus(t) === 'assigned').length +
-        tickets.filter((t) => getStatus(t) === 'on_progress').length,
+        tickets.filter((t) => norm(t) === 'ASSIGNED').length +
+        tickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
     };
   }, [tickets]);
 

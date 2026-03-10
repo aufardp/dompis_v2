@@ -175,6 +175,13 @@ export class DailyTicketService {
               },
             ],
           },
+          // Tiket yang di-close hari ini tetap muncul di daily board
+          {
+            AND: [
+              { STATUS_UPDATE: 'close' },
+              { closed_at: { gte: startOfDay, lt: endOfDay } },
+            ],
+          },
         ],
       },
     ];
