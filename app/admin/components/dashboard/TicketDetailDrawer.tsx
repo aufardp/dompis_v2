@@ -25,6 +25,7 @@ import {
   type TicketVisitStatus,
 } from '@/app/types/ticket';
 import { getEffectiveMaxTtrISO } from '@/app/libs/tickets/effective';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 type TicketStatusKey =
   | 'OPEN'
@@ -69,6 +70,7 @@ interface TicketDetail {
   technicianName?: string | null;
   closedAt?: string | null;
   statusUpdate?: string | null;
+  STATUS_UPDATE?: string | null;
 }
 
 interface TicketDetailDrawerProps {
@@ -440,9 +442,11 @@ export default function TicketDetailDrawer({
       id: number;
       fileName: string;
       filePath: string;
+      url: string;
       driveUrl: string | null;
     }>
   >([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
 
   useEffect(() => {
     if (open) setActiveTab('umum');
@@ -468,27 +472,54 @@ export default function TicketDetailDrawer({
   useEffect(() => {
     if (!open || !ticket?.idTicket) {
       setEvidence([]);
+      setEvidenceLoading(false);
       return;
     }
 
-    const isClosed = (ticket.statusUpdate || ticket?.status || '')
+    const statusRaw = String(
+      ticket.STATUS_UPDATE ??
+        ticket.statusUpdate ??
+        ticket.hasilVisit ??
+        ticket.status ??
+        '',
+    )
       .toLowerCase()
-      .includes('close');
+      .trim();
+    const isClosed = statusRaw.includes('close');
 
     if (!isClosed) {
       setEvidence([]);
+      setEvidenceLoading(false);
       return;
     }
 
-    fetch(`/api/tickets/${ticket.idTicket}/evidence`)
-      .then((r) => r.json())
+    let cancelled = false;
+    setEvidenceLoading(true);
+    fetchWithAuth(`/api/tickets/${ticket.idTicket}/evidence`)
+      .then((r) => (r ? r.json().catch(() => null) : null))
       .then((d) => {
-        if (d.success) setEvidence(d.data ?? []);
+        if (cancelled) return;
+        if (d?.success) setEvidence(d.data ?? []);
       })
       .catch(() => {
         /* silent */
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEvidenceLoading(false);
       });
-  }, [open, ticket?.idTicket, ticket?.statusUpdate]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    ticket?.idTicket,
+    ticket?.STATUS_UPDATE,
+    ticket?.statusUpdate,
+    ticket?.hasilVisit,
+    ticket?.status,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -508,7 +539,12 @@ export default function TicketDetailDrawer({
     { key: 'sla', label: 'SLA' },
   ] as const;
 
-  const rawStatus = ticket?.statusUpdate || ticket?.status || '';
+  const rawStatus =
+    ticket?.STATUS_UPDATE ??
+    ticket?.statusUpdate ??
+    ticket?.hasilVisit ??
+    ticket?.status ??
+    '';
   const workflowKey = normalizeKey(rawStatus);
   const workflowConfig = STATUS_CONFIG[workflowKey] || {
     label: workflowKey || '—',
@@ -541,6 +577,9 @@ export default function TicketDetailDrawer({
                   <span className='font-mono text-base font-bold text-slate-900'>
                     {ticket.ticket}
                   </span>
+                  <div className='flex shrink-0 items-center gap-2'>
+                    <CopyButton text={ticket.ticket} label='Copy ticket code' />
+                  </div>
                   <StatusBadge {...workflowConfig} />
                   <CTypeBadge ctype={ticket.ctype} />
                 </div>
@@ -561,17 +600,13 @@ export default function TicketDetailDrawer({
                     <span className='font-mono'>{ticket.serviceNo || '—'}</span>
                     <span className='hidden sm:inline'>•</span>
                     <span className='truncate'>{ticket.workzone || '—'}</span>
+                    {ticket.serviceNo && (
+                      <CopyButton
+                        text={ticket.serviceNo}
+                        label='Copy service number'
+                      />
+                    )}
                   </p>
-                </div>
-
-                <div className='flex shrink-0 items-center gap-2'>
-                  <CopyButton text={ticket.ticket} label='Copy ticket code' />
-                  {ticket.serviceNo && (
-                    <CopyButton
-                      text={ticket.serviceNo}
-                      label='Copy service number'
-                    />
-                  )}
                 </div>
               </div>
 
@@ -699,14 +734,16 @@ export default function TicketDetailDrawer({
                   </Section>
 
                   <Section icon={<Settings size={14} />} title='Status & Hasil'>
-                    <Field label='HASIL_VISIT' value={workflowConfig.label} />
+                    <Field label='STATUS_UPDATE' value={workflowConfig.label} />
                     {ticket.status && ticket.status !== workflowKey && (
                       <Field label='STATUS' value={ticket.status} />
                     )}
-                    <Field
-                      label='Closed At'
-                      value={formatDateTime(ticket.closedAt)}
-                    />
+                    {ticket.closedAt && (
+                      <Field
+                        label='Closed At'
+                        value={formatDateTime(ticket.closedAt)}
+                      />
+                    )}
                   </Section>
                 </>
               )}
@@ -805,55 +842,79 @@ export default function TicketDetailDrawer({
                     </div>
                   </Section>
 
-                  {/* Evidence Foto — hanya tampil jika ada data */}
-                  {evidence.length > 0 && (
-                    <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
-                      <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
-                        <span className='text-slate-500'>📷</span>
-                        <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
-                          Evidence Foto
-                        </h3>
-                        <span className='ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500'>
-                          {evidence.length} foto
-                        </span>
+                  {(() => {
+                    const statusRaw = String(
+                      ticket?.STATUS_UPDATE ??
+                        ticket?.statusUpdate ??
+                        ticket?.hasilVisit ??
+                        ticket?.status ??
+                        '',
+                    )
+                      .toLowerCase()
+                      .trim();
+                    const isClosed = statusRaw.includes('close');
+                    if (!isClosed) return null;
+
+                    return (
+                      <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+                        <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
+                          <span className='text-slate-500'>📷</span>
+                          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
+                            Evidence Foto
+                          </h3>
+                          {evidence.length > 0 && (
+                            <span className='ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500'>
+                              {evidence.length} foto
+                            </span>
+                          )}
+                        </div>
+
+                        {evidenceLoading ? (
+                          <div className='flex items-center gap-2 py-4 text-sm text-slate-400'>
+                            <div className='h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500' />
+                            Memuat evidence...
+                          </div>
+                        ) : evidence.length === 0 ? (
+                          <p className='py-2 text-sm text-slate-400'>
+                            Tidak ada evidence foto
+                          </p>
+                        ) : (
+                          <div className='grid grid-cols-2 gap-2'>
+                            {evidence.map((e) => {
+                              const imageUrl = e.driveUrl ?? e.url;
+                              return (
+                                <a
+                                  key={e.id}
+                                  href={imageUrl}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  className='group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100'
+                                >
+                                  <img
+                                    src={imageUrl}
+                                    alt={e.fileName}
+                                    className='h-full w-full object-cover transition-opacity group-hover:opacity-80'
+                                    onError={(el) => {
+                                      const img = el.target as HTMLImageElement;
+                                      if (!img.dataset.fallback) {
+                                        img.dataset.fallback = '1';
+                                        img.src = '/assets/logo.webp';
+                                      }
+                                    }}
+                                  />
+                                  <div className='absolute right-0 bottom-0 left-0 bg-black/50 px-2 py-1'>
+                                    <p className='truncate text-[10px] text-white'>
+                                      {e.fileName}
+                                    </p>
+                                  </div>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div className='grid grid-cols-2 gap-2'>
-                        {evidence.map((e) => {
-                          const imageUrl =
-                            e.driveUrl ??
-                            `/uploads/evidence/${e.filePath.replace(
-                              /^.*?evidence\//,
-                              '',
-                            )}`;
-                          return (
-                            <a
-                              key={e.id}
-                              href={imageUrl}
-                              target='_blank'
-                              rel='noopener noreferrer'
-                              className='group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100'
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={e.fileName}
-                                className='h-full w-full object-cover transition-opacity group-hover:opacity-80'
-                                onError={(el) => {
-                                  (
-                                    el.target as HTMLImageElement
-                                  ).style.display = 'none';
-                                }}
-                              />
-                              <div className='absolute right-0 bottom-0 left-0 bg-black/50 px-2 py-1'>
-                                <p className='truncate text-[10px] text-white'>
-                                  {e.fileName}
-                                </p>
-                              </div>
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <Section icon={<UserCircle size={14} />} title='Teknisi'>
                     <Field

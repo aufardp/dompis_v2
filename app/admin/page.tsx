@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useMemo, useEffect } from 'react';
+import { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
@@ -83,6 +83,8 @@ export default function TicketPage() {
   );
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
 
+  const pendingRefreshRef = useRef(false);
+
   // B2C filter state
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<
     'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec'
@@ -148,14 +150,16 @@ export default function TicketPage() {
 
   // SSE-based real-time updates (primary mechanism)
   useTicketEvents({
-    onInvalidate: () => {
-      // Only refresh if no modal is open
-      if (!showNewTicketModal && !assignModalTicket) {
-        refresh();
+    onInvalidate: useCallback(() => {
+      if (showNewTicketModal || assignModalTicket) {
+        pendingRefreshRef.current = true;
+        return;
       }
-    },
+      refresh();
+      refreshExpired();
+    }, [showNewTicketModal, assignModalTicket, refresh, refreshExpired]),
     enabled: true,
-    debounceMs: 500,
+    debounceMs: 300,
   });
 
   // Polling as fallback (reduced frequency since SSE handles real-time)
@@ -689,7 +693,8 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2cHasilVisitFilter === 'all') return true;
-      if (b2cHasilVisitFilter === 'close') return isTicketClosed(t.STATUS_UPDATE);
+      if (b2cHasilVisitFilter === 'close')
+        return isTicketClosed(t.STATUS_UPDATE);
       const status = (t.STATUS_UPDATE ?? '').toLowerCase();
       return status === b2cHasilVisitFilter;
     })
@@ -707,7 +712,8 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2bHasilVisitFilter === 'all') return true;
-      if (b2bHasilVisitFilter === 'close') return isTicketClosed(t.STATUS_UPDATE);
+      if (b2bHasilVisitFilter === 'close')
+        return isTicketClosed(t.STATUS_UPDATE);
       const status = (t.STATUS_UPDATE ?? '').toLowerCase();
       return status === b2bHasilVisitFilter;
     })
@@ -920,9 +926,21 @@ export default function TicketPage() {
           currentTechnicianId={assignModalTicket.teknisiUserId}
           currentTechnicianName={assignModalTicket.technicianName}
           isOpen
-          onClose={() => setAssignModalTicket(null)}
+          onClose={() => {
+            setAssignModalTicket(null);
+            if (pendingRefreshRef.current) {
+              pendingRefreshRef.current = false;
+              setTimeout(() => {
+                refresh();
+                refreshExpired();
+              }, 100);
+            }
+          }}
           onAssign={async () => {
+            await new Promise((r) => setTimeout(r, 500));
             await refresh();
+            await refreshExpired();
+            pendingRefreshRef.current = false;
             setAssignModalTicket(null);
           }}
         />

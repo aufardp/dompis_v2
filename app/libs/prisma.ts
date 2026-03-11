@@ -14,7 +14,7 @@ function getAdapter() {
 
   const database = u.pathname.replace(/^\//, '');
 
-  const connectionLimit = Number(u.searchParams.get('connection_limit')) || 25;
+  const connectionLimit = Number(u.searchParams.get('connection_limit')) || 10;
 
   return new PrismaMariaDb({
     host: u.hostname,
@@ -24,7 +24,11 @@ function getAdapter() {
     database,
     connectionLimit,
     connectTimeout: 15000,
-  });
+    // Keep adapter pool aligned with MySQL idle timeout.
+    // If the adapter ignores these options, they're harmless.
+    idleTimeout: 20000,
+    socketTimeout: 60000,
+  } as any);
 }
 
 function createPrisma() {

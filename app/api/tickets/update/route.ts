@@ -68,6 +68,7 @@ export async function POST(req: Request) {
 
       // Invalidate cache to ensure fresh data on next fetch
       await invalidateTicketsCache();
+      await new Promise((r) => setTimeout(r, 150));
       broadcastTicketInvalidate('update');
 
       return NextResponse.json({ success: true, ...result });
@@ -113,6 +114,7 @@ export async function POST(req: Request) {
 
         // Invalidate cache to ensure fresh data on next fetch
         await invalidateTicketsCache();
+        await new Promise((r) => setTimeout(r, 150));
         broadcastTicketInvalidate('update');
 
         return NextResponse.json({ success: true, ...result });
@@ -179,6 +181,7 @@ export async function POST(req: Request) {
 
     // Invalidate cache to ensure fresh data on next fetch
     await invalidateTicketsCache();
+    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('update');
 
     return NextResponse.json({ success: true, ...result });

@@ -15,6 +15,9 @@ function getPool(): mysql.Pool {
       connectionLimit: 10,
       queueLimit: 0,
       connectTimeout: 10000,
+
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
     });
   }
 

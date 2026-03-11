@@ -65,42 +65,51 @@ export default function TicketDetailModal({
   const [uploading, setUploading] = useState(false);
 
   // Helper: compress image in browser before upload
-  const compressImage = useCallback(async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const canvas = document.createElement('canvas');
-        const scale = Math.min(1, maxWidthPx / img.width);
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) { resolve(file); return; }
-            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
-          },
-          'image/jpeg',
-          quality,
-        );
-      };
-      img.onerror = () => resolve(file); // fallback: use original file
-      img.src = url;
-    });
-  }, []);
+  const compressImage = useCallback(
+    async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const canvas = document.createElement('canvas');
+          const scale = Math.min(1, maxWidthPx / img.width);
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve(file);
+                return;
+              }
+              resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+            },
+            'image/jpeg',
+            quality,
+          );
+        };
+        img.onerror = () => resolve(file); // fallback: use original file
+        img.src = url;
+      });
+    },
+    [],
+  );
 
   // Status derived values
-  const status = useMemo(
-    () => ticket.hasilVisit?.toUpperCase() || 'OPEN',
-    [ticket.hasilVisit],
-  );
+  const status = useMemo(() => {
+    const raw = ticket.STATUS_UPDATE ?? ticket.hasilVisit ?? '';
+    return raw.toUpperCase().trim() || 'OPEN';
+  }, [ticket.STATUS_UPDATE, ticket.hasilVisit]);
 
   const isAssigned = status === 'ASSIGNED';
   const isOnProgress = status === 'ON_PROGRESS';
   const isPending = status === 'PENDING';
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const isClosed = useMemo(
+    () => isTicketClosed(ticket.STATUS_UPDATE ?? ticket.hasilVisit),
+    [ticket.STATUS_UPDATE, ticket.hasilVisit],
+  );
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
   const isEvidenceIncomplete = selectedFiles.length < 2;
@@ -251,16 +260,19 @@ export default function TicketDetailModal({
   }, [ticket.idTicket, onUpdated]);
 
   // File handlers — compress images before storing
-  const handleFileChange = useCallback(async (files: File[]) => {
-    // Compress all images in parallel before preview
-    const compressed = await Promise.all(
-      files.map((f) =>
-        f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)
-      ),
-    );
-    setSelectedFiles(compressed);
-    setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
-  }, [compressImage]);
+  const handleFileChange = useCallback(
+    async (files: File[]) => {
+      // Compress all images in parallel before preview
+      const compressed = await Promise.all(
+        files.map((f) =>
+          f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
+        ),
+      );
+      setSelectedFiles(compressed);
+      setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
+    },
+    [compressImage],
+  );
 
   const handleRemoveImage = useCallback(
     (index: number) => {
@@ -507,23 +519,26 @@ export default function TicketDetailModal({
           {/* Detail Ticket Section */}
           <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
             <div className='space-y-3'>
-              
               {/* Customer Type — format label that's more readable */}
-              <InfoField 
-                label='Jenis Pelanggan' 
+              <InfoField
+                label='Jenis Pelanggan'
                 value={
-                  ticket.customerType === 'HVC_GOLD' ? 'HVC Gold' :
-                  ticket.customerType === 'HVC_PLATINUM' ? 'HVC Platinum' :
-                  ticket.customerType === 'HVC_DIAMOND' ? 'HVC Diamond' :
-                  ticket.customerType === 'REGULER' ? 'Reguler' :
-                  ticket.customerType
-                } 
+                  ticket.customerType === 'HVC_GOLD'
+                    ? 'HVC Gold'
+                    : ticket.customerType === 'HVC_PLATINUM'
+                      ? 'HVC Platinum'
+                      : ticket.customerType === 'HVC_DIAMOND'
+                        ? 'HVC Diamond'
+                        : ticket.customerType === 'REGULER'
+                          ? 'Reguler'
+                          : ticket.customerType
+                }
               />
 
               <InfoField label='Jenis Layanan' value={ticket.serviceType} />
               <InfoField label='Device' value={ticket.deviceName} />
               <InfoField label='Workzone' value={ticket.workzone} />
-              
+
               {/* Symptom — only show if available */}
               {ticket.symptom && (
                 <InfoField label='Gejala / Symptom' value={ticket.symptom} />
@@ -540,7 +555,6 @@ export default function TicketDetailModal({
                   </p>
                 </div>
               )}
-
             </div>
           </SectionCard>
 
@@ -548,7 +562,6 @@ export default function TicketDetailModal({
           {isOnProgress && (
             <SectionCard title='RCA' icon='🔍' iconBgColor='purple'>
               <div className='space-y-4'>
-                
                 {/* Label + Select RCA */}
                 <div>
                   <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
@@ -603,7 +616,6 @@ export default function TicketDetailModal({
                     </p>
                   </div>
                 )}
-
               </div>
             </SectionCard>
           )}
@@ -665,7 +677,10 @@ export default function TicketDetailModal({
       </div>
 
       <EvidenceSliderModal
-        images={evidence.map((e) => ({ src: e.driveUrl ?? e.url, alt: e.fileName }))}
+        images={evidence.map((e) => ({
+          src: e.driveUrl ?? e.url,
+          alt: e.fileName,
+        }))}
         isOpen={viewerOpen}
         startIndex={viewerIndex}
         onClose={() => setViewerOpen(false)}

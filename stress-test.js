@@ -54,6 +54,25 @@ const HELPDESK_PASS = __ENV.HELPDESK_PASS || ADMIN_PASS;
 const FIXTURE_TICKET_ID = Number(__ENV.TICKET_ID || '0');
 const DEBUG = __ENV.DEBUG === 'true';
 const SCENARIO = __ENV.SCENARIO || 'all';
+// Token reuse: simpan token per-VU, login ulang hanya jika expired
+// Aktifkan dengan --env REUSE_TOKEN=true (lebih realistis, kurangi beban login)
+const REUSE_TOKEN = __ENV.REUSE_TOKEN === 'true';
+
+// ════════════════════════════════════════════════════════════
+// VU-LEVEL TOKEN CACHE — reuse JWT, login ulang hanya jika expired
+// ════════════════════════════════════════════════════════════
+
+let _vuToken = null;
+let _vuTokenExpiry = 0;
+
+function getToken(creds) {
+  if (!REUSE_TOKEN) return apiLogin(creds);
+  const now = Date.now();
+  if (_vuToken && now < _vuTokenExpiry) return _vuToken; // reuse
+  _vuToken = apiLogin(creds);
+  _vuTokenExpiry = now + 50 * 60 * 1000; // 50 menit (JWT expire 1 jam)
+  return _vuToken;
+}
 
 // ════════════════════════════════════════════════════════════
 // SCENARIO DEFINITIONS — difilter berdasarkan --env SCENARIO
@@ -401,7 +420,7 @@ export function scenarioSmoke() {
   group('smoke', function () {
     apiHealth();
     micro();
-    const token = apiLogin(creds);
+    const token = getToken(creds);
     if (!token) {
       think(1, 2);
       return;
@@ -422,7 +441,7 @@ export function scenarioSmoke() {
 
 export function scenarioReadHeavy() {
   const creds = pickCredentials();
-  const token = apiLogin(creds);
+  const token = getToken(creds);
   if (!token) {
     think(2, 4);
     return;
@@ -457,7 +476,7 @@ export function scenarioReadHeavy() {
 
 export function scenarioMixed() {
   const creds = pickCredentials();
-  const token = apiLogin(creds);
+  const token = getToken(creds);
   if (!token) {
     think(2, 4);
     return;
@@ -499,7 +518,7 @@ export function scenarioMixed() {
 
 export function scenarioSoak() {
   const creds = pickCredentials();
-  const token = apiLogin(creds);
+  const token = getToken(creds);
   if (!token) {
     sleep(15);
     return;

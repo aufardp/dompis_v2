@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     );
 
     await invalidateTicketsCache();
+    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('pickup');
 
     return NextResponse.json({ success: true, ...result });

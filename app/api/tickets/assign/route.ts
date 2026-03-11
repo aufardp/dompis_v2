@@ -34,7 +34,9 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     // Accept both teknisiUserId and teknisiId for backwards compatibility
-    const teknisiUserId = Number(body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id);
+    const teknisiUserId = Number(
+      body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id,
+    );
     const ticketId = Number(body.ticketId);
 
     if (!ticketId || !teknisiUserId) {
@@ -54,6 +56,7 @@ export async function POST(req: Request) {
     );
 
     await invalidateTicketsCache();
+    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('assign');
 
     return NextResponse.json({

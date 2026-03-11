@@ -23,12 +23,11 @@ export function useTicketEvents({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
-  const debouncedInvalidate = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      onInvalidate();
-    }, debounceMs);
-  }, [onInvalidate, debounceMs]);
+  // Keep latest callback without triggering reconnect loops
+  const onInvalidateRef = useRef(onInvalidate);
+  useEffect(() => {
+    onInvalidateRef.current = onInvalidate;
+  });
 
   const connect = useCallback(() => {
     if (!enabled || !mountedRef.current) return;
@@ -46,7 +45,10 @@ export function useTicketEvents({
       try {
         const event: TicketEvent = JSON.parse(e.data);
         if (event.type === 'invalidate') {
-          debouncedInvalidate();
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => {
+            onInvalidateRef.current();
+          }, debounceMs);
         }
       } catch {
         /* ignore malformed */
@@ -61,7 +63,7 @@ export function useTicketEvents({
         reconnectTimerRef.current = setTimeout(connect, 5_000);
       }
     };
-  }, [enabled, debouncedInvalidate]);
+  }, [enabled, debounceMs]);
 
   useEffect(() => {
     mountedRef.current = true;

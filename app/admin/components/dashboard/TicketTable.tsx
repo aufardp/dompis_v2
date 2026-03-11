@@ -14,6 +14,7 @@ import {
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 export type SortField =
   | 'ticket'
@@ -186,14 +187,8 @@ export default function TicketTable({
     setDrawerLoading(true);
     setDrawerError(null);
 
-    fetch(`/api/tickets/${expandedTicketId}/detail`)
-      .then((res) => {
-        if (res.status === 401) {
-          window.location.assign('/login');
-          return null;
-        }
-        return res.json();
-      })
+    fetchWithAuth(`/api/tickets/${expandedTicketId}/detail`)
+      .then((res) => (res ? res.json().catch(() => null) : null))
       .then((data) => {
         if (!data) return;
         if (data.success) {
@@ -515,10 +510,10 @@ export default function TicketTable({
             setDrawerDetail(null);
             setDrawerError(null);
             setDrawerLoading(true);
-            fetch(`/api/tickets/${expandedTicketId}/detail`)
-              .then((r) => r.json())
+            fetchWithAuth(`/api/tickets/${expandedTicketId}/detail`)
+              .then((r) => (r ? r.json().catch(() => null) : null))
               .then((d) => {
-                if (d.success) setDrawerDetail(d.data);
+                if (d?.success) setDrawerDetail(d.data);
               })
               .catch(() => setDrawerError('Gagal retry'))
               .finally(() => setDrawerLoading(false));

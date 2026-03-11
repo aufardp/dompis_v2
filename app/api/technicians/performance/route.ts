@@ -209,7 +209,8 @@ export async function GET(req: NextRequest) {
         AND tt.closed_at IS NOT NULL
         AND tt.closed_at >= ${start}
         AND tt.closed_at < ${end}
-        AND t.STATUS_UPDATE = {in:['close','closed','CLOSE','CLOSED']}
+        AND t.STATUS_UPDATE IS NOT NULL
+        AND LOWER(t.STATUS_UPDATE) IN ('close','closed')
         AND t.teknisi_user_id = tt.assigned_to
         AND t.teknisi_user_id IN (${Prisma.join(finalTechnicianIds)})
         ${wzSql}

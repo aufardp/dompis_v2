@@ -307,7 +307,7 @@ export default function AssignTechnicianModal({
             <button
               onClick={onClose}
               disabled={submitting}
-              className='flex-1 rounded-xl border border-gray-300 py-2.5 text-sm transition hover:bg-gray-50 disabled:opacity-50'
+              className='flex-1 rounded-xl border border-gray-300 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50'
             >
               Cancel
             </button>

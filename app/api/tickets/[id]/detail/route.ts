@@ -95,6 +95,7 @@ export async function GET(
       alamat: row.ALAMAT,
       status: row.STATUS || normalizeStatus(row.STATUS_UPDATE) || 'OPEN',
       STATUS_UPDATE: row.STATUS_UPDATE,
+      statusUpdate: row.STATUS_UPDATE,
       hasilVisit: row.STATUS_UPDATE,
       bookingDate: row.BOOKING_DATE,
       sourceTicket: row.SOURCE_TICKET,

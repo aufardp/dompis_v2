@@ -38,9 +38,9 @@ const technicianCache = new Map<number, TechnicianSnapshot>();
 async function commitAndInvalidate<T>(promise: Promise<T>): Promise<T> {
   const result = await promise;
 
-  // Cache invalidation is now non-blocking (fire-and-forget)
-  // so we can call it without await
-  invalidateTicketsCache();
+  // Ensure cache is cleared before returning to route handlers
+  // so SSE broadcast + client refresh won't read stale Redis data.
+  await invalidateTicketsCache();
 
   return result;
 }
@@ -1224,7 +1224,7 @@ export class TicketWorkflowService {
             },
             status: {
               old_hasil_visit: 'ON_PROGRESS',
-              new_hasil_visit: 'DONE',
+              new_hasil_visit: 'CLOSE',
               pending_reason: null,
               evidence: evidenceData,
               rca: rcaValue,
