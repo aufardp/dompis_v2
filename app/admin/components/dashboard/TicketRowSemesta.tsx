@@ -46,11 +46,13 @@ export interface TicketRowSemestaProps {
 
 const SLA_STYLES = {
   'On Track': {
-    badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+    badge:
+      'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
   'At Risk': {
-    badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    badge:
+      'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
     dot: 'bg-amber-500',
   },
   Overdue: {
@@ -61,7 +63,8 @@ const SLA_STYLES = {
 
 const JENIS_STYLES: Record<string, string> = {
   SQM: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
-  Reguler: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+  Reguler:
+    'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
 };
 
 export default function TicketRowSemesta({
@@ -281,7 +284,7 @@ export default function TicketRowSemesta({
         <td className='px-4 py-3 text-center'>
           <span
             className={clsx(
-              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase',
               `badge-${getStatusColor(ticket.STATUS_UPDATE || '')}`,
             )}
           >

@@ -95,6 +95,7 @@ interface RequirementBarProps {
   photoRequired: number;
   isRcaIncomplete: boolean;
   isEvidenceIncomplete: boolean;
+  isAlamatEmpty: boolean;
 }
 
 function RequirementBar({
@@ -102,12 +103,14 @@ function RequirementBar({
   photoRequired,
   isRcaIncomplete,
   isEvidenceIncomplete,
+  isAlamatEmpty,
 }: RequirementBarProps) {
   const photoOk = !isEvidenceIncomplete && photoCount >= photoRequired;
   const rcaOk = !isRcaIncomplete;
+  const alamatOk = !isAlamatEmpty;
 
   // Don't render bar if everything is already complete
-  if (photoOk && rcaOk) return null;
+  if (photoOk && rcaOk && alamatOk) return null;
 
   return (
     <div className='flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2'>
@@ -115,6 +118,15 @@ function RequirementBar({
         Syarat close:
       </span>
       <div className='flex gap-1.5'>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${
+            alamatOk
+              ? 'border-green-200 bg-green-50 text-green-600'
+              : 'border-red-200 bg-red-50 text-red-600'
+          }`}
+        >
+          {alamatOk ? '✓' : '⚠'} Alamat
+        </span>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${
             photoOk
@@ -146,6 +158,7 @@ interface CloseButtonProps {
   loading: boolean;
   isEvidenceIncomplete: boolean;
   isRcaIncomplete: boolean;
+  isAlamatEmpty: boolean;
   photoCount: number;
   photoRequired: number;
   onClick?: () => void;
@@ -156,6 +169,7 @@ function CloseButton({
   loading,
   isEvidenceIncomplete,
   isRcaIncomplete,
+  isAlamatEmpty,
   photoCount,
   photoRequired,
   onClick,
@@ -179,17 +193,23 @@ function CloseButton({
 
   if (!canClose) {
     // Blocked state — tell user exactly what's missing
-    const reason = isEvidenceIncomplete
+    const reason = isAlamatEmpty
       ? {
-          icon: '📷',
-          main: 'Lengkapi Foto',
-          sub: `${photoCount} dari ${photoRequired} foto diunggah`,
+          icon: '📍',
+          main: 'Isi Alamat Dulu',
+          sub: 'Scroll ke atas dan isi alamat pelanggan',
         }
-      : {
-          icon: '📋',
-          main: 'Lengkapi RCA',
-          sub: 'Root cause analysis belum diisi',
-        };
+      : isEvidenceIncomplete
+        ? {
+            icon: '📷',
+            main: 'Lengkapi Foto',
+            sub: `${photoCount} dari ${photoRequired} foto diunggah`,
+          }
+        : {
+            icon: '📋',
+            main: 'Lengkapi RCA',
+            sub: 'Root cause analysis belum diisi',
+          };
 
     return (
       <button
@@ -248,6 +268,7 @@ interface ModalFooterProps {
   actionLoading: string | null;
   isRcaIncomplete: boolean;
   isEvidenceIncomplete: boolean;
+  isAlamatEmpty: boolean;
   photoCount: number;
   photoRequired?: number;
   onUpdateClick: () => void;
@@ -265,6 +286,7 @@ export default function ModalFooter({
   actionLoading,
   isRcaIncomplete,
   isEvidenceIncomplete,
+  isAlamatEmpty,
   photoCount,
   photoRequired = 2,
   onUpdateClick,
@@ -275,7 +297,8 @@ export default function ModalFooter({
 }: ModalFooterProps) {
   const isLoading = (type: string) => actionLoading === type;
   const anyLoading = actionLoading !== null;
-  const canClose = !isRcaIncomplete && !isEvidenceIncomplete && !anyLoading;
+  const canClose =
+    !isRcaIncomplete && !isEvidenceIncomplete && !isAlamatEmpty && !anyLoading;
 
   return (
     <div className='sticky bottom-0 z-20 flex shrink-0 flex-col gap-2.5 border-t border-slate-100 bg-white px-5 py-4 pb-7'>
@@ -288,6 +311,7 @@ export default function ModalFooter({
             photoRequired={photoRequired}
             isRcaIncomplete={isRcaIncomplete}
             isEvidenceIncomplete={isEvidenceIncomplete}
+            isAlamatEmpty={isAlamatEmpty}
           />
 
           {/* Row 1: Update + Photo */}
@@ -326,6 +350,7 @@ export default function ModalFooter({
             loading={isLoading('close')}
             isEvidenceIncomplete={isEvidenceIncomplete}
             isRcaIncomplete={isRcaIncomplete}
+            isAlamatEmpty={isAlamatEmpty}
             photoCount={photoCount}
             photoRequired={photoRequired}
             onClick={canClose ? onClose : undefined}
@@ -345,7 +370,7 @@ export default function ModalFooter({
           <button
             onClick={onPickup}
             disabled={anyLoading}
-            className='flex h-[72px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-[0_6px_20px_rgba(99,102,241,0.35)] transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 hover:shadow-[0_8px_28px_rgba(99,102,241,0.45)] hover:-translate-y-0.5'
+            className='flex h-[72px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-[0_6px_20px_rgba(99,102,241,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(99,102,241,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
           >
             {anyLoading ? (
               <>

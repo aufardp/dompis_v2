@@ -51,11 +51,13 @@ export interface TicketRowProps {
 
 const SLA_STYLES = {
   'On Track': {
-    badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+    badge:
+      'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
   'At Risk': {
-    badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    badge:
+      'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
     dot: 'bg-amber-500',
   },
   Overdue: {

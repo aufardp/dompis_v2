@@ -39,6 +39,14 @@ export default function TicketDetailModal({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [currentAlamat, setCurrentAlamat] = useState<string>(
+    ticket.alamat?.trim() ?? '',
+  );
+
+  useEffect(() => {
+    setCurrentAlamat(ticket.alamat?.trim() ?? '');
+  }, [ticket.alamat]);
+
   const [evidence, setEvidence] = useState<
     Array<{
       id: number;
@@ -116,8 +124,56 @@ export default function TicketDetailModal({
   const photoCount = selectedFiles.length;
   const photoRequired = 2;
 
+  // Syarat ke-3: Alamat wajib terisi
+  const ALAMAT_EMPTY_VALUES = [
+    'tidak ada',
+    'tidak tersedia',
+    '-',
+    'n/a',
+    'none',
+    '.',
+  ];
+
+  const isAlamatEmpty = (() => {
+    const v = currentAlamat.trim().toLowerCase();
+    return v.length === 0 || ALAMAT_EMPTY_VALUES.includes(v);
+  })();
+
+  useEffect(() => {
+    if (!ticket.idTicket) return;
+    if (!isAlamatEmpty) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetchWithAuth(
+          `/api/tickets/${ticket.idTicket}/detail`,
+        );
+        if (!res) return;
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+
+        const remoteAlamat = String(data?.data?.alamat ?? '').trim();
+        const v = remoteAlamat.toLowerCase();
+        if (remoteAlamat.length === 0) return;
+        if (ALAMAT_EMPTY_VALUES.includes(v)) return;
+
+        setCurrentAlamat(remoteAlamat);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket.idTicket, isAlamatEmpty]);
+
   // Address can be updated when ticket is ON_PROGRESS or PENDING, and not closed
   const canUpdateAlamat = (isOnProgress || isPending) && !isClosed;
+
+  // (alamat validity now derived via ALAMAT_EMPTY_VALUES)
 
   // ISSUE 3: SLA Progress Bar calculation
   const slaPercent = useMemo(() => {
@@ -329,6 +385,15 @@ export default function TicketDetailModal({
 
   // Close ticket handler
   const handleCloseTicket = useCallback(async () => {
+    if (isAlamatEmpty) {
+      setError('Alamat pelanggan wajib diisi sebelum menutup tiket.');
+      const addressSection = document.getElementById('address-editor-section');
+      if (addressSection) {
+        addressSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
     if (isRcaIncomplete) return;
 
     setError(null);
@@ -363,6 +428,7 @@ export default function TicketDetailModal({
       setActionLoading(null);
     }
   }, [
+    isAlamatEmpty,
     isRcaIncomplete,
     uploadEvidence,
     ticket.idTicket,
@@ -502,15 +568,27 @@ export default function TicketDetailModal({
               <InfoField label='Umur Ticket' value={ticketAge} />
 
               {/* Address - with new AddressEditor component */}
-              <div className='border-t border-slate-100 pt-2'>
+              <div
+                id='address-editor-section'
+                className='border-t border-slate-100 pt-2'
+              >
                 <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
                   Alamat
+                  {isOnProgress && isAlamatEmpty && (
+                    <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600'>
+                      ⚠ WAJIB
+                    </span>
+                  )}
                 </p>
                 <AddressEditor
                   ticketId={ticket.idTicket}
                   initialAddress={ticket.alamat}
                   canEdit={canUpdateAlamat}
                   onError={(err) => setError(err)}
+                  onAddressSaved={(savedAddress) => {
+                    setCurrentAlamat(savedAddress);
+                    setError(null);
+                  }}
                 />
               </div>
             </div>
@@ -666,6 +744,7 @@ export default function TicketDetailModal({
           actionLoading={actionLoading}
           isRcaIncomplete={isRcaIncomplete}
           isEvidenceIncomplete={isEvidenceIncomplete}
+          isAlamatEmpty={isAlamatEmpty}
           photoCount={photoCount}
           photoRequired={photoRequired}
           onUpdateClick={onUpdateClick}

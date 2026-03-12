@@ -45,7 +45,6 @@ export async function saveFiles(
 
       return {
         fileName: newName,
-        // Relative path for database storage (matches public folder serving)
         filePath: `/public/uploads/evidence/${incident}/${newName}`,
         fileSize: file.size,
         mimeType: file.type,

@@ -10,7 +10,7 @@ const MENU_ITEMS = [
     icon: '📋',
   },
   {
-    label: 'Database Semesta',
+    label: 'Semesta Dompis',
     path: '/admin/semesta',
     icon: '🗄️',
   },
