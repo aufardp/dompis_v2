@@ -70,16 +70,23 @@ export async function GET(
       },
     });
 
-    const data = rows.map((r) => ({
-      id: r.id,
-      fileName: r.file_name,
-      filePath: r.file_path,
-      url: `/uploads/evidence/${r.file_path.replace(/^.*?evidence\//, '')}`,
-      driveUrl: r.n8n_web_url ?? null,
-      fileSize: r.file_size ?? null,
-      mimeType: r.mime_type ?? null,
-      createdAt: toISODateString(r.created_at),
-    }));
+    const data = rows.map((r) => {
+      // Normalise path lama (dengan /public prefix) dan path baru
+      const cleanPath = r.file_path
+        .replace(/^\/public\//, '/')   // /public/uploads/... → /uploads/...
+        .replace(/^uploads\//, '/uploads/');  // uploads/... → /uploads/...
+      
+      return {
+        id: r.id,
+        fileName: r.file_name,
+        filePath: r.file_path,
+        url: cleanPath,
+        driveUrl: r.n8n_web_url ?? null,
+        fileSize: r.file_size ?? null,
+        mimeType: r.mime_type ?? null,
+        createdAt: toISODateString(r.created_at),
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {

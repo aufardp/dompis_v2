@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
-import TicketRow from './TicketRow';
+import TicketRowB2B from './TicketRowB2B';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
 import TicketDetailDrawer from './TicketDetailDrawer';
@@ -14,6 +14,8 @@ import {
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
+import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
+import TableLoadingSkeleton from './TableLoadingSkeleton';
 
 export type SortField =
   | 'ticket'
@@ -81,13 +83,6 @@ export interface AdminTicketTableB2BProps {
 interface SortConfig {
   field: SortField;
   order: SortOrder;
-}
-
-// Derive SLA label from age hours
-function getSlaLabel(ageHours: number): 'On Track' | 'At Risk' | 'Overdue' {
-  if (ageHours > 500) return 'Overdue';
-  if (ageHours > 240) return 'At Risk';
-  return 'On Track';
 }
 
 const SortIcon = ({
@@ -432,7 +427,7 @@ export default function TicketTableB2B({
               </thead>
               <tbody className='divide-y divide-(--border)'>
                 {loading ? (
-                  <TableEmptyState colSpan={15} message='Loading...' />
+                  <tr><td colSpan={15}><TableLoadingSkeleton rows={6} cols={15} /></td></tr>
                 ) : sortedTickets.length === 0 ? (
                   <TableEmptyState
                     colSpan={15}
@@ -443,16 +438,21 @@ export default function TicketTableB2B({
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
                     const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
-                    const ageHours = calculateAgeInHours(
-                      ticket.reportedDate,
-                      ticket.statusUpdate,
-                      ticket.closedAt,
-                    );
-                    const slaLabel = getSlaLabel(ageHours);
+                    const ttrCountdown = computeTtrCountdown(ticket);
+                    const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
+                      !ttrCountdown
+                        ? 'On Track'
+                        : ttrCountdown.status === 'overdue'
+                          ? 'Overdue'
+                          : ttrCountdown.status === 'critical'
+                            ? 'Overdue'
+                            : ttrCountdown.status === 'warning'
+                              ? 'At Risk'
+                              : 'On Track';
                     const isSelected = selectedIds.has(ticketId ?? '');
 
                     return (
-                      <TicketRow
+                      <TicketRowB2B
                         key={ticketId}
                         ticket={ticket}
                         onAssign={handleAssign}
@@ -463,6 +463,7 @@ export default function TicketTableB2B({
                         ticketAge={ticketInfo?.ageFormatted}
                         severity={ticketInfo?.severity}
                         slaLabel={slaLabel}
+                        ttrCountdown={ttrCountdown}
                         selected={isSelected}
                         onSelect={() => toggleSelect(ticketId ?? '')}
                       />

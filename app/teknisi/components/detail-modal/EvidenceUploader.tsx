@@ -4,7 +4,6 @@ interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
   onRemoveImage: (index: number) => void;
   previewUrls: string[];
-  uploadProgress: number;
   uploading: boolean;
 }
 
@@ -12,7 +11,6 @@ export default function EvidenceUploader({
   onFilesChange,
   onRemoveImage,
   previewUrls,
-  uploadProgress,
   uploading,
 }: EvidenceUploaderProps) {
   const handleFileChange = (files: FileList | null) => {
@@ -69,17 +67,9 @@ export default function EvidenceUploader({
       )}
 
       {uploading && (
-        <div>
-          <div className='h-2 w-full rounded bg-gray-200'>
-            <div
-              className='h-2 rounded bg-blue-500 transition-all'
-              style={{ width: `${uploadProgress}%` }}
-            />
-          </div>
-          <div className='mt-1 text-right text-xs text-slate-500 sm:text-sm'>
-            Uploading {uploadProgress}%
-          </div>
-        </div>
+        <p className='text-center text-sm text-blue-600'>
+          Mengupload evidence...
+        </p>
       )}
     </div>
   );

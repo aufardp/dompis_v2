@@ -20,7 +20,6 @@ export default function TicketUpdateModal({
   const [error, setError] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
   const PHOTO_MIN = 2;
@@ -49,30 +48,27 @@ export default function TicketUpdateModal({
   };
 
   // ── Upload ────────────────────────────────────────────────────────────────
-  const uploadEvidence = () =>
-    new Promise<void>((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('incident', ticket.ticket);
-      formData.append('ticketId', String(ticket.idTicket));
-      formData.append('actionType', 'pending');
-      selectedFiles.forEach((file) => formData.append('files', file));
+  const uploadEvidence = async () => {
+    const formData = new FormData();
+    formData.append('incident', ticket.ticket);
+    formData.append('ticketId', String(ticket.idTicket));
+    formData.append('actionType', 'pending');
+    selectedFiles.forEach((file) => formData.append('files', file));
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/tickets/upload-evidence');
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable)
-          setUploadProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        if (xhr.status === 401) {
-          window.location.assign('/login');
-          return;
-        }
-        xhr.status === 200 ? resolve() : reject();
-      };
-      xhr.onerror = () => reject();
-      xhr.send(formData);
+    const res = await fetchWithAuth('/api/tickets/upload-evidence', {
+      method: 'POST',
+      body: formData,
     });
+
+    if (!res) {
+      throw new Error('Upload gagal: tidak ada respon dari server');
+    }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => null);
+      throw new Error(errorData?.message || `Upload gagal: ${res.status}`);
+    }
+  };
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleUpdate = async () => {
@@ -96,14 +92,18 @@ export default function TicketUpdateModal({
       setError('Terjadi kesalahan saat upload/update');
     } finally {
       setUploading(false);
-      setUploadProgress(0);
       setLoading(false);
     }
   };
 
   // ── Derived submit label ──────────────────────────────────────────────────
   const submitLabel = () => {
-    if (uploading) return <UploadingLabel progress={uploadProgress} />;
+    if (uploading)
+      return (
+        <>
+          <Spinner /> Mengupload...
+        </>
+      );
     if (loading)
       return (
         <>
@@ -309,26 +309,6 @@ export default function TicketUpdateModal({
                   )}
                 </div>
               )}
-
-              {/* Upload progress bar */}
-              {uploading && (
-                <div className='space-y-1.5'>
-                  <div className='h-2 w-full overflow-hidden rounded-full bg-slate-100'>
-                    <div
-                      className='h-full rounded-full bg-linear-to-r from-blue-500 to-indigo-500 transition-all duration-300'
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                  <div className='flex items-center justify-between'>
-                    <span className='text-[11px] font-semibold text-slate-500'>
-                      Mengupload foto...
-                    </span>
-                    <span className='text-[11px] font-black text-blue-600 tabular-nums'>
-                      {uploadProgress}%
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -402,14 +382,5 @@ function SaveIcon() {
     >
       <path d='M13.5 4.5l-8 8L2 9' />
     </svg>
-  );
-}
-
-function UploadingLabel({ progress }: { progress: number }) {
-  return (
-    <span className='flex items-center gap-2'>
-      <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-      Upload {progress}%
-    </span>
   );
 }

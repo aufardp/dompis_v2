@@ -1126,6 +1126,7 @@ export class TicketWorkflowService {
     actor: ActorContext,
     rca: string,
     subRca: string,
+    descriptionActualSolution: string,
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Ticket ID wajib diisi');
@@ -1146,6 +1147,9 @@ export class TicketWorkflowService {
 
     if (!rcaValue || !subRcaValue)
       throw new Error('RCA dan Sub RCA wajib diisi');
+
+    if (!descriptionActualSolution || descriptionActualSolution.trim().length < 10)
+      throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
     return commitAndInvalidate(
       prisma.$transaction(async (tx) => {
@@ -1180,6 +1184,7 @@ export class TicketWorkflowService {
             STATUS_UPDATE: 'close',
             rca: rcaValue,
             sub_rca: subRcaValue,
+            DESCRIPTION_ACTUAL_SOLUTION: descriptionActualSolution.trim(),
             closed_at: now,
           },
         });

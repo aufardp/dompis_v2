@@ -511,12 +511,14 @@ export class TicketService {
     teknisiUserId: number,
     rca: string,
     subRca: string,
+    descriptionActualSolution: string,
   ) {
     return TicketWorkflowService.closeTicket(
       ticketId,
       { id_user: teknisiUserId, role: 'teknisi' },
       rca,
       subRca,
+      descriptionActualSolution,
     );
   }
 

@@ -124,10 +124,16 @@ export class AttendanceService {
       };
     }
 
+    // Calculate working hours: difference between check_out and check_in in hours
+    const checkIn = existingAttendance.check_in_at;
+    const diffMs = now.getTime() - checkIn.getTime();
+    const workingHours = Math.round((diffMs / 3600000) * 100) / 100; // Round to 2 decimal places
+
     await prisma.technician_attendance.update({
       where: { id: existingAttendance.id },
       data: {
         check_out_at: now,
+        working_hours: workingHours,
       },
     });
 

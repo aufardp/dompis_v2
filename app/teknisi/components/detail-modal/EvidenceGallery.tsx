@@ -53,6 +53,29 @@ export default function EvidenceGallery({
                 loading='lazy'
                 decoding='async'
                 className='h-20 w-full object-cover sm:h-24'
+                onError={(e) => {
+                  // Fallback ke local URL jika driveUrl gagal
+                  const target = e.currentTarget;
+                  if (ev.driveUrl && target.src !== ev.url) {
+                    target.src = ev.url;
+                  } else {
+                    // Tampilkan placeholder
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      parent.classList.add(
+                        'flex',
+                        'items-center',
+                        'justify-center',
+                        'bg-slate-100'
+                      );
+                      const span = document.createElement('span');
+                      span.className = 'text-xs text-slate-400';
+                      span.textContent = 'Gagal load';
+                      parent.appendChild(span);
+                    }
+                  }
+                }}
               />
             </button>
           ))}

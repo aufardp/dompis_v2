@@ -96,6 +96,7 @@ interface RequirementBarProps {
   isRcaIncomplete: boolean;
   isEvidenceIncomplete: boolean;
   isAlamatEmpty: boolean;
+  isDetailPerbaikanEmpty: boolean;
 }
 
 function RequirementBar({
@@ -104,13 +105,15 @@ function RequirementBar({
   isRcaIncomplete,
   isEvidenceIncomplete,
   isAlamatEmpty,
+  isDetailPerbaikanEmpty,
 }: RequirementBarProps) {
   const photoOk = !isEvidenceIncomplete && photoCount >= photoRequired;
   const rcaOk = !isRcaIncomplete;
   const alamatOk = !isAlamatEmpty;
+  const detailOk = !isDetailPerbaikanEmpty;
 
   // Don't render bar if everything is already complete
-  if (photoOk && rcaOk && alamatOk) return null;
+  if (photoOk && rcaOk && alamatOk && detailOk) return null;
 
   return (
     <div className='flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2'>
@@ -145,6 +148,15 @@ function RequirementBar({
         >
           {rcaOk ? '✓' : '⚠'} RCA
         </span>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${
+            detailOk
+              ? 'border-green-200 bg-green-50 text-green-600'
+              : 'border-amber-200 bg-amber-50 text-amber-600'
+          }`}
+        >
+          {!detailOk ? '⚠' : '✓'} Detail
+        </span>
       </div>
     </div>
   );
@@ -159,6 +171,7 @@ interface CloseButtonProps {
   isEvidenceIncomplete: boolean;
   isRcaIncomplete: boolean;
   isAlamatEmpty: boolean;
+  isDetailPerbaikanEmpty: boolean;
   photoCount: number;
   photoRequired: number;
   onClick?: () => void;
@@ -170,6 +183,7 @@ function CloseButton({
   isEvidenceIncomplete,
   isRcaIncomplete,
   isAlamatEmpty,
+  isDetailPerbaikanEmpty,
   photoCount,
   photoRequired,
   onClick,
@@ -199,17 +213,23 @@ function CloseButton({
           main: 'Isi Alamat Dulu',
           sub: 'Scroll ke atas dan isi alamat pelanggan',
         }
-      : isEvidenceIncomplete
+      : isDetailPerbaikanEmpty
         ? {
-            icon: '📷',
-            main: 'Lengkapi Foto',
-            sub: `${photoCount} dari ${photoRequired} foto diunggah`,
+            icon: '📝',
+            main: 'Isi Detail Perbaikan',
+            sub: 'Jelaskan tindakan yang sudah dilakukan',
           }
-        : {
-            icon: '📋',
-            main: 'Lengkapi RCA',
-            sub: 'Root cause analysis belum diisi',
-          };
+        : isEvidenceIncomplete
+          ? {
+              icon: '📷',
+              main: 'Lengkapi Foto',
+              sub: `${photoCount} dari ${photoRequired} foto diunggah`,
+            }
+          : {
+              icon: '📋',
+              main: 'Lengkapi RCA',
+              sub: 'Root cause analysis belum diisi',
+            };
 
     return (
       <button
@@ -269,6 +289,7 @@ interface ModalFooterProps {
   isRcaIncomplete: boolean;
   isEvidenceIncomplete: boolean;
   isAlamatEmpty: boolean;
+  isDetailPerbaikanEmpty: boolean;
   photoCount: number;
   photoRequired?: number;
   onUpdateClick: () => void;
@@ -287,6 +308,7 @@ export default function ModalFooter({
   isRcaIncomplete,
   isEvidenceIncomplete,
   isAlamatEmpty,
+  isDetailPerbaikanEmpty,
   photoCount,
   photoRequired = 2,
   onUpdateClick,
@@ -298,7 +320,7 @@ export default function ModalFooter({
   const isLoading = (type: string) => actionLoading === type;
   const anyLoading = actionLoading !== null;
   const canClose =
-    !isRcaIncomplete && !isEvidenceIncomplete && !isAlamatEmpty && !anyLoading;
+    !isRcaIncomplete && !isEvidenceIncomplete && !isAlamatEmpty && !isDetailPerbaikanEmpty && !anyLoading;
 
   return (
     <div className='sticky bottom-0 z-20 flex shrink-0 flex-col gap-2.5 border-t border-slate-100 bg-white px-5 py-4 pb-7'>
@@ -312,6 +334,7 @@ export default function ModalFooter({
             isRcaIncomplete={isRcaIncomplete}
             isEvidenceIncomplete={isEvidenceIncomplete}
             isAlamatEmpty={isAlamatEmpty}
+            isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
           />
 
           {/* Row 1: Update + Photo */}
@@ -351,6 +374,7 @@ export default function ModalFooter({
             isEvidenceIncomplete={isEvidenceIncomplete}
             isRcaIncomplete={isRcaIncomplete}
             isAlamatEmpty={isAlamatEmpty}
+            isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
             photoCount={photoCount}
             photoRequired={photoRequired}
             onClick={canClose ? onClose : undefined}
@@ -398,15 +422,38 @@ export default function ModalFooter({
 
       {/* ── PENDING ─────────────────────────────────────────────────────── */}
       {isPending && (
-        <ActionButton
-          variant='primary'
-          onClick={onResume}
-          disabled={anyLoading}
-          loading={isLoading('resume')}
-          className='w-full'
-        >
-          ▶️ Resume Ticket
-        </ActionButton>
+        <div className='flex flex-col gap-2'>
+          <p className='text-center text-[11px] font-semibold text-slate-400'>
+            Tiket ini sedang pending — lanjutkan pekerjaan?
+          </p>
+
+          <button
+            onClick={onResume}
+            disabled={anyLoading}
+            className='flex h-[72px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-[0_6px_20px_rgba(124,58,237,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(124,58,237,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
+          >
+            {anyLoading ? (
+              <>
+                <span className='h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                <span className='text-[12px] font-bold tracking-wide opacity-80'>
+                  Memproses...
+                </span>
+              </>
+            ) : (
+              <>
+                <div className='flex items-center gap-2'>
+                  <span className='text-xl'>▶️</span>
+                  <span className='text-[18px] font-black tracking-wide'>
+                    Resume Ticket
+                  </span>
+                </div>
+                <span className='text-[11px] font-semibold text-white/70'>
+                  Lanjutkan pengerjaan tiket ini
+                </span>
+              </>
+            )}
+          </button>
+        </div>
       )}
 
       {/* ── CLOSED ──────────────────────────────────────────────────────── */}

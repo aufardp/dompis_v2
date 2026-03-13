@@ -26,7 +26,7 @@ import { getMaxTtrInfo } from './TeknisiDashboard/utils/ttr';
 interface Props {
   ticket: Ticket;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated: (type?: 'close' | 'pickup' | 'resume') => void;
   onUpdateClick: () => void;
 }
 
@@ -67,9 +67,10 @@ export default function TicketDetailModal({
   const [selectedRca, setSelectedRca] = useState('');
   const [selectedSubRca, setSelectedSubRca] = useState('');
 
+  const [detailPerbaikan, setDetailPerbaikan] = useState('');
+
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
   // Helper: compress image in browser before upload
@@ -121,8 +122,16 @@ export default function TicketDetailModal({
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
   const isEvidenceIncomplete = selectedFiles.length < 2;
-  const photoCount = selectedFiles.length;
   const photoRequired = 2;
+
+  // Saat tiket CLOSED: gunakan jumlah evidence dari server (sudah tersimpan).
+  // Saat ON_PROGRESS: gunakan jumlah file yang baru dipilih untuk diupload.
+  // Saat loading: tampilkan photoRequired sebagai optimistic placeholder.
+  const photoCount = isClosed
+    ? evidenceLoading
+      ? photoRequired  // tampilkan target sementara loading (optimistic)
+      : evidence.length
+    : selectedFiles.length;   // file baru yang dipilih untuk upload
 
   // Syarat ke-3: Alamat wajib terisi
   const ALAMAT_EMPTY_VALUES = [
@@ -138,6 +147,8 @@ export default function TicketDetailModal({
     const v = currentAlamat.trim().toLowerCase();
     return v.length === 0 || ALAMAT_EMPTY_VALUES.includes(v);
   })();
+
+  const isDetailPerbaikanEmpty = detailPerbaikan.trim().length < 10;
 
   useEffect(() => {
     if (!ticket.idTicket) return;
@@ -225,9 +236,9 @@ export default function TicketDetailModal({
     [ticket.reportedDate, ticket.hasilVisit, ticket.closedAt],
   );
 
-  // Fetch evidence for closed tickets
+  // Fetch evidence for closed and pending tickets
   useEffect(() => {
-    if (!isClosed) return;
+    if (!isClosed && !isPending) return;
 
     let cancelled = false;
 
@@ -262,7 +273,7 @@ export default function TicketDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [isClosed, ticket.idTicket]);
+  }, [isClosed, isPending, ticket.idTicket]);
 
   // Resume handler
   const handleResume = useCallback(async () => {
@@ -282,7 +293,7 @@ export default function TicketDetailModal({
       if (!res) return;
 
       const data = await res.json();
-      if (data.success) onUpdated();
+      if (data.success) onUpdated('resume');
       else setError(data.message || 'Gagal resume');
     } catch {
       setError('Terjadi kesalahan');
@@ -306,7 +317,7 @@ export default function TicketDetailModal({
       if (!res) return;
 
       const data = await res.json();
-      if (data.success) onUpdated();
+      if (data.success) onUpdated('pickup');
       else setError(data.message || 'Gagal mengambil ticket');
     } catch {
       setError('Terjadi kesalahan');
@@ -344,43 +355,36 @@ export default function TicketDetailModal({
     [selectedFiles, previewUrls],
   );
 
-  // Upload evidence
+  // Upload evidence using fetchWithAuth (handles credentials and token refresh)
   const uploadEvidence = useCallback(async () => {
     if (!selectedFiles.length) return;
 
-    return new Promise<void>((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('incident', ticket.ticket);
-      formData.append('ticketId', String(ticket.idTicket));
-      formData.append('actionType', 'close');
+    const formData = new FormData();
+    formData.append('incident', ticket.ticket);
+    formData.append('ticketId', String(ticket.idTicket));
+    formData.append('actionType', 'close');
 
-      selectedFiles.forEach((file) => {
-        formData.append('files', file);
-      });
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/tickets/upload-evidence');
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percent);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 401) {
-          window.location.assign('/login');
-          return;
-        }
-        if (xhr.status === 200) resolve();
-        else reject();
-      };
-
-      xhr.onerror = () => reject();
-
-      xhr.send(formData);
+    selectedFiles.forEach((file) => {
+      formData.append('files', file);
     });
+
+    // fetchWithAuth automatically includes credentials: 'include' and handles token refresh
+    // DO NOT set Content-Type manually - browser will set multipart/form-data boundary automatically
+    const res = await fetchWithAuth('/api/tickets/upload-evidence', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res) {
+      throw new Error('Upload gagal: tidak ada respon dari server');
+    }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => null);
+      throw new Error(errorData?.message || `Upload gagal: ${res.status} ${res.statusText}`);
+    }
+
+    return await res.json();
   }, [selectedFiles, ticket.ticket, ticket.idTicket]);
 
   // Close ticket handler
@@ -394,7 +398,15 @@ export default function TicketDetailModal({
       return;
     }
 
-    if (isRcaIncomplete) return;
+    if (isRcaIncomplete) {
+      setError('RCA dan Sub RCA wajib diisi sebelum menutup tiket.');
+      return;
+    }
+
+    if (isDetailPerbaikanEmpty) {
+      setError('Detail perbaikan wajib diisi minimal 10 karakter.');
+      return;
+    }
 
     setError(null);
     setActionLoading('close');
@@ -402,8 +414,10 @@ export default function TicketDetailModal({
     try {
       setUploading(true);
 
+      // Upload evidence first
       await uploadEvidence();
 
+      // Then close the ticket
       const res = await fetchWithAuth('/api/tickets/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -411,29 +425,37 @@ export default function TicketDetailModal({
           ticketId: ticket.idTicket,
           rca: selectedRca,
           subRca: selectedSubRca,
+          descriptionActualSolution: detailPerbaikan.trim(),
         }),
       });
 
-      if (!res) return;
+      if (!res) {
+        throw new Error('Tidak ada respon dari server');
+      }
 
       const data = await res.json();
 
-      if (data.success) onUpdated();
-      else setError(data.message || 'Gagal menutup ticket');
-    } catch {
-      setError('Terjadi kesalahan saat upload/close');
+      if (data.success) {
+        onUpdated('close');
+      } else {
+        throw new Error(data.message || 'Gagal menutup ticket');
+      }
+    } catch (err: any) {
+      // Show specific error message from server or network
+      setError(err.message || 'Terjadi kesalahan saat upload/close');
     } finally {
       setUploading(false);
-      setUploadProgress(0);
       setActionLoading(null);
     }
   }, [
     isAlamatEmpty,
     isRcaIncomplete,
+    isDetailPerbaikanEmpty,
     uploadEvidence,
     ticket.idTicket,
     selectedRca,
     selectedSubRca,
+    detailPerbaikan,
     onUpdated,
   ]);
 
@@ -468,29 +490,32 @@ export default function TicketDetailModal({
           hasilVisit={ticket.hasilVisit}
           closedAt={ticket.closedAt}
           jenisTiket={ticket.jenisTiket}
+          isClosed={isClosed}
           onClose={onClose}
         />
 
-        {/* ISSUE 3: SLA Progress Bar */}
-        <div className='shrink-0 border-b border-slate-100 px-5 py-3'>
-          <div className='mb-1.5 flex justify-between'>
-            <span className='text-[10px] font-semibold tracking-wide text-slate-400 uppercase'>
-              Laporan:{' '}
-              {ticket.reportedDate
-                ? formatDateTimeWIB(ticket.reportedDate)
-                : '-'}
-            </span>
-            <span className='text-[10px] font-semibold tracking-wide text-orange-500 uppercase'>
-              Max TTR: {getMaxTtrInfo(ticket)} ⚠
-            </span>
+        {/* SLA Progress Bar — hanya tampil saat tiket BELUM closed */}
+        {!isClosed && (
+          <div className='shrink-0 border-b border-slate-100 px-5 py-3'>
+            <div className='mb-1.5 flex justify-between'>
+              <span className='text-[10px] font-semibold tracking-wide text-slate-400 uppercase'>
+                Laporan:{' '}
+                {ticket.reportedDate
+                  ? formatDateTimeWIB(ticket.reportedDate)
+                  : '-'}
+              </span>
+              <span className='text-[10px] font-semibold tracking-wide text-orange-500 uppercase'>
+                Max TTR: {getMaxTtrInfo(ticket)} ⚠
+              </span>
+            </div>
+            <div className='h-1.5 overflow-hidden rounded-full bg-slate-100'>
+              <div
+                className={`h-full rounded-full transition-all ${slaBarColor}`}
+                style={{ width: `${slaPercent}%` }}
+              />
+            </div>
           </div>
-          <div className='h-1.5 overflow-hidden rounded-full bg-slate-100'>
-            <div
-              className={`h-full rounded-full transition-all ${slaBarColor}`}
-              style={{ width: `${slaPercent}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Scrollable Body */}
         <div className='flex-1 space-y-3 overflow-y-auto scroll-smooth p-5 pb-2'>
@@ -501,8 +526,8 @@ export default function TicketDetailModal({
             </div>
           )}
 
-          {/* ISSUE 4: MAX TTR Warning Box */}
-          {ttrRemaining && (
+          {/* MAX TTR Warning Box — hanya saat tiket BELUM closed */}
+          {ttrRemaining && !isClosed && (
             <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3'>
               <div>
                 <p className='mb-0.5 text-[10px] font-bold tracking-wide text-orange-500 uppercase'>
@@ -525,27 +550,29 @@ export default function TicketDetailModal({
             </div>
           )}
 
-          {/* ISSUE 5: Completion Checklist */}
-          <div className='flex gap-2'>
-            {/* Photo status */}
-            <div
-              className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
-                photoCount >= photoRequired
-                  ? 'border-green-200 bg-green-50 text-green-700'
-                  : 'border-red-200 bg-red-50 text-red-600'
-              }`}
-            >
-              <span className='text-sm'>📷</span>
-              <div>
-                <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
-                  Foto
-                </p>
-                <p className='text-xs font-bold'>
-                  {photoCount} / {photoRequired}
-                </p>
+          {/* Completion Checklist — hanya saat ON_PROGRESS */}
+          {isOnProgress && (
+            <div className='flex gap-2'>
+              {/* Photo status */}
+              <div
+                className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
+                  photoCount >= photoRequired
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-red-200 bg-red-50 text-red-600'
+                }`}
+              >
+                <span className='text-sm'>📷</span>
+                <div>
+                  <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
+                    Foto
+                  </p>
+                  <p className='text-xs font-bold'>
+                    {photoCount} / {photoRequired}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Customer Info Section */}
           <SectionCard title='Informasi Pelanggan' icon='👤' iconBgColor='blue'>
@@ -683,6 +710,30 @@ export default function TicketDetailModal({
                   </div>
                 )}
 
+                {/* Detail Perbaikan */}
+                <div>
+                  <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                    Detail Perbaikan
+                    <span className='ml-1.5 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-black text-red-600'>
+                      WAJIB
+                    </span>
+                  </label>
+                  <textarea
+                    value={detailPerbaikan}
+                    onChange={(e) => setDetailPerbaikan(e.target.value)}
+                    placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
+                    rows={4}
+                    maxLength={500}
+                    className='w-full resize-none appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                  />
+                  <div className='mt-1 flex justify-between'>
+                    <span className='text-[10px] text-slate-400'>Minimal 10 karakter</span>
+                    <span className={`text-[10px] ${detailPerbaikan.length > 450 ? 'text-orange-500' : 'text-slate-400'}`}>
+                      {detailPerbaikan.length}/500
+                    </span>
+                  </div>
+                </div>
+
                 {/* Preview card when both RCA + Sub RCA are selected */}
                 {selectedRca && selectedSubRca && (
                   <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3'>
@@ -704,6 +755,20 @@ export default function TicketDetailModal({
               <div className='space-y-3'>
                 <InfoField label='RCA' value={ticket.rca} />
                 <InfoField label='Sub RCA' value={ticket.subRca} />
+
+                {/* Detail Perbaikan — tampilkan jika ada */}
+                {ticket.descriptionActualSolution && (
+                  <div className='border-t border-slate-100 pt-3'>
+                    <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                      Detail Perbaikan
+                    </p>
+                    <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3'>
+                      <p className='text-sm leading-relaxed font-medium text-slate-700 whitespace-pre-wrap'>
+                        {ticket.descriptionActualSolution}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </SectionCard>
           )}
@@ -715,14 +780,13 @@ export default function TicketDetailModal({
                 onFilesChange={handleFileChange}
                 onRemoveImage={handleRemoveImage}
                 previewUrls={previewUrls}
-                uploadProgress={uploadProgress}
                 uploading={uploading}
               />
             </div>
           )}
 
-          {/* Evidence Gallery */}
-          {isClosed && (
+          {/* Evidence Gallery — tampil untuk status PENDING dan CLOSED */}
+          {(isClosed || isPending) && (
             <EvidenceGallery
               evidence={evidence}
               loading={evidenceLoading}
@@ -745,6 +809,7 @@ export default function TicketDetailModal({
           isRcaIncomplete={isRcaIncomplete}
           isEvidenceIncomplete={isEvidenceIncomplete}
           isAlamatEmpty={isAlamatEmpty}
+          isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
           photoCount={photoCount}
           photoRequired={photoRequired}
           onUpdateClick={onUpdateClick}

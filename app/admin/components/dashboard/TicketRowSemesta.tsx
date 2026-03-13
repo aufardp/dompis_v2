@@ -7,6 +7,8 @@ import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import TtrCountdownBadge from './TtrCountdownBadge';
+import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
 
 export interface TicketRowSemestaProps {
   ticket: {
@@ -42,6 +44,7 @@ export interface TicketRowSemestaProps {
   ticketAge?: string;
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
+  ttrCountdown?: TtrCountdown | null;
 }
 
 const SLA_STYLES = {
@@ -75,6 +78,7 @@ export default function TicketRowSemesta({
   ticketAge,
   severity = 'normal',
   slaLabel,
+  ttrCountdown,
 }: TicketRowSemestaProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
@@ -204,13 +208,7 @@ export default function TicketRowSemesta({
 
         {/* Max TTR */}
         <td className='px-4 py-3 text-center'>
-          {maxTtr ? (
-            <span className='rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400'>
-              ⏱ {maxTtr}
-            </span>
-          ) : (
-            <span className='text-xs text-(--text-secondary) italic'>—</span>
-          )}
+          <TtrCountdownBadge ticket={ticket} />
         </td>
 
         {/* Age + SLA */}

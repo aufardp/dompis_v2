@@ -6,6 +6,8 @@ import { useState, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
 import TicketUpdateModal from './TicketUpdateModal';
+import ToastNotification from './ToastNotification';
+import { useToast } from './hooks/useToast';
 
 import {
   useTickets,
@@ -25,6 +27,8 @@ export default function TeknisiDashboard() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
+  const { toasts, dismissToast, showSuccess, showError } = useToast();
+
   const { loading, filter, setFilter, filteredTickets, stats, refresh } =
     useTickets('all');
 
@@ -42,10 +46,18 @@ export default function TeknisiDashboard() {
     setShowDetailModal(true);
   }, []);
 
-  const handleTicketUpdated = useCallback(() => {
+  const handleTicketUpdated = useCallback((type?: 'close' | 'pickup' | 'resume') => {
     void refresh();
     setSelectedTicket(null);
-  }, [refresh]);
+    setShowDetailModal(false);
+    if (type === 'close') {
+      showSuccess('Tiket Berhasil Ditutup! 🎉', 'Tiket telah berhasil di-close.');
+    } else if (type === 'pickup') {
+      showSuccess('Tiket Diambil', 'Tiket berhasil di-pickup. Segera kerjakan!');
+    } else if (type === 'resume') {
+      showSuccess('Tiket Dilanjutkan', 'Tiket kembali ke status On Progress.');
+    }
+  }, [refresh, showSuccess]);
 
   const handleCloseDetail = useCallback(() => {
     setShowDetailModal(false);
@@ -66,10 +78,14 @@ export default function TeknisiDashboard() {
     setShowUpdateModal(false);
     setSelectedTicket(null);
     void refresh();
-  }, [refresh]);
+    showSuccess('Update Tiket Tersimpan ✓', 'Status tiket berhasil di-pending.');
+  }, [refresh, showSuccess]);
 
   return (
     <div className='min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8'>
+      {/* Toast Notifications */}
+      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
+
       {/* Pull-to-refresh indicator */}
       <PullToRefresh
         pullDistance={pullDistance}

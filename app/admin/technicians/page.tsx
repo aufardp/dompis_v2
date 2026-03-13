@@ -13,6 +13,7 @@ import {
   MapPin,
   Calendar,
   CheckCircle,
+  TrendingUp,
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
@@ -536,6 +537,14 @@ export default function TechnicianMonitoringPage() {
               >
                 <CheckCircle size={14} />
                 Rekap Pekerjaan Bulanan
+              </Link>
+              <span className='text-gray-300'>|</span>
+              <Link
+                href='/admin/technicians/manhours'
+                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline'
+              >
+                <TrendingUp size={14} />
+                Produktivitas ManHours
               </Link>
             </div>
           </div>

@@ -10,6 +10,7 @@ interface ModalHeaderProps {
   hasilVisit?: string | null;
   closedAt?: string | null;
   jenisTiket?: string | null;
+  isClosed?: boolean;
   onClose: () => void;
 }
 
@@ -22,6 +23,7 @@ export default function ModalHeader({
   reportedDate,
   hasilVisit,
   closedAt,
+  isClosed = false,
   onClose,
 }: ModalHeaderProps) {
   const title = summary || symptom || ticket;
@@ -62,11 +64,14 @@ export default function ModalHeader({
             {jenisTiket}
           </span>
         )}
-        <AgeBadge
-          reportedDate={reportedDate}
-          hasilVisit={hasilVisit}
-          closedAt={closedAt}
-        />
+        {/* AgeBadge: hanya tampil saat tiket BELUM closed */}
+        {!isClosed && (
+          <AgeBadge
+            reportedDate={reportedDate}
+            hasilVisit={hasilVisit}
+            closedAt={closedAt}
+          />
+        )}
       </div>
 
       {/* Row 3: Title */}

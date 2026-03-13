@@ -97,6 +97,7 @@ export interface Ticket {
 
   rca?: string | null;
   subRca?: string | null;
+  descriptionActualSolution?: string | null;
 
   teknisiUserId?: number | null;
   technicianName?: string | null;

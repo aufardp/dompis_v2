@@ -490,6 +490,16 @@
   }
 }
 
+/* 🔧 Tambah: shrink untuk toast progress bar */
+@keyframes shrink {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
 @utility animate-fade-up {
   animation: fadeUp 0.4s ease both;
 }

@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
       'super_admin',
     ]);
 
+    // Debug log for troubleshooting
+    console.log('[UPLOAD] user:', user.id_user, 'role:', user.role);
+
     const roleId = roleKeyToRoleId(normalizeRoleKey(user.role));
 
     const formData = await req.formData();

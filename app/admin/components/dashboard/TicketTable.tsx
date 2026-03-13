@@ -15,6 +15,8 @@ import {
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
+import TableLoadingSkeleton from './TableLoadingSkeleton';
 
 export type SortField =
   | 'ticket'
@@ -81,13 +83,6 @@ export interface AdminTicketTableProps {
 interface SortConfig {
   field: SortField;
   order: SortOrder;
-}
-
-// Derive SLA label from age hours
-function getSlaLabel(ageHours: number): 'On Track' | 'At Risk' | 'Overdue' {
-  if (ageHours > 500) return 'Overdue';
-  if (ageHours > 240) return 'At Risk';
-  return 'On Track';
 }
 
 const SortIcon = ({
@@ -426,7 +421,7 @@ export default function TicketTable({
               </thead>
               <tbody className='divide-y divide-(--border)'>
                 {loading ? (
-                  <TableEmptyState colSpan={15} message='Loading...' />
+                  <tr><td colSpan={15}><TableLoadingSkeleton rows={6} cols={15} /></td></tr>
                 ) : sortedTickets.length === 0 ? (
                   <TableEmptyState
                     colSpan={15}
@@ -437,12 +432,17 @@ export default function TicketTable({
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
                     const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
-                    const ageHours = calculateAgeInHours(
-                      ticket.reportedDate,
-                      ticket.hasilVisit,
-                      ticket.closedAt,
-                    );
-                    const slaLabel = getSlaLabel(ageHours);
+                    const ttrCountdown = computeTtrCountdown(ticket);
+                    const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
+                      !ttrCountdown
+                        ? 'On Track'
+                        : ttrCountdown.status === 'overdue'
+                          ? 'Overdue'
+                          : ttrCountdown.status === 'critical'
+                            ? 'Overdue'
+                            : ttrCountdown.status === 'warning'
+                              ? 'At Risk'
+                              : 'On Track';
                     const isSelected = selectedIds.has(ticketId ?? '');
 
                     return (
@@ -457,6 +457,7 @@ export default function TicketTable({
                         ticketAge={ticketInfo?.ageFormatted}
                         severity={ticketInfo?.severity}
                         slaLabel={slaLabel}
+                        ttrCountdown={ttrCountdown}
                         selected={isSelected}
                         onSelect={() => toggleSelect(ticketId ?? '')}
                       />

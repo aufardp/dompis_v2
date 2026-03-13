@@ -8,6 +8,8 @@ import { getJenisStyle } from '@/app/libs/tickets/jenis';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import TtrCountdownBadge from './TtrCountdownBadge';
+import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
 
 export interface TicketRowProps {
   ticket: {
@@ -45,6 +47,7 @@ export interface TicketRowProps {
   ticketAge?: string;
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
+  ttrCountdown?: TtrCountdown | null;
   selected?: boolean;
   onSelect?: () => void;
 }
@@ -74,6 +77,7 @@ export default function TicketRow({
   ticketAge,
   severity = 'normal',
   slaLabel,
+  ttrCountdown,
   selected = false,
   onSelect,
 }: TicketRowProps) {
@@ -224,13 +228,7 @@ export default function TicketRow({
 
       {/* Max TTR */}
       <td className='px-4 py-3 text-center'>
-        {maxTtr ? (
-          <span className='rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400'>
-            ⏱ {maxTtr}
-          </span>
-        ) : (
-          <span className='text-xs text-(--text-secondary) italic'>—</span>
-        )}
+        <TtrCountdownBadge ticket={ticket} />
       </td>
 
       {/* Age + SLA */}

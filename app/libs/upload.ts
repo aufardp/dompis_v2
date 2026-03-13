@@ -45,7 +45,7 @@ export async function saveFiles(
 
       return {
         fileName: newName,
-        filePath: `/public/uploads/evidence/${incident}/${newName}`,
+        filePath: `uploads/evidence/${incident}/${newName}`,
         fileSize: file.size,
         mimeType: file.type,
       };
