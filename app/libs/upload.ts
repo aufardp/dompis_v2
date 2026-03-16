@@ -3,6 +3,8 @@ import path from 'path';
 
 export type ActionType = 'pending' | 'close';
 
+export const UPLOADS_ROOT = path.join(process.cwd(), 'public', 'uploads');
+
 export async function saveFiles(
   files: File[],
   incident: string,

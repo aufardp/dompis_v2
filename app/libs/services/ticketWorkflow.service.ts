@@ -1148,7 +1148,10 @@ export class TicketWorkflowService {
     if (!rcaValue || !subRcaValue)
       throw new Error('RCA dan Sub RCA wajib diisi');
 
-    if (!descriptionActualSolution || descriptionActualSolution.trim().length < 10)
+    if (
+      !descriptionActualSolution ||
+      descriptionActualSolution.trim().length < 10
+    )
       throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
     return commitAndInvalidate(
@@ -1234,6 +1237,7 @@ export class TicketWorkflowService {
               evidence: evidenceData,
               rca: rcaValue,
               sub_rca: subRcaValue,
+              detail_perbaikan: descriptionActualSolution.trim(),
             },
             old_technician: tech,
             new_technician: tech,

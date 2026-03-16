@@ -71,16 +71,19 @@ export async function GET(
     });
 
     const data = rows.map((r) => {
-      const cleanPath = r.file_path
-        .replace(/^\/public\//, '/')
-        .replace(/^uploads\//, '/uploads/');
-      const apiPath = cleanPath.replace(/^\//, '');
+      const normalizedPath = r.file_path
+        .replace(/^\/public\/uploads\//, '')
+        .replace(/^public\/uploads\//, '')
+        .replace(/^\/uploads\//, '')
+        .replace(/^uploads\//, '');
+
+      const url = `/api/files/${normalizedPath}`;
 
       return {
         id: r.id,
         fileName: r.file_name,
         filePath: r.file_path,
-        url: `/api/files/${apiPath}`,
+        url,
         driveUrl: r.n8n_web_url ?? null,
         fileSize: r.file_size ?? null,
         mimeType: r.mime_type ?? null,

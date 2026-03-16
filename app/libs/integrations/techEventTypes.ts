@@ -47,6 +47,7 @@ export type TechEventStatus = {
   evidence: TechEventEvidence | null;
   rca?: string | null;
   sub_rca?: string | null;
+  detail_perbaikan?: string | null;
 };
 
 export type TechEventTechnician = {

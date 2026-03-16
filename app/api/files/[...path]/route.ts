@@ -3,15 +3,16 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import fsPromises from 'fs/promises';
 import path from 'path';
+import { UPLOADS_ROOT } from '@/app/libs/upload';
 
-const UPLOADS_BASE = 'public/uploads';
-
-const MIME_TYPES: Record<string, string> = {
+const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
   '.svg': 'image/svg+xml',
   '.bmp': 'image/bmp',
   '.ico': 'image/x-icon',
@@ -31,7 +32,7 @@ const MIME_TYPES: Record<string, string> = {
 
 function getMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] || 'application/octet-stream';
+  return MIME_MAP[ext] || 'application/octet-stream';
 }
 
 export async function GET(
@@ -44,8 +45,8 @@ export async function GET(
 
     const sanitized = requestedPath.replace(/\\/g, '/');
 
-    const fullPath = path.join(process.cwd(), UPLOADS_BASE, sanitized);
-    const baseDir = path.join(process.cwd(), UPLOADS_BASE);
+    const fullPath = path.join(UPLOADS_ROOT, sanitized);
+    const baseDir = UPLOADS_ROOT;
 
     const resolved = path.resolve(fullPath);
     if (!resolved.startsWith(path.resolve(baseDir))) {
@@ -72,13 +73,19 @@ export async function GET(
       headers: {
         'Content-Type': mimeType,
         'Cache-Control': 'public, max-age=31536000, immutable',
+        'Content-Length': String(fileBuffer.byteLength),
       },
     });
-  } catch (error) {
-    console.error('[FILES_API] Error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Internal server error' },
-      { status: 500 },
-    );
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      err.code === 'ENOENT'
+    ) {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    }
+    console.error('[files] Unexpected error:', err);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
