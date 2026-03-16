@@ -12,6 +12,16 @@ function toPositiveInt(value: unknown): number | null {
   return Math.floor(n);
 }
 
+function buildFileUrl(filePath: string): string {
+  const normalized = filePath
+    .replace(/^\/public\/uploads\//, '')
+    .replace(/^public\/uploads\//, '')
+    .replace(/^\/uploads\//, '')
+    .replace(/^uploads\//, '');
+
+  return `/api/files/${normalized}`;
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -71,13 +81,9 @@ export async function GET(
     });
 
     const data = rows.map((r) => {
-      const normalizedPath = r.file_path
-        .replace(/^\/public\/uploads\//, '')
-        .replace(/^public\/uploads\//, '')
-        .replace(/^\/uploads\//, '')
-        .replace(/^uploads\//, '');
-
-      const url = `/api/files/${normalizedPath}`;
+      // Arahkan ke /api/files/... bukan /uploads/...
+      // Karena Next.js tidak serve runtime-uploaded files dari public/
+      const url = buildFileUrl(r.file_path);
 
       return {
         id: r.id,
