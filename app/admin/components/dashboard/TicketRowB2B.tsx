@@ -4,11 +4,13 @@ import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
+import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 import { getJenisStyle } from '@/app/libs/tickets/jenis';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import TtrCountdownBadge from './TtrCountdownBadge';
+import MaxTtrCell from './MaxTtrCell';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
 
 export interface TicketRowProps {
@@ -54,11 +56,13 @@ export interface TicketRowProps {
 
 const SLA_STYLES = {
   'On Track': {
-    badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+    badge:
+      'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
   'At Risk': {
-    badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    badge:
+      'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
     dot: 'bg-amber-500',
   },
   Overdue: {
@@ -228,7 +232,13 @@ export default function TicketRow({
 
       {/* Max TTR */}
       <td className='px-4 py-3 text-center'>
-        <TtrCountdownBadge ticket={ticket} />
+        {getEffectiveMaxTtrLabel(ticket) ? (
+          <span className='text-xs font-medium whitespace-nowrap text-(--text-primary) tabular-nums'>
+            {getEffectiveMaxTtrLabel(ticket)}
+          </span>
+        ) : (
+          <span className='text-xs text-(--text-secondary) italic'>—</span>
+        )}
       </td>
 
       {/* Age + SLA */}
@@ -253,6 +263,7 @@ export default function TicketRow({
               {slaLabel}
             </span>
           )}
+          <TtrCountdownBadge ticket={ticket} />
         </div>
       </td>
 

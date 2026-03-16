@@ -1,69 +1,58 @@
-import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 
-const globalForPrisma = global as unknown as {
-  prisma?: PrismaClient;
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
 };
 
-function getAdapter() {
-  const url = process.env.DATABASE_URL;
-
-  if (!url) throw new Error('DATABASE_URL missing');
-
-  const u = new URL(url);
-
-  const database = u.pathname.replace(/^\//, '');
-
-  const connectionLimit = Number(u.searchParams.get('connection_limit')) || 10;
-
-  return new PrismaMariaDb({
-    host: u.hostname,
-    port: u.port ? Number(u.port) : 3306,
-    user: decodeURIComponent(u.username),
-    password: decodeURIComponent(u.password),
-    database,
-    connectionLimit,
-    connectTimeout: 15000,
-    // Keep adapter pool aligned with MySQL idle timeout.
-    // If the adapter ignores these options, they're harmless.
-    idleTimeout: 20000,
-    socketTimeout: 60000,
-  } as any);
-}
-
-function createPrisma() {
-  const adapter = getAdapter();
-
-  const client = new PrismaClient({
-    adapter,
-    log: ['error', 'warn'],
-  });
-
-  client.$on('error', (e) => {
-    console.error('[Prisma] Error:', e.message);
-  });
-
-  client.$on('warn', (e) => {
-    console.warn('[Prisma] Warning:', e.message);
-  });
-
-  return client;
-}
-
-export function getPrisma() {
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrisma();
+if (process.env.NODE_ENV === 'production') {
+  if (process.env.DEBUG?.includes('prisma')) {
+    delete process.env.DEBUG;
   }
-
-  return globalForPrisma.prisma;
 }
 
-const prisma = new Proxy({} as PrismaClient, {
-  get(_, prop) {
-    const client = getPrisma();
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development' &&
+      process.env.PRISMA_DEBUG === 'false'
+        ? ['query', 'info', 'error', 'warn']
+        : ['error', 'warn'],
+  });
 
-    return (client as any)[prop];
-  },
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
+prisma.$on('error' as never, (e: { message: string }) => {
+  console.error('[Prisma] Error:', e.message);
 });
+
+prisma.$on('warn' as never, (e: { message: string }) => {
+  console.warn('[Prisma] Warning:', e.message);
+});
+
+export async function connectWithRetry(): Promise<void> {
+  const maxAttempts = 5;
+  const delayMs = 3000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[Prisma] Connecting... attempt ${attempt}/${maxAttempts}`);
+    try {
+      await prisma.$connect();
+      console.log('[Prisma] Connected to database');
+      return;
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        console.error('[Prisma] Connection failed after all attempts:', err);
+        throw err;
+      }
+      console.warn(
+        `[Prisma] Connection attempt ${attempt} failed, retrying in ${delayMs}ms...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 export default prisma;

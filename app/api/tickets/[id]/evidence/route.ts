@@ -71,16 +71,16 @@ export async function GET(
     });
 
     const data = rows.map((r) => {
-      // Normalise path lama (dengan /public prefix) dan path baru
       const cleanPath = r.file_path
-        .replace(/^\/public\//, '/')   // /public/uploads/... → /uploads/...
-        .replace(/^uploads\//, '/uploads/');  // uploads/... → /uploads/...
-      
+        .replace(/^\/public\//, '/')
+        .replace(/^uploads\//, '/uploads/');
+      const apiPath = cleanPath.replace(/^\//, '');
+
       return {
         id: r.id,
         fileName: r.file_name,
         filePath: r.file_path,
-        url: cleanPath,
+        url: `/api/files/${apiPath}`,
         driveUrl: r.n8n_web_url ?? null,
         fileSize: r.file_size ?? null,
         mimeType: r.mime_type ?? null,

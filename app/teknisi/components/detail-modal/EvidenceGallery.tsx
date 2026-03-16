@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 interface EvidenceItem {
   id: number;
   fileName: string;
@@ -21,6 +23,35 @@ export default function EvidenceGallery({
   error,
   onImageClick,
 }: EvidenceGalleryProps) {
+  const [failedImages, setFailedImages] = useState<Map<number, boolean>>(
+    new Map(),
+  );
+
+  const handleImageError = (id: number) => {
+    setFailedImages((prev) => {
+      const next = new Map(prev);
+      next.set(id, true);
+      return next;
+    });
+  };
+
+  const handleImageLoad = (id: number) => {
+    setFailedImages((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const getImageSrc = (ev: EvidenceItem) => {
+    if (ev.driveUrl) {
+      return ev.driveUrl;
+    }
+    return ev.url;
+  };
+
+  const hasFailed = (id: number) => failedImages.get(id) === true;
+
   return (
     <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5'>
       <h3 className='text-sm font-semibold text-slate-600 sm:text-base'>
@@ -47,36 +78,22 @@ export default function EvidenceGallery({
               className='relative overflow-hidden rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none'
               aria-label={`Open evidence ${idx + 1}`}
             >
-              <img
-                src={ev.driveUrl ?? ev.url}
-                alt={ev.fileName}
-                loading='lazy'
-                decoding='async'
-                className='h-20 w-full object-cover sm:h-24'
-                onError={(e) => {
-                  // Fallback ke local URL jika driveUrl gagal
-                  const target = e.currentTarget;
-                  if (ev.driveUrl && target.src !== ev.url) {
-                    target.src = ev.url;
-                  } else {
-                    // Tampilkan placeholder
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent) {
-                      parent.classList.add(
-                        'flex',
-                        'items-center',
-                        'justify-center',
-                        'bg-slate-100'
-                      );
-                      const span = document.createElement('span');
-                      span.className = 'text-xs text-slate-400';
-                      span.textContent = 'Gagal load';
-                      parent.appendChild(span);
-                    }
-                  }
-                }}
-              />
+              {hasFailed(ev.id) ? (
+                <div className='flex h-20 w-full flex-col items-center justify-center bg-slate-100 sm:h-24'>
+                  <span className='text-xl'>📷</span>
+                  <span className='text-xs text-slate-400'>Gagal load</span>
+                </div>
+              ) : (
+                <img
+                  src={getImageSrc(ev)}
+                  alt={ev.fileName}
+                  loading='lazy'
+                  decoding='async'
+                  className='h-20 w-full object-cover sm:h-24'
+                  onError={() => handleImageError(ev.id)}
+                  onLoad={() => handleImageLoad(ev.id)}
+                />
+              )}
             </button>
           ))}
         </div>

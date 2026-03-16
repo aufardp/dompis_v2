@@ -58,21 +58,21 @@ const STATUS_CONFIG: Record<
 > = {
   IDLE: {
     label: 'Idle',
-    color: 'text-gray-600',
-    bg: 'bg-gray-50',
-    border: 'border-gray-200',
+    color: 'text-gray-600 dark:text-slate-300',
+    bg: 'bg-gray-50 dark:bg-slate-700/50',
+    border: 'border-gray-200 dark:border-slate-600',
   },
   AKTIF: {
     label: 'Aktif',
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
+    color: 'text-blue-600 dark:text-blue-400',
+    bg: 'bg-blue-50 dark:bg-blue-500/15',
+    border: 'border-blue-200 dark:border-blue-400/30',
   },
   OVERLOAD: {
     label: 'Overload',
-    color: 'text-red-600',
-    bg: 'bg-red-50',
-    border: 'border-red-200',
+    color: 'text-red-600 dark:text-red-400',
+    bg: 'bg-red-50 dark:bg-red-500/15',
+    border: 'border-red-200 dark:border-red-400/30',
   },
 };
 
@@ -83,15 +83,15 @@ function getTechnicianStatusValue(ticketCount: number): TechnicianStatus {
 }
 
 function getAgeColor(hours: number): string {
-  if (hours >= 24) return 'text-red-600';
-  if (hours >= 8) return 'text-amber-600';
-  return 'text-green-600';
+  if (hours >= 24) return 'text-red-600 dark:text-red-400';
+  if (hours >= 8) return 'text-amber-600 dark:text-amber-400';
+  return 'text-green-600 dark:text-green-400';
 }
 
 function getAgeBgColor(hours: number): string {
-  if (hours >= 24) return 'bg-red-100';
-  if (hours >= 8) return 'bg-amber-100';
-  return 'bg-green-100';
+  if (hours >= 24) return 'bg-red-100 dark:bg-red-500/15';
+  if (hours >= 8) return 'bg-amber-100 dark:bg-amber-500/15';
+  return 'bg-green-100 dark:bg-green-500/15';
 }
 
 function getAgeBorderColor(hours: number): string {
@@ -107,19 +107,19 @@ function getWorstTicketAge(tickets: { ageHours: number }[]): number {
 
 function SkeletonCard() {
   return (
-    <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-5'>
+    <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
       <div className='flex items-center gap-3'>
-        <div className='h-12 w-12 rounded-full bg-slate-200' />
+        <div className='h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-700' />
         <div className='flex-1 space-y-2'>
-          <div className='h-4 w-24 rounded bg-slate-200' />
-          <div className='h-3 w-16 rounded bg-slate-200' />
+          <div className='h-4 w-24 rounded bg-slate-200 dark:bg-slate-700' />
+          <div className='h-3 w-16 rounded bg-slate-200 dark:bg-slate-700' />
         </div>
       </div>
       <div className='mt-4 space-y-2'>
-        <div className='h-3 w-full rounded bg-slate-200' />
-        <div className='h-3 w-3/4 rounded bg-slate-200' />
+        <div className='h-3 w-full rounded bg-slate-200 dark:bg-slate-700' />
+        <div className='h-3 w-3/4 rounded bg-slate-200 dark:bg-slate-700' />
       </div>
-      <div className='mt-4 h-8 w-full rounded bg-slate-200' />
+      <div className='mt-4 h-8 w-full rounded bg-slate-200 dark:bg-slate-700' />
     </div>
   );
 }
@@ -131,10 +131,10 @@ function LoadingSkeleton() {
         {[...Array(4)].map((_, i) => (
           <div
             key={i}
-            className='animate-pulse rounded-xl border border-slate-200 bg-white p-6'
+            className='animate-pulse rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'
           >
-            <div className='h-4 w-24 rounded bg-slate-200' />
-            <div className='mt-2 h-8 w-12 rounded bg-slate-200' />
+            <div className='h-4 w-24 rounded bg-slate-200 dark:bg-slate-700' />
+            <div className='mt-2 h-8 w-12 rounded bg-slate-200 dark:bg-slate-700' />
           </div>
         ))}
       </div>
@@ -155,13 +155,13 @@ interface EmptyStateProps {
 function EmptyState({ hasFilters, onReset }: EmptyStateProps) {
   return (
     <div className='flex flex-col items-center justify-center py-16 text-center'>
-      <Users className='h-16 w-16 text-slate-300' />
-      <h3 className='mt-4 text-lg font-medium text-slate-600'>
+      <Users className='h-16 w-16 text-slate-300 dark:text-slate-600' />
+      <h3 className='mt-4 text-lg font-medium text-slate-600 dark:text-slate-300'>
         {hasFilters
           ? 'Tidak ada teknisi ditemukan'
           : 'Belum ada teknisi di area ini'}
       </h3>
-      <p className='mt-1 text-sm text-slate-400'>
+      <p className='mt-1 text-sm text-slate-400 dark:text-slate-500'>
         {hasFilters
           ? 'Coba ubah filter atau kata kunci pencarian'
           : 'Tidak ada teknisi yang ditugaskan di area kerja Anda'}
@@ -210,7 +210,7 @@ function TechnicianCard({
 
   return (
     <div
-      className={`group rounded-xl border border-l-4 border-slate-200 bg-white p-5 transition-all hover:shadow-md ${borderColor}`}
+      className={`group rounded-xl border border-l-4 border-slate-200 bg-white p-5 transition-all hover:shadow-md dark:border-slate-700 dark:bg-slate-800 ${borderColor}`}
     >
       <div className='flex items-start gap-3'>
         <div
@@ -221,10 +221,10 @@ function TechnicianCard({
         <div className='min-w-0 flex-1'>
           <div className='flex items-start justify-between gap-3'>
             <div className='min-w-0'>
-              <h3 className='truncate font-semibold text-slate-800'>
+              <h3 className='truncate font-semibold text-slate-800 dark:text-slate-100'>
                 {technician.nama}
               </h3>
-              <p className='flex items-center gap-1 text-sm text-slate-500'>
+              <p className='flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400'>
                 <MapPin size={12} />
                 {technician.workzone}
               </p>
@@ -232,7 +232,7 @@ function TechnicianCard({
 
             <Link
               href={`/admin/technicians/${technician.id_user}`}
-              className='shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50'
+              className='shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
             >
               Lihat Profil
             </Link>
@@ -251,40 +251,42 @@ function TechnicianCard({
         </div>
       </div>
 
-      <div className='mt-4 border-t border-slate-100 pt-3'>
+      <div className='mt-4 border-t border-slate-100 pt-3 dark:border-slate-700'>
         <div className='mb-2 flex flex-wrap gap-1.5'>
-          <span className='inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700'>
+          <span className='inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'>
             {technician.order_counts?.assigned || 0} Assigned
           </span>
-          <span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700'>
+          <span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'>
             {technician.order_counts?.on_progress || 0} On Progress
           </span>
-          <span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700'>
+          <span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'>
             {technician.order_counts?.pending || 0} Pending
           </span>
-          <span className='inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700'>
+          <span className='inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-500/20 dark:text-green-300'>
             {technician.order_counts?.closed || 0} Closed
           </span>
-          <span className='inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700'>
+          <span className='inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'>
             {technician.total_closed_today || 0} Closed Today
           </span>
         </div>
 
         {displayTickets.length === 0 ? (
           <div className='flex flex-col items-center py-4 text-center'>
-            <AlertCircle className='h-8 w-8 text-slate-300' />
-            <p className='mt-2 text-sm text-slate-400'>Tidak ada tiket aktif</p>
+            <AlertCircle className='h-8 w-8 text-slate-300 dark:text-slate-600' />
+            <p className='mt-2 text-sm text-slate-400 dark:text-slate-500'>
+              Tidak ada tiket aktif
+            </p>
           </div>
         ) : (
           <div className='space-y-2'>
             {displayTickets.map((ticket, idx) => (
               <div
                 key={ticket.idTicket}
-                className={`flex items-center justify-between rounded-lg border-l-2 bg-slate-50 p-2 ${getAgeBorderColor(ticket.ageHours)}`}
+                className={`flex items-center justify-between rounded-lg border-l-2 bg-slate-50 p-2 dark:bg-slate-700/50 ${getAgeBorderColor(ticket.ageHours)}`}
               >
                 <div className='min-w-0 flex-1'>
                   <div className='flex items-center gap-1'>
-                    <span className='font-mono text-xs font-medium text-slate-500'>
+                    <span className='font-mono text-xs font-medium text-slate-500 dark:text-slate-400'>
                       #{idx + 1}
                     </span>
                     <span
@@ -297,10 +299,10 @@ function TechnicianCard({
                           : '🟢'}
                     </span>
                   </div>
-                  <p className='truncate text-xs font-medium text-slate-700'>
+                  <p className='truncate text-xs font-medium text-slate-700 dark:text-slate-200'>
                     {ticket.ticket}
                   </p>
-                  <p className='truncate text-xs text-slate-400'>
+                  <p className='truncate text-xs text-slate-400 dark:text-slate-500'>
                     {ticket.contactName}
                   </p>
                 </div>
@@ -313,7 +315,7 @@ function TechnicianCard({
                   <button
                     type='button'
                     onClick={() => onDetail(ticket.idTicket)}
-                    className='rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50'
+                    className='rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
                   >
                     Detail
                   </button>
@@ -325,27 +327,27 @@ function TechnicianCard({
 
         {closedToday.length > 0 && (
           <div className='mt-4'>
-            <p className='mb-2 text-xs font-semibold tracking-wider text-slate-500 uppercase'>
+            <p className='mb-2 text-xs font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400'>
               Closed Today
             </p>
             <div className='space-y-2'>
               {closedToday.map((t, idx) => (
                 <div
                   key={`${t.idTicket}-${idx}`}
-                  className='flex items-center justify-between rounded-lg border-l-2 border-l-emerald-500 bg-emerald-50/60 p-2'
+                  className='flex items-center justify-between rounded-lg border-l-2 border-l-emerald-500 bg-emerald-50/60 p-2 dark:bg-emerald-500/10'
                 >
                   <div className='min-w-0 flex-1'>
-                    <p className='truncate text-xs font-medium text-slate-700'>
+                    <p className='truncate text-xs font-medium text-slate-700 dark:text-slate-200'>
                       {t.ticket}
                     </p>
-                    <p className='truncate text-xs text-slate-500'>
+                    <p className='truncate text-xs text-slate-500 dark:text-slate-400'>
                       {t.contactName}
                     </p>
                   </div>
                   <button
                     type='button'
                     onClick={() => onDetail(t.idTicket)}
-                    className='ml-2 shrink-0 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50'
+                    className='ml-2 shrink-0 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-700 dark:text-emerald-400 dark:hover:bg-emerald-500/15'
                   >
                     Detail
                   </button>
@@ -356,7 +358,7 @@ function TechnicianCard({
         )}
 
         {hasMore && (
-          <button className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50'>
+          <button className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700/50'>
             + {technician.total_assigned - 3} tiket lainnya →
           </button>
         )}
@@ -381,14 +383,23 @@ function StatsCard({
   return (
     <button
       onClick={onClick}
-      className={`rounded-xl border bg-white p-5 text-left transition-all hover:shadow-md ${
-        isActive ? `border-blue-500 ring-2 ring-blue-500` : 'border-slate-200'
-      }`}
+      disabled={!onClick}
+      className={`group flex flex-col justify-center rounded-xl border bg-white p-4 transition-all md:p-5 ${
+        onClick ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
+      } ${
+        isActive
+          ? `border-blue-500 ring-2 ring-blue-500/20` // Menggunakan /20 agar ring lebih soft
+          : 'border-slate-200 dark:border-slate-700'
+      } dark:bg-slate-800/50`} // Memberikan sedikit transparansi agar lebih modern
     >
-      <p className='text-sm font-medium tracking-wider text-slate-500 uppercase'>
+      <p className='text-[10px] font-bold tracking-[1.2px] text-slate-500 uppercase transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300'>
         {title}
       </p>
-      <p className={`mt-1 text-3xl font-bold ${color}`}>{value}</p>
+      <p
+        className={`mt-2 text-2xl leading-none font-extrabold md:text-3xl ${color}`}
+      >
+        {value}
+      </p>
     </button>
   );
 }
@@ -513,11 +524,11 @@ export default function TechnicianMonitoringPage() {
       <div className='space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl'>
+            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Monitoring Teknisi
             </h1>
             {userWorkzones.length > 0 && (
-              <p className='flex items-center gap-1 text-sm text-gray-500'>
+              <p className='flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400'>
                 <MapPin size={14} />
                 Area: {userWorkzones.join(', ')}
               </p>
@@ -525,23 +536,23 @@ export default function TechnicianMonitoringPage() {
             <div className='mt-2 flex items-center gap-3'>
               <Link
                 href='/admin/technicians/attendance'
-                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline'
+                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400'
               >
                 <Calendar size={14} />
                 Rekap Absensi
               </Link>
-              <span className='text-gray-300'>|</span>
+              <span className='text-gray-300 dark:text-gray-600'>|</span>
               <Link
                 href='/admin/technicians/performance'
-                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline'
+                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400'
               >
                 <CheckCircle size={14} />
                 Rekap Pekerjaan Bulanan
               </Link>
-              <span className='text-gray-300'>|</span>
+              <span className='text-gray-300 dark:text-gray-600'>|</span>
               <Link
                 href='/admin/technicians/manhours'
-                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline'
+                className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400'
               >
                 <TrendingUp size={14} />
                 Produktivitas ManHours
@@ -565,8 +576,8 @@ export default function TechnicianMonitoringPage() {
         </div>
 
         {error && (
-          <div className='rounded-lg border border-red-200 bg-red-50 p-4'>
-            <p className='text-sm text-red-600'>{error}</p>
+          <div className='rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10'>
+            <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
             <Button
               variant='outline'
               size='sm'
@@ -642,7 +653,7 @@ export default function TechnicianMonitoringPage() {
                         placeholder='Cari teknisi...'
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className='w-full rounded-lg border border-slate-200 py-2 pr-4 pl-10 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                        className='w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400'
                       />
                     </div>
                     <div className='flex items-center gap-2'>

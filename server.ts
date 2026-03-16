@@ -3,7 +3,8 @@ import { parse } from 'url';
 import next from 'next';
 import 'dotenv/config';
 import cron from 'node-cron';
-import prisma from '@/app/libs/prisma';
+import prisma, { connectWithRetry } from '@/app/libs/prisma';
+import { closePool } from '@/app/libs/db';
 
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
@@ -18,7 +19,7 @@ const handle = app.getRequestHandler();
 
 /**
  * DB LOCK WRAPPER
- * Mencegah cron double jalan
+ * Mencegah cron double jalan jika menggunakan multiple instance/replica
  */
 async function withDbLock(lockName: string, fn: () => Promise<void>) {
   try {
@@ -54,6 +55,12 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 async function startServer() {
+  try {
+    await connectWithRetry();
+  } catch (err) {
+    console.error('[Server] DB connection failed, starting anyway:', err);
+  }
+
   await app.prepare();
   console.log('Next.js app prepared');
 
@@ -65,7 +72,6 @@ async function startServer() {
      */
     cron.schedule('*/5 * * * *', async () => {
       console.log('[CRON] Running sync...');
-
       await withDbLock('sync_lock', async () => {
         try {
           const result = await withTimeout(syncSpreadsheet(), 5 * 60 * 1000);
@@ -81,7 +87,6 @@ async function startServer() {
      */
     cron.schedule('*/10 * * * *', async () => {
       console.log('[CRON] Running push...');
-
       await withDbLock('push_lock', async () => {
         try {
           const result = await withTimeout(pushSpreadsheet(), 5 * 60 * 1000);
@@ -93,22 +98,31 @@ async function startServer() {
     });
 
     /**
-     * TECH EVENTS — setiap 1 menit
+     * TECH EVENTS — setiap 30 detik
+     * Menggunakan dua schedule karena node-cron tidak mendukung detik secara langsung
      */
-    cron.schedule('* * * * *', async () => {
+    const runTechEvents = async () => {
       console.log('[CRON] Running tech events dispatch...');
-
       await withDbLock('tech_events_lock', async () => {
         try {
-          const result = await withTimeout(dispatchTechEvents(), 60 * 1000);
+          // Timeout disesuaikan ke 30 detik agar tidak overlap
+          const result = await withTimeout(dispatchTechEvents(), 30 * 1000);
           console.log('[CRON] Tech events result:', result);
         } catch (error) {
           console.error('[CRON] Tech events error:', error);
         }
       });
+    };
+
+    // Schedule 1: Detik ke-0 setiap menit
+    cron.schedule('* * * * *', runTechEvents);
+
+    // Schedule 2: Detik ke-30 setiap menit
+    cron.schedule('* * * * *', () => {
+      setTimeout(runTechEvents, 30000);
     });
 
-    console.log('[CRON] Scheduled: sync(5m), push(10m), tech-events(1m)');
+    console.log('[CRON] Scheduled: sync(5m), push(10m), tech-events(30s)');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }
@@ -130,9 +144,15 @@ async function startServer() {
 
     server.close(async () => {
       await prisma.$disconnect();
+      await closePool();
       console.log('Server closed gracefully');
       process.exit(0);
     });
+
+    setTimeout(() => {
+      console.error('[Shutdown] Forced exit');
+      process.exit(1);
+    }, 10_000);
   };
 
   process.on('SIGINT', shutdown);

@@ -87,7 +87,7 @@ export default function AdminAccordion({
         return (
           <div
             key={item.id}
-            className='bg-surface overflow-hidden rounded-2xl border border-[var(--border)]'
+            className='bg-surface rounded-2 xl overflow-hidden border border-(--border)'
           >
             <button
               id={buttonId}
@@ -107,7 +107,7 @@ export default function AdminAccordion({
                   </span>
                 )}
                 <div className='min-w-0'>
-                  <div className='truncate text-xs font-bold tracking-[1.5px] text-[var(--text-secondary)] uppercase'>
+                  <div className='truncate text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
                     {item.title}
                   </div>
                 </div>
@@ -115,14 +115,14 @@ export default function AdminAccordion({
 
               <div className='flex items-center gap-3'>
                 {item.right && (
-                  <div className='shrink-0 text-xs text-[var(--text-muted)]'>
+                  <div className='shrink-0 text-xs text-(--text-muted)'>
                     {item.right}
                   </div>
                 )}
                 <ChevronDown
                   size={18}
                   className={clsx(
-                    'shrink-0 text-[var(--text-muted)] transition-transform duration-200',
+                    'shrink-0 text-(--text-muted) transition-transform duration-200',
                     isOpen && 'rotate-180',
                   )}
                 />

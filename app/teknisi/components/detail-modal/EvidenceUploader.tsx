@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
   onRemoveImage: (index: number) => void;
@@ -7,23 +9,49 @@ interface EvidenceUploaderProps {
   uploading: boolean;
 }
 
+const MAX_FILE_SIZE = 8 * 1024 * 1024;
+
 export default function EvidenceUploader({
   onFilesChange,
   onRemoveImage,
   previewUrls,
   uploading,
 }: EvidenceUploaderProps) {
+  const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
+
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
 
+    setRejectedFiles([]);
     const fileArray = Array.from(files);
+    const oversized: string[] = [];
+    const validFiles: File[] = [];
 
-    if (fileArray.length > 5) {
+    for (const file of fileArray) {
+      if (file.size > MAX_FILE_SIZE) {
+        oversized.push(file.name);
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    if (oversized.length > 0) {
+      for (const name of oversized) {
+        alert(`File ${name} terlalu besar. Maksimal 8MB`);
+      }
+      setRejectedFiles(oversized);
+    }
+
+    if (validFiles.length > 5) {
       alert('Maksimal 5 foto');
+      const validOnly = validFiles.slice(0, 5);
+      onFilesChange(validOnly);
       return;
     }
 
-    onFilesChange(fileArray);
+    if (validFiles.length > 0) {
+      onFilesChange(validFiles);
+    }
   };
 
   return (
@@ -42,6 +70,12 @@ export default function EvidenceUploader({
           onChange={(e) => handleFileChange(e.target.files)}
         />
       </label>
+
+      {rejectedFiles.length > 0 && (
+        <p className='text-xs text-amber-600'>
+          {rejectedFiles.length} file ditolak karena terlalu besar
+        </p>
+      )}
 
       {previewUrls.length > 0 && (
         <div className='grid grid-cols-3 gap-2 sm:grid-cols-3'>

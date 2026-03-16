@@ -56,13 +56,13 @@ function LoadingSkeleton() {
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className='animate-pulse rounded-lg border border-slate-200 bg-white p-4'
+          className='animate-pulse rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
         >
           <div className='flex items-center gap-4'>
-            <div className='h-12 w-12 rounded-full bg-slate-200' />
+            <div className='h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-700' />
             <div className='flex-1 space-y-2'>
-              <div className='h-4 w-32 rounded bg-slate-200' />
-              <div className='h-3 w-24 rounded bg-slate-200' />
+              <div className='h-4 w-32 rounded bg-slate-200 dark:bg-slate-700' />
+              <div className='h-3 w-24 rounded bg-slate-200 dark:bg-slate-700' />
             </div>
           </div>
         </div>
@@ -74,11 +74,11 @@ function LoadingSkeleton() {
 function EmptyState() {
   return (
     <div className='flex flex-col items-center justify-center py-16 text-center'>
-      <Users className='h-16 w-16 text-slate-300' />
-      <h3 className='mt-4 text-lg font-medium text-slate-600'>
+      <Users className='h-16 w-16 text-slate-300 dark:text-slate-600' />
+      <h3 className='mt-4 text-lg font-medium text-slate-600 dark:text-slate-300'>
         Tidak ada data absensi
       </h3>
-      <p className='mt-1 text-sm text-slate-400'>
+      <p className='mt-1 text-sm text-slate-400 dark:text-slate-500'>
         Pilih bulan dan tahun untuk melihat rekap absensi
       </p>
     </div>
@@ -229,10 +229,10 @@ export default function MonthlyAttendancePage() {
       <div className='space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl'>
+            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Rekap Absensi Teknisi
             </h1>
-            <p className='text-sm text-gray-500'>
+            <p className='text-sm text-gray-500 dark:text-gray-400'>
               Lihat rekap absensi teknisi per bulan
             </p>
           </div>
@@ -249,18 +249,18 @@ export default function MonthlyAttendancePage() {
         <div className='flex items-center justify-center gap-4'>
           <button
             onClick={() => handleMonthChange(month - 1)}
-            className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50'
+            className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
           >
             <ChevronLeft size={20} />
           </button>
           <div className='min-w-[200px] text-center'>
-            <span className='text-lg font-semibold text-slate-800'>
+            <span className='text-lg font-semibold text-slate-800 dark:text-slate-100'>
               {MONTHS[month - 1]} {year}
             </span>
           </div>
           <button
             onClick={() => handleMonthChange(month + 1)}
-            className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50'
+            className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
           >
             <ChevronRight size={20} />
           </button>
@@ -276,42 +276,46 @@ export default function MonthlyAttendancePage() {
               defaultOpen: true,
               children: (
                 <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
-                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
                     <div className='flex items-center gap-3'>
-                      <div className='rounded-full bg-blue-100 p-2'>
-                        <Calendar className='h-5 w-5 text-blue-600' />
+                      <div className='rounded-full bg-blue-100 p-2 dark:bg-blue-500/20'>
+                        <Calendar className='h-5 w-5 text-blue-600 dark:text-blue-400' />
                       </div>
                       <div>
-                        <p className='text-sm text-slate-500'>Hari Kerja</p>
-                        <p className='text-2xl font-bold text-slate-800'>
+                        <p className='text-sm text-slate-500 dark:text-slate-400'>
+                          Hari Kerja
+                        </p>
+                        <p className='text-2xl font-bold text-slate-800 dark:text-slate-100'>
                           {totalWorkingDays}
                         </p>
                       </div>
                     </div>
                   </div>
-                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
                     <div className='flex items-center gap-3'>
-                      <div className='rounded-full bg-green-100 p-2'>
-                        <CheckCircle className='h-5 w-5 text-green-600' />
+                      <div className='rounded-full bg-green-100 p-2 dark:bg-green-500/20'>
+                        <CheckCircle className='h-5 w-5 text-green-600 dark:text-green-400' />
                       </div>
                       <div>
-                        <p className='text-sm text-slate-500'>
+                        <p className='text-sm text-slate-500 dark:text-slate-400'>
                           Rata-rata Kehadiran
                         </p>
-                        <p className='text-2xl font-bold text-green-600'>
+                        <p className='text-2xl font-bold text-green-600 dark:text-green-400'>
                           {stats.avgPercentage}%
                         </p>
                       </div>
                     </div>
                   </div>
-                  <div className='rounded-xl border border-slate-200 bg-white p-5'>
+                  <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
                     <div className='flex items-center gap-3'>
-                      <div className='rounded-full bg-amber-100 p-2'>
-                        <Clock className='h-5 w-5 text-amber-600' />
+                      <div className='rounded-full bg-amber-100 p-2 dark:bg-amber-500/20'>
+                        <Clock className='h-5 w-5 text-amber-600 dark:text-amber-400' />
                       </div>
                       <div>
-                        <p className='text-sm text-slate-500'>Total Teknisi</p>
-                        <p className='text-2xl font-bold text-slate-800'>
+                        <p className='text-sm text-slate-500 dark:text-slate-400'>
+                          Total Teknisi
+                        </p>
+                        <p className='text-2xl font-bold text-slate-800 dark:text-slate-100'>
                           {summaries.length}
                         </p>
                       </div>
@@ -327,10 +331,10 @@ export default function MonthlyAttendancePage() {
               right:
                 summaries.length > 0 ? `${summaries.length} techs` : undefined,
               children: (
-                <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
+                <div className='overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
                   <div className='overflow-x-auto'>
                     <table className='w-full text-sm'>
-                      <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
+                      <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:bg-slate-700/50 dark:text-slate-400'>
                         <tr>
                           <th className='px-4 py-3 text-left'>Teknisi</th>
                           <th className='px-4 py-3 text-left'>Workzone</th>
@@ -341,12 +345,12 @@ export default function MonthlyAttendancePage() {
                           <th className='px-4 py-3 text-center'>Detail</th>
                         </tr>
                       </thead>
-                      <tbody className='divide-y divide-slate-100'>
+                      <tbody className='divide-y divide-slate-100 dark:divide-slate-700'>
                         {loading ? (
                           [...Array(5)].map((_, i) => (
                             <tr key={i}>
                               <td colSpan={7} className='px-4 py-4'>
-                                <div className='h-6 animate-pulse rounded bg-slate-200' />
+                                <div className='h-6 animate-pulse rounded bg-slate-200 dark:bg-slate-700' />
                               </td>
                             </tr>
                           ))
@@ -354,7 +358,7 @@ export default function MonthlyAttendancePage() {
                           <tr>
                             <td
                               colSpan={7}
-                              className='px-4 py-12 text-center text-slate-400'
+                              className='px-4 py-12 text-center text-slate-400 dark:text-slate-500'
                             >
                               Tidak ada data absensi
                             </td>
@@ -363,11 +367,11 @@ export default function MonthlyAttendancePage() {
                           summaries.map((summary) => (
                             <tr
                               key={summary.technician_id}
-                              className='hover:bg-slate-50'
+                              className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
                             >
                               <td className='px-4 py-3'>
                                 <div className='flex items-center gap-3'>
-                                  <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600'>
+                                  <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300'>
                                     {summary.technician_name
                                       .split(' ')
                                       .map((n) => n[0])
@@ -376,38 +380,38 @@ export default function MonthlyAttendancePage() {
                                       .slice(0, 2)}
                                   </div>
                                   <div>
-                                    <p className='font-medium text-slate-800'>
+                                    <p className='font-medium text-slate-800 dark:text-slate-100'>
                                       {summary.technician_name}
                                     </p>
-                                    <p className='text-xs text-slate-500'>
+                                    <p className='text-xs text-slate-500 dark:text-slate-400'>
                                       {summary.technician_nik || '-'}
                                     </p>
                                   </div>
                                 </div>
                               </td>
                               <td className='px-4 py-3'>
-                                <span className='inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600'>
+                                <span className='inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300'>
                                   {summary.workzone}
                                 </span>
                               </td>
                               <td className='px-4 py-3 text-center'>
-                                <span className='font-semibold text-green-600'>
+                                <span className='font-semibold text-green-600 dark:text-green-400'>
                                   {summary.total_present}
                                 </span>
                               </td>
                               <td className='px-4 py-3 text-center'>
-                                <span className='font-semibold text-amber-600'>
+                                <span className='font-semibold text-amber-600 dark:text-amber-400'>
                                   {summary.total_late}
                                 </span>
                               </td>
                               <td className='px-4 py-3 text-center'>
-                                <span className='font-semibold text-red-600'>
+                                <span className='font-semibold text-red-600 dark:text-red-400'>
                                   {summary.total_absent}
                                 </span>
                               </td>
                               <td className='px-4 py-3'>
                                 <div className='flex items-center gap-2'>
-                                  <div className='h-2 w-20 overflow-hidden rounded-full bg-slate-100'>
+                                  <div className='h-2 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700'>
                                     <div
                                       className={`h-full ${getPercentageColor(summary.attendance_percentage)}`}
                                       style={{

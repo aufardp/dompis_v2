@@ -5,12 +5,27 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'drive.google.com',
+      },
+    ],
+  },
   experimental: {
     optimizePackageImports: [
       '@heroicons/react',
       '@tanstack/react-query',
       'lucide-react',
     ],
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
   async headers() {
     return [
@@ -24,7 +39,8 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization, x-cron-secret, x-signature, x-timestamp, x-source',
+            value:
+              'Content-Type, Authorization, x-cron-secret, x-signature, x-timestamp, x-source',
           },
           {
             key: 'Access-Control-Expose-Headers',

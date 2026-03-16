@@ -3,17 +3,11 @@ import path from 'path';
 
 export type ActionType = 'pending' | 'close';
 
-/**
- * Saves uploaded evidence files to local storage.
- * Path structure: public/uploads/evidence/{incident}/{fileName}
- * Accessible via: /uploads/evidence/{incident}/{fileName}
- */
 export async function saveFiles(
   files: File[],
   incident: string,
   actionType: ActionType = 'pending',
 ) {
-  // Save to public/uploads for Next.js static file serving
   const uploadDir = path.join(
     process.cwd(),
     'public',
@@ -46,6 +40,7 @@ export async function saveFiles(
       return {
         fileName: newName,
         filePath: `uploads/evidence/${incident}/${newName}`,
+        apiUrl: `/api/files/uploads/evidence/${incident}/${newName}`,
         fileSize: file.size,
         mimeType: file.type,
       };

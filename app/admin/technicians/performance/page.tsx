@@ -151,15 +151,15 @@ export default function TechnicianPerformancePage() {
       <div className='space-y-6'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl'>
+            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Performa Teknisi (Bulanan)
             </h1>
-            <p className='text-sm text-gray-500'>
+            <p className='text-sm text-gray-500 dark:text-gray-400'>
               Rekap pekerjaan teknisi per bulan + export CSV
             </p>
             <Link
               href='/admin/technicians'
-              className='mt-2 inline-flex text-sm text-blue-600 hover:underline'
+              className='mt-2 inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400'
             >
               ← Kembali ke Monitoring
             </Link>
@@ -189,18 +189,18 @@ export default function TechnicianPerformancePage() {
           <div className='flex items-center justify-center gap-4'>
             <button
               onClick={() => handleMonthChange(month - 1)}
-              className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50'
+              className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
             >
               <ChevronLeft size={20} />
             </button>
-            <div className='min-w-[200px] text-center'>
-              <span className='text-lg font-semibold text-slate-800'>
+            <div className='min-w-50 text-center'>
+              <span className='text-lg font-semibold text-slate-800 dark:text-slate-100'>
                 {MONTHS[month - 1]} {year}
               </span>
             </div>
             <button
               onClick={() => handleMonthChange(month + 1)}
-              className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50'
+              className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
             >
               <ChevronRight size={20} />
             </button>
@@ -219,15 +219,15 @@ export default function TechnicianPerformancePage() {
         </div>
 
         {error && (
-          <div className='rounded-lg border border-red-200 bg-red-50 p-4'>
-            <p className='text-sm text-red-600'>{error}</p>
+          <div className='rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10'>
+            <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
           </div>
         )}
 
-        <div className='overflow-hidden rounded-xl border border-slate-200 bg-white'>
+        <div className='overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
           <div className='overflow-x-auto'>
             <table className='w-full text-sm'>
-              <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase'>
+              <thead className='bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:bg-slate-700/50 dark:text-slate-400'>
                 <tr>
                   <th className='px-4 py-3 text-left'>Nama</th>
                   <th className='px-4 py-3 text-left'>NIK</th>
@@ -236,12 +236,12 @@ export default function TechnicianPerformancePage() {
                   <th className='px-4 py-3 text-center'>Avg Resolve (h)</th>
                 </tr>
               </thead>
-              <tbody className='divide-y divide-slate-100'>
+              <tbody className='divide-y divide-slate-100 dark:divide-slate-700'>
                 {loading ? (
                   <tr>
                     <td
                       colSpan={5}
-                      className='px-4 py-10 text-center text-slate-400'
+                      className='px-4 py-10 text-center text-slate-400 dark:text-slate-500'
                     >
                       Loading...
                     </td>
@@ -250,25 +250,30 @@ export default function TechnicianPerformancePage() {
                   <tr>
                     <td
                       colSpan={5}
-                      className='px-4 py-10 text-center text-slate-400'
+                      className='px-4 py-10 text-center text-slate-400 dark:text-slate-500'
                     >
                       No data
                     </td>
                   </tr>
                 ) : (
                   rows.map((r) => (
-                    <tr key={r.id_user} className='hover:bg-slate-50'>
-                      <td className='px-4 py-3 font-medium text-slate-800'>
+                    <tr
+                      key={r.id_user}
+                      className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                    >
+                      <td className='px-4 py-3 font-medium text-slate-800 dark:text-slate-100'>
                         {r.nama}
                       </td>
-                      <td className='px-4 py-3 text-slate-600'>
+                      <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>
                         {r.nik || '-'}
                       </td>
-                      <td className='px-4 py-3 text-slate-600'>{r.workzone}</td>
-                      <td className='px-4 py-3 text-center font-semibold text-slate-800'>
+                      <td className='px-4 py-3 text-slate-600 dark:text-slate-300'>
+                        {r.workzone}
+                      </td>
+                      <td className='px-4 py-3 text-center font-semibold text-slate-800 dark:text-slate-100'>
                         {r.closed_count}
                       </td>
-                      <td className='px-4 py-3 text-center text-slate-700'>
+                      <td className='px-4 py-3 text-center text-slate-700 dark:text-slate-300'>
                         {r.avg_resolve_time_hours == null
                           ? '-'
                           : r.avg_resolve_time_hours.toFixed(1)}

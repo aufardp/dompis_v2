@@ -2,7 +2,15 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { Download, Search, Calendar, TrendingUp, Users, Clock, Award } from 'lucide-react';
+import {
+  Download,
+  Search,
+  Calendar,
+  TrendingUp,
+  Users,
+  Clock,
+  Award,
+} from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -53,19 +61,19 @@ interface FilterState {
 function LoadingSkeleton() {
   return (
     <div className='space-y-4'>
-      <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-6'>
-        <div className='h-4 w-32 rounded bg-slate-200' />
+      <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <div className='h-4 w-32 rounded bg-slate-200 dark:bg-slate-700' />
         <div className='mt-4 space-y-2'>
-          <div className='h-3 w-full rounded bg-slate-200' />
-          <div className='h-3 w-3/4 rounded bg-slate-200' />
+          <div className='h-3 w-full rounded bg-slate-200 dark:bg-slate-700' />
+          <div className='h-3 w-3/4 rounded bg-slate-200 dark:bg-slate-700' />
         </div>
       </div>
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className='animate-pulse rounded-xl border border-slate-200 bg-white p-4'
+          className='animate-pulse rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
         >
-          <div className='h-4 w-full rounded bg-slate-200' />
+          <div className='h-4 w-full rounded bg-slate-200 dark:bg-slate-700' />
         </div>
       ))}
     </div>
@@ -78,9 +86,13 @@ function LoadingSkeleton() {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className='flex flex-col items-center justify-center py-16 text-center'>
-      <Calendar className='h-16 w-16 text-slate-300' />
-      <h3 className='mt-4 text-lg font-medium text-slate-600'>Tidak ada data</h3>
-      <p className='mt-1 text-sm text-slate-400'>{message}</p>
+      <Calendar className='h-16 w-16 text-slate-300 dark:text-slate-600' />
+      <h3 className='mt-4 text-lg font-medium text-slate-600 dark:text-slate-300'>
+        Tidak ada data
+      </h3>
+      <p className='mt-1 text-sm text-slate-400 dark:text-slate-500'>
+        {message}
+      </p>
     </div>
   );
 }
@@ -100,14 +112,18 @@ function SummaryCard({
   color: string;
 }) {
   return (
-    <div className='rounded-xl border border-slate-200 bg-white p-5'>
+    <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
       <div className='flex items-center gap-3'>
         <div className={`rounded-lg p-2 ${color}`}>
           <Icon size={20} className='text-white' />
         </div>
         <div>
-          <p className='text-xs font-medium text-slate-500'>{label}</p>
-          <p className='text-xl font-bold text-slate-800'>{value}</p>
+          <p className='text-xs font-medium text-slate-500 dark:text-slate-400'>
+            {label}
+          </p>
+          <p className='text-xl font-bold text-slate-800 dark:text-slate-100'>
+            {value}
+          </p>
         </div>
       </div>
     </div>
@@ -251,12 +267,12 @@ export default function ManHoursPage() {
         {/* Header */}
         <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl'>
+            <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Produktivitas ManHours Teknisi
             </h1>
-            <p className='text-sm text-gray-500'>
-              Monitoring produktivitas berdasarkan realisasi manhours per kategori
-              tiket
+            <p className='text-sm text-gray-500 dark:text-gray-400'>
+              Monitoring produktivitas berdasarkan realisasi manhours per
+              kategori tiket
             </p>
           </div>
           <div className='flex items-center gap-2'>
@@ -268,45 +284,43 @@ export default function ManHoursPage() {
         </div>
 
         {/* Filter Section */}
-        <div className='rounded-xl border border-slate-200 bg-white p-5'>
+        <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5'>
             {/* Date From */}
             <div>
-              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase'>
+              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase dark:text-slate-300'>
                 Dari Tanggal
               </label>
               <input
                 type='date'
                 value={filters.dateFrom}
-                onChange={(e) =>
-                  handleFilterChange('dateFrom', e.target.value)
-                }
-                className='w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500'
+                onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                className='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:border-teal-400'
               />
             </div>
 
             {/* Date To */}
             <div>
-              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase'>
+              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase dark:text-slate-300'>
                 Sampai Tanggal
               </label>
               <input
                 type='date'
                 value={filters.dateTo}
                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                className='w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500'
+                className='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:border-teal-400'
               />
             </div>
 
             {/* STO Filter */}
             <div>
-              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase'>
+              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase dark:text-slate-300'>
                 STO
               </label>
               <select
                 value={filters.sto}
                 onChange={(e) => handleFilterChange('sto', e.target.value)}
-                className='w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500'
+                className='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:border-teal-400'
               >
                 <option value=''>Semua STO</option>
                 {data?.stoOptions.map((opt) => (
@@ -319,7 +333,7 @@ export default function ManHoursPage() {
 
             {/* Name Search */}
             <div>
-              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase'>
+              <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase dark:text-slate-300'>
                 Nama Teknisi
               </label>
               <div className='relative'>
@@ -333,7 +347,7 @@ export default function ManHoursPage() {
                   value={filters.name}
                   onChange={(e) => handleFilterChange('name', e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
-                  className='w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500'
+                  className='w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-teal-400'
                 />
               </div>
             </div>
@@ -383,8 +397,8 @@ export default function ManHoursPage() {
 
         {/* Error State */}
         {error && (
-          <div className='rounded-xl border border-red-200 bg-red-50 p-4'>
-            <p className='text-sm text-red-600'>{error}</p>
+          <div className='rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10'>
+            <p className='text-sm text-red-600 dark:text-red-400'>{error}</p>
             <Button
               variant='outline'
               size='sm'
@@ -402,95 +416,97 @@ export default function ManHoursPage() {
         ) : !data?.rows.length ? (
           <EmptyState message='Belum ada data manhours untuk periode yang dipilih' />
         ) : (
-          <div className='overflow-x-auto rounded-xl border border-slate-200 bg-white'>
-            <table className='min-w-full divide-y divide-slate-200'>
+          <div className='overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
+            <table className='min-w-full divide-y divide-slate-200 dark:divide-slate-700'>
               <thead className='bg-teal-500'>
                 <tr>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
                     No
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
                     Nama
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
                     STO
                   </th>
                   {categoryColumns.map((col) => (
                     <th
                       key={col.jenis_key}
-                      className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'
+                      className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'
                     >
                       {col.label}
                     </th>
                   ))}
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Total Tiket
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Produktivitas
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Target
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Realisasi
                   </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-white'>
+                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Jam Efektif
                   </th>
                 </tr>
               </thead>
-              <tbody className='divide-y divide-slate-200'>
+              <tbody className='divide-y divide-slate-200 dark:divide-slate-700'>
                 {data.rows.map((row, idx) => (
                   <tr
                     key={row.technician_id}
-                    className='hover:bg-slate-50'
+                    className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
                   >
-                    <td className='px-4 py-3 text-sm font-medium text-slate-700'>
+                    <td className='px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300'>
                       {idx + 1}
                     </td>
                     <td className='px-4 py-3 text-sm'>
-                      <div className='font-medium text-slate-800'>
+                      <div className='font-medium text-slate-800 dark:text-slate-100'>
                         {row.nama || 'N/A'}
                       </div>
                       {row.nik && (
-                        <div className='text-xs text-slate-500'>{row.nik}</div>
+                        <div className='text-xs text-slate-500 dark:text-slate-400'>
+                          {row.nik}
+                        </div>
                       )}
                     </td>
-                    <td className='px-4 py-3 text-sm text-slate-700'>
+                    <td className='px-4 py-3 text-sm text-slate-700 dark:text-slate-300'>
                       {row.sto}
                     </td>
                     {categoryColumns.map((col) => (
                       <td
                         key={col.jenis_key}
-                        className='px-4 py-3 text-center text-sm text-slate-700'
+                        className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'
                       >
                         {row.categories[col.jenis_key] || 0}
                       </td>
                     ))}
-                    <td className='px-4 py-3 text-center text-sm font-medium text-slate-700'>
+                    <td className='px-4 py-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300'>
                       {row.total_tickets}
                     </td>
                     <td className='px-4 py-3 text-center'>
                       <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           row.produktivitas >= 20
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400'
                             : row.produktivitas >= 10
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-red-100 text-red-700'
+                              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400'
+                              : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
                         }`}
                       >
                         {row.produktivitas.toFixed(2)}
                       </span>
                     </td>
-                    <td className='px-4 py-3 text-center text-sm text-slate-700'>
+                    <td className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
                       {row.target}
                     </td>
-                    <td className='px-4 py-3 text-center text-sm font-semibold text-slate-800'>
+                    <td className='px-4 py-3 text-center text-sm font-semibold text-slate-800 dark:text-slate-100'>
                       {row.realisasi}
                     </td>
-                    <td className='px-4 py-3 text-center text-sm text-slate-700'>
+                    <td className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
                       {row.jam_efektif}
                     </td>
                   </tr>
