@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import EvidenceUploader from './detail-modal/EvidenceUploader';
 
 interface Props {
   ticket: Ticket;
@@ -29,23 +30,57 @@ export default function TicketUpdateModal({
   const isEvidenceIncomplete = selectedFiles.length < PHOTO_MIN;
   const canSubmit = !isReasonIncomplete && !isEvidenceIncomplete && !loading;
 
-  // ── File handlers ─────────────────────────────────────────────────────────
-  const handleFileChange = (files: FileList | null) => {
-    if (!files) return;
-    const fileArray = Array.from(files);
-    if (fileArray.length > PHOTO_MAX) {
-      setError(`Maksimal ${PHOTO_MAX} foto`);
-      return;
-    }
-    setError(null);
-    setSelectedFiles(fileArray);
-    setPreviewUrls(fileArray.map((f) => URL.createObjectURL(f)));
-  };
+  // ── Image compression (identik dengan TicketDetailModal) ──────────────────
+  const compressImage = useCallback(
+    async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const canvas = document.createElement('canvas');
+          const scale = Math.min(1, maxWidthPx / img.width);
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve(file);
+                return;
+              }
+              resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+            },
+            'image/jpeg',
+            quality,
+          );
+        };
+        img.onerror = () => resolve(file);
+        img.src = url;
+      });
+    },
+    [],
+  );
 
-  const removeImage = (index: number) => {
+  // ── File handlers dengan compression ──────────────────────────────────────
+  const handleFileChange = useCallback(
+    async (files: File[]) => {
+      const compressed = await Promise.all(
+        files.map((f) =>
+          f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
+        ),
+      );
+      setSelectedFiles(compressed);
+      setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
+    },
+    [compressImage],
+  );
+
+  const handleRemoveImage = useCallback((index: number) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
     setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const uploadEvidence = async () => {
@@ -238,77 +273,15 @@ export default function TicketUpdateModal({
               </span>
             </div>
 
-            <div className='space-y-3 px-4 py-3'>
-              {/* Upload zone */}
-              <label
-                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 transition-colors ${
-                  selectedFiles.length > 0
-                    ? 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                    : 'border-blue-200 bg-blue-50/50 hover:bg-blue-50'
-                }`}
-              >
-                <span className='text-2xl'>
-                  {selectedFiles.length > 0 ? '📎' : '📁'}
-                </span>
-                <div className='text-center'>
-                  <p className='text-[13px] font-bold text-slate-600'>
-                    {selectedFiles.length > 0
-                      ? 'Ganti / Tambah Foto'
-                      : 'Pilih Foto'}
-                  </p>
-                  <p className='mt-0.5 text-[11px] text-slate-400'>
-                    Min {PHOTO_MIN} foto · Max {PHOTO_MAX} foto · JPG, PNG
-                  </p>
-                </div>
-                <input
-                  type='file'
-                  multiple
-                  accept='image/*'
-                  hidden
-                  onChange={(e) => handleFileChange(e.target.files)}
-                />
-              </label>
-
-              {/* Preview grid */}
-              {previewUrls.length > 0 && (
-                <div className='grid grid-cols-3 gap-2'>
-                  {previewUrls.map((url, i) => (
-                    <div key={i} className='group relative aspect-square'>
-                      <img
-                        src={url}
-                        alt={`Evidence ${i + 1}`}
-                        className='h-full w-full rounded-xl border border-slate-200 object-cover'
-                      />
-                      {/* Index badge */}
-                      <span className='absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] font-black text-white'>
-                        {i + 1}
-                      </span>
-                      {/* Remove button */}
-                      <button
-                        type='button'
-                        onClick={() => removeImage(i)}
-                        className='absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 active:opacity-100'
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add more slot — show if below max */}
-                  {selectedFiles.length < PHOTO_MAX && (
-                    <label className='flex aspect-square cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-2xl text-slate-300 transition-colors hover:bg-slate-100'>
-                      +
-                      <input
-                        type='file'
-                        multiple
-                        accept='image/*'
-                        hidden
-                        onChange={(e) => handleFileChange(e.target.files)}
-                      />
-                    </label>
-                  )}
-                </div>
-              )}
+            <div className='px-4 py-3'>
+              {/* Use EvidenceUploader component */}
+              <EvidenceUploader
+                onFilesChange={handleFileChange}
+                onRemoveImage={handleRemoveImage}
+                previewUrls={previewUrls}
+                uploading={uploading}
+                existingCount={0}
+              />
             </div>
           </div>
 

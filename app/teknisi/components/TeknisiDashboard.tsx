@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
 import TicketUpdateModal from './TicketUpdateModal';
@@ -22,6 +22,148 @@ import {
 } from './TeknisiDashboard/components';
 import { TicketFilter } from './TeknisiDashboard/constants/ticket';
 
+interface SearchBarProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function SearchBar({ value, onChange }: SearchBarProps) {
+  const [inputValue, setInputValue] = useState(value);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync if value is reset from outside
+  useEffect(() => {
+    if (value === '' && inputValue !== '') {
+      setInputValue('');
+    }
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setInputValue(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onChange(v), 300);
+  };
+
+  const handleClear = () => {
+    setInputValue('');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onChange('');
+  };
+
+  return (
+    <div className='relative'>
+      <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm'>
+        🔍
+      </span>
+      <input
+        type='text'
+        placeholder='Cari nomor tiket... (contoh: IN-2024-001234)'
+        value={inputValue}
+        onChange={handleChange}
+        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100'
+      />
+      {inputValue && (
+        <button
+          type='button'
+          onClick={handleClear}
+          className='absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300'
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}
+
+function getPageRange(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | '...')[] = [1];
+  if (current > 3) pages.push('...');
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (current < total - 2) pages.push('...');
+  pages.push(total);
+  return pages;
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: PaginationProps) {
+  if (totalPages <= 1) return null;
+
+  const from = (currentPage - 1) * pageSize + 1;
+  const to = Math.min(currentPage * pageSize, totalItems);
+  const pages = getPageRange(currentPage, totalPages);
+
+  const handlePageChange = (page: number) => {
+    onPageChange(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <div className='flex flex-col items-center gap-2 pt-2'>
+      <div className='flex items-center gap-1'>
+        <button
+          type='button'
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          ←
+        </button>
+        {pages.map((p, i) =>
+          p === '...' ? (
+            <span
+              key={i}
+              className='flex h-8 w-8 items-center justify-center text-sm text-slate-400'
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type='button'
+              onClick={() => handlePageChange(p as number)}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                p === currentPage
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )}
+        <button
+          type='button'
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          →
+        </button>
+      </div>
+      <p className='text-xs text-slate-400'>
+        Menampilkan {from}–{to} dari {totalItems} tiket
+      </p>
+    </div>
+  );
+}
+
 export default function TeknisiDashboard() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -29,8 +171,20 @@ export default function TeknisiDashboard() {
 
   const { toasts, dismissToast, showSuccess, showError } = useToast();
 
-  const { loading, filter, setFilter, filteredTickets, stats, refresh } =
-    useTickets('all');
+  const {
+    loading,
+    filter,
+    setFilter,
+    paginatedTickets,
+    filteredTickets,
+    currentPage,
+    totalPages,
+    setPage,
+    searchQuery,
+    setSearchQuery,
+    stats,
+    refresh,
+  } = useTickets('all');
 
   const { pullDistance, ptrReady, ptrRefreshing } = usePullToRefresh({
     onRefresh: refresh,
@@ -46,18 +200,21 @@ export default function TeknisiDashboard() {
     setShowDetailModal(true);
   }, []);
 
-  const handleTicketUpdated = useCallback((type?: 'close' | 'pickup' | 'resume') => {
-    void refresh();
-    setSelectedTicket(null);
-    setShowDetailModal(false);
-    if (type === 'close') {
-      showSuccess('Tiket Berhasil Ditutup! 🎉', 'Tiket telah berhasil di-close.');
-    } else if (type === 'pickup') {
-      showSuccess('Tiket Diambil', 'Tiket berhasil di-pickup. Segera kerjakan!');
-    } else if (type === 'resume') {
-      showSuccess('Tiket Dilanjutkan', 'Tiket kembali ke status On Progress.');
-    }
-  }, [refresh, showSuccess]);
+  const handleTicketUpdated = useCallback(
+    (type?: 'close' | 'pickup' | 'resume') => {
+      void refresh();
+      setSelectedTicket(null);
+      setShowDetailModal(false);
+      if (type === 'close') {
+        showSuccess('Tiket Berhasil Ditutup! 🎉', 'Tiket telah berhasil di-close.');
+      } else if (type === 'pickup') {
+        showSuccess('Tiket Diambil', 'Tiket berhasil di-pickup. Segera kerjakan!');
+      } else if (type === 'resume') {
+        showSuccess('Tiket Dilanjutkan', 'Tiket kembali ke status On Progress.');
+      }
+    },
+    [refresh, showSuccess],
+  );
 
   const handleCloseDetail = useCallback(() => {
     setShowDetailModal(false);
@@ -80,6 +237,40 @@ export default function TeknisiDashboard() {
     void refresh();
     showSuccess('Update Tiket Tersimpan ✓', 'Status tiket berhasil di-pending.');
   }, [refresh, showSuccess]);
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setPage],
+  );
+
+  // Dynamic empty state message
+  const emptyMessage = (() => {
+    if (searchQuery.trim()) {
+      return {
+        icon: '🔍',
+        title: `Tiket "${searchQuery}" tidak ditemukan`,
+        subtitle: 'Coba cek nomor tiket kembali atau hapus pencarian',
+        showClearButton: true,
+      };
+    }
+    if (filter === 'closed') {
+      return {
+        icon: '✅',
+        title: 'Belum ada ticket selesai',
+        subtitle: 'Ticket yang selesai akan muncul di sini',
+        showClearButton: false,
+      };
+    }
+    return {
+      icon: '📋',
+      title: 'Tidak ada ticket',
+      subtitle: 'Ticket akan muncul ketika ditugaskan kepada Anda',
+      showClearButton: false,
+    };
+  })();
 
   return (
     <div className='min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8'>
@@ -124,6 +315,9 @@ export default function TeknisiDashboard() {
         {/* Stats Cards */}
         <StatsCards stats={stats} loading={loading} />
 
+        {/* Search Bar */}
+        <SearchBar value={searchQuery} onChange={setSearchQuery} />
+
         {/* Filter Tabs */}
         <FilterTabs
           currentFilter={filter}
@@ -143,30 +337,42 @@ export default function TeknisiDashboard() {
           </div>
         ) : filteredTickets.length === 0 ? (
           <div className='rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center'>
-            <div className='mb-3 text-5xl'>
-              {filter === 'closed' ? '✅' : '📋'}
-            </div>
+            <div className='mb-3 text-5xl'>{emptyMessage.icon}</div>
             <p className='text-lg font-medium text-slate-600'>
-              {filter === 'closed'
-                ? 'Belum ada ticket selesai'
-                : 'Tidak ada ticket'}
+              {emptyMessage.title}
             </p>
-            <p className='text-sm text-slate-400'>
-              {filter === 'closed'
-                ? 'Ticket yang selesai akan muncul di sini'
-                : 'Ticket akan muncul ketika ditugaskan kepada Anda'}
-            </p>
+            <p className='text-sm text-slate-400'>{emptyMessage.subtitle}</p>
+            {emptyMessage.showClearButton && (
+              <button
+                type='button'
+                onClick={() => setSearchQuery('')}
+                className='mt-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50'
+              >
+                Hapus pencarian
+              </button>
+            )}
           </div>
         ) : (
-          <div className='-mx-2 grid gap-3 sm:mx-0 sm:gap-4'>
-            {filteredTickets.map((ticket) => (
-              <TicketCard
-                key={ticket.idTicket}
-                ticket={ticket}
-                onClick={handleSelectTicket}
-              />
-            ))}
-          </div>
+          <>
+            <div className='-mx-2 grid gap-3 sm:mx-0 sm:gap-4'>
+              {paginatedTickets.map((ticket) => (
+                <TicketCard
+                  key={ticket.idTicket}
+                  ticket={ticket}
+                  onClick={handleSelectTicket}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredTickets.length}
+              pageSize={5}
+              onPageChange={handlePageChange}
+            />
+          </>
         )}
       </div>
 
@@ -184,7 +390,7 @@ export default function TeknisiDashboard() {
         <TicketUpdateModal
           ticket={selectedTicket}
           onClose={handleCloseUpdate}
-          onUpdated={handleUpdateComplete}
+          onUpdated={handleTicketUpdated}
         />
       )}
     </div>

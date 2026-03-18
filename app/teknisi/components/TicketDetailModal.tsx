@@ -129,9 +129,9 @@ export default function TicketDetailModal({
   // Saat loading: tampilkan photoRequired sebagai optimistic placeholder.
   const photoCount = isClosed
     ? evidenceLoading
-      ? photoRequired  // tampilkan target sementara loading (optimistic)
+      ? photoRequired // tampilkan target sementara loading (optimistic)
       : evidence.length
-    : selectedFiles.length;   // file baru yang dipilih untuk upload
+    : selectedFiles.length; // file baru yang dipilih untuk upload
 
   // Syarat ke-3: Alamat wajib terisi
   const ALAMAT_EMPTY_VALUES = [
@@ -381,7 +381,9 @@ export default function TicketDetailModal({
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => null);
-      throw new Error(errorData?.message || `Upload gagal: ${res.status} ${res.statusText}`);
+      throw new Error(
+        errorData?.message || `Upload gagal: ${res.status} ${res.statusText}`,
+      );
     }
 
     return await res.json();
@@ -469,17 +471,16 @@ export default function TicketDetailModal({
 
   return (
     <div
-      className='fixed inset-0 z-50 flex items-end bg-black/50 backdrop-blur-sm'
+      className='fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm'
       onClick={onClose}
     >
       {/* Bottom Sheet */}
       <div
-        className='animate-slide-up flex max-h-[88vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl'
+        className='flex h-[92vh] w-full flex-col rounded-t-4xl bg-slate-50 shadow-2xl transition-all'
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className='mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-slate-200' />
-
+        <div className='mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-slate-300' />
         {/* Header */}
         <ModalHeader
           ticket={ticket.ticket}
@@ -493,310 +494,347 @@ export default function TicketDetailModal({
           isClosed={isClosed}
           onClose={onClose}
         />
-
-        {/* SLA Progress Bar — hanya tampil saat tiket BELUM closed */}
-        {!isClosed && (
-          <div className='shrink-0 border-b border-slate-100 px-5 py-3'>
-            <div className='mb-1.5 flex justify-between'>
-              <span className='text-[10px] font-semibold tracking-wide text-slate-400 uppercase'>
-                Laporan:{' '}
-                {ticket.reportedDate
-                  ? formatDateTimeWIB(ticket.reportedDate)
-                  : '-'}
-              </span>
-              <span className='text-[10px] font-semibold tracking-wide text-orange-500 uppercase'>
-                Max TTR: {getMaxTtrInfo(ticket)} ⚠
-              </span>
-            </div>
-            <div className='h-1.5 overflow-hidden rounded-full bg-slate-100'>
-              <div
-                className={`h-full rounded-full transition-all ${slaBarColor}`}
-                style={{ width: `${slaPercent}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Scrollable Body */}
-        <div className='flex-1 space-y-3 overflow-y-auto scroll-smooth p-5 pb-2'>
-          {/* Error Banner */}
-          {error && (
-            <div className='rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
-              {error}
-            </div>
-          )}
-
-          {/* MAX TTR Warning Box — hanya saat tiket BELUM closed */}
-          {ttrRemaining && !isClosed && (
-            <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3'>
-              <div>
-                <p className='mb-0.5 text-[10px] font-bold tracking-wide text-orange-500 uppercase'>
-                  ⚠ Batas Waktu (Max TTR)
-                </p>
-                <p className='text-sm font-bold text-orange-800'>
-                  {getMaxTtrInfo(ticket)}
-                </p>
+        <div className='flex-1 overflow-y-auto p-5 pb-32'>
+          <div className='flex flex-col gap-5'>
+            {error && (
+              <div className='rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600'>
+                {error}
               </div>
-              <div className='text-right'>
-                <p className='mb-0.5 text-[10px] font-semibold tracking-wide text-orange-400 uppercase'>
-                  {ttrRemaining.isOverdue ? 'Terlewat' : 'Sisa Waktu'}
-                </p>
-                <p
-                  className={`text-xl font-black tabular-nums ${ttrRemaining.isOverdue ? 'text-red-600' : 'text-orange-700'}`}
-                >
-                  {ttrRemaining.label}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Completion Checklist — hanya saat ON_PROGRESS */}
-          {isOnProgress && (
-            <div className='flex gap-2'>
-              {/* Photo status */}
-              <div
-                className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
-                  photoCount >= photoRequired
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : 'border-red-200 bg-red-50 text-red-600'
-                }`}
-              >
-                <span className='text-sm'>📷</span>
-                <div>
-                  <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
-                    Foto
-                  </p>
-                  <p className='text-xs font-bold'>
-                    {photoCount} / {photoRequired}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Customer Info Section */}
-          <SectionCard title='Informasi Pelanggan' icon='👤' iconBgColor='blue'>
-            <div className='space-y-3'>
-              <InfoField label='Nama' value={ticket.contactName} />
-              <InfoField
-                label='Telepon'
-                value={ticket.contactPhone}
-                variant='phone'
-              />
-              <InfoField label='No. Service' value={ticket.serviceNo} />
-              <InfoField
-                label='Tgl. Laporan'
-                value={
-                  ticket.reportedDate
-                    ? formatDateTimeWIB(ticket.reportedDate)
-                    : '-'
-                }
-              />
-              <InfoField label='Umur Ticket' value={ticketAge} />
-
-              {/* Address - with new AddressEditor component */}
-              <div
-                id='address-editor-section'
-                className='border-t border-slate-100 pt-2'
-              >
-                <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
-                  Alamat
-                  {isOnProgress && isAlamatEmpty && (
-                    <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600'>
-                      ⚠ WAJIB
-                    </span>
-                  )}
-                </p>
-                <AddressEditor
-                  ticketId={ticket.idTicket}
-                  initialAddress={ticket.alamat}
-                  canEdit={canUpdateAlamat}
-                  onError={(err) => setError(err)}
-                  onAddressSaved={(savedAddress) => {
-                    setCurrentAlamat(savedAddress);
-                    setError(null);
-                  }}
-                />
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* Detail Ticket Section */}
-          <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
-            <div className='space-y-3'>
-              {/* Customer Type — format label that's more readable */}
-              <InfoField
-                label='Jenis Pelanggan'
-                value={
-                  ticket.customerType === 'HVC_GOLD'
-                    ? 'HVC Gold'
-                    : ticket.customerType === 'HVC_PLATINUM'
-                      ? 'HVC Platinum'
-                      : ticket.customerType === 'HVC_DIAMOND'
-                        ? 'HVC Diamond'
-                        : ticket.customerType === 'REGULER'
-                          ? 'Reguler'
-                          : ticket.customerType
-                }
-              />
-
-              <InfoField label='Jenis Layanan' value={ticket.serviceType} />
-              <InfoField label='Device' value={ticket.deviceName} />
-              <InfoField label='Workzone' value={ticket.workzone} />
-
-              {/* Symptom — only show if available */}
-              {ticket.symptom && (
-                <InfoField label='Gejala / Symptom' value={ticket.symptom} />
-              )}
-
-              {/* Pending Reason — show if ticket is PENDING */}
-              {isPending && ticket.pendingReason && (
-                <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5'>
-                  <p className='mb-1 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
-                    Alasan Pending
-                  </p>
-                  <p className='text-sm font-semibold text-purple-900'>
-                    {ticket.pendingReason}
-                  </p>
-                </div>
-              )}
-            </div>
-          </SectionCard>
-
-          {/* RCA Section */}
-          {isOnProgress && (
-            <SectionCard title='RCA' icon='🔍' iconBgColor='purple'>
-              <div className='space-y-4'>
-                {/* Label + Select RCA */}
-                <div>
-                  <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
-                    Root Cause Analysis (RCA)
-                  </label>
-                  <select
-                    value={selectedRca}
-                    onChange={(e) => {
-                      setSelectedRca(e.target.value);
-                      setSelectedSubRca('');
-                    }}
-                    className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
-                  >
-                    <option value=''>-- Pilih RCA --</option>
-                    {Object.keys(rcaMapping).map((rca) => (
-                      <option key={rca} value={rca}>
-                        {rca}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Label + Select Sub RCA — only show after RCA is chosen */}
-                {selectedRca && (
+            {/* TTR & SLA Section */}
+            {!isClosed && (
+              <div className='rounded-2xl border border-slate-100 bg-white p-4 shadow-sm'>
+                <div className='mb-3 flex items-end justify-between'>
                   <div>
-                    <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
-                      Sub RCA
-                    </label>
-                    <select
-                      value={selectedSubRca}
-                      onChange={(e) => setSelectedSubRca(e.target.value)}
-                      className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase'>
+                      Sisa Waktu
+                    </p>
+                    <p
+                      className={`text-2xl font-black ${ttrRemaining?.isOverdue ? 'text-red-600' : 'text-slate-800'}`}
                     >
-                      <option value=''>-- Pilih Sub RCA --</option>
-                      {rcaMapping[selectedRca].map((sub) => (
-                        <option key={sub} value={sub}>
-                          {sub}
-                        </option>
-                      ))}
-                    </select>
+                      {ttrRemaining?.label}
+                    </p>
                   </div>
-                )}
-
-                {/* Detail Perbaikan */}
-                <div>
-                  <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
-                    Detail Perbaikan
-                    <span className='ml-1.5 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-black text-red-600'>
-                      WAJIB
-                    </span>
-                  </label>
-                  <textarea
-                    value={detailPerbaikan}
-                    onChange={(e) => setDetailPerbaikan(e.target.value)}
-                    placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
-                    rows={4}
-                    maxLength={500}
-                    className='w-full resize-none appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
-                  />
-                  <div className='mt-1 flex justify-between'>
-                    <span className='text-[10px] text-slate-400'>Minimal 10 karakter</span>
-                    <span className={`text-[10px] ${detailPerbaikan.length > 450 ? 'text-orange-500' : 'text-slate-400'}`}>
-                      {detailPerbaikan.length}/500
-                    </span>
+                  <div className='text-right'>
+                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase'>
+                      Max TTR
+                    </p>
+                    <p className='text-xs font-bold text-slate-600'>
+                      {getMaxTtrInfo(ticket)}
+                    </p>
                   </div>
                 </div>
+                <div className='h-2 w-full overflow-hidden rounded-full bg-slate-100'>
+                  <div
+                    className={`h-full transition-all duration-500 ${slaBarColor}`}
+                    style={{ width: `${slaPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
-                {/* Preview card when both RCA + Sub RCA are selected */}
-                {selectedRca && selectedSubRca && (
-                  <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3'>
-                    <p className='mb-0.5 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
-                      RCA dipilih
+            {/* Scrollable Body */}
+            <div className='flex-1 space-y-3 overflow-y-auto scroll-smooth p-5 pb-2'>
+              {/* Error Banner */}
+              {error && (
+                <div className='rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
+                  {error}
+                </div>
+              )}
+
+              {/* MAX TTR Warning Box — hanya saat tiket BELUM closed */}
+              {ttrRemaining && !isClosed && (
+                <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3'>
+                  <div>
+                    <p className='mb-0.5 text-[10px] font-bold tracking-wide text-orange-500 uppercase'>
+                      ⚠ Batas Waktu (Max TTR)
                     </p>
-                    <p className='text-sm font-bold text-purple-900'>
-                      {selectedRca} → {selectedSubRca}
+                    <p className='text-sm font-bold text-orange-800'>
+                      {getMaxTtrInfo(ticket)}
                     </p>
                   </div>
-                )}
-              </div>
-            </SectionCard>
-          )}
-
-          {/* Closed: RCA Result */}
-          {isClosed && (
-            <SectionCard title='Closing Results' icon='✅' iconBgColor='green'>
-              <div className='space-y-3'>
-                <InfoField label='RCA' value={ticket.rca} />
-                <InfoField label='Sub RCA' value={ticket.subRca} />
-
-                {/* Detail Perbaikan — tampilkan jika ada */}
-                {ticket.descriptionActualSolution && (
-                  <div className='border-t border-slate-100 pt-3'>
-                    <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
-                      Detail Perbaikan
+                  <div className='text-right'>
+                    <p className='mb-0.5 text-[10px] font-semibold tracking-wide text-orange-400 uppercase'>
+                      {ttrRemaining.isOverdue ? 'Terlewat' : 'Sisa Waktu'}
                     </p>
-                    <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3'>
-                      <p className='text-sm leading-relaxed font-medium text-slate-700 whitespace-pre-wrap'>
-                        {ticket.descriptionActualSolution}
+                    <p
+                      className={`text-xl font-black tabular-nums ${ttrRemaining.isOverdue ? 'text-red-600' : 'text-orange-700'}`}
+                    >
+                      {ttrRemaining.label}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Completion Checklist — hanya saat ON_PROGRESS */}
+              {isOnProgress && (
+                <div className='flex gap-2'>
+                  {/* Photo status */}
+                  <div
+                    className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
+                      photoCount >= photoRequired
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : 'border-red-200 bg-red-50 text-red-600'
+                    }`}
+                  >
+                    <span className='text-sm'>📷</span>
+                    <div>
+                      <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
+                        Foto
+                      </p>
+                      <p className='text-xs font-bold'>
+                        {photoCount} / {photoRequired}
                       </p>
                     </div>
                   </div>
-                )}
-              </div>
-            </SectionCard>
-          )}
+                </div>
+              )}
 
-          {/* Evidence Upload */}
-          {isOnProgress && (
-            <div id='evidence-uploader'>
-              <EvidenceUploader
-                onFilesChange={handleFileChange}
-                onRemoveImage={handleRemoveImage}
-                previewUrls={previewUrls}
-                uploading={uploading}
-              />
+              {/* Customer Info Section */}
+              <SectionCard
+                title='Informasi Pelanggan'
+                icon='👤'
+                iconBgColor='blue'
+              >
+                <div className='space-y-3'>
+                  <InfoField
+                    className='uppercase'
+                    label='Nama'
+                    value={ticket.contactName}
+                  />
+                  <InfoField
+                    label='Telepon'
+                    value={ticket.contactPhone}
+                    variant='phone'
+                  />
+                  <InfoField label='No. Service' value={ticket.serviceNo} />
+                  <InfoField
+                    label='Tgl. Laporan'
+                    value={
+                      ticket.reportedDate
+                        ? formatDateTimeWIB(ticket.reportedDate)
+                        : '-'
+                    }
+                  />
+                  <InfoField label='Umur Ticket' value={ticketAge} />
+
+                  {/* Address - with new AddressEditor component */}
+                  <div
+                    id='address-editor-section'
+                    className='border-t border-slate-100 pt-2'
+                  >
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                      Alamat
+                      {isOnProgress && isAlamatEmpty && (
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600'>
+                          ⚠ WAJIB
+                        </span>
+                      )}
+                    </p>
+                    <AddressEditor
+                      ticketId={ticket.idTicket}
+                      initialAddress={ticket.alamat}
+                      canEdit={canUpdateAlamat}
+                      onError={(err) => setError(err)}
+                      onAddressSaved={(savedAddress) => {
+                        setCurrentAlamat(savedAddress);
+                        setError(null);
+                      }}
+                    />
+                  </div>
+                </div>
+              </SectionCard>
+
+              {/* Detail Ticket Section */}
+              <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
+                <div className='space-y-3'>
+                  {/* Customer Type — format label that's more readable */}
+                  <InfoField
+                    label='Jenis Pelanggan'
+                    value={
+                      ticket.customerType === 'HVC_GOLD'
+                        ? 'HVC Gold'
+                        : ticket.customerType === 'HVC_PLATINUM'
+                          ? 'HVC Platinum'
+                          : ticket.customerType === 'HVC_DIAMOND'
+                            ? 'HVC Diamond'
+                            : ticket.customerType === 'REGULER'
+                              ? 'Reguler'
+                              : ticket.customerType
+                    }
+                  />
+
+                  <InfoField label='Jenis Layanan' value={ticket.serviceType} />
+                  <InfoField label='Device' value={ticket.deviceName} />
+                  <InfoField label='Workzone' value={ticket.workzone} />
+
+                  {/* Symptom — only show if available */}
+                  {ticket.symptom && (
+                    <InfoField
+                      label='Gejala / Symptom'
+                      value={ticket.symptom}
+                    />
+                  )}
+
+                  {/* Pending Reason — show if ticket is PENDING */}
+                  {isPending && ticket.pendingReason && (
+                    <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5'>
+                      <p className='mb-1 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
+                        Alasan Pending
+                      </p>
+                      <p className='text-sm font-semibold text-purple-900'>
+                        {ticket.pendingReason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+
+              {/* RCA Section */}
+              {isOnProgress && (
+                <SectionCard title='RCA' icon='🔍' iconBgColor='purple'>
+                  <div className='space-y-4'>
+                    {/* Label + Select RCA */}
+                    <div>
+                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                        Root Cause Analysis (RCA)
+                      </label>
+                      <select
+                        value={selectedRca}
+                        onChange={(e) => {
+                          setSelectedRca(e.target.value);
+                          setSelectedSubRca('');
+                        }}
+                        className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                      >
+                        <option value=''>-- Pilih RCA --</option>
+                        {Object.keys(rcaMapping).map((rca) => (
+                          <option key={rca} value={rca}>
+                            {rca}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Label + Select Sub RCA — only show after RCA is chosen */}
+                    {selectedRca && (
+                      <div>
+                        <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                          Sub RCA
+                        </label>
+                        <select
+                          value={selectedSubRca}
+                          onChange={(e) => setSelectedSubRca(e.target.value)}
+                          className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                        >
+                          <option value=''>-- Pilih Sub RCA --</option>
+                          {rcaMapping[selectedRca].map((sub) => (
+                            <option key={sub} value={sub}>
+                              {sub}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Detail Perbaikan */}
+                    <div>
+                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                        Detail Perbaikan
+                        <span className='ml-1.5 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-black text-red-600'>
+                          WAJIB
+                        </span>
+                      </label>
+                      <textarea
+                        value={detailPerbaikan}
+                        onChange={(e) => setDetailPerbaikan(e.target.value)}
+                        placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
+                        rows={4}
+                        maxLength={500}
+                        className='w-full resize-none appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                      />
+                      <div className='mt-1 flex justify-between'>
+                        <span className='text-[10px] text-slate-400'>
+                          Minimal 10 karakter
+                        </span>
+                        <span
+                          className={`text-[12px] ${detailPerbaikan.length > 450 ? 'text-orange-500' : 'text-slate-400'}`}
+                        >
+                          {detailPerbaikan.length}/500
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Preview card when both RCA + Sub RCA are selected */}
+                    {selectedRca && selectedSubRca && (
+                      <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3'>
+                        <p className='mb-0.5 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
+                          RCA dipilih
+                        </p>
+                        <p className='text-sm font-bold text-purple-900'>
+                          {selectedRca} → {selectedSubRca}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </SectionCard>
+              )}
+
+              {/* Closed: RCA Result */}
+              {isClosed && (
+                <SectionCard
+                  title='Closing Results'
+                  icon='✅'
+                  iconBgColor='green'
+                >
+                  <div className='space-y-3'>
+                    <InfoField label='RCA' value={ticket.rca} />
+                    <InfoField label='Sub RCA' value={ticket.subRca} />
+
+                    {/* Detail Perbaikan — tampilkan jika ada */}
+                    {ticket.descriptionActualSolution && (
+                      <div className='border-t border-slate-100 pt-3'>
+                        <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                          Detail Perbaikan
+                        </p>
+                        <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3'>
+                          <p className='text-sm leading-relaxed font-medium whitespace-pre-wrap text-slate-700'>
+                            {ticket.descriptionActualSolution}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </SectionCard>
+              )}
+
+              {/* Evidence Upload */}
+              {isOnProgress && (
+                <div id='evidence-uploader'>
+                  <EvidenceUploader
+                    onFilesChange={handleFileChange}
+                    onRemoveImage={handleRemoveImage}
+                    previewUrls={previewUrls}
+                    uploading={uploading}
+                  />
+                </div>
+              )}
+
+              {/* Evidence Gallery — tampil untuk status PENDING dan CLOSED */}
+              {(isClosed || isPending) && (
+                <EvidenceGallery
+                  evidence={evidence}
+                  loading={evidenceLoading}
+                  error={evidenceError}
+                  onImageClick={(idx) => {
+                    setViewerIndex(idx);
+                    setViewerOpen(true);
+                  }}
+                />
+              )}
             </div>
-          )}
-
-          {/* Evidence Gallery — tampil untuk status PENDING dan CLOSED */}
-          {(isClosed || isPending) && (
-            <EvidenceGallery
-              evidence={evidence}
-              loading={evidenceLoading}
-              error={evidenceError}
-              onImageClick={(idx) => {
-                setViewerIndex(idx);
-                setViewerOpen(true);
-              }}
-            />
-          )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -816,7 +854,6 @@ export default function TicketDetailModal({
           onPickup={handlePickup}
           onResume={handleResume}
           onClose={handleCloseTicket}
-          onPhotoClick={handlePhotoClick}
         />
       </div>
 

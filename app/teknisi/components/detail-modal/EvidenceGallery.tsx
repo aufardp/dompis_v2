@@ -69,7 +69,7 @@ export default function EvidenceGallery({
       ) : evidence.length === 0 ? (
         <div className='text-sm text-slate-500'>Tidak ada evidence</div>
       ) : (
-        <div className='grid grid-cols-3 gap-3 sm:gap-3'>
+        <div className='grid grid-cols-3 gap-4 sm:gap-4'>
           {evidence.map((ev, idx) => (
             <button
               key={ev.id}

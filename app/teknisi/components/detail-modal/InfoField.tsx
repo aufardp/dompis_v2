@@ -89,7 +89,9 @@ export default function InfoField({
       {value ? (
         <p className='text-sm font-semibold text-slate-800'>{value}</p>
       ) : (
-        <p className='text-sm font-medium italic text-slate-300'>Tidak tersedia</p>
+        <p className='text-sm font-medium text-slate-300 italic'>
+          Tidak tersedia
+        </p>
       )}
     </div>
   );

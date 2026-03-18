@@ -12,6 +12,12 @@ interface UseTicketsReturn {
   filter: TicketFilter;
   setFilter: (filter: TicketFilter) => void;
   filteredTickets: Ticket[];
+  paginatedTickets: Ticket[];
+  currentPage: number;
+  totalPages: number;
+  setPage: (page: number) => void;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
   stats: {
     assigned: number;
     onProgress: number;
@@ -21,6 +27,8 @@ interface UseTicketsReturn {
   };
   refresh: () => Promise<void>;
 }
+
+const PAGE_SIZE = 5;
 
 // Normalize status ke uppercase untuk perbandingan yang konsisten
 function normalizeStatus(t: Ticket): string {
@@ -35,11 +43,12 @@ export function useTickets(
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TicketFilter>(initialFilter);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
-      // Hapus _t cache buster — merusak Redis cache
       const res = await fetchWithAuth('/api/tickets?limit=100');
       if (!res) return;
       const data = await res.json();
@@ -58,8 +67,21 @@ export function useTickets(
     fetchTickets();
   }, [fetchTickets]);
 
+  // Auto-reset page to 1 when filter or searchQuery changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, searchQuery]);
+
+  // Step 1: Search - filter by ticket number (case-insensitive)
+  const searchedTickets = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return tickets;
+    return tickets.filter((t) => t.ticket?.toLowerCase().includes(q));
+  }, [tickets, searchQuery]);
+
+  // Step 2: Filter by status tab - from searchedTickets (NOT from tickets directly)
   const filteredTickets = useMemo(() => {
-    const filtered = tickets.filter((t) => {
+    const filtered = searchedTickets.filter((t) => {
       const status = normalizeStatus(t);
       const closed = isTicketClosed(t.STATUS_UPDATE);
 
@@ -94,20 +116,35 @@ export function useTickets(
       const bDate = b.reportedDate ? new Date(b.reportedDate as string).getTime() : 0;
       return bDate - aDate;
     });
-  }, [tickets, filter]);
+  }, [searchedTickets, filter]);
 
+  // Step 3: Pagination
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
+  }, [filteredTickets]);
+
+  const paginatedTickets = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredTickets.slice(start, start + PAGE_SIZE);
+  }, [filteredTickets, currentPage]);
+
+  // Stats calculated from searchedTickets to stay in sync with search
   const stats = useMemo(() => {
     const norm = (t: Ticket) => normalizeStatus(t);
     return {
-      assigned:   tickets.filter((t) => norm(t) === 'ASSIGNED').length,
-      onProgress: tickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
-      pending:    tickets.filter((t) => norm(t) === 'PENDING').length,
-      closed:     tickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
+      assigned:   searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length,
+      onProgress: searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
+      pending:    searchedTickets.filter((t) => norm(t) === 'PENDING').length,
+      closed:     searchedTickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
       totalAktif:
-        tickets.filter((t) => norm(t) === 'ASSIGNED').length +
-        tickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
+        searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length +
+        searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
     };
-  }, [tickets]);
+  }, [searchedTickets]);
+
+  const setPage = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
 
   return {
     tickets,
@@ -115,6 +152,12 @@ export function useTickets(
     filter,
     setFilter,
     filteredTickets,
+    paginatedTickets,
+    currentPage,
+    totalPages,
+    setPage,
+    searchQuery,
+    setSearchQuery,
     stats,
     refresh: fetchTickets,
   };
