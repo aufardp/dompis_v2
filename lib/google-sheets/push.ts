@@ -10,10 +10,12 @@ const MAX_READ_ROW = 50000;
 
 let isPushRunning = false;
 
+// Helper untuk deteksi perubahan data (Hashing)
 function hashRow(data: any[]) {
   return data.map((v) => v?.toString()?.trim() ?? '').join('|');
 }
 
+// Helper Retry untuk koneksi Google API
 async function retryGoogle(fn: () => Promise<any>) {
   let attempt = 0;
   while (attempt < RETRY_MAX) {
@@ -33,19 +35,22 @@ export async function pushSpreadsheet() {
   isPushRunning = true;
 
   try {
-    console.log('PUSH START', nowWIB());
+    console.log('[PUSH] START', nowWIB());
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    // Hanya ambil data yang sync_date = HARI INI
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 1️⃣ FILTER: Hanya ambil data yang sync_date-nya HARI INI
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
     const tickets = await prisma.ticket.findMany({
       where: {
         sync_date: {
-          gte: today,
-          lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+          gte: startOfDay,
+          lte: endOfDay,
         },
       },
       select: {
@@ -57,17 +62,16 @@ export async function pushSpreadsheet() {
         sub_rca: true,
         DESCRIPTION_ACTUAL_SOLUTION: true,
         closed_at: true,
-        teknisi_user_id: true,
         users: { select: { nama: true, username: true } },
       },
     });
 
     if (tickets.length === 0) {
-      console.log('Tidak ada data baru untuk di-sync hari ini.');
+      console.log('[PUSH] Tidak ada data dengan sync_date hari ini.');
       return { success: true, updated: 0, inserted: 0 };
     }
 
-    // Ambil data B sampai AH untuk mapping Incident ID
+    // 2️⃣ AMBIL DATA EXISTING DARI SHEET (B-AH) UNTUK MAPPING
     const sheetRes = await retryGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -79,14 +83,15 @@ export async function pushSpreadsheet() {
     const sheetMap = new Map<string, { row: number; hash: string }>();
 
     sheetRows.forEach((r: any[], i: number) => {
-      const incident = r[0]; // Kolom B
-      if (!incident) return;
+      const incidentId = r[0]; // Kolom B
+      if (!incidentId) return;
 
+      // Hash kolom yang sering berubah untuk deteksi update (O, AC-AG)
       const hash = hashRow([r[13], r[27], r[28], r[29], r[30], r[31]]);
-      sheetMap.set(incident, { row: START_ROW + i, hash });
+      sheetMap.set(incidentId, { row: START_ROW + i, hash });
     });
 
-    // 3️⃣ MAPPING LOGIC
+    // 3️⃣ LOGIKA MAPPING: INSERT ATAU UPDATE
     const updates: any[] = [];
     const inserts: any[][] = [];
     let skipped = 0;
@@ -96,56 +101,74 @@ export async function pushSpreadsheet() {
         ? new Date(t.closed_at).toLocaleString('id-ID')
         : '';
 
-      // --- DATA UNTUK INSERT (BARIS BARU) ---
-      const fullRowForInsert = new Array(33).fill('');
-      fullRowForInsert[0] = t.INCIDENT; // B
-      fullRowForInsert[13] = t.STATUS_UPDATE ?? ''; // O
-      fullRowForInsert[20] = t.ALAMAT ?? ''; // V
-      fullRowForInsert[21] = t.users?.nama ?? ''; // W
-      fullRowForInsert[22] = t.users?.username ?? ''; // X
-      fullRowForInsert[27] = t.STATUS_UPDATE ?? ''; // AC (Status Dompis)
-      fullRowForInsert[28] = t.PENDING_REASON ?? ''; // AD
-      fullRowForInsert[29] = t.rca ?? ''; // AE
-      fullRowForInsert[30] = t.sub_rca ?? ''; // AF
-      fullRowForInsert[31] = t.DESCRIPTION_ACTUAL_SOLUTION ?? ''; // AG
-      fullRowForInsert[32] = closedAtStr; // AH
-
-      const updateDataOnly = fullRowForInsert.slice(20);
-
+      // Hash data dari DB untuk dibandingkan dengan Sheet
       const dbHash = hashRow([
-        t.STATUS_UPDATE ?? '',
+        t.STATUS_UPDATE ?? '', // O
         t.STATUS_UPDATE ?? '', // AC
-        t.PENDING_REASON ?? '',
-        t.rca ?? '',
-        t.sub_rca ?? '',
-        t.DESCRIPTION_ACTUAL_SOLUTION ?? '',
+        t.PENDING_REASON ?? '', // AD
+        t.rca ?? '', // AE
+        t.sub_rca ?? '', // AF
+        t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
       ]);
 
-      const sheetRow = sheetMap.get(t.INCIDENT);
+      const existingInSheet = sheetMap.get(t.INCIDENT);
 
-      if (!sheetRow) {
-        inserts.push(fullRowForInsert);
-      } else if (sheetRow.hash !== dbHash) {
+      if (!existingInSheet) {
+        // JIKA TIDAK ADA DI SHEET -> INSERT BARU (B-AH)
+        const newRow = new Array(33).fill('');
+        newRow[0] = t.INCIDENT; // B
+        newRow[13] = t.STATUS_UPDATE ?? ''; // O
+        newRow[20] = t.ALAMAT ?? ''; // V
+        newRow[21] = t.users?.nama ?? ''; // W
+        newRow[22] = t.users?.username ?? ''; // X
+        newRow[27] = t.STATUS_UPDATE ?? ''; // AC
+        newRow[28] = t.PENDING_REASON ?? ''; // AD
+        newRow[29] = t.rca ?? ''; // AE
+        newRow[30] = t.sub_rca ?? ''; // AF
+        newRow[31] = t.DESCRIPTION_ACTUAL_SOLUTION ?? ''; // AG
+        newRow[32] = closedAtStr; // AH
+        inserts.push(newRow);
+      } else if (existingInSheet.hash !== dbHash) {
+        // JIKA ADA TAPI HASH BEDA -> UPDATE KOLOM TERTENTU (V-AH)
         updates.push({
-          range: `'${SHEET_NAME}'!V${sheetRow.row}:AH${sheetRow.row}`,
-          values: [updateDataOnly],
+          range: `'${SHEET_NAME}'!V${existingInSheet.row}:AH${existingInSheet.row}`,
+          values: [
+            [
+              t.ALAMAT ?? '', // V
+              t.users?.nama ?? '', // W
+              t.users?.username ?? '', // X
+              '',
+              '',
+              '', // Y, Z, AA (Kosongkan jika tidak dipakai)
+              '', // AB
+              t.STATUS_UPDATE ?? '', // AC
+              t.PENDING_REASON ?? '', // AD
+              t.rca ?? '', // AE
+              t.sub_rca ?? '', // AF
+              t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
+              closedAtStr, // AH
+            ],
+          ],
         });
       } else {
         skipped++;
       }
     }
 
-    // Target Kolom V:AH
-    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-      const chunk = updates.slice(i, i + BATCH_SIZE);
-      await retryGoogle(() =>
-        sheets.spreadsheets.values.batchUpdate({
-          spreadsheetId,
-          requestBody: { valueInputOption: 'RAW', data: chunk },
-        }),
-      );
+    // 4️⃣ EKSEKUSI UPDATE (BATCH)
+    if (updates.length > 0) {
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const chunk = updates.slice(i, i + BATCH_SIZE);
+        await retryGoogle(() =>
+          sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: { valueInputOption: 'RAW', data: chunk },
+          }),
+        );
+      }
     }
 
+    // 5️⃣ EKSEKUSI INSERT (APPEND)
     if (inserts.length > 0) {
       await retryGoogle(() =>
         sheets.spreadsheets.values.append({
@@ -158,11 +181,11 @@ export async function pushSpreadsheet() {
     }
 
     console.log(
-      `PUSH DONE | Updated Rows (V-AH): ${updates.length} | New Rows: ${inserts.length} | Skipped: ${skipped}`,
+      `[PUSH] DONE | New: ${inserts.length} | Updated: ${updates.length} | Skipped: ${skipped}`,
     );
     return { success: true, updated: updates.length, inserted: inserts.length };
   } catch (err: any) {
-    console.error('PUSH ERROR:', err);
+    console.error('[PUSH] FATAL ERROR:', err);
     return { success: false, error: err.message };
   } finally {
     isPushRunning = false;
