@@ -12,59 +12,62 @@ interface StatsCardsProps {
 }
 
 export default function StatsCards({ stats, loading }: StatsCardsProps) {
-  const cards = [
-    {
-      key: 'totalAktif',
-      label: '📊 Total Aktif',
-      value: stats.totalAktif,
-      borderColor: 'border-l-blue-500',
-      textColor: 'text-blue-600',
-    },
-    {
-      key: 'assigned',
-      label: '⏳ Menunggu',
-      value: stats.assigned,
-      borderColor: 'border-l-amber-400',
-      textColor: 'text-amber-600',
-    },
-    {
-      key: 'onProgress',
-      label: '🔧 Dikerjakan',
-      value: stats.onProgress,
-      borderColor: 'border-l-blue-500',
-      textColor: 'text-blue-600',
-    },
-    {
-      key: 'pending',
-      label: '⏸ Pending',
-      value: stats.pending,
-      borderColor: 'border-l-purple-400',
-      textColor: 'text-purple-600',
-    },
-    {
-      key: 'closed',
-      label: '✓ Selesai',
-      value: stats.closed,
-      borderColor: 'border-l-green-500',
-      textColor: 'text-green-600',
-    },
-  ];
+  const val = (n: number) => (loading ? '—' : n);
 
   return (
-    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5'>
-      {cards.map((card) => (
-        <div
-          key={card.key}
-          className={`rounded-xl border border-l-4 border-slate-200 ${card.borderColor} bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-5`}
-        >
-          <div className={`text-3xl font-black ${card.textColor}`}>
-            {loading ? '...' : card.value}
+    <div className='flex flex-col gap-2'>
+      {/* Baris 1 — 2x2 grid: 4 status operasional */}
+      <div className='grid grid-cols-2 gap-2'>
+        {/* Menunggu */}
+        <div className='rounded-xl border border-l-4 border-slate-200 border-l-amber-400 bg-white px-4 py-3'>
+          <div className='text-2xl leading-none font-black text-amber-600 tabular-nums'>
+            {val(stats.assigned)}
           </div>
-          <div className='mt-0.5 text-xs font-medium text-slate-500'>
-            {card.label}
+          <div className='mt-1 text-xs font-semibold text-slate-500'>
+            ⏳ Menunggu
           </div>
         </div>
-      ))}
+
+        {/* Dikerjakan */}
+        <div className='rounded-xl border border-l-4 border-slate-200 border-l-blue-500 bg-white px-4 py-3'>
+          <div className='text-2xl leading-none font-black text-blue-600 tabular-nums'>
+            {val(stats.onProgress)}
+          </div>
+          <div className='mt-1 text-xs font-semibold text-slate-500'>
+            🔧 Dikerjakan
+          </div>
+        </div>
+
+        {/* Pending */}
+        <div className='rounded-xl border border-l-4 border-slate-200 border-l-purple-400 bg-white px-4 py-3'>
+          <div className='text-2xl leading-none font-black text-purple-600 tabular-nums'>
+            {val(stats.pending)}
+          </div>
+          <div className='mt-1 text-xs font-semibold text-slate-500'>
+            ⏸ Pending
+          </div>
+        </div>
+
+        {/* Selesai */}
+        <div className='rounded-xl border border-l-4 border-slate-200 border-l-green-500 bg-white px-4 py-3'>
+          <div className='text-2xl leading-none font-black text-green-600 tabular-nums'>
+            {val(stats.closed)}
+          </div>
+          <div className='mt-1 text-xs font-semibold text-slate-500'>
+            ✓ Selesai
+          </div>
+        </div>
+      </div>
+
+      {/* Baris 2 — Banner penuh: Total Aktif */}
+      <div className='flex items-center justify-between rounded-xl border border-l-4 border-slate-200 border-l-blue-500 bg-white px-4 py-3'>
+        <span className='text-xs font-semibold text-slate-500'>
+          📊 Total Aktif
+        </span>
+        <span className='text-2xl leading-none font-black text-blue-600 tabular-nums'>
+          {val(stats.totalAktif)}
+        </span>
+      </div>
     </div>
   );
 }

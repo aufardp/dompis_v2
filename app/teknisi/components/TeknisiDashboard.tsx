@@ -53,21 +53,21 @@ function SearchBar({ value, onChange }: SearchBarProps) {
 
   return (
     <div className='relative'>
-      <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm'>
+      <span className='pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-400'>
         🔍
       </span>
       <input
         type='text'
-        placeholder='Cari nomor tiket... (contoh: IN-2024-001234)'
+        placeholder='Cari nomor tiket... (contoh: INC45671234)'
         value={inputValue}
         onChange={handleChange}
-        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100'
+        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-700 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none'
       />
       {inputValue && (
         <button
           type='button'
           onClick={handleClear}
-          className='absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300'
+          className='absolute top-1/2 right-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300'
         >
           ×
         </button>
@@ -146,7 +146,7 @@ function Pagination({
             >
               {p}
             </button>
-          )
+          ),
         )}
         <button
           type='button'
@@ -206,11 +206,20 @@ export default function TeknisiDashboard() {
       setSelectedTicket(null);
       setShowDetailModal(false);
       if (type === 'close') {
-        showSuccess('Tiket Berhasil Ditutup! 🎉', 'Tiket telah berhasil di-close.');
+        showSuccess(
+          'Tiket Berhasil Ditutup! 🎉',
+          'Tiket telah berhasil di-close.',
+        );
       } else if (type === 'pickup') {
-        showSuccess('Tiket Diambil', 'Tiket berhasil di-pickup. Segera kerjakan!');
+        showSuccess(
+          'Tiket Diambil',
+          'Tiket berhasil di-pickup. Segera kerjakan!',
+        );
       } else if (type === 'resume') {
-        showSuccess('Tiket Dilanjutkan', 'Tiket kembali ke status On Progress.');
+        showSuccess(
+          'Tiket Dilanjutkan',
+          'Tiket kembali ke status On Progress.',
+        );
       }
     },
     [refresh, showSuccess],
@@ -235,7 +244,10 @@ export default function TeknisiDashboard() {
     setShowUpdateModal(false);
     setSelectedTicket(null);
     void refresh();
-    showSuccess('Update Tiket Tersimpan ✓', 'Status tiket berhasil di-pending.');
+    showSuccess(
+      'Update Tiket Tersimpan ✓',
+      'Status tiket berhasil di-pending.',
+    );
   }, [refresh, showSuccess]);
 
   const handlePageChange = useCallback(
@@ -273,7 +285,7 @@ export default function TeknisiDashboard() {
   })();
 
   return (
-    <div className='min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-4 md:p-6 lg:p-8'>
+    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 px-4 pt-4 pb-6'>
       {/* Toast Notifications */}
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
 
@@ -284,19 +296,23 @@ export default function TeknisiDashboard() {
         ptrRefreshing={ptrRefreshing}
       />
 
-      <div className='mx-auto max-w-5xl space-y-6'>
+      <div className='mx-auto max-w-2xl space-y-4'>
         {/* Header */}
         <div className='flex items-center justify-between'>
           <div>
-            <h1 className='text-2xl font-bold text-slate-800'>My Tickets</h1>
-            <p className='text-slate-500'>Manage your assigned tickets</p>
+            <h1 className='text-xl font-bold text-slate-800 sm:text-2xl'>
+              My Tickets
+            </h1>
+            <p className='text-xs text-slate-500 sm:text-sm'>
+              Manage your assigned tickets
+            </p>
           </div>
 
           <button
             type='button'
             onClick={() => void refresh()}
             disabled={loading || ptrRefreshing}
-            className='inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50'
+            className='inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2'
             title='Refresh'
           >
             <span
@@ -308,7 +324,9 @@ export default function TeknisiDashboard() {
             >
               ↻
             </span>
-            <span className='hidden sm:inline'>Refresh</span>
+            <span className='hidden text-sm font-semibold text-slate-700 sm:inline'>
+              Refresh
+            </span>
           </button>
         </div>
 
@@ -354,7 +372,7 @@ export default function TeknisiDashboard() {
           </div>
         ) : (
           <>
-            <div className='-mx-2 grid gap-3 sm:mx-0 sm:gap-4'>
+            <div className='grid gap-3'>
               {paginatedTickets.map((ticket) => (
                 <TicketCard
                   key={ticket.idTicket}

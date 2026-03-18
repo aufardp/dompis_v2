@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
@@ -10,30 +10,22 @@ interface EvidenceUploaderProps {
   existingCount?: number;
 }
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB per file
-const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total
+// KRITIS: Batas ini untuk file RAW sebelum kompresi
+// Foto iPhone bisa 3-8MB, setelah compressImage (1920px, 0.82) jadi ~400KB-1MB
+// Jadi batas pre-compress yang masuk akal adalah 15MB (bukan 2MB!)
+// Validasi ukuran sebenarnya (2MB) dilakukan SETELAH kompresi di parent component
+const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024;  // 15MB — file mentah sebelum compress
 const MAX_FILES = 5;
 const MIN_FILES = 2;
-
-interface FileWithSize {
-  file: File;
-  size: number;
-}
 
 interface RejectedFile {
   name: string;
   size: number;
-  reason: 'oversized' | 'total_exceeded';
+  reason: 'oversized';
 }
 
 const formatMB = (bytes: number): string => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-};
-
-const getProgressColor = (bytes: number): string => {
-  if (bytes > MAX_TOTAL_SIZE) return 'bg-red-500';
-  if (bytes > 7 * 1024 * 1024) return 'bg-yellow-500';
-  return 'bg-green-500';
 };
 
 export default function EvidenceUploader({
@@ -44,14 +36,9 @@ export default function EvidenceUploader({
   existingCount = 0,
 }: EvidenceUploaderProps) {
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<FileWithSize[]>([]);
 
   const totalFiles = existingCount + previewUrls.length;
   const availableSlots = Math.max(0, MAX_FILES - totalFiles);
-
-  const totalSize = useMemo(() => {
-    return selectedFiles.reduce((sum, f) => sum + f.size, 0);
-  }, [selectedFiles]);
 
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
@@ -59,18 +46,18 @@ export default function EvidenceUploader({
     setRejectedFiles([]);
     const fileArray = Array.from(files);
     const oversized: RejectedFile[] = [];
-    const validFiles: FileWithSize[] = [];
+    const validFiles: File[] = [];
 
-    // Step 1: Filter oversized files (>2MB per file)
+    // Step 1: Filter hanya file yang TIDAK masuk akal (>15MB kemungkinan bukan foto)
     for (const file of fileArray) {
-      if (file.size > MAX_FILE_SIZE) {
+      if (file.size > MAX_FILE_SIZE_RAW) {
         oversized.push({
           name: file.name,
           size: file.size,
           reason: 'oversized',
         });
       } else {
-        validFiles.push({ file, size: file.size });
+        validFiles.push(file);
       }
     }
 
@@ -80,38 +67,18 @@ export default function EvidenceUploader({
       filesToAdd = validFiles.slice(0, availableSlots);
     }
 
-    // Step 3: Check total size including existing previewUrls
-    // Estimate existing previews at ~500KB each (compressed)
-    const currentPreviewSize = previewUrls.length * 500000;
-    const newTotalSize = currentPreviewSize + filesToAdd.reduce((sum, f) => sum + f.size, 0);
-
-    if (newTotalSize > MAX_TOTAL_SIZE) {
-      // Total exceeds 10MB - reject entire batch
-      setRejectedFiles([
-        ...oversized,
-        {
-          name: `Total ukuran file (${formatMB(newTotalSize)})`,
-          size: newTotalSize,
-          reason: 'total_exceeded',
-        },
-      ]);
-      return;
-    }
-
-    // Step 4: Set warnings for oversized files
+    // Step 3: Set warnings for oversized files
     if (oversized.length > 0) {
       setRejectedFiles(oversized);
     }
 
-    // Step 5: Update selected files
+    // Step 4: Update selected files
     if (filesToAdd.length > 0) {
-      setSelectedFiles(filesToAdd);
-      onFilesChange(filesToAdd.map((f) => f.file));
+      onFilesChange(filesToAdd);
     }
   };
 
   const oversizedFiles = rejectedFiles.filter((f) => f.reason === 'oversized');
-  const totalExceeded = rejectedFiles.find((f) => f.reason === 'total_exceeded');
 
   const isComplete = totalFiles >= MIN_FILES;
   const progressLabel = `${totalFiles}/${MAX_FILES} foto${MIN_FILES > 0 ? ` · min ${MIN_FILES}` : ''}`;
@@ -121,7 +88,7 @@ export default function EvidenceUploader({
       {/* Header with badge counter */}
       <div className='flex items-center justify-between'>
         <h3 className='text-sm font-semibold text-slate-600 sm:text-base'>
-          Evidence Foto
+          Evidence Foto (Max {MAX_FILES}, otomatis dikompres)
         </h3>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
@@ -163,7 +130,7 @@ export default function EvidenceUploader({
       {oversizedFiles.length > 0 && (
         <div className='rounded-lg border border-red-200 bg-red-50 p-3'>
           <p className='text-xs font-semibold text-red-700'>
-            ⛔ File ditolak — melebihi 2 MB per file
+            ⛔ File ditolak — ukuran tidak wajar (bukan foto valid)
           </p>
           <ul className='mt-1 space-y-0.5'>
             {oversizedFiles.map((f, idx) => (
@@ -172,48 +139,6 @@ export default function EvidenceUploader({
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {/* Warning UI - Total Exceeded */}
-      {totalExceeded && (
-        <div className='rounded-lg border border-orange-200 bg-orange-50 p-3'>
-          <p className='text-xs font-semibold text-orange-700'>
-            ⚠️ {totalExceeded.name} melebihi batas total 10MB
-          </p>
-          <p className='mt-0.5 text-xs text-orange-600'>
-            Kurangi ukuran file atau jumlah file yang diupload
-          </p>
-        </div>
-      )}
-
-      {/* Progress Bar */}
-      {selectedFiles.length > 0 && (
-        <div className='space-y-1'>
-          <div className='flex items-center justify-between text-xs'>
-            <span className='font-medium text-slate-600'>
-              {selectedFiles.length} file dipilih
-            </span>
-            <span
-              className={`font-semibold ${
-                totalSize > MAX_TOTAL_SIZE
-                  ? 'text-red-600'
-                  : totalSize > 7 * 1024 * 1024
-                    ? 'text-yellow-600'
-                    : 'text-green-600'
-              }`}
-            >
-              {formatMB(totalSize)} / {formatMB(MAX_TOTAL_SIZE)}
-            </span>
-          </div>
-          <div className='h-2 w-full overflow-hidden rounded-full bg-slate-200'>
-            <div
-              className={`h-full transition-all duration-300 ${getProgressColor(totalSize)}`}
-              style={{
-                width: `${Math.min(100, (totalSize / MAX_TOTAL_SIZE) * 100)}%`,
-              }}
-            />
-          </div>
         </div>
       )}
 

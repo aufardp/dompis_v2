@@ -135,7 +135,7 @@ function CombinedActionButtons({
   photoCount,
   photoRequired,
 }: any) {
-  const baseHeight = 'h-[68px]'; // Tinggi disamakan agar seimbang
+  const baseHeight = 'h-12'; // 48px minimum touch target
 
   // Logic untuk content tombol Close saat disabled
   const getCloseContent = () => {
@@ -164,7 +164,7 @@ function CombinedActionButtons({
       {/* Tombol Close */}
       <button
         onClick={canClose ? onClose : undefined}
-        disabled={loadingClose || (!canClose && false)} // Kita biarkan bisa diklik jika ingin show toast, atau disabled murni
+        disabled={loadingClose || (!canClose && false)}
         className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl transition-all active:scale-[0.97] ${baseHeight} ${
           canClose
             ? 'bg-linear-to-br from-green-600 to-emerald-600 text-white shadow-md'
@@ -235,7 +235,10 @@ export default function ModalFooter({
     !anyLoading;
 
   return (
-    <div className='sticky bottom-0 z-20 flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-white px-5 py-4 pb-8'>
+    <div
+      className='shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white px-4 pt-3'
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
       {isOnProgress && (
         <>
           <RequirementBar
@@ -266,7 +269,7 @@ export default function ModalFooter({
         <button
           onClick={onPickup}
           disabled={anyLoading}
-          className='flex h-18 w-full flex-col items-center justify-center rounded-2xl bg-blue-600 font-black text-white'
+          className='flex h-12 w-full flex-col items-center justify-center rounded-2xl bg-blue-600 font-black text-white'
         >
           {isLoading('pickup') ? 'Processing...' : '🚀 Pickup Ticket'}
         </button>
@@ -276,7 +279,7 @@ export default function ModalFooter({
         <button
           onClick={onResume}
           disabled={anyLoading}
-          className='flex h-18 w-full flex-col items-center justify-center rounded-2xl bg-purple-600 font-black text-white'
+          className='flex h-12 w-full flex-col items-center justify-center rounded-2xl bg-purple-600 font-black text-white'
         >
           {isLoading('resume') ? 'Processing...' : '▶️ Resume Ticket'}
         </button>

@@ -64,9 +64,12 @@ export default function TeknisiLayout({
     : null;
 
   return (
-    <div className='bg-bg min-h-screen'>
+    <div className='bg-bg min-h-screen antialiased'>
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className='border-border bg-surface shadow-theme-sm sticky top-0 z-40 border-b'>
+      <header
+        className='border-border bg-surface shadow-theme-sm sticky top-0 z-40 border-b'
+        style={{ '--header-h': '4rem' } as React.CSSProperties}
+      >
         <div className='mx-auto flex h-16 max-w-5xl items-center justify-between px-4'>
           {/* ── Brand ─────────────────────────────────────────────────── */}
           <div className='flex items-center gap-1'>
@@ -110,7 +113,7 @@ export default function TeknisiLayout({
       </header>
 
       {/* ── Page content ─────────────────────────────────────────────────── */}
-      <main className='p-4'>{children}</main>
+      <main className='px-4 pt-4 pb-6'>{children}</main>
 
       {/* ── Logout confirm ───────────────────────────────────────────────── */}
       <LogoutConfirmModal

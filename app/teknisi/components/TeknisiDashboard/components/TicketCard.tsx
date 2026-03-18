@@ -99,12 +99,12 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
   return (
     <div
       onClick={() => onClick(ticket)}
-      className={`group cursor-pointer rounded-xl border border-l-4 border-slate-200 ${borderColor} bg-white px-2.5 py-2.5 shadow-sm transition-all hover:shadow-md sm:rounded-2xl sm:p-5`}
+      className={`group cursor-pointer rounded-xl border border-l-4 border-slate-200 ${borderColor} bg-white p-3.5 shadow-sm transition-all hover:shadow-md sm:rounded-2xl sm:p-5`}
     >
       <div className='flex flex-col gap-2 sm:gap-3'>
         {/* Incident Number */}
         <div className='flex items-center justify-between'>
-          <span className='font-mono text-[14px] font-bold text-slate-500'>
+          <span className='font-mono text-[13px] font-bold text-slate-500'>
             {ticket.ticket}
           </span>
           <svg
@@ -192,7 +192,7 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
                   target='_blank'
                   rel='noopener noreferrer'
                   onClick={handleWhatsAppClick}
-                  className='inline-flex items-center gap-0.5 text-[13px] font-semibold break-all text-emerald-600 hover:text-emerald-700 sm:text-sm'
+                  className='inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 sm:text-sm'
                 >
                   <svg
                     className='h-3 w-3 shrink-0'

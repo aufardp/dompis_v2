@@ -27,7 +27,7 @@ export default function SectionCard({
     >
       {/* Section header */}
       <div
-        className={`flex items-center gap-2.5 border-b border-slate-100 px-4 py-3 ${bgColorClasses[iconBgColor]}`}
+        className={`flex items-center gap-2.5 border-b border-slate-100 px-3.5 py-2.5 ${bgColorClasses[iconBgColor]}`}
       >
         <div className='flex h-7 w-7 items-center justify-center rounded-lg text-sm'>
           {icon}
@@ -37,7 +37,7 @@ export default function SectionCard({
         </span>
       </div>
       {/* Section body */}
-      <div className='px-4 py-3'>{children}</div>
+      <div className='px-3.5 py-3'>{children}</div>
     </div>
   );
 }

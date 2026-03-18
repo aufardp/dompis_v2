@@ -15,7 +15,11 @@ import { normalizeRoleKey, roleKeyToRoleId } from '@/app/libs/roles';
 import { ActivityType } from '@prisma/client';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
+// Sinkronkan dengan compressed file size (bukan raw dari kamera)
+// Setelah compressImage: maxWidth 1920px, quality 0.82 → hasil ~400KB-1MB per foto
+const MAX_FILE_SIZE = 2 * 1024 * 1024;        // 2MB per file (after compress)
+const MAX_TOTAL_SIZE = 15 * 1024 * 1024;      // 15MB total payload (dengan FormData overhead)
+const MAX_FILES = 5;
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,9 +58,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: `Ukuran file terlalu besar. Maksimal 8MB per foto`,
+          message: `File ${oversizedFiles.map(f => f.name).join(', ')} terlalu besar. Maksimal 2 MB per foto setelah kompresi.`,
         },
         { status: 400 },
+      );
+    }
+
+    // Validasi jumlah file
+    if (files.length > MAX_FILES) {
+      return NextResponse.json(
+        { success: false, message: `Maksimal ${MAX_FILES} foto per upload.` },
+        { status: 400 },
+      );
+    }
+
+    // Validasi total ukuran semua file (safety net server-side)
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    if (totalSize > MAX_TOTAL_SIZE) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Total ukuran foto (${(totalSize / 1024 / 1024).toFixed(1)} MB) melebihi batas. Maksimal 15 MB total.`,
+        },
+        { status: 413 },
       );
     }
 

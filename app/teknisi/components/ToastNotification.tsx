@@ -19,7 +19,7 @@ export default function ToastNotification({ toasts, onDismiss }: Props) {
   if (!toasts.length) return null;
 
   return (
-    <div className='fixed top-4 left-1/2 z-[100] flex -translate-x-1/2 flex-col gap-2 w-[calc(100vw-2rem)] max-w-sm'>
+    <div className='fixed top-4 left-1/2 z-100 flex w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2'>
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
@@ -27,7 +27,13 @@ export default function ToastNotification({ toasts, onDismiss }: Props) {
   );
 }
 
-function ToastItem({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
+function ToastItem({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastItem;
+  onDismiss: (id: string) => void;
+}) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -69,14 +75,18 @@ function ToastItem({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
       }`}
     >
       {/* Progress bar auto-dismiss */}
-      <div className={`absolute bottom-0 left-0 h-[3px] w-full ${styles.bar} animate-[shrink_3.5s_linear_forwards]`} />
-      
+      <div
+        className={`absolute bottom-0 left-0 h-0.75 w-full ${styles.bar} animate-[shrink_3.5s_linear_forwards]`}
+      />
+
       <div className='flex items-start gap-3'>
         <span className='text-xl leading-none'>{styles.icon}</span>
         <div className='min-w-0 flex-1'>
           <p className={`text-sm font-black ${styles.title}`}>{toast.title}</p>
           {toast.message && (
-            <p className='mt-0.5 text-xs text-slate-500 leading-snug'>{toast.message}</p>
+            <p className='mt-0.5 text-xs leading-snug text-slate-500'>
+              {toast.message}
+            </p>
           )}
         </div>
         <button

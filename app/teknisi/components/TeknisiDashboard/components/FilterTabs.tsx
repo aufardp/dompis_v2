@@ -57,7 +57,7 @@ export default function FilterTabs({
 
   const getButtonClass = (filter: TicketFilter): string => {
     const baseClass =
-      'shrink-0 snap-center rounded-full px-4 py-2 text-sm font-semibold transition';
+      'shrink-0 snap-center rounded-full px-3.5 py-2.5 text-sm font-semibold transition min-h-[40px]';
     const isActive = filter === currentFilter;
 
     const activeColors: Record<TicketFilter, string> = {
@@ -74,12 +74,12 @@ export default function FilterTabs({
   };
 
   return (
-    <div className='sticky top-0 z-30 -mx-4 px-4 pt-2 pb-3 sm:static sm:mx-0 sm:px-0'>
-      <div className='relative rounded-xl bg-white/90 p-2 shadow-sm backdrop-blur'>
+    <div className='sticky top-16 z-30 -mx-4 px-4 pt-2 pb-3 bg-transparent sm:static sm:mx-0 sm:px-0'>
+      <div className='relative rounded-xl bg-white/95 p-1.5 shadow-sm backdrop-blur-md ring-1 ring-slate-900/5'>
         <div
           ref={tabsRef}
           onScroll={onScroll}
-          className='scrollbar-hide flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 py-1.5 whitespace-nowrap'
+          className='scrollbar-hide flex snap-x snap-mandatory gap-1.5 overflow-x-auto px-1 py-1 whitespace-nowrap'
         >
           {filters.map((filter) => (
             <button

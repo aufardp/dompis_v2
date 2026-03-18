@@ -24,7 +24,10 @@ const nextConfig: NextConfig = {
       'lucide-react',
     ],
     serverActions: {
-      bodySizeLimit: '10mb',
+      // Naikkan batas untuk upload foto evidence teknisi
+      // 5 foto × compressed ~1MB + FormData overhead = ~6-8MB
+      // 15mb memberikan safety margin yang cukup
+      bodySizeLimit: '15mb',
     },
   },
   async headers() {

@@ -329,12 +329,31 @@ export default function TicketDetailModal({
   // File handlers — compress images before storing
   const handleFileChange = useCallback(
     async (files: File[]) => {
-      // Compress all images in parallel before preview
+      // 1. Compress all images in parallel before preview
       const compressed = await Promise.all(
         files.map((f) =>
           f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
         ),
       );
+
+      // 2. Re-validate size AFTER compression
+      // Jika file masih > 2MB setelah compress (mis. file bukan gambar), tolak
+      const MAX_AFTER = 2 * 1024 * 1024;
+      const stillTooLarge = compressed.filter(f => f.size > MAX_AFTER);
+      if (stillTooLarge.length > 0) {
+        setError(
+          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`
+        );
+        return;
+      }
+
+      // 3. Check total size
+      const totalSize = compressed.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > 10 * 1024 * 1024) {
+        setError('Total ukuran foto melebihi 10MB. Kurangi jumlah foto.');
+        return;
+      }
+
       setSelectedFiles(compressed);
       setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
     },
@@ -380,6 +399,12 @@ export default function TicketDetailModal({
     }
 
     if (!res.ok) {
+      // Tangkap 413 khusus dengan pesan ramah
+      if (res.status === 413) {
+        throw new Error(
+          'Foto terlalu besar untuk dikirim. Coba pilih lebih sedikit foto atau foto dengan ukuran lebih kecil.',
+        );
+      }
       const errorData = await res.json().catch(() => null);
       throw new Error(
         errorData?.message || `Upload gagal: ${res.status} ${res.statusText}`,
@@ -476,11 +501,12 @@ export default function TicketDetailModal({
     >
       {/* Bottom Sheet */}
       <div
-        className='flex h-[92vh] w-full flex-col rounded-t-4xl bg-slate-50 shadow-2xl transition-all'
+        className='flex w-full flex-col rounded-t-3xl bg-slate-50 shadow-2xl transition-all'
+        style={{ height: 'calc(100dvh - 4rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className='mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-slate-300' />
+        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-300' />
         {/* Header */}
         <ModalHeader
           ticket={ticket.ticket}
@@ -494,8 +520,15 @@ export default function TicketDetailModal({
           isClosed={isClosed}
           onClose={onClose}
         />
-        <div className='flex-1 overflow-y-auto p-5 pb-32'>
-          <div className='flex flex-col gap-5'>
+
+        {/* ═══ SATU-SATUNYA scroll container ═══
+            - flex-1 agar mengisi sisa tinggi
+            - overflow-y-auto untuk scroll
+            - overscroll-contain agar tidak trigger PTR browser
+            - pb disesuaikan dengan isi footer yang sticky
+            TIDAK BOLEH ada overflow-y-auto lain di dalamnya */}
+        <div className='flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4'>
+          <div className='space-y-4'>
             {error && (
               <div className='rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600'>
                 {error}

@@ -66,11 +66,30 @@ export default function TicketUpdateModal({
   // ── File handlers dengan compression ──────────────────────────────────────
   const handleFileChange = useCallback(
     async (files: File[]) => {
+      // 1. Compress all files first
       const compressed = await Promise.all(
         files.map((f) =>
           f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
         ),
       );
+
+      // 2. Re-validate size AFTER compression
+      const MAX_AFTER = 2 * 1024 * 1024;
+      const stillTooLarge = compressed.filter(f => f.size > MAX_AFTER);
+      if (stillTooLarge.length > 0) {
+        setError(
+          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`
+        );
+        return;
+      }
+
+      // 3. Check total size
+      const totalSize = compressed.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > 10 * 1024 * 1024) {
+        setError('Total ukuran foto melebihi 10MB. Kurangi jumlah foto.');
+        return;
+      }
+
       setSelectedFiles(compressed);
       setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
     },
@@ -100,6 +119,12 @@ export default function TicketUpdateModal({
     }
 
     if (!res.ok) {
+      // Tangkap 413 khusus dengan pesan ramah
+      if (res.status === 413) {
+        throw new Error(
+          'Foto terlalu besar untuk dikirim. Coba pilih lebih sedikit foto atau foto dengan ukuran lebih kecil.',
+        );
+      }
       const errorData = await res.json().catch(() => null);
       throw new Error(errorData?.message || `Upload gagal: ${res.status}`);
     }
@@ -174,14 +199,15 @@ export default function TicketUpdateModal({
     >
       {/* Bottom sheet */}
       <div
-        className='animate-slide-up flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-2xl'
+        className='animate-slide-up flex w-full flex-col rounded-t-3xl bg-white shadow-2xl'
+        style={{ maxHeight: 'calc(100dvh - 4rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle */}
-        <div className='mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-slate-200' />
+        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-200' />
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-5 py-4'>
+        <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-4 py-3.5'>
           <div>
             <h2 className='text-[16px] font-black text-slate-900'>
               Update Progress
@@ -199,7 +225,7 @@ export default function TicketUpdateModal({
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────────── */}
-        <div className='flex-1 space-y-4 overflow-y-auto px-5 py-4'>
+        <div className='flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4'>
           {/* Error banner */}
           {error && (
             <div className='flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600'>
@@ -290,12 +316,15 @@ export default function TicketUpdateModal({
         </div>
 
         {/* ── Footer CTA ───────────────────────────────────────────────────── */}
-        <div className='flex shrink-0 gap-2.5 border-t border-slate-100 bg-white px-5 py-4 pb-8'>
+        <div
+          className='flex shrink-0 gap-3 border-t border-slate-100 bg-white px-4 pt-3'
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
           {/* Cancel */}
           <button
             onClick={onClose}
             disabled={loading}
-            className='flex h-12.5 w-22 shrink-0 items-center justify-center rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50'
+            className='flex h-12 w-20 shrink-0 items-center justify-center rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50'
           >
             Batal
           </button>
@@ -304,7 +333,7 @@ export default function TicketUpdateModal({
           <button
             onClick={handleUpdate}
             disabled={!canSubmit}
-            className={`flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
+            className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
               canSubmit
                 ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-[0_4px_14px_rgba(99,102,241,0.30)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.40)]'
                 : 'border-[1.5px] border-slate-200 bg-slate-100 text-slate-400'

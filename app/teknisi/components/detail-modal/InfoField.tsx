@@ -53,7 +53,7 @@ export default function InfoField({
               e.stopPropagation();
               onPhoneClick?.();
             }}
-            className='flex min-h-9 items-center gap-1.5 rounded-full bg-green-100 px-3 py-1.5 text-[11px] font-bold text-green-700 transition-colors hover:bg-green-200'
+            className='flex min-h-10 items-center gap-1.5 rounded-full bg-green-100 px-4 py-2 text-[12px] font-bold text-green-700 transition-colors hover:bg-green-200'
           >
             <svg
               className='h-3.5 w-3.5'
@@ -70,7 +70,7 @@ export default function InfoField({
               e.stopPropagation();
               onPhoneClick?.();
             }}
-            className='flex min-h-9 items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-[11px] font-bold text-blue-700 transition-colors hover:bg-blue-200'
+            className='flex min-h-10 items-center gap-1.5 rounded-full bg-blue-100 px-4 py-2 text-[12px] font-bold text-blue-700 transition-colors hover:bg-blue-200'
           >
             <span className='text-sm'>📞</span>
             Telepon

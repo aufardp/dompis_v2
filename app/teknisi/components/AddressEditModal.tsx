@@ -84,21 +84,21 @@ export default function AddressEditModal({
 
   return (
     <div
-      className='fixed inset-0 z-[60] flex items-end bg-black/50 backdrop-blur-sm'
+      className='fixed inset-0 z-60 flex items-end bg-black/50 backdrop-blur-sm'
       onClick={onClose}
     >
       {/* Bottom Sheet */}
       <div
-        className='w-full rounded-t-3xl bg-white max-h-[90vh] flex flex-col animate-slide-up shadow-2xl'
+        className='animate-slide-up flex max-h-[90vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl'
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className='mx-auto mt-2.5 h-1 w-9 rounded-full bg-slate-200 flex-shrink-0' />
+        <div className='mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-slate-200' />
 
         {/* Header */}
-        <div className='px-5 pb-4 pt-3 border-b border-slate-100 flex-shrink-0'>
-          <div className='flex items-center gap-2.5 mb-2'>
-            <div className='w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-lg'>
+        <div className='shrink-0 border-b border-slate-100 px-5 pt-3 pb-4'>
+          <div className='mb-2 flex items-center gap-2.5'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-lg'>
               📍
             </div>
             <div>
@@ -113,7 +113,7 @@ export default function AddressEditModal({
         </div>
 
         {/* Body */}
-        <div className='flex-1 overflow-y-auto p-5 space-y-4'>
+        <div className='flex-1 space-y-4 overflow-y-auto p-5'>
           {/* Error Banner */}
           {error && (
             <div className='rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
@@ -123,7 +123,7 @@ export default function AddressEditModal({
 
           {/* Address Input */}
           <div>
-            <label className='block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-2'>
+            <label className='mb-2 block text-[11px] font-bold tracking-wide text-slate-500 uppercase'>
               Alamat Lengkap
             </label>
             <textarea
@@ -135,9 +135,9 @@ export default function AddressEditModal({
               className='w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none disabled:bg-slate-100'
               disabled={saving}
             />
-            <div className='flex items-center justify-between mt-2'>
+            <div className='mt-2 flex items-center justify-between'>
               <span
-                className={`text-xs ${isEmpty ? 'text-red-600 font-semibold' : 'text-slate-500'}`}
+                className={`text-xs ${isEmpty ? 'font-semibold text-red-600' : 'text-slate-500'}`}
               >
                 {isEmpty ? '⚠ Alamat wajib diisi' : 'Alamat lengkap'}
               </span>
@@ -154,11 +154,11 @@ export default function AddressEditModal({
           </div>
 
           {/* Tips */}
-          <div className='rounded-xl bg-blue-50 border border-blue-100 p-3'>
-            <p className='text-[11px] font-semibold text-blue-700 mb-1'>
+          <div className='rounded-xl border border-blue-100 bg-blue-50 p-3'>
+            <p className='mb-1 text-[11px] font-semibold text-blue-700'>
               💡 Tips:
             </p>
-            <ul className='text-[10px] text-blue-600 space-y-0.5 list-disc list-inside'>
+            <ul className='list-inside list-disc space-y-0.5 text-[10px] text-blue-600'>
               <li>Sertakan nama jalan, nomor, RT/RW</li>
               <li>Sebutkan kelurahan dan kecamatan</li>
               <li>Tambahkan kode pos jika ada</li>
@@ -168,22 +168,22 @@ export default function AddressEditModal({
         </div>
 
         {/* Footer */}
-        <div className='sticky bottom-0 flex gap-3 border-t border-slate-100 bg-white px-5 py-4 pb-6 flex-shrink-0'>
+        <div className='sticky bottom-0 flex shrink-0 gap-3 border-t border-slate-100 bg-white px-5 py-4 pb-6'>
           <button
             onClick={handleCancel}
             disabled={saving}
-            className='flex-1 h-[50px] rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-100 transition-colors disabled:opacity-50'
+            className='h-12.5 flex-1 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50'
           >
             Batal
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className='flex-1 h-[50px] rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:shadow-xl hover:shadow-blue-300 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:shadow-none'
+            className='flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 text-sm font-black text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:shadow-none'
           >
             {saving ? (
               <>
-                <span className='w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin' />
+                <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
                 Menyimpan...
               </>
             ) : (
