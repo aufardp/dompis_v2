@@ -122,7 +122,7 @@ async function startServer() {
       setTimeout(runTechEvents, 30000);
     });
 
-    console.log('[CRON] Scheduled: sync(5m), push(10m), tech-events(30s)');
+    console.log('[CRON] Scheduled: sync(3m), push(10m), tech-events(30s)');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }

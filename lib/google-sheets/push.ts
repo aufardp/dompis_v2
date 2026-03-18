@@ -58,7 +58,7 @@ export async function pushSpreadsheet() {
         DESCRIPTION_ACTUAL_SOLUTION: true,
         closed_at: true,
         teknisi_user_id: true,
-        users: { select: { nama: true } },
+        users: { select: { nama: true, username: true } },
       },
     });
 
@@ -101,8 +101,8 @@ export async function pushSpreadsheet() {
       fullRowForInsert[0] = t.INCIDENT; // B
       fullRowForInsert[13] = t.STATUS_UPDATE ?? ''; // O
       fullRowForInsert[20] = t.ALAMAT ?? ''; // V
-      fullRowForInsert[21] = t.teknisi_user_id?.toString() ?? ''; // W
-      fullRowForInsert[22] = t.users?.nama ?? ''; // X
+      fullRowForInsert[21] = t.users?.nama ?? ''; // W
+      fullRowForInsert[22] = t.users?.username ?? ''; // X
       fullRowForInsert[27] = t.STATUS_UPDATE ?? ''; // AC (Status Dompis)
       fullRowForInsert[28] = t.PENDING_REASON ?? ''; // AD
       fullRowForInsert[29] = t.rca ?? ''; // AE
