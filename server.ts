@@ -68,13 +68,13 @@ async function startServer() {
 
   if (cronEnabled) {
     /**
-     * SYNC — setiap 5 menit
+     * SYNC — setiap 3 menit
      */
-    cron.schedule('*/5 * * * *', async () => {
+    cron.schedule('*/3 * * * *', async () => {
       console.log('[CRON] Running sync...');
       await withDbLock('sync_lock', async () => {
         try {
-          const result = await withTimeout(syncSpreadsheet(), 5 * 60 * 1000);
+          const result = await withTimeout(syncSpreadsheet(), 3 * 60 * 1000);
           console.log('[CRON] Sync result:', result);
         } catch (error) {
           console.error('[CRON] Sync error:', error);

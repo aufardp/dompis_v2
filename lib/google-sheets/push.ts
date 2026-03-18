@@ -37,7 +37,7 @@ export async function pushSpreadsheet() {
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    // 1️⃣ FILTER DB: Hanya ambil data yang sync_date = HARI INI
+    // Hanya ambil data yang sync_date = HARI INI
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -67,7 +67,7 @@ export async function pushSpreadsheet() {
       return { success: true, updated: 0, inserted: 0 };
     }
 
-    // 2️⃣ GET EXISTING DATA DI SHEET (Untuk Cek Incident & Hash)
+    // Ambil data B sampai AH untuk mapping Incident ID
     const sheetRes = await retryGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -82,12 +82,11 @@ export async function pushSpreadsheet() {
       const incident = r[0]; // Kolom B
       if (!incident) return;
 
-      // Hash kolom monitor (O, AC, AD, AE, AF, AG)
       const hash = hashRow([r[13], r[27], r[28], r[29], r[30], r[31]]);
       sheetMap.set(incident, { row: START_ROW + i, hash });
     });
 
-    // 3️⃣ MAPPING & FILTERING
+    // 3️⃣ MAPPING LOGIC
     const updates: any[] = [];
     const inserts: any[][] = [];
     let skipped = 0;
@@ -97,22 +96,25 @@ export async function pushSpreadsheet() {
         ? new Date(t.closed_at).toLocaleString('id-ID')
         : '';
 
-      const fullRow = new Array(33).fill('');
-      fullRow[0] = t.INCIDENT; // B
-      fullRow[13] = t.STATUS_UPDATE ?? ''; // O
-      fullRow[20] = t.ALAMAT ?? ''; // V
-      fullRow[21] = t.teknisi_user_id?.toString() ?? ''; // W
-      fullRow[22] = t.users?.nama ?? ''; // X
-      fullRow[27] = t.STATUS_UPDATE ?? ''; // AC
-      fullRow[28] = t.PENDING_REASON ?? ''; // AD
-      fullRow[29] = t.rca ?? ''; // AE
-      fullRow[30] = t.sub_rca ?? ''; // AF
-      fullRow[31] = t.DESCRIPTION_ACTUAL_SOLUTION ?? ''; // AG
-      fullRow[32] = closedAtStr; // AH
+      // --- DATA UNTUK INSERT (BARIS BARU) ---
+      const fullRowForInsert = new Array(33).fill('');
+      fullRowForInsert[0] = t.INCIDENT; // B
+      fullRowForInsert[13] = t.STATUS_UPDATE ?? ''; // O
+      fullRowForInsert[20] = t.ALAMAT ?? ''; // V
+      fullRowForInsert[21] = t.teknisi_user_id?.toString() ?? ''; // W
+      fullRowForInsert[22] = t.users?.nama ?? ''; // X
+      fullRowForInsert[27] = t.STATUS_UPDATE ?? ''; // AC (Status Dompis)
+      fullRowForInsert[28] = t.PENDING_REASON ?? ''; // AD
+      fullRowForInsert[29] = t.rca ?? ''; // AE
+      fullRowForInsert[30] = t.sub_rca ?? ''; // AF
+      fullRowForInsert[31] = t.DESCRIPTION_ACTUAL_SOLUTION ?? ''; // AG
+      fullRowForInsert[32] = closedAtStr; // AH
+
+      const updateDataOnly = fullRowForInsert.slice(20);
 
       const dbHash = hashRow([
         t.STATUS_UPDATE ?? '',
-        t.STATUS_UPDATE ?? '',
+        t.STATUS_UPDATE ?? '', // AC
         t.PENDING_REASON ?? '',
         t.rca ?? '',
         t.sub_rca ?? '',
@@ -122,18 +124,18 @@ export async function pushSpreadsheet() {
       const sheetRow = sheetMap.get(t.INCIDENT);
 
       if (!sheetRow) {
-        inserts.push(fullRow); // Incident belum ada di sheet
+        inserts.push(fullRowForInsert);
       } else if (sheetRow.hash !== dbHash) {
         updates.push({
-          range: `'${SHEET_NAME}'!B${sheetRow.row}:AH${sheetRow.row}`,
-          values: [fullRow],
+          range: `'${SHEET_NAME}'!V${sheetRow.row}:AH${sheetRow.row}`,
+          values: [updateDataOnly],
         });
       } else {
-        skipped++; // Data identik, abaikan
+        skipped++;
       }
     }
 
-    // 4️⃣ EXECUTE UPDATES
+    // Target Kolom V:AH
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
       const chunk = updates.slice(i, i + BATCH_SIZE);
       await retryGoogle(() =>
@@ -144,7 +146,6 @@ export async function pushSpreadsheet() {
       );
     }
 
-    // 5️⃣ EXECUTE INSERTS (Gunakan APPEND agar tidak Error Grid Limit)
     if (inserts.length > 0) {
       await retryGoogle(() =>
         sheets.spreadsheets.values.append({
@@ -157,7 +158,7 @@ export async function pushSpreadsheet() {
     }
 
     console.log(
-      `PUSH DONE | Updated: ${updates.length} | Inserted: ${inserts.length} | Skipped: ${skipped}`,
+      `PUSH DONE | Updated Rows (V-AH): ${updates.length} | New Rows: ${inserts.length} | Skipped: ${skipped}`,
     );
     return { success: true, updated: updates.length, inserted: inserts.length };
   } catch (err: any) {
