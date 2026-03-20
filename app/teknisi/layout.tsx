@@ -68,9 +68,9 @@ export default function TeknisiLayout({
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
         className='border-border bg-surface shadow-theme-sm sticky top-0 z-40 border-b'
-        style={{ '--header-h': '4rem' } as React.CSSProperties}
+        style={{ '--header-h': '3.5rem' } as React.CSSProperties}
       >
-        <div className='mx-auto flex h-16 max-w-5xl items-center justify-between px-4'>
+        <div className='mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:h-16'>
           {/* ── Brand ─────────────────────────────────────────────────── */}
           <div className='flex items-center gap-1'>
             <div className='flex h-10 w-10 items-center justify-center rounded-xl'>

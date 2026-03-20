@@ -74,7 +74,7 @@ export default function FilterTabs({
   };
 
   return (
-    <div className='sticky top-16 z-30 -mx-4 px-4 pt-2 pb-3 bg-transparent sm:static sm:mx-0 sm:px-0'>
+    <div className='sticky top-14 z-30 -mx-4 px-4 pt-2 pb-3 bg-transparent sm:static sm:mx-0 sm:px-0 sm:top-16'>
       <div className='relative rounded-xl bg-white/95 p-1.5 shadow-sm backdrop-blur-md ring-1 ring-slate-900/5'>
         <div
           ref={tabsRef}

@@ -269,7 +269,7 @@ export default function ModalFooter({
         <button
           onClick={onPickup}
           disabled={anyLoading}
-          className='flex h-12 w-full flex-col items-center justify-center rounded-2xl bg-blue-600 font-black text-white'
+          className='flex h-14 w-full flex-col items-center justify-center rounded-2xl bg-blue-600 font-black text-white'
         >
           {isLoading('pickup') ? 'Processing...' : '🚀 Pickup Ticket'}
         </button>
@@ -279,7 +279,7 @@ export default function ModalFooter({
         <button
           onClick={onResume}
           disabled={anyLoading}
-          className='flex h-12 w-full flex-col items-center justify-center rounded-2xl bg-purple-600 font-black text-white'
+          className='flex h-14 w-full flex-col items-center justify-center rounded-2xl bg-purple-600 font-black text-white'
         >
           {isLoading('resume') ? 'Processing...' : '▶️ Resume Ticket'}
         </button>

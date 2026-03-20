@@ -502,7 +502,7 @@ export default function TicketDetailModal({
       {/* Bottom Sheet */}
       <div
         className='flex w-full flex-col rounded-t-3xl bg-slate-50 shadow-2xl transition-all'
-        style={{ height: 'calc(100dvh - 4rem)' }}
+        style={{ height: 'calc(100dvh - 3.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}

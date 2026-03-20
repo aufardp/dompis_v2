@@ -200,7 +200,7 @@ export default function TicketUpdateModal({
       {/* Bottom sheet */}
       <div
         className='animate-slide-up flex w-full flex-col rounded-t-3xl bg-white shadow-2xl'
-        style={{ maxHeight: 'calc(100dvh - 4rem)' }}
+        style={{ maxHeight: 'calc(100dvh - 3.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle */}
