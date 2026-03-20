@@ -143,22 +143,22 @@ function AttendancePill({ status, time }: AttendancePillProps) {
 
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold ${
+      className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-[12px] ${
         isPresent
           ? 'border-success-200 bg-success-50 text-success-600 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-400'
           : 'border-warning-200 bg-warning-50 text-warning-600 dark:border-warning-500/20 dark:bg-warning-500/10 dark:text-warning-400'
       }`}
     >
       {isPresent ? (
-        <span className='relative flex h-2 w-2 shrink-0'>
+        <span className='relative flex h-1.5 w-1.5 shrink-0'>
           <span className='bg-success-400 absolute inline-flex h-full w-full animate-ping rounded-full opacity-60' />
-          <span className='bg-success-500 relative inline-flex h-2 w-2 rounded-full' />
+          <span className='bg-success-500 relative inline-flex h-1.5 w-1.5 rounded-full' />
         </span>
       ) : (
-        <Clock size={12} className='shrink-0' />
+        <Clock size={11} className='shrink-0' />
       )}
-      <span>{isPresent ? 'Hadir' : 'Terlambat'}</span>
-      {time && <span className='opacity-70'>{time}</span>}
+      {/* Hanya jam — tanpa label teks */}
+      {time && <span className='tabular-nums'>{time}</span>}
     </div>
   );
 }

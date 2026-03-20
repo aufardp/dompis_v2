@@ -38,10 +38,10 @@ export default function InfoField({
 
     return (
       <div className={className}>
-        <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+        <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase'>
           {label}
         </p>
-        <p className='mb-2 text-sm font-semibold text-slate-800'>
+        <p className='mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100'>
           {formatPhone(value)}
         </p>
         <div className='flex gap-2'>
@@ -53,7 +53,7 @@ export default function InfoField({
               e.stopPropagation();
               onPhoneClick?.();
             }}
-            className='flex min-h-10 items-center gap-1.5 rounded-full bg-green-100 px-4 py-2 text-[12px] font-bold text-green-700 transition-colors hover:bg-green-200'
+            className='flex min-h-10 items-center gap-1.5 rounded-full bg-green-100 px-4 py-2 text-[12px] font-bold text-green-700 transition-colors hover:bg-green-200 dark:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/20'
           >
             <svg
               className='h-3.5 w-3.5'
@@ -70,7 +70,7 @@ export default function InfoField({
               e.stopPropagation();
               onPhoneClick?.();
             }}
-            className='flex min-h-10 items-center gap-1.5 rounded-full bg-blue-100 px-4 py-2 text-[12px] font-bold text-blue-700 transition-colors hover:bg-blue-200'
+            className='flex min-h-10 items-center gap-1.5 rounded-full bg-blue-100 px-4 py-2 text-[12px] font-bold text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-500/15 dark:text-blue-400 dark:hover:bg-blue-500/20'
           >
             <span className='text-sm'>📞</span>
             Telepon
@@ -83,13 +83,13 @@ export default function InfoField({
   // Default variant
   return (
     <div className={className}>
-      <p className='mb-1 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+      <p className='mb-1 text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase'>
         {label}
       </p>
       {value ? (
-        <p className='text-sm font-semibold text-slate-800'>{value}</p>
+        <p className='text-sm font-semibold text-slate-800 dark:text-slate-100'>{value}</p>
       ) : (
-        <p className='text-sm font-medium text-slate-300 italic'>
+        <p className='text-sm font-medium text-slate-300 italic dark:text-slate-600'>
           Tidak tersedia
         </p>
       )}

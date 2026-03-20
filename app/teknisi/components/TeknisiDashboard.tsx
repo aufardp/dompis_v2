@@ -53,7 +53,7 @@ function SearchBar({ value, onChange }: SearchBarProps) {
 
   return (
     <div className='relative'>
-      <span className='pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-400'>
+      <span className='pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-400 dark:text-slate-500'>
         🔍
       </span>
       <input
@@ -61,13 +61,13 @@ function SearchBar({ value, onChange }: SearchBarProps) {
         placeholder='Cari nomor tiket... (contoh: INC45671234)'
         value={inputValue}
         onChange={handleChange}
-        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-700 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none'
+        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-700 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500'
       />
       {inputValue && (
         <button
           type='button'
           onClick={handleClear}
-          className='absolute top-1/2 right-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300'
+          className='absolute top-1/2 right-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600'
         >
           ×
         </button>
@@ -121,7 +121,7 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+          className='flex min-h-[44px] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
         >
           ←
         </button>
@@ -129,7 +129,7 @@ function Pagination({
           p === '...' ? (
             <span
               key={i}
-              className='flex h-8 w-8 items-center justify-center text-sm text-slate-400'
+              className='flex h-8 w-8 items-center justify-center text-sm text-slate-400 dark:text-slate-500'
             >
               …
             </span>
@@ -138,10 +138,10 @@ function Pagination({
               key={p}
               type='button'
               onClick={() => handlePageChange(p as number)}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+              className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-sm font-medium transition-colors ${
                 p === currentPage
                   ? 'bg-blue-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
               }`}
             >
               {p}
@@ -152,12 +152,12 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+          className='flex min-h-[44px] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
         >
           →
         </button>
       </div>
-      <p className='text-xs text-slate-400'>
+      <p className='text-xs text-slate-400 dark:text-slate-500'>
         Menampilkan {from}–{to} dari {totalItems} tiket
       </p>
     </div>
@@ -285,7 +285,7 @@ export default function TeknisiDashboard() {
   })();
 
   return (
-    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 px-4 pt-4 pb-6'>
+    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 px-4 pt-4 pb-6'>
       {/* Toast Notifications */}
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
 
@@ -296,14 +296,15 @@ export default function TeknisiDashboard() {
         ptrRefreshing={ptrRefreshing}
       />
 
+      {/* Konten atas — dalam max-w-2xl */}
       <div className='mx-auto max-w-2xl space-y-4'>
         {/* Header */}
         <div className='flex items-center justify-between'>
           <div>
-            <h1 className='text-xl font-bold text-slate-800 sm:text-2xl'>
+            <h1 className='text-xl font-bold text-slate-800 dark:text-slate-100 sm:text-2xl'>
               My Tickets
             </h1>
-            <p className='text-xs text-slate-500 sm:text-sm'>
+            <p className='text-xs text-slate-500 dark:text-slate-400 sm:text-sm'>
               Manage your assigned tickets
             </p>
           </div>
@@ -312,7 +313,7 @@ export default function TeknisiDashboard() {
             type='button'
             onClick={() => void refresh()}
             disabled={loading || ptrRefreshing}
-            className='inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2'
+            className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2'
             title='Refresh'
           >
             <span
@@ -324,7 +325,7 @@ export default function TeknisiDashboard() {
             >
               ↻
             </span>
-            <span className='hidden text-sm font-semibold text-slate-700 sm:inline'>
+            <span className='hidden text-sm font-semibold text-slate-700 dark:text-slate-200 sm:inline'>
               Refresh
             </span>
           </button>
@@ -335,36 +336,41 @@ export default function TeknisiDashboard() {
 
         {/* Search Bar */}
         <SearchBar value={searchQuery} onChange={setSearchQuery} />
+      </div>
 
-        {/* Filter Tabs */}
-        <FilterTabs
-          currentFilter={filter}
-          onFilterChange={setFilter as (f: TicketFilter) => void}
-          stats={stats}
-          tabsRef={tabsRef}
-          tabButtonRefs={tabButtonRefs}
-          showLeftFade={showLeftFade}
-          showRightFade={showRightFade}
-          onScroll={() => {}}
-        />
+      {/* FilterTabs — di LUAR max-w-2xl, -mx-4 sekarang benar-benar full-width */}
+      <FilterTabs
+        currentFilter={filter}
+        onFilterChange={setFilter as (f: TicketFilter) => void}
+        stats={stats}
+        tabsRef={tabsRef}
+        tabButtonRefs={tabButtonRefs}
+        showLeftFade={showLeftFade}
+        showRightFade={showRightFade}
+        onScroll={() => {}}
+      />
 
+      {/* Konten bawah — kembali dalam max-w-2xl */}
+      <div className='mx-auto max-w-2xl space-y-4'>
         {/* Ticket List */}
         {loading ? (
           <div className='flex items-center justify-center py-16'>
             <div className='h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent' />
           </div>
         ) : filteredTickets.length === 0 ? (
-          <div className='rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center'>
+          <div className='rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-800/50'>
             <div className='mb-3 text-5xl'>{emptyMessage.icon}</div>
-            <p className='text-lg font-medium text-slate-600'>
+            <p className='text-lg font-medium text-slate-600 dark:text-slate-300'>
               {emptyMessage.title}
             </p>
-            <p className='text-sm text-slate-400'>{emptyMessage.subtitle}</p>
+            <p className='text-sm text-slate-400 dark:text-slate-500'>
+              {emptyMessage.subtitle}
+            </p>
             {emptyMessage.showClearButton && (
               <button
                 type='button'
                 onClick={() => setSearchQuery('')}
-                className='mt-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50'
+                className='mt-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
               >
                 Hapus pencarian
               </button>

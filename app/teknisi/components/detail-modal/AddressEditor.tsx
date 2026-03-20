@@ -276,7 +276,7 @@ export default function AddressEditor({
   return (
     <>
       <div className='addr-filled flex items-start justify-between gap-2.5'>
-        <span className='addr-filled-text flex-1 text-[13.5px] leading-relaxed font-semibold text-slate-800'>
+        <span className='addr-filled-text flex-1 text-[13.5px] leading-relaxed font-semibold text-slate-100'>
           {alamatTrim}
         </span>
         {canEdit && (

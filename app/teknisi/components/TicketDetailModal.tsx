@@ -339,10 +339,10 @@ export default function TicketDetailModal({
       // 2. Re-validate size AFTER compression
       // Jika file masih > 2MB setelah compress (mis. file bukan gambar), tolak
       const MAX_AFTER = 2 * 1024 * 1024;
-      const stillTooLarge = compressed.filter(f => f.size > MAX_AFTER);
+      const stillTooLarge = compressed.filter((f) => f.size > MAX_AFTER);
       if (stillTooLarge.length > 0) {
         setError(
-          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`
+          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`,
         );
         return;
       }
@@ -501,12 +501,12 @@ export default function TicketDetailModal({
     >
       {/* Bottom Sheet */}
       <div
-        className='flex w-full flex-col rounded-t-3xl bg-slate-50 shadow-2xl transition-all'
+        className='flex w-full flex-col rounded-t-3xl bg-slate-50 shadow-2xl transition-all dark:bg-slate-900'
         style={{ height: 'calc(100dvh - 3.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-300' />
+        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600' />
         {/* Header */}
         <ModalHeader
           ticket={ticket.ticket}
@@ -530,35 +530,35 @@ export default function TicketDetailModal({
         <div className='flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4'>
           <div className='space-y-4'>
             {error && (
-              <div className='rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600'>
+              <div className='rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'>
                 {error}
               </div>
             )}
 
             {/* TTR & SLA Section */}
             {!isClosed && (
-              <div className='rounded-2xl border border-slate-100 bg-white p-4 shadow-sm'>
+              <div className='rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800'>
                 <div className='mb-3 flex items-end justify-between'>
                   <div>
-                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase'>
+                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase dark:text-slate-500'>
                       Sisa Waktu
                     </p>
                     <p
-                      className={`text-2xl font-black ${ttrRemaining?.isOverdue ? 'text-red-600' : 'text-slate-800'}`}
+                      className={`text-2xl font-black ${ttrRemaining?.isOverdue ? 'text-red-600' : 'text-slate-800 dark:text-slate-100'}`}
                     >
                       {ttrRemaining?.label}
                     </p>
                   </div>
                   <div className='text-right'>
-                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase'>
+                    <p className='text-[10px] font-black tracking-widest text-slate-400 uppercase dark:text-slate-500'>
                       Max TTR
                     </p>
-                    <p className='text-xs font-bold text-slate-600'>
+                    <p className='text-xs font-bold text-slate-600 dark:text-slate-300'>
                       {getMaxTtrInfo(ticket)}
                     </p>
                   </div>
                 </div>
-                <div className='h-2 w-full overflow-hidden rounded-full bg-slate-100'>
+                <div className='h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700'>
                   <div
                     className={`h-full transition-all duration-500 ${slaBarColor}`}
                     style={{ width: `${slaPercent}%` }}
@@ -578,12 +578,12 @@ export default function TicketDetailModal({
 
               {/* MAX TTR Warning Box — hanya saat tiket BELUM closed */}
               {ttrRemaining && !isClosed && (
-                <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3'>
+                <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-500/20 dark:bg-orange-500/10'>
                   <div>
                     <p className='mb-0.5 text-[10px] font-bold tracking-wide text-orange-500 uppercase'>
                       ⚠ Batas Waktu (Max TTR)
                     </p>
-                    <p className='text-sm font-bold text-orange-800'>
+                    <p className='text-sm font-bold text-orange-800 dark:text-orange-300'>
                       {getMaxTtrInfo(ticket)}
                     </p>
                   </div>
@@ -592,7 +592,7 @@ export default function TicketDetailModal({
                       {ttrRemaining.isOverdue ? 'Terlewat' : 'Sisa Waktu'}
                     </p>
                     <p
-                      className={`text-xl font-black tabular-nums ${ttrRemaining.isOverdue ? 'text-red-600' : 'text-orange-700'}`}
+                      className={`text-xl font-black tabular-nums ${ttrRemaining.isOverdue ? 'text-red-600' : 'text-orange-700 dark:text-orange-300'}`}
                     >
                       {ttrRemaining.label}
                     </p>
@@ -607,8 +607,8 @@ export default function TicketDetailModal({
                   <div
                     className={`flex flex-1 items-center gap-2 rounded-xl border-[1.5px] px-3 py-2 ${
                       photoCount >= photoRequired
-                        ? 'border-green-200 bg-green-50 text-green-700'
-                        : 'border-red-200 bg-red-50 text-red-600'
+                        ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400'
+                        : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
                     }`}
                   >
                     <span className='text-sm'>📷</span>
@@ -655,12 +655,12 @@ export default function TicketDetailModal({
                   {/* Address - with new AddressEditor component */}
                   <div
                     id='address-editor-section'
-                    className='border-t border-slate-100 pt-2'
+                    className='border-t border-slate-100 pt-2 dark:border-slate-800'
                   >
-                    <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
-                      Alamat
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
+                      Alamat (Pastikan Valid)
                       {isOnProgress && isAlamatEmpty && (
-                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600'>
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600 dark:bg-red-500/10 dark:text-red-400'>
                           ⚠ WAJIB
                         </span>
                       )}
@@ -712,11 +712,11 @@ export default function TicketDetailModal({
 
                   {/* Pending Reason — show if ticket is PENDING */}
                   {isPending && ticket.pendingReason && (
-                    <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5'>
+                    <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5 dark:border-purple-500/20 dark:bg-purple-500/10'>
                       <p className='mb-1 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
                         Alasan Pending
                       </p>
-                      <p className='text-sm font-semibold text-purple-900'>
+                      <p className='text-sm font-semibold text-purple-900 dark:text-purple-300'>
                         {ticket.pendingReason}
                       </p>
                     </div>
@@ -730,7 +730,7 @@ export default function TicketDetailModal({
                   <div className='space-y-4'>
                     {/* Label + Select RCA */}
                     <div>
-                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase dark:text-slate-400'>
                         Root Cause Analysis (RCA)
                       </label>
                       <select
@@ -739,7 +739,7 @@ export default function TicketDetailModal({
                           setSelectedRca(e.target.value);
                           setSelectedSubRca('');
                         }}
-                        className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                        className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                       >
                         <option value=''>-- Pilih RCA --</option>
                         {Object.keys(rcaMapping).map((rca) => (
@@ -753,13 +753,13 @@ export default function TicketDetailModal({
                     {/* Label + Select Sub RCA — only show after RCA is chosen */}
                     {selectedRca && (
                       <div>
-                        <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                        <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase dark:text-slate-400'>
                           Sub RCA
                         </label>
                         <select
                           value={selectedSubRca}
                           onChange={(e) => setSelectedSubRca(e.target.value)}
-                          className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                          className='w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                         >
                           <option value=''>-- Pilih Sub RCA --</option>
                           {rcaMapping[selectedRca].map((sub) => (
@@ -773,9 +773,9 @@ export default function TicketDetailModal({
 
                     {/* Detail Perbaikan */}
                     <div>
-                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase'>
+                      <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-slate-500 uppercase dark:text-slate-400'>
                         Detail Perbaikan
-                        <span className='ml-1.5 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-black text-red-600'>
+                        <span className='ml-1.5 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-black text-red-600 dark:bg-red-500/10 dark:text-red-400'>
                           WAJIB
                         </span>
                       </label>
@@ -785,14 +785,14 @@ export default function TicketDetailModal({
                         placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
                         rows={4}
                         maxLength={500}
-                        className='w-full resize-none appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                        className='w-full resize-none appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                       />
                       <div className='mt-1 flex justify-between'>
-                        <span className='text-[10px] text-slate-400'>
+                        <span className='text-[10px] text-slate-400 dark:text-slate-500'>
                           Minimal 10 karakter
                         </span>
                         <span
-                          className={`text-[12px] ${detailPerbaikan.length > 450 ? 'text-orange-500' : 'text-slate-400'}`}
+                          className={`text-[12px] ${detailPerbaikan.length > 450 ? 'text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}
                         >
                           {detailPerbaikan.length}/500
                         </span>
@@ -801,11 +801,11 @@ export default function TicketDetailModal({
 
                     {/* Preview card when both RCA + Sub RCA are selected */}
                     {selectedRca && selectedSubRca && (
-                      <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3'>
+                      <div className='rounded-xl border border-purple-100 bg-purple-50 px-4 py-3 dark:border-purple-500/20 dark:bg-purple-500/10'>
                         <p className='mb-0.5 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
                           RCA dipilih
                         </p>
-                        <p className='text-sm font-bold text-purple-900'>
+                        <p className='text-sm font-bold text-purple-900 dark:text-purple-300'>
                           {selectedRca} → {selectedSubRca}
                         </p>
                       </div>
@@ -827,12 +827,12 @@ export default function TicketDetailModal({
 
                     {/* Detail Perbaikan — tampilkan jika ada */}
                     {ticket.descriptionActualSolution && (
-                      <div className='border-t border-slate-100 pt-3'>
-                        <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                      <div className='border-t border-slate-100 pt-3 dark:border-slate-800'>
+                        <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
                           Detail Perbaikan
                         </p>
-                        <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3'>
-                          <p className='text-sm leading-relaxed font-medium whitespace-pre-wrap text-slate-700'>
+                        <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3 dark:border-green-500/20 dark:bg-green-500/10'>
+                          <p className='text-sm leading-relaxed font-medium whitespace-pre-wrap text-slate-700 dark:text-slate-200'>
                             {ticket.descriptionActualSolution}
                           </p>
                         </div>

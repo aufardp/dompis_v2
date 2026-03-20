@@ -69,13 +69,13 @@ export default function FilterTabs({
     };
 
     return `${baseClass} ${
-      isActive ? activeColors[filter] : 'text-slate-600 hover:bg-slate-50'
+      isActive ? activeColors[filter] : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
     }`;
   };
 
   return (
     <div className='sticky top-14 z-30 -mx-4 px-4 pt-2 pb-3 bg-transparent sm:static sm:mx-0 sm:px-0 sm:top-16'>
-      <div className='relative rounded-xl bg-white/95 p-1.5 shadow-sm backdrop-blur-md ring-1 ring-slate-900/5'>
+      <div className='relative rounded-xl bg-white/95 p-1.5 shadow-sm backdrop-blur-md ring-1 ring-slate-900/5 dark:bg-slate-900/90'>
         <div
           ref={tabsRef}
           onScroll={onScroll}
@@ -96,10 +96,10 @@ export default function FilterTabs({
         </div>
 
         {showLeftFade && (
-          <div className='pointer-events-none absolute inset-y-0 left-0 w-8 rounded-l-xl bg-linear-to-r from-white to-white/0' />
+          <div className='pointer-events-none absolute inset-y-0 left-0 w-8 rounded-l-xl bg-linear-to-r from-white to-white/0 dark:from-slate-900 dark:to-slate-900/0' />
         )}
         {showRightFade && (
-          <div className='pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-linear-to-l from-white to-white/0' />
+          <div className='pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-linear-to-l from-white to-white/0 dark:from-slate-900 dark:to-slate-900/0' />
         )}
       </div>
     </div>

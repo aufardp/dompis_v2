@@ -57,7 +57,7 @@ function ActionButton({
     primary:
       'bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md disabled:opacity-50',
     secondary:
-      'border-[1.5px] border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50',
+      'border-[1.5px] border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
     success:
       'bg-gradient-to-br from-green-600 to-emerald-600 text-white shadow-md disabled:opacity-50',
   };
@@ -98,8 +98,8 @@ function RequirementBar({
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${
         ok
-          ? 'border-green-200 bg-green-50 text-green-600'
-          : 'border-red-100 bg-red-50 text-red-500'
+          ? 'border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400'
+          : 'border-red-100 bg-red-50 text-red-500 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
       }`}
     >
       {ok ? '✓' : '⚠'} {label}
@@ -107,8 +107,8 @@ function RequirementBar({
   );
 
   return (
-    <div className='flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2'>
-      <span className='flex-1 text-[11px] font-bold text-slate-500'>
+    <div className='flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/50'>
+      <span className='flex-1 text-[11px] font-bold text-slate-500 dark:text-slate-400'>
         Syarat Close:
       </span>
       <div className='flex flex-wrap justify-end gap-1.5'>
@@ -168,7 +168,7 @@ function CombinedActionButtons({
         className={`flex flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl transition-all active:scale-[0.97] ${baseHeight} ${
           canClose
             ? 'bg-linear-to-br from-green-600 to-emerald-600 text-white shadow-md'
-            : 'cursor-not-allowed border-[1.5px] border-slate-200 bg-slate-50 text-slate-400'
+            : 'cursor-not-allowed border-[1.5px] border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-600'
         }`}
       >
         {loadingClose ? (
@@ -236,7 +236,7 @@ export default function ModalFooter({
 
   return (
     <div
-      className='shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white px-4 pt-3'
+      className='shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white px-4 pt-3 dark:border-slate-800 dark:bg-slate-900'
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       {isOnProgress && (
@@ -269,7 +269,7 @@ export default function ModalFooter({
         <button
           onClick={onPickup}
           disabled={anyLoading}
-          className='flex h-14 w-full flex-col items-center justify-center rounded-2xl bg-blue-600 font-black text-white'
+          className='flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 font-black text-white'
         >
           {isLoading('pickup') ? 'Processing...' : '🚀 Pickup Ticket'}
         </button>
@@ -279,14 +279,14 @@ export default function ModalFooter({
         <button
           onClick={onResume}
           disabled={anyLoading}
-          className='flex h-14 w-full flex-col items-center justify-center rounded-2xl bg-purple-600 font-black text-white'
+          className='flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 font-black text-white'
         >
           {isLoading('resume') ? 'Processing...' : '▶️ Resume Ticket'}
         </button>
       )}
 
       {isClosed && (
-        <div className='flex h-14 items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 font-black text-green-700'>
+        <div className='flex h-14 items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 font-black text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400'>
           <CheckIcon className='h-4 w-4' /> Ticket Closed
         </div>
       )}

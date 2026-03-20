@@ -84,17 +84,17 @@ export default function EvidenceUploader({
   const progressLabel = `${totalFiles}/${MAX_FILES} foto${MIN_FILES > 0 ? ` · min ${MIN_FILES}` : ''}`;
 
   return (
-    <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5'>
+    <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900'>
       {/* Header with badge counter */}
       <div className='flex items-center justify-between'>
-        <h3 className='text-sm font-semibold text-slate-600 sm:text-base'>
+        <h3 className='text-sm font-semibold text-slate-600 dark:text-slate-300 sm:text-base'>
           Evidence Foto (Max {MAX_FILES}, otomatis dikompres)
         </h3>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
             isComplete
-              ? 'border-green-200 bg-green-50 text-green-600'
-              : 'border-red-200 bg-red-50 text-red-600'
+              ? 'border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/15 dark:text-green-400'
+              : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
           }`}
         >
           {progressLabel}
@@ -103,10 +103,10 @@ export default function EvidenceUploader({
 
       {/* Drop zone */}
       <label
-        className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 transition-colors ${
+        className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 transition-colors dark:border-slate-600 dark:text-slate-400 ${
           availableSlots <= 0
             ? 'cursor-not-allowed opacity-50'
-            : 'hover:bg-slate-50'
+            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
         }`}
       >
         + Tambah Foto (Min Foto ODP dan Barcode DC)
@@ -121,20 +121,20 @@ export default function EvidenceUploader({
       </label>
 
       {availableSlots <= 0 && (
-        <p className='text-xs text-amber-600'>
+        <p className='text-xs text-amber-600 dark:text-amber-400'>
           Slot foto sudah penuh (maksimal {MAX_FILES} foto)
         </p>
       )}
 
       {/* Warning UI - Oversized Files */}
       {oversizedFiles.length > 0 && (
-        <div className='rounded-lg border border-red-200 bg-red-50 p-3'>
-          <p className='text-xs font-semibold text-red-700'>
+        <div className='rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-500/20 dark:bg-red-500/10'>
+          <p className='text-xs font-semibold text-red-700 dark:text-red-400'>
             ⛔ File ditolak — ukuran tidak wajar (bukan foto valid)
           </p>
           <ul className='mt-1 space-y-0.5'>
             {oversizedFiles.map((f, idx) => (
-              <li key={idx} className='text-xs text-red-600'>
+              <li key={idx} className='text-xs text-red-600 dark:text-red-400'>
                 • {f.name} ({formatMB(f.size)})
               </li>
             ))}
@@ -152,7 +152,7 @@ export default function EvidenceUploader({
                 alt={`Preview ${index + 1}`}
                 loading='lazy'
                 decoding='async'
-                className='h-full w-full rounded-lg border object-cover'
+                className='h-full w-full rounded-lg border object-cover dark:border-slate-700'
               />
               <button
                 type='button'
@@ -170,7 +170,7 @@ export default function EvidenceUploader({
 
           {/* Add more slot - show if below max */}
           {availableSlots > 0 && (
-            <label className='flex aspect-square cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-2xl text-slate-300 transition-colors hover:bg-slate-100'>
+            <label className='flex aspect-square cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-2xl text-slate-300 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600 dark:hover:bg-slate-700'>
               +
               <input
                 type='file'
@@ -185,7 +185,7 @@ export default function EvidenceUploader({
       )}
 
       {uploading && (
-        <p className='text-center text-sm text-blue-600'>
+        <p className='text-center text-sm text-blue-600 dark:text-blue-400'>
           Mengupload evidence...
         </p>
       )}

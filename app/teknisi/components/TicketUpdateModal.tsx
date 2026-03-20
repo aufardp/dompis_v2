@@ -199,26 +199,26 @@ export default function TicketUpdateModal({
     >
       {/* Bottom sheet */}
       <div
-        className='animate-slide-up flex w-full flex-col rounded-t-3xl bg-white shadow-2xl'
+        className='animate-slide-up flex w-full flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900'
         style={{ maxHeight: 'calc(100dvh - 3.5rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle */}
-        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-200' />
+        <div className='mx-auto mt-3 mb-1 h-1 w-10 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700' />
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-4 py-3.5'>
+        <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-4 py-3.5 dark:border-slate-800'>
           <div>
-            <h2 className='text-[16px] font-black text-slate-900'>
+            <h2 className='text-[16px] font-black text-slate-900 dark:text-slate-100'>
               Update Progress
             </h2>
-            <p className='mt-0.5 font-mono text-[11px] font-semibold tracking-wider text-slate-400'>
+            <p className='mt-0.5 font-mono text-[11px] font-semibold tracking-wider text-slate-400 dark:text-slate-500'>
               {ticket.ticket}
             </p>
           </div>
           <button
             onClick={onClose}
-            className='flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200'
+            className='flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
           >
             ✕
           </button>
@@ -228,20 +228,20 @@ export default function TicketUpdateModal({
         <div className='flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4'>
           {/* Error banner */}
           {error && (
-            <div className='flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600'>
+            <div className='flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'>
               <span className='text-base'>⚠️</span>
               {error}
             </div>
           )}
 
           {/* ── Deskripsi / Alasan ────────────────────────────────────────── */}
-          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white'>
+          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900'>
             {/* Section header */}
-            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3'>
-              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-sm'>
+            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800'>
+              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-sm dark:bg-blue-500/15 dark:text-blue-400'>
                 📝
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase'>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase'>
                 Deskripsi / Alasan
               </span>
               {/* Required indicator */}
@@ -256,10 +256,10 @@ export default function TicketUpdateModal({
                 onChange={(e) => setPendingReason(e.target.value)}
                 rows={4}
                 placeholder='Jelaskan progress pekerjaan atau alasan pending secara detail...'
-                className={`w-full resize-none rounded-xl border-[1.5px] px-3.5 py-2.5 text-[13.5px] leading-relaxed font-medium text-slate-800 transition-all outline-none placeholder:text-slate-300 ${
+                className={`w-full resize-none rounded-xl border-[1.5px] px-3.5 py-2.5 text-[13.5px] leading-relaxed font-medium text-slate-800 transition-all outline-none placeholder:text-slate-300 dark:text-slate-100 dark:placeholder:text-slate-600 ${
                   pendingReason.trim()
-                    ? 'border-blue-300 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
-                    : 'border-slate-200 bg-slate-50 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10'
+                    ? 'border-blue-300 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-blue-500/40 dark:bg-slate-800'
+                    : 'border-slate-200 bg-slate-50 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-800'
                 }`}
               />
               {/* Char counter */}
@@ -268,7 +268,7 @@ export default function TicketUpdateModal({
                   className={`text-[11px] font-semibold tabular-nums ${
                     pendingReason.length > 450
                       ? 'text-amber-500'
-                      : 'text-slate-400'
+                      : 'text-slate-400 dark:text-slate-500'
                   }`}
                 >
                   {pendingReason.length} / 500
@@ -278,21 +278,21 @@ export default function TicketUpdateModal({
           </div>
 
           {/* ── Evidence Foto ─────────────────────────────────────────────── */}
-          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white'>
+          <div className='overflow-hidden rounded-2xl border border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900'>
             {/* Section header */}
-            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3'>
-              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-sm'>
+            <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800'>
+              <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-sm dark:bg-purple-500/15 dark:text-purple-400'>
                 📷
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase'>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase'>
                 Evidence Foto
               </span>
               {/* Photo count badge */}
               <span
                 className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
                   selectedFiles.length >= PHOTO_MIN
-                    ? 'border-green-200 bg-green-50 text-green-600'
-                    : 'border-red-200 bg-red-50 text-red-600'
+                    ? 'border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400'
+                    : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
                 }`}
               >
                 {selectedFiles.length}/{PHOTO_MIN} min
@@ -317,14 +317,14 @@ export default function TicketUpdateModal({
 
         {/* ── Footer CTA ───────────────────────────────────────────────────── */}
         <div
-          className='flex shrink-0 gap-3 border-t border-slate-100 bg-white px-4 pt-3'
+          className='flex shrink-0 gap-3 border-t border-slate-100 bg-white px-4 pt-3 dark:border-slate-800 dark:bg-slate-900'
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           {/* Cancel */}
           <button
             onClick={onClose}
             disabled={loading}
-            className='flex h-12 w-20 shrink-0 items-center justify-center rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50'
+            className='flex h-12 w-20 shrink-0 items-center justify-center rounded-2xl border-[1.5px] border-slate-200 bg-slate-50 text-[13px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
           >
             Batal
           </button>
@@ -336,7 +336,7 @@ export default function TicketUpdateModal({
             className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
               canSubmit
                 ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-[0_4px_14px_rgba(99,102,241,0.30)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.40)]'
-                : 'border-[1.5px] border-slate-200 bg-slate-100 text-slate-400'
+                : 'border-[1.5px] border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
             }`}
           >
             {submitLabel()}
