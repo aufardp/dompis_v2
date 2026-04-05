@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
+import Link from 'next/link';
 import {
   Download,
   Search,
@@ -158,7 +159,6 @@ export default function ManHoursPage() {
     updated: number;
     skipped: number;
   } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
    * Fetch data from API
@@ -240,77 +240,6 @@ export default function ManHoursPage() {
   }, [filters]);
 
   /**
-   * Handle file selection for import
-   */
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setImporting(true);
-      setImportResult(null);
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetchWithAuth('/api/technicians/manhours/import', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!res) {
-          throw new Error('Tidak ada respon dari server');
-        }
-
-        const result = await res.json();
-
-        setImportResult({
-          success: result.success,
-          message: result.message,
-          inserted: result.inserted || 0,
-          updated: result.updated || 0,
-          skipped: result.skipped || 0,
-        });
-
-        if (result.success) {
-          fetchData();
-        }
-      } catch (err: any) {
-        setImportResult({
-          success: false,
-          message: err.message || 'Import gagal',
-          inserted: 0,
-          updated: 0,
-          skipped: 0,
-        });
-      } finally {
-        setImporting(false);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      }
-    },
-    [fetchData],
-  );
-
-  /**
-   * Open import modal
-   */
-  const handleOpenImport = useCallback(() => {
-    setShowImportModal(true);
-    setImportResult(null);
-  }, []);
-
-  /**
-   * Close import modal
-   */
-  const handleCloseImport = useCallback(() => {
-    setShowImportModal(false);
-    setImportResult(null);
-  }, []);
-
-  /**
    * Calculate summary statistics
    */
   const summary = useMemo(() => {
@@ -361,10 +290,12 @@ export default function ManHoursPage() {
             </p>
           </div>
           <div className='flex items-center gap-2'>
-            <Button onClick={handleOpenImport} variant='outline' size='sm'>
-              <Upload size={16} className='mr-2' />
-              Import Excel
-            </Button>
+            <Link href='/admin/technicians/manhours/import'>
+              <Button variant='outline' size='sm'>
+                <Upload size={16} className='mr-2' />
+                Import Excel
+              </Button>
+            </Link>
             <Button onClick={handleExport} variant='outline' size='sm'>
               <Download size={16} className='mr-2' />
               Export CSV
@@ -610,102 +541,6 @@ export default function ManHoursPage() {
           </div>
         )}
       </div>
-
-      {/* Import Modal */}
-      {showImportModal && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50'>
-          <div className='w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-slate-800'>
-            <div className='mb-4 flex items-center justify-between'>
-              <h2 className='text-lg font-semibold text-gray-800 dark:text-gray-100'>
-                Import Data Historis dari Excel
-              </h2>
-              <button
-                onClick={handleCloseImport}
-                className='rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-700'
-              >
-                <X size={20} className='text-slate-500' />
-              </button>
-            </div>
-
-            <div className='space-y-4'>
-              <div className='rounded-lg border-2 border-dashed border-slate-300 p-6 text-center dark:border-slate-600'>
-                <input
-                  ref={fileInputRef}
-                  type='file'
-                  accept='.xlsx,.xls,.csv'
-                  onChange={handleFileSelect}
-                  className='hidden'
-                  id='import-file'
-                />
-                <label
-                  htmlFor='import-file'
-                  className='flex cursor-pointer flex-col items-center'
-                >
-                  {importing ? (
-                    <>
-                      <Loader2
-                        size={40}
-                        className='animate-spin text-teal-500'
-                      />
-                      <p className='mt-2 text-sm text-slate-500'>
-                        Mengimport data...
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={40} className='text-slate-400' />
-                      <p className='mt-2 text-sm text-slate-600 dark:text-slate-300'>
-                        Klik untuk upload file Excel
-                      </p>
-                      <p className='text-xs text-slate-400'>
-                        Format: .xlsx, .xls, .csv
-                      </p>
-                    </>
-                  )}
-                </label>
-              </div>
-
-              {importResult && (
-                <div
-                  className={`rounded-lg p-4 ${
-                    importResult.success
-                      ? 'border border-green-200 bg-green-50'
-                      : 'border border-red-200 bg-red-50'
-                  }`}
-                >
-                  <p
-                    className={`font-medium ${
-                      importResult.success ? 'text-green-700' : 'text-red-700'
-                    }`}
-                  >
-                    {importResult.success ? '✅ Berhasil' : '❌ Gagal'}
-                  </p>
-                  <p className='mt-1 text-sm text-slate-600 dark:text-slate-300'>
-                    {importResult.message}
-                  </p>
-                  {importResult.success && (
-                    <div className='mt-2 text-xs text-slate-500'>
-                      <p>Inserted: {importResult.inserted}</p>
-                      <p>Updated: {importResult.updated}</p>
-                      <p>Skipped: {importResult.skipped}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className='space-y-1 text-xs text-slate-500'>
-                <p className='font-medium'>Kolom yang diperlukan:</p>
-                <p>• INCIDENT (Primary Key)</p>
-                <p>• DATEMODIFIED (untuk sync_date)</p>
-                <p className='italic'>
-                  Kolom sensitif (rca, sub_rca) tidak akan diupdate jika sudah
-                  ada
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminLayout>
   );
 }
