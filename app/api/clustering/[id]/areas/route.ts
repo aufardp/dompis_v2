@@ -57,7 +57,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      data: areas.map((a) => ({
+      data: areas.map((a: { id: number; cluster_id: number; nama_area: string; sort_order: number }) => ({
         id: a.id,
         cluster_id: a.cluster_id,
         nama_area: a.nama_area,
