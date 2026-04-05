@@ -12,7 +12,11 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+<<<<<<< HEAD
     "@prisma/client": "^5.22.0",
+=======
+    "@prisma/client": "^7.6.0",
+>>>>>>> e68c86d (fix: add engineType binary to schema for prisma 7 compatibility)
     "@radix-ui/react-popover": "^1.1.15",
     "@tanstack/react-query": "^5.90.21",
     "axios": "^1.13.5",
