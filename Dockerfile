@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
@@ -7,8 +7,10 @@ RUN npm install
 
 COPY . .
 
+RUN npx prisma validate
 RUN npx prisma generate
 
+# build next
 RUN npm run build
 
 EXPOSE 3000
