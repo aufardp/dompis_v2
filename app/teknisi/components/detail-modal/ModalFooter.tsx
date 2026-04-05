@@ -236,7 +236,7 @@ export default function ModalFooter({
 
   return (
     <div
-      className='shrink-0 flex flex-col gap-3 border-t border-slate-100 bg-white px-4 pt-3 dark:border-slate-800 dark:bg-slate-900'
+      className='flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-white px-4 pt-3 dark:border-slate-800 dark:bg-slate-900'
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       {isOnProgress && (

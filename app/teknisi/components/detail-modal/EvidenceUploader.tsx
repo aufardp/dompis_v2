@@ -9,6 +9,9 @@ interface EvidenceUploaderProps {
   uploading: boolean;
   existingCount?: number;
   onWarning?: (warning: string | null) => void;
+  minFiles?: number;
+  maxFiles?: number;
+  instructions?: string[];
 }
 
 // KRITIS: Batas ini untuk file RAW sebelum kompresi
@@ -16,8 +19,15 @@ interface EvidenceUploaderProps {
 // Jadi batas pre-compress yang masuk akal adalah 15MB (bukan 2MB!)
 // Validasi ukuran sebenarnya (2MB) dilakukan SETELAH kompresi di parent component
 const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024; // 15MB — file mentah sebelum compress
-const MAX_FILES = 5;
-const MIN_FILES = 2;
+
+// Default instructions for close ticket (5 steps)
+const DEFAULT_INSTRUCTIONS = [
+  'Foto Penyebab (Putusnya, ONT rusaknya, dll)',
+  'Foto Perbaikan (Ganti ONT, Tarik Ulang, Penyambungan, dll)',
+  'Capture SCC (halaman SCC layak)',
+  'Foto dengan pelanggan',
+  'Foto lokasi pelanggan',
+];
 
 interface RejectedFile {
   name: string;
@@ -36,11 +46,14 @@ export default function EvidenceUploader({
   uploading,
   existingCount = 0,
   onWarning,
+  minFiles = 2,
+  maxFiles = 5,
+  instructions,
 }: EvidenceUploaderProps) {
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
 
   const totalFiles = existingCount + previewUrls.length;
-  const availableSlots = Math.max(0, MAX_FILES - totalFiles);
+  const availableSlots = Math.max(0, maxFiles - totalFiles);
 
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
@@ -74,11 +87,11 @@ export default function EvidenceUploader({
     // Step 3: Set warnings for oversized files
     if (oversized.length > 0) {
       setRejectedFiles(oversized);
-      const names = oversized.map(f => f.name).join(', ');
+      const names = oversized.map((f) => f.name).join(', ');
       onWarning?.(
         oversized.length === 1
           ? `${oversized[0].name} terlalu besar — maks 15 MB per foto`
-          : `${oversized.length} foto ditolak — masing-masing maks 15 MB`
+          : `${oversized.length} foto ditolak — masing-masing maks 15 MB`,
       );
     }
 
@@ -90,15 +103,15 @@ export default function EvidenceUploader({
 
   const oversizedFiles = rejectedFiles.filter((f) => f.reason === 'oversized');
 
-  const isComplete = totalFiles >= MIN_FILES;
-  const progressLabel = `${totalFiles}/${MAX_FILES} foto${MIN_FILES > 0 ? ` · min ${MIN_FILES}` : ''}`;
+  const isComplete = totalFiles >= minFiles;
+  const progressLabel = `${totalFiles}/${maxFiles} foto${minFiles > 0 ? ` · min ${minFiles}` : ''}`;
 
   return (
     <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900'>
       {/* Header with badge counter */}
       <div className='flex items-center justify-between'>
         <h3 className='text-sm font-semibold text-slate-600 sm:text-base dark:text-slate-300'>
-          Evidence Foto (Max {MAX_FILES})
+          Evidence Foto (Max {maxFiles})
         </h3>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
@@ -113,17 +126,17 @@ export default function EvidenceUploader({
 
       {/* Drop zone */}
       <label
-        className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 transition-colors dark:border-slate-600 dark:text-slate-400 ${
+        className={`block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-sm text-slate-500 transition-colors dark:border-slate-600 dark:text-slate-400 ${
           availableSlots <= 0
             ? 'cursor-not-allowed opacity-50'
             : 'hover:bg-slate-50 dark:hover:bg-slate-800'
         }`}
       >
-        1. Foto Penyebab (Putusnya, ONT rusaknya, dll) <br />
-        2. Foto Perbaikan (Ganti ONT, Tarik Ulang, Penyambungan, dll) <br />
-        3. Capture SCC (halaman SCC layak) <br />
-        4. Foto dengan pelanggan <br />
-        5. Foto lokasi pelanggan
+        <ol className='list-decimal space-y-1 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400'>
+          {(instructions ?? DEFAULT_INSTRUCTIONS).map((text, i) => (
+            <li key={i}>{text}</li>
+          ))}
+        </ol>
         <input
           type='file'
           multiple
@@ -136,7 +149,7 @@ export default function EvidenceUploader({
 
       {availableSlots <= 0 && (
         <p className='text-xs text-amber-600 dark:text-amber-400'>
-          Slot foto sudah penuh (maksimal {MAX_FILES} foto)
+          Slot foto sudah penuh (maksimal {maxFiles} foto)
         </p>
       )}
 

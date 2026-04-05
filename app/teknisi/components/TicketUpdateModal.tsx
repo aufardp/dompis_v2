@@ -75,10 +75,10 @@ export default function TicketUpdateModal({
 
       // 2. Re-validate size AFTER compression
       const MAX_AFTER = 2 * 1024 * 1024;
-      const stillTooLarge = compressed.filter(f => f.size > MAX_AFTER);
+      const stillTooLarge = compressed.filter((f) => f.size > MAX_AFTER);
       if (stillTooLarge.length > 0) {
         setError(
-          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`
+          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`,
         );
         return;
       }
@@ -241,7 +241,7 @@ export default function TicketUpdateModal({
               <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-sm dark:bg-blue-500/15 dark:text-blue-400'>
                 📝
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase'>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase dark:text-slate-400'>
                 Deskripsi / Alasan
               </span>
               {/* Required indicator */}
@@ -284,7 +284,7 @@ export default function TicketUpdateModal({
               <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-sm dark:bg-purple-500/15 dark:text-purple-400'>
                 📷
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 dark:text-slate-400 uppercase'>
+              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase dark:text-slate-400'>
                 Evidence Foto
               </span>
               {/* Photo count badge */}
@@ -307,6 +307,15 @@ export default function TicketUpdateModal({
                 previewUrls={previewUrls}
                 uploading={uploading}
                 existingCount={0}
+                minFiles={2}
+                maxFiles={5}
+                instructions={[
+                  'Foto kondisi lokasi saat ini (yang menyebabkan pending)',
+                  'Foto alat/material yang sedang ditunggu (jika kendala material)',
+                  'Foto kondisi perangkat pelanggan',
+                  'Foto bukti koordinasi atau kendala lapangan (opsional)',
+                  'Foto lainnya sebagai pendukung (opsional)',
+                ]}
               />
             </div>
           </div>

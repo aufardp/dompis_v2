@@ -5,6 +5,7 @@ import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 
 interface UseTicketsReturn {
   tickets: Ticket[];
@@ -49,7 +50,7 @@ export function useTickets(
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetchWithAuth('/api/tickets?limit=100');
+      const res = await fetchWithAuth('/api/tickets?limit=200');
       if (!res) return;
       const data = await res.json();
 
@@ -66,6 +67,13 @@ export function useTickets(
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  // Listen SSE untuk auto-refresh saat admin assign/update tiket
+  useTicketEvents({
+    onInvalidate: fetchTickets,
+    enabled: true,
+    debounceMs: 1000,
+  });
 
   // Auto-reset page to 1 when filter or searchQuery changes
   useEffect(() => {

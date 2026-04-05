@@ -161,34 +161,18 @@ export class TicketService {
     console.log('[buildWorkzoneWhere]', { role, userId, selectedWorkzone });
 
     if (role === 'teknisi') {
-      const todayStr = AttendanceService.getTodayDateString(); // "2026-04-05"
-      const [year, month] = todayStr.split('-');
-      const WIB = 'Asia/Jakarta';
-
-      // Awal bulan WIB
-      const startOfMonthWIB = fromZonedTime(
-        `${year}-${month}-01T00:00:00`,
-        WIB,
-      );
-
-      // Akhir bulan WIB (handle months with different days)
-      const endOfMonthWIB = fromZonedTime(`${year}-${month}-31T23:59:59`, WIB);
-
+      // Untuk teknisi: tampilkan berdasarkan status saja, bukan tanggal
+      // - Tiket AKTIF: assigned/on_progress/pending (tanpa batas waktu — tugas yang belum selesai)
+      // - Tiket CLOSED: SEMUA history (bukan hanya hari ini) — untuk tab Selesai
       const where: Record<string, any> = {
         teknisi_user_id: userId,
         OR: [
-          // ✅ Tiket aktif (tanpa filter tanggal)
+          // Tiket aktif yang masih perlu dikerjakan
           {
             STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
           },
-          // ✅ Closed bulan ini
-          {
-            STATUS_UPDATE: 'close',
-            closed_at: {
-              gte: startOfMonthWIB,
-              lte: endOfMonthWIB,
-            },
-          },
+          // SEMUA tiket yang sudah di-close (history lengkap)
+          { STATUS_UPDATE: 'close' },
         ],
       };
 

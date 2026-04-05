@@ -122,8 +122,9 @@ export default function TicketDetailModal({
   );
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
-  const isEvidenceIncomplete = selectedFiles.length < 2;
-  const photoRequired = 2;
+  const CLOSE_PHOTO_MIN = 5; // close wajib 5 foto
+  const isEvidenceIncomplete = selectedFiles.length < CLOSE_PHOTO_MIN;
+  const photoRequired = CLOSE_PHOTO_MIN;
 
   // Saat tiket CLOSED: gunakan jumlah evidence dari server (sudah tersimpan).
   // Saat ON_PROGRESS: gunakan jumlah file yang baru dipilih untuk diupload.
@@ -438,6 +439,11 @@ export default function TicketDetailModal({
 
     if (isDetailPerbaikanEmpty) {
       setError('Detail perbaikan wajib diisi minimal 10 karakter.');
+      return;
+    }
+
+    if (selectedFiles.length < CLOSE_PHOTO_MIN) {
+      setError(`Upload minimal ${CLOSE_PHOTO_MIN} foto untuk menutup tiket.`);
       return;
     }
 
@@ -850,6 +856,15 @@ export default function TicketDetailModal({
                     previewUrls={previewUrls}
                     uploading={uploading}
                     onWarning={handleUploadWarning}
+                    minFiles={5}
+                    maxFiles={5}
+                    instructions={[
+                      'Foto Penyebab (Putusnya, ONT rusaknya, dll)',
+                      'Foto Perbaikan (Ganti ONT, Tarik Ulang, Penyambungan, dll)',
+                      'Capture SCC (halaman SCC layak)',
+                      'Foto dengan pelanggan',
+                      'Foto lokasi pelanggan',
+                    ]}
                   />
                 </div>
               )}

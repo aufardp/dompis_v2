@@ -7,7 +7,7 @@ import { registerSSEConnection, unregisterSSEConnection } from '@/app/libs/sseBr
 
 export async function GET(req: NextRequest) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin', 'teknisi']);
   } catch {
     return new Response('Unauthorized', { status: 401 });
   }
