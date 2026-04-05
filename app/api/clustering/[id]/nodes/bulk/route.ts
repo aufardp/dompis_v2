@@ -58,8 +58,8 @@ export async function POST(req: Request, { params }: RouteParams) {
       where: { cluster_id: clusterId },
       select: { id: true, nama_area: true },
     });
-    const areaNameMap = new Map(
-      existingAreas.map((a) => [a.nama_area.toLowerCase(), a.id]),
+    const areaNameMap = new Map<string, number>(
+      existingAreas.map((a: { nama_area: string; id: number }) => [a.nama_area.toLowerCase(), a.id]),
     );
 
     const result = {

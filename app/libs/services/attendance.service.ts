@@ -186,7 +186,7 @@ export class AttendanceService {
       },
     });
 
-    return attendances.map((a) => a.technician_id);
+    return attendances.map((a: { technician_id: number }) => a.technician_id);
   }
 
   static async getMonthlyAttendance(
@@ -234,7 +234,22 @@ export class AttendanceService {
     });
 
     const mappedRecords: TechnicianAttendanceWithDetails[] = records.map(
-      (r) => ({
+      (r: {
+        id: number;
+        technician_id: number;
+        check_in_at: Date;
+        check_out_at: Date | null;
+        date: string;
+        month: number;
+        year: number;
+        workzone_id: number;
+        status: string;
+        notes: string | null;
+        created_at: Date;
+        updated_at: Date;
+        technician: { id_user: number; nama: string | null; nik: string | null };
+        workzone: { id_sa: number; nama_sa: string | null };
+      }) => ({
         id: r.id,
         technician_id: r.technician_id,
         check_in_at: r.check_in_at.toISOString(),
@@ -253,8 +268,8 @@ export class AttendanceService {
       }),
     );
 
-    const totalPresent = records.filter((r) => r.status === 'PRESENT').length;
-    const totalLate = records.filter((r) => r.status === 'LATE').length;
+    const totalPresent = records.filter((r: { status: string }) => r.status === 'PRESENT').length;
+    const totalLate = records.filter((r: { status: string }) => r.status === 'LATE').length;
 
     return {
       records: mappedRecords,
@@ -309,9 +324,9 @@ export class AttendanceService {
     >();
 
     for (const techId of technicianIds) {
-      const tech = records.find((r) => r.technician_id === techId)?.technician;
+      const tech = records.find((r: { technician_id: number }) => r.technician_id === techId)?.technician;
       const workzone =
-        records.find((r) => r.technician_id === techId)?.workzone.nama_sa ||
+        records.find((r: { technician_id: number }) => r.technician_id === techId)?.workzone.nama_sa ||
         'Unknown';
 
       techniciansMap.set(techId, {
@@ -392,7 +407,22 @@ export class AttendanceService {
       },
     });
 
-    return records.map((r) => ({
+    return records.map((r: {
+      id: number;
+      technician_id: number;
+      check_in_at: Date;
+      check_out_at: Date | null;
+      date: string;
+      month: number;
+      year: number;
+      workzone_id: number;
+      status: string;
+      notes: string | null;
+      created_at: Date;
+      updated_at: Date;
+      technician: { id_user: number; nama: string | null; nik: string | null };
+      workzone: { id_sa: number; nama_sa: string | null };
+    }) => ({
       id: r.id,
       technician_id: r.technician_id,
       check_in_at: r.check_in_at.toISOString(),

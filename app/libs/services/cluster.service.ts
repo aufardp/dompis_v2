@@ -55,7 +55,19 @@ export class ClusterService {
       },
     });
 
-    return clusters.map((c) => ({
+    return clusters.map((c: {
+      id: number;
+      sa_id: number;
+      nama_cluster: string;
+      is_active: boolean;
+      sort_order: number;
+      created_by: number | null;
+      created_at: Date;
+      updated_at: Date;
+      nodes: Array<{ id: number }>;
+      areas: Array<{ nama_area: string }>;
+      assignments: Array<{ teknisi: { id_user: number; nama: string | null; nik: string | null } }>;
+    }) => ({
       id: c.id,
       sa_id: c.sa_id,
       nama_cluster: c.nama_cluster,
@@ -65,8 +77,8 @@ export class ClusterService {
       created_at: c.created_at.toISOString(),
       updated_at: c.updated_at.toISOString(),
       node_count: c.nodes.length,
-      area_names: c.areas.map((a) => a.nama_area),
-      teknisi_today: c.assignments.map((a) => ({
+      area_names: c.areas.map((a: { nama_area: string }) => a.nama_area),
+      teknisi_today: c.assignments.map((a: { teknisi: { id_user: number; nama: string | null; nik: string | null } }) => ({
         id_user: a.teknisi.id_user,
         nama: a.teknisi.nama,
         nik: a.teknisi.nik,
@@ -112,13 +124,22 @@ export class ClusterService {
         created_at: cluster.created_at.toISOString(),
         updated_at: cluster.updated_at.toISOString(),
       },
-      areas: cluster.areas.map((a) => ({
+      areas: cluster.areas.map((a: { id: number; cluster_id: number; nama_area: string; sort_order: number }) => ({
         id: a.id,
         cluster_id: a.cluster_id,
         nama_area: a.nama_area,
         sort_order: a.sort_order,
       })),
-      nodes: cluster.nodes.map((n) => ({
+      nodes: cluster.nodes.map((n: {
+        id: number;
+        cluster_id: number;
+        cluster_area_id: number | null;
+        odc_value: string | null;
+        is_active: boolean;
+        sort_order: number;
+        created_at: Date;
+        cluster_area?: { nama_area: string } | null;
+      }) => ({
         id: n.id,
         cluster_id: n.cluster_id,
         cluster_area_id: n.cluster_area_id,
@@ -436,7 +457,7 @@ export class ClusterService {
     });
 
     const existingMap = new Map(
-      existingNodes.map((n) => [n.odc_value, n.cluster_id]),
+      existingNodes.map((n: { odc_value: string | null; cluster_id: number }) => [n.odc_value, n.cluster_id]),
     );
 
     // Insert yang belum ada
@@ -526,7 +547,16 @@ export class ClusterService {
       orderBy: { teknisi: { nama: 'asc' } },
     });
 
-    return assignments.map((a) => ({
+    return assignments.map((a: {
+      id: number;
+      cluster_id: number;
+      teknisi_id: number;
+      assigned_date: string;
+      is_active: boolean;
+      created_at: Date;
+      teknisi: { id_user: number; nama: string | null; nik: string | null };
+      cluster: { id: number; nama_cluster: string };
+    }) => ({
       id: a.id,
       cluster_id: a.cluster_id,
       teknisi_id: a.teknisi_id,
@@ -632,7 +662,7 @@ export class ClusterService {
       select: { id: true },
     });
 
-    const clusterIds = clusters.map((c) => c.id);
+    const clusterIds = clusters.map((c: { id: number }) => c.id);
 
     const sourceAssignments = await prisma.cluster_assignment.findMany({
       where: {
@@ -691,7 +721,7 @@ export class ClusterService {
       select: { id: true },
     });
 
-    const clusterIds = clusters.map((c) => c.id);
+    const clusterIds = clusters.map((c: { id: number }) => c.id);
 
     // Generate 7 hari dari startDate
     const dates: string[] = [];
@@ -729,7 +759,15 @@ export class ClusterService {
       schedule[date] = [];
     });
 
-    assignments.forEach((a) => {
+    assignments.forEach((a: {
+      id: number;
+      cluster_id: number;
+      teknisi_id: number;
+      assigned_date: string;
+      is_active: boolean;
+      created_at: Date;
+      teknisi: { id_user: number; nama: string | null; nik: string | null };
+    }) => {
       schedule[a.assigned_date].push({
         id: a.id,
         cluster_id: a.cluster_id,

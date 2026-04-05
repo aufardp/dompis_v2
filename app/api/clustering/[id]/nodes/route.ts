@@ -62,7 +62,16 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      data: nodes.map((n) => ({
+      data: nodes.map((n: {
+        id: number;
+        cluster_id: number;
+        cluster_area_id: number | null;
+        odc_value: string | null;
+        is_active: boolean;
+        sort_order: number;
+        created_at: Date;
+        cluster_area?: { nama_area: string } | null;
+      }) => ({
         id: n.id,
         cluster_id: n.cluster_id,
         cluster_area_id: n.cluster_area_id,
