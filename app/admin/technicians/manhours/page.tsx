@@ -33,7 +33,7 @@ interface ManhoursRow {
   categories: Record<string, number>;
   total_tickets: number;
   realisasi: number;
-  jam_efektif: number;
+  hari_kerja: number;
   produktivitas: number;
   target: number;
 }
@@ -389,7 +389,7 @@ export default function ManHoursPage() {
             <SummaryCard
               icon={Clock}
               label='Rata-rata Produktivitas'
-              value={summary.avgProduktivitas.toFixed(2)}
+              value={`${summary.avgProduktivitas.toFixed(1)} tiket/hari`}
               color='bg-orange-500'
             />
           </div>
@@ -441,7 +441,12 @@ export default function ManHoursPage() {
                     Total Tiket
                   </th>
                   <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Produktivitas
+                    <div className='flex flex-col items-center gap-0.5'>
+                      <span>Produktivitas</span>
+                      <span className='text-[9px] font-normal text-teal-200 normal-case'>
+                        tiket / hari kerja
+                      </span>
+                    </div>
                   </th>
                   <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
                     Target
@@ -450,7 +455,7 @@ export default function ManHoursPage() {
                     Realisasi
                   </th>
                   <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Jam Efektif
+                    Hari Kerja
                   </th>
                 </tr>
               </thead>
@@ -507,7 +512,7 @@ export default function ManHoursPage() {
                       {row.realisasi}
                     </td>
                     <td className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
-                      {row.jam_efektif}
+                      {row.hari_kerja} hari
                     </td>
                   </tr>
                 ))}

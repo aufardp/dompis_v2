@@ -9,6 +9,7 @@ export interface TechnicianTicket {
   ctype: TicketCtype;
   serviceNo: string;
   reportedDate: string;
+  statusUpdate?: string | null;
   hasilVisit: TicketVisitStatus;
   age: string;
   ageHours: number;
@@ -27,6 +28,7 @@ export interface Technician {
   nama: string;
   nik: string | null;
   workzone: string;
+  cluster_today?: string[];
   avatar_url?: string | null;
   assigned_tickets: TechnicianTicket[];
   closed_tickets_today?: TechnicianTicket[];

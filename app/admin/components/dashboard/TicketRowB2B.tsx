@@ -39,7 +39,7 @@ export interface TicketRowProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
-    statusUpdate?: string | null;
+    STATUS_UPDATE?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
@@ -87,7 +87,7 @@ export default function TicketRow({
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const isClosed = isTicketClosed(ticket.statusUpdate);
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
 
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
@@ -309,14 +309,14 @@ export default function TicketRow({
       </td>
 
       {/* Status */}
-      <td className='px-4 py-3 text-center'>
+      <td className='px-4 py-3 text-center uppercase'>
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            `badge-${getStatusColor(ticket.statusUpdate || '')}`,
+            `badge-${getStatusColor(ticket.STATUS_UPDATE || '')}`,
           )}
         >
-          {ticket.statusUpdate || '-'}
+          {ticket.STATUS_UPDATE || '-'}
         </span>
       </td>
 

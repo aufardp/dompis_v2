@@ -14,7 +14,6 @@ export async function createTechEvent(
 ): Promise<string> {
   const eventId = randomUUID();
 
-  // ✅ Always use UTC ISO
   const occurredAt = new Date().toISOString();
 
   const payload: TechEventPayload = {

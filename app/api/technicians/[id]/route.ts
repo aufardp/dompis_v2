@@ -7,11 +7,28 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 
 export const dynamic = 'force-dynamic';
 
-function parseDateInput(dateStr: string | null | undefined): Date | null {
+interface TicketType {
+  id_ticket: number;
+  INCIDENT: string;
+  CONTACT_NAME: string | null;
+  CUSTOMER_TYPE: string | null;
+  SERVICE_NO: string | null;
+  REPORTED_DATE: Date | string | null;
+  STATUS_UPDATE: string | null;
+  closed_at: Date | string | null;
+}
+
+/**
+ * Helper: Konversi format dd/mm/yyyy hh:mm atau ISO ke Date object
+ */
+function parseDateInput(
+  dateStr: string | Date | null | undefined,
+): Date | null {
   if (!dateStr) return null;
   try {
-    if (dateStr.includes('/')) {
-      const [day, month, yearAndTime] = dateStr.split('/');
+    const str = typeof dateStr === 'string' ? dateStr : dateStr.toISOString();
+    if (str.includes('/')) {
+      const [day, month, yearAndTime] = str.split('/');
       const [year, time] = yearAndTime.split(' ');
       const [hour, minute] = time ? time.split(':') : ['0', '0'];
       const parsed = new Date(
@@ -21,27 +38,21 @@ function parseDateInput(dateStr: string | null | undefined): Date | null {
         parseInt(hour),
         parseInt(minute),
       );
-      if (!isNaN(parsed.getTime())) return parsed;
+      return isNaN(parsed.getTime()) ? null : parsed;
     }
-    const standard = new Date(dateStr);
-    if (!isNaN(standard.getTime())) return standard;
-    return null;
+    const standard = new Date(str);
+    return isNaN(standard.getTime()) ? null : standard;
   } catch {
     return null;
   }
 }
 
-function calculateAge(dateStr: string | null | undefined): {
-  age: string;
-  hours: number;
-} {
+function calculateAge(dateStr: string | Date | null | undefined) {
   if (!dateStr) return { age: '-', hours: 0 };
-
   const start = parseDateInput(dateStr);
   if (!start) return { age: '-', hours: 0 };
 
-  const end = new Date();
-  const totalMinutes = differenceInMinutes(end, start);
+  const totalMinutes = differenceInMinutes(new Date(), start);
   if (totalMinutes < 0) return { age: '0m', hours: 0 };
 
   const days = Math.floor(totalMinutes / 1440);
@@ -60,8 +71,7 @@ function getTechnicianStatus(
   ticketCount: number,
 ): 'IDLE' | 'AKTIF' | 'OVERLOAD' {
   if (ticketCount === 0) return 'IDLE';
-  if (ticketCount > 3) return 'OVERLOAD';
-  return 'AKTIF';
+  return ticketCount > 3 ? 'OVERLOAD' : 'AKTIF';
 }
 
 export async function GET(
@@ -69,72 +79,34 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    // 1. Auth & Initial Validation
     const decoded = await protectApi(['admin', 'helpdesk', 'superadmin']);
-    const currentUserId = decoded.id_user;
-
     const { id } = await context.params;
     const techId = Number(id);
 
     if (isNaN(techId)) {
       return NextResponse.json(
-        { success: false, message: 'Invalid technician ID' },
+        { success: false, message: 'Invalid ID' },
         { status: 400 },
       );
     }
 
-    const currentUserServiceAreas = await prisma.user_sa.findMany({
-      where: { user_id: currentUserId },
-      select: { sa_id: true },
-    });
-
-    const currentUserSaIds: number[] = [];
-    for (const usa of currentUserServiceAreas) {
-      if (usa.sa_id !== null && usa.sa_id !== undefined) {
-        currentUserSaIds.push(usa.sa_id);
-      }
-    }
-
-    if (currentUserSaIds.length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Access denied - No service area assigned' },
-        { status: 403 },
-      );
-    }
-
-    const technicianServiceAreas = await prisma.user_sa.findMany({
-      where: { user_id: techId },
-      select: { sa_id: true },
-    });
-
-    const technicianSaIds: number[] = [];
-    for (const usa of technicianServiceAreas) {
-      if (usa.sa_id !== null && usa.sa_id !== undefined) {
-        technicianSaIds.push(usa.sa_id);
-      }
-    }
-
-    const hasAccess = technicianSaIds.some((saId) =>
-      currentUserSaIds.includes(saId),
-    );
-
-    if (!hasAccess) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Access denied - Technician not in your service area',
+    // 2. Optimized Fetch: Ambil Data Admin & Teknisi sekaligus untuk efisiensi
+    const [currentUser, technician] = await Promise.all([
+      prisma.users.findUnique({
+        where: { id_user: decoded.id_user },
+        select: { user_sa: { select: { sa_id: true } } },
+      }),
+      prisma.users.findUnique({
+        where: { id_user: techId },
+        select: {
+          id_user: true,
+          nama: true,
+          nik: true,
+          user_sa: { include: { service_area: { select: { nama_sa: true } } } },
         },
-        { status: 403 },
-      );
-    }
-
-    const technician = await prisma.users.findUnique({
-      where: { id_user: techId },
-      select: {
-        id_user: true,
-        nama: true,
-        nik: true,
-      },
-    });
+      }),
+    ]);
 
     if (!technician) {
       return NextResponse.json(
@@ -143,122 +115,101 @@ export async function GET(
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const includeAbsent = searchParams.get('include_absent') === 'true';
+    // 3. Service Area Access Control
+    const adminSaIds =
+      currentUser?.user_sa.map((sa) => sa.sa_id).filter((id) => id !== null) ||
+      [];
+    const techSaIds =
+      technician.user_sa.map((sa) => sa.sa_id).filter((id) => id !== null) ||
+      [];
 
-    if (!includeAbsent) {
+    if (
+      adminSaIds.length === 0 ||
+      !techSaIds.some((id) => adminSaIds.includes(id))
+    ) {
+      return NextResponse.json(
+        { success: false, message: 'Access denied' },
+        { status: 403 },
+      );
+    }
+
+    // 4. Attendance Check
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get('include_absent') !== 'true') {
       const presentIds = await AttendanceService.getTodayPresentTechnicianIds();
       if (!presentIds.includes(techId)) {
         return NextResponse.json(
-          {
-            success: false,
-            message: 'Teknisi belum absen hari ini',
-          },
+          { success: false, message: 'Teknisi belum absen hari ini' },
           { status: 403 },
         );
       }
     }
 
-    const userServiceAreas = await prisma.user_sa.findMany({
-      where: { user_id: techId },
-      include: { service_area: { select: { nama_sa: true } } },
-    });
-
-    const workzoneNames = userServiceAreas
-      .map((usa) => usa.service_area?.nama_sa)
-      .filter((name): name is string => name !== null && name !== undefined);
+    // 5. Workzone String Construction
     const workzone =
-      workzoneNames.length > 0 ? workzoneNames.join(', ') : 'Unknown';
+      technician.user_sa
+        .map((usa) => usa.service_area?.nama_sa)
+        .filter((name): name is string => !!name)
+        .join(', ') || 'Unknown';
 
+    // 6. Ticket Data Processing
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
 
-    const assignedTickets = await prisma.ticket.findMany({
-      where: {
-        teknisi_user_id: techId,
-        OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'closed' } }],
-      },
-      select: {
-        id_ticket: true,
-        INCIDENT: true,
-        CONTACT_NAME: true,
-        CUSTOMER_TYPE: true,
-        SERVICE_NO: true,
-        REPORTED_DATE: true,
-        STATUS_UPDATE: true,
-      },
-      orderBy: { REPORTED_DATE: 'asc' },
-    });
+    const [assignedTickets, closedToday, totalClosedAll, recentClosed] =
+      await Promise.all([
+        prisma.ticket.findMany({
+          where: {
+            teknisi_user_id: techId,
+            OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'closed' } }],
+          },
+          orderBy: { REPORTED_DATE: 'asc' },
+        }),
+        prisma.ticket.count({
+          where: {
+            teknisi_user_id: techId,
+            STATUS_UPDATE: 'CLOSE',
+            closed_at: { gte: today, lte: todayEnd },
+          },
+        }),
+        prisma.ticket.count({
+          where: { teknisi_user_id: techId, STATUS_UPDATE: 'CLOSE' },
+        }),
+        prisma.ticket.findMany({
+          where: {
+            teknisi_user_id: techId,
+            STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+            closed_at: { not: null },
+          },
+          select: { REPORTED_DATE: true, closed_at: true },
+          take: 10,
+        }),
+      ]);
 
-    const closedToday = await prisma.ticket.count({
-      where: {
-        teknisi_user_id: techId,
-        STATUS_UPDATE: 'CLOSE',
-        closed_at: {
-          gte: today,
-          lte: todayEnd,
-        },
-      },
-    });
+    const mappedTickets = assignedTickets.map((t: TicketType) => ({
+      ...calculateAge(t.REPORTED_DATE),
+      idTicket: t.id_ticket,
+      ticket: t.INCIDENT,
+      contactName: t.CONTACT_NAME,
+      ctype: t.CUSTOMER_TYPE,
+      serviceNo: t.SERVICE_NO,
+      reportedDate: t.REPORTED_DATE,
+      STATUS_UPDATE: t.STATUS_UPDATE,
+    }));
 
-    const mappedTickets = assignedTickets.map((t) => {
-      const { age, hours } = calculateAge(t.REPORTED_DATE);
-      return {
-        idTicket: t.id_ticket,
-        ticket: t.INCIDENT,
-        contactName: t.CONTACT_NAME,
-        ctype: t.CUSTOMER_TYPE,
-        serviceNo: t.SERVICE_NO,
-        reportedDate: t.REPORTED_DATE,
-        STATUS_UPDATE: t.STATUS_UPDATE,
-        age,
-        ageHours: hours,
-      };
-    });
-
-    const assignedCount = assignedTickets.filter(
-      (t) => t.STATUS_UPDATE === 'ASSIGNED',
-    ).length;
-    const onProgressCount = assignedTickets.filter(
-      (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
-    ).length;
-    const pendingCount = assignedTickets.filter(
-      (t) => t.STATUS_UPDATE === 'PENDING',
-    ).length;
-
-    const totalClosed = await prisma.ticket.count({
-      where: {
-        teknisi_user_id: techId,
-        STATUS_UPDATE: 'CLOSE',
-      },
-    });
-
-    const closedTickets = await prisma.ticket.findMany({
-      where: {
-        teknisi_user_id: techId,
-        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
-        closed_at: { not: undefined },
-      },
-      select: {
-        REPORTED_DATE: true,
-        closed_at: true,
-      },
-      take: 10,
-    });
-
+    // 7. Performance Calculation
     let avgResolveHours: number | null = null;
-    if (closedTickets.length > 0) {
-      const totalResolveMinutes = closedTickets.reduce((acc, t) => {
-        if (!t.REPORTED_DATE || !t.closed_at) return acc;
+    if (recentClosed.length > 0) {
+      const totalMinutes = recentClosed.reduce((acc, t) => {
         const start = parseDateInput(t.REPORTED_DATE);
-        const end = new Date(t.closed_at);
-        if (!start || isNaN(start.getTime()) || isNaN(end.getTime()))
+        const end = t.closed_at ? new Date(t.closed_at) : null;
+        if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime()))
           return acc;
-        return acc + (end.getTime() - start.getTime()) / (1000 * 60);
+        return acc + (end.getTime() - start.getTime()) / 60000;
       }, 0);
-      avgResolveHours = totalResolveMinutes / closedTickets.length / 60;
+      avgResolveHours = totalMinutes / recentClosed.length / 60;
     }
 
     return NextResponse.json({
@@ -267,28 +218,32 @@ export async function GET(
         id_user: technician.id_user,
         nama: technician.nama,
         nik: technician.nik,
-        workzone: workzone,
-        avatar_url: null,
+        workzone,
         assigned_tickets: mappedTickets,
         total_assigned: mappedTickets.length,
         total_closed_today: closedToday,
-        total_closed_all: totalClosed,
+        total_closed_all: totalClosedAll,
         average_resolve_time_hours: avgResolveHours,
         status: getTechnicianStatus(mappedTickets.length),
         order_counts: {
-          assigned: assignedCount,
-          on_progress: onProgressCount,
-          pending: pendingCount,
-          closed: totalClosed,
+          assigned: assignedTickets.filter(
+            (t) => t.STATUS_UPDATE === 'ASSIGNED',
+          ).length,
+          on_progress: assignedTickets.filter(
+            (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
+          ).length,
+          pending: assignedTickets.filter((t) => t.STATUS_UPDATE === 'PENDING')
+            .length,
+          closed: totalClosedAll,
         },
       },
     });
-  } catch (error: unknown) {
-    console.error('GET /technicians/[id] error:', error);
+  } catch (error) {
+    console.error('GET Technician Error:', error);
     return NextResponse.json(
       {
         success: false,
-        message: getErrorMessage(error, 'Error fetching technician'),
+        message: getErrorMessage(error, 'Internal Server Error'),
       },
       { status: getErrorStatus(error, 500) },
     );

@@ -1,26 +1,36 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { calculateManhours, getStoOptions, getManhourConfigs } from '@/app/libs/services/manhours.service';
+import {
+  calculateManhours,
+  getStoOptions,
+  getManhourConfigs,
+} from '@/app/libs/services/manhours.service';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWIB } from '@/app/utils/datetime';
 
 /**
  * GET /api/technicians/manhours
- * 
+ *
  * Query parameters:
  * - date_from: YYYY-MM-DD (required)
  * - date_to: YYYY-MM-DD (required)
  * - sto: string (optional)
  * - name: string (optional)
- * 
+ *
  * Returns manhours calculation for technicians filtered by date range, STO, and name
  */
 export async function GET(req: NextRequest) {
   try {
     // Authenticate user
-    const user = await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    const user = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
     // Get query parameters
     const searchParams = req.nextUrl.searchParams;
@@ -32,7 +42,10 @@ export async function GET(req: NextRequest) {
     // Validate required parameters
     if (!dateFromStr || !dateToStr) {
       return NextResponse.json(
-        { success: false, message: 'Parameter date_from dan date_to wajib diisi' },
+        {
+          success: false,
+          message: 'Parameter date_from dan date_to wajib diisi',
+        },
         { status: 400 },
       );
     }
@@ -45,7 +58,10 @@ export async function GET(req: NextRequest) {
 
     if (!dateFrom || !dateTo) {
       return NextResponse.json(
-        { success: false, message: 'Format tanggal tidak valid. Gunakan YYYY-MM-DD' },
+        {
+          success: false,
+          message: 'Format tanggal tidak valid. Gunakan YYYY-MM-DD',
+        },
         { status: 400 },
       );
     }
@@ -53,7 +69,10 @@ export async function GET(req: NextRequest) {
     // Validate date range
     if (dateFrom > dateTo) {
       return NextResponse.json(
-        { success: false, message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir' },
+        {
+          success: false,
+          message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir',
+        },
         { status: 400 },
       );
     }
@@ -91,7 +110,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Terjadi kesalahan saat mengambil data manhours',
+        message:
+          error.message || 'Terjadi kesalahan saat mengambil data manhours',
       },
       { status: 500 },
     );
@@ -114,7 +134,7 @@ function parseDateWithTimezone(
   }
 
   const [year, month, day] = dateStr.split('-').map(Number);
-  
+
   // Validate date components
   if (month < 1 || month > 12 || day < 1 || day > 31) {
     return null;
@@ -132,11 +152,11 @@ function parseDateWithTimezone(
   // Convert to WIB by treating the input as WIB time
   // WIB is UTC+7, so we need to subtract 7 hours from the UTC representation
   const wibOffset = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
-  
+
   // Create a date that represents the WIB time correctly
-  const utcTime = date.getTime() - (date.getTimezoneOffset() * 60 * 1000);
+  const utcTime = date.getTime() - date.getTimezoneOffset() * 60 * 1000;
   const wibTime = utcTime - wibOffset;
-  
+
   return new Date(wibTime);
 }
 

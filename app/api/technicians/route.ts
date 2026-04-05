@@ -3,18 +3,23 @@ import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { differenceInMinutes } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { getCache, setCache } from '@/lib/cache';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 export const dynamic = 'force-dynamic';
 
 const TECHNICIANS_CACHE_TTL = 300;
 
-function parseDateInput(dateStr: string | null | undefined): Date | null {
+function parseDateInput(
+  dateStr: string | Date | null | undefined,
+): Date | null {
   if (!dateStr) return null;
   try {
-    if (dateStr.includes('/')) {
-      const [day, month, yearAndTime] = dateStr.split('/');
+    const str = typeof dateStr === 'string' ? dateStr : dateStr.toISOString();
+    if (str.includes('/')) {
+      const [day, month, yearAndTime] = str.split('/');
       const [year, time] = yearAndTime.split(' ');
       const [hour, minute] = time ? time.split(':') : ['0', '0'];
       const parsed = new Date(
@@ -26,7 +31,7 @@ function parseDateInput(dateStr: string | null | undefined): Date | null {
       );
       if (!isNaN(parsed.getTime())) return parsed;
     }
-    const standard = new Date(dateStr);
+    const standard = new Date(str);
     if (!isNaN(standard.getTime())) return standard;
     return null;
   } catch {
@@ -34,7 +39,7 @@ function parseDateInput(dateStr: string | null | undefined): Date | null {
   }
 }
 
-function calculateAge(dateStr: string | null | undefined): {
+function calculateAge(dateStr: string | Date | null | undefined): {
   age: string;
   hours: number;
 } {
@@ -84,7 +89,7 @@ function mapTechnicianTicket(t: {
     ctype: t.CUSTOMER_TYPE,
     serviceNo: t.SERVICE_NO,
     reportedDate: t.REPORTED_DATE,
-    STATUS_UPDATE: t.STATUS_UPDATE,
+    statusUpdate: t.STATUS_UPDATE,
     age,
     ageHours: hours,
   };
@@ -167,6 +172,11 @@ export async function GET(request: NextRequest) {
 
     const technicianRoleId = 4;
 
+    const todayStr = AttendanceService.getTodayDateString(); // "2026-04-04" WIB
+    const WIB = 'Asia/Jakarta';
+    const today = fromZonedTime(`${todayStr}T00:00:00`, WIB);
+    const todayEnd = fromZonedTime(`${todayStr}T23:59:59`, WIB);
+
     const technicianWhere: Record<string, unknown> = {
       role_id: technicianRoleId,
       id_user: { in: uniqueTechnicianIds },
@@ -215,14 +225,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
+    // Fetch cluster assignments for today
+    const clusterAssignments = await prisma.cluster_assignment.findMany({
+      where: {
+        teknisi_id: { in: uniqueTechnicianIds },
+        assigned_date: todayStr,
+        is_active: true,
+      },
+      include: {
+        cluster: { select: { nama_cluster: true } },
+      },
+    });
+
+    const clusterMap = new Map<number, string[]>();
+    for (const ca of clusterAssignments) {
+      const existing = clusterMap.get(ca.teknisi_id) || [];
+      existing.push(ca.cluster.nama_cluster);
+      clusterMap.set(ca.teknisi_id, existing);
+    }
 
     const assignedTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
+        STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
       },
       select: {
         id_ticket: true,
@@ -313,19 +338,19 @@ export async function GET(request: NextRequest) {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
         const assignedTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'ASSIGNED',
+          (t) => t.STATUS_UPDATE === 'assigned',
         );
         const onProgressTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
+          (t) => t.STATUS_UPDATE === 'on_progress',
         );
         const pendingTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'PENDING',
+          (t) => t.STATUS_UPDATE === 'pending',
         );
-        const closedTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'CLOSE',
+        const closedTickets = tickets.filter((t) =>
+          isTicketClosed(t.STATUS_UPDATE),
         );
         const activeTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE !== 'CLOSE',
+          (t) => !isTicketClosed(t.STATUS_UPDATE),
         );
         const mappedTickets = activeTickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
@@ -368,6 +393,7 @@ export async function GET(request: NextRequest) {
           nama: tech.nama,
           nik: tech.nik,
           workzone: workzoneName,
+          cluster_today: clusterMap.get(tech.id_user) || [],
           avatar_url: null,
           assigned_tickets: mappedTickets,
           ...(includeClosedToday

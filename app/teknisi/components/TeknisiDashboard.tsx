@@ -121,7 +121,7 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className='flex min-h-[44px] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          className='flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
         >
           ←
         </button>
@@ -138,7 +138,7 @@ function Pagination({
               key={p}
               type='button'
               onClick={() => handlePageChange(p as number)}
-              className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+              className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
                 p === currentPage
                   ? 'bg-blue-600 text-white'
                   : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
@@ -152,7 +152,7 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className='flex min-h-[44px] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          className='flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
         >
           →
         </button>
@@ -285,7 +285,7 @@ export default function TeknisiDashboard() {
   })();
 
   return (
-    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 px-4 pt-4 pb-6'>
+    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 px-4 pt-4 pb-6 dark:from-slate-900 dark:to-slate-950'>
       {/* Toast Notifications */}
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
 
@@ -301,10 +301,10 @@ export default function TeknisiDashboard() {
         {/* Header */}
         <div className='flex items-center justify-between'>
           <div>
-            <h1 className='text-xl font-bold text-slate-800 dark:text-slate-100 sm:text-2xl'>
+            <h1 className='text-xl font-bold text-slate-800 sm:text-2xl dark:text-slate-100'>
               My Tickets
             </h1>
-            <p className='text-xs text-slate-500 dark:text-slate-400 sm:text-sm'>
+            <p className='text-xs text-slate-500 sm:text-sm dark:text-slate-400'>
               Manage your assigned tickets
             </p>
           </div>
@@ -313,7 +313,7 @@ export default function TeknisiDashboard() {
             type='button'
             onClick={() => void refresh()}
             disabled={loading || ptrRefreshing}
-            className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2'
+            className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
             title='Refresh'
           >
             <span
@@ -325,7 +325,7 @@ export default function TeknisiDashboard() {
             >
               ↻
             </span>
-            <span className='hidden text-sm font-semibold text-slate-700 dark:text-slate-200 sm:inline'>
+            <span className='hidden text-sm font-semibold text-slate-700 sm:inline dark:text-slate-200'>
               Refresh
             </span>
           </button>

@@ -19,6 +19,11 @@ const MENU_ITEMS = [
     path: '/admin/technicians',
     icon: '👨‍🔧',
   },
+  {
+    label: 'Clustering',
+    path: '/admin/clustering',
+    icon: '🗺️',
+  },
 ];
 
 interface NavItemProps {
@@ -101,7 +106,8 @@ export default function Sidebar({
           {MENU_ITEMS.map((item) => {
             const isActive =
               pathname === item.path ||
-              (item.path === '/admin' && pathname === '/admin');
+              (item.path === '/admin' && pathname === '/admin') ||
+              (item.path === '/admin/clustering' && pathname.startsWith('/admin/clustering'));
             return (
               <NavItem
                 key={item.path}

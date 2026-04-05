@@ -2,10 +2,11 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import 'dotenv/config';
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import prisma, { connectWithRetry } from '@/app/libs/prisma';
 import { closePool } from '@/app/libs/db';
 
+import { closeRedis } from '@/lib/redis';
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
@@ -16,6 +17,12 @@ const port = parseInt(process.env.PORT || '3000', 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+
+// Simpan referensi cron tasks untuk shutdown
+let syncTask: ScheduledTask | null = null;
+let pushTask: ScheduledTask | null = null;
+let techEventsTask1: ScheduledTask | null = null;
+let techEventsTask2: ScheduledTask | null = null;
 
 /**
  * DB LOCK WRAPPER
@@ -70,7 +77,7 @@ async function startServer() {
     /**
      * SYNC — setiap 3 menit
      */
-    cron.schedule('*/3 * * * *', async () => {
+    syncTask = cron.schedule('*/3 * * * *', async () => {
       console.log('[CRON] Running sync...');
       await withDbLock('sync_lock', async () => {
         try {
@@ -85,7 +92,7 @@ async function startServer() {
     /**
      * PUSH — setiap 10 menit
      */
-    cron.schedule('*/10 * * * *', async () => {
+    pushTask = cron.schedule('*/10 * * * *', async () => {
       console.log('[CRON] Running push...');
       await withDbLock('push_lock', async () => {
         try {
@@ -99,13 +106,11 @@ async function startServer() {
 
     /**
      * TECH EVENTS — setiap 30 detik
-     * Menggunakan dua schedule karena node-cron tidak mendukung detik secara langsung
      */
     const runTechEvents = async () => {
       console.log('[CRON] Running tech events dispatch...');
       await withDbLock('tech_events_lock', async () => {
         try {
-          // Timeout disesuaikan ke 30 detik agar tidak overlap
           const result = await withTimeout(dispatchTechEvents(), 30 * 1000);
           console.log('[CRON] Tech events result:', result);
         } catch (error) {
@@ -114,11 +119,8 @@ async function startServer() {
       });
     };
 
-    // Schedule 1: Detik ke-0 setiap menit
-    cron.schedule('* * * * *', runTechEvents);
-
-    // Schedule 2: Detik ke-30 setiap menit
-    cron.schedule('* * * * *', () => {
+    techEventsTask1 = cron.schedule('* * * * *', runTechEvents);
+    techEventsTask2 = cron.schedule('* * * * *', () => {
       setTimeout(runTechEvents, 30000);
     });
 
@@ -137,26 +139,48 @@ async function startServer() {
   });
 
   /**
-   * Graceful shutdown
+   * Graceful shutdown - complete
    */
-  const shutdown = async () => {
-    console.log('Shutting down server...');
+  const shutdown = async (signal: string) => {
+    console.log(`[Server] Received ${signal} — starting graceful shutdown...`);
 
-    server.close(async () => {
-      await prisma.$disconnect();
-      await closePool();
-      console.log('Server closed gracefully');
-      process.exit(0);
+    // 1. Stop all cron jobs
+    syncTask?.stop();
+    pushTask?.stop();
+    techEventsTask1?.stop();
+    techEventsTask2?.stop();
+    console.log('[Server] Cron jobs stopped');
+
+    // 2. Stop HTTP server
+    await new Promise<void>((resolve) => {
+      const forceClose = setTimeout(() => {
+        console.warn('[Server] Force closing — timeout reached');
+        resolve();
+      }, 10_000);
+
+      server.close(() => {
+        clearTimeout(forceClose);
+        console.log('[Server] HTTP server closed');
+        resolve();
+      });
     });
 
-    setTimeout(() => {
-      console.error('[Shutdown] Forced exit');
-      process.exit(1);
-    }, 10_000);
+    // 3. Disconnect all connections
+    await Promise.allSettled([
+      prisma
+        .$disconnect()
+        .then(() => console.log('[Server] Prisma disconnected')),
+      closeRedis(),
+      closePool().then(() => console.log('[Server] mysql2 pool closed')),
+    ]);
+
+    console.log('[Server] Shutdown complete');
+    process.exit(0);
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGUSR2', () => void shutdown('SIGUSR2')); // PM2 reload
 }
 
 startServer().catch((err) => {

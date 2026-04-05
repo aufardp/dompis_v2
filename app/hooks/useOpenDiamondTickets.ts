@@ -97,7 +97,7 @@ export function useOpenDiamondTickets(
         params.toString(),
       );
 
-      const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
+      const res = await fetchWithAuth(`/api/tickets/daily?${params.toString()}`);
       if (!res) return;
 
       const json = await res.json();

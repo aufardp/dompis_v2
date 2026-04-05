@@ -2,25 +2,33 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { calculateManhours, getManhourConfigs } from '@/app/libs/services/manhours.service';
+import {
+  calculateManhours,
+  getManhourConfigs,
+} from '@/app/libs/services/manhours.service';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWIB } from '@/app/utils/datetime';
 
 /**
  * GET /api/technicians/manhours/export
- * 
+ *
  * Query parameters:
  * - date_from: YYYY-MM-DD (required)
  * - date_to: YYYY-MM-DD (required)
  * - sto: string (optional)
  * - name: string (optional)
- * 
+ *
  * Returns CSV file with manhours data
  */
 export async function GET(req: NextRequest) {
   try {
     // Authenticate user
-    const user = await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    const user = await protectApi([
+      'admin',
+      'helpdesk',
+      'superadmin',
+      'super_admin',
+    ]);
 
     // Get query parameters
     const searchParams = req.nextUrl.searchParams;
@@ -32,7 +40,10 @@ export async function GET(req: NextRequest) {
     // Validate required parameters
     if (!dateFromStr || !dateToStr) {
       return NextResponse.json(
-        { success: false, message: 'Parameter date_from dan date_to wajib diisi' },
+        {
+          success: false,
+          message: 'Parameter date_from dan date_to wajib diisi',
+        },
         { status: 400 },
       );
     }
@@ -43,7 +54,10 @@ export async function GET(req: NextRequest) {
 
     if (!dateFrom || !dateTo) {
       return NextResponse.json(
-        { success: false, message: 'Format tanggal tidak valid. Gunakan YYYY-MM-DD' },
+        {
+          success: false,
+          message: 'Format tanggal tidak valid. Gunakan YYYY-MM-DD',
+        },
         { status: 400 },
       );
     }
@@ -51,7 +65,10 @@ export async function GET(req: NextRequest) {
     // Validate date range
     if (dateFrom > dateTo) {
       return NextResponse.json(
-        { success: false, message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir' },
+        {
+          success: false,
+          message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir',
+        },
         { status: 400 },
       );
     }
@@ -110,7 +127,7 @@ function generateCSV(
     categories: Record<string, number>;
     total_tickets: number;
     realisasi: number;
-    jam_efektif: number;
+    hari_kerja: number;
     produktivitas: number;
     target: number;
   }>,
@@ -133,7 +150,7 @@ function generateCSV(
     'PRODUKTIVITAS',
     'TARGET',
     'REALISASI',
-    'JAM EFEKTIF',
+    'HARI KERJA',
   ];
 
   const lines: string[] = [];
@@ -152,7 +169,7 @@ function generateCSV(
       String(row.produktivitas),
       String(row.target),
       String(row.realisasi),
-      String(row.jam_efektif),
+      String(row.hari_kerja),
     ];
 
     lines.push(dataRow.join(','));
@@ -196,7 +213,7 @@ function parseDateWithTimezone(
   const date = new Date(year, month - 1, day, hour, minute, second);
 
   const wibOffset = 7 * 60 * 60 * 1000;
-  const utcTime = date.getTime() - (date.getTimezoneOffset() * 60 * 1000);
+  const utcTime = date.getTime() - date.getTimezoneOffset() * 60 * 1000;
   const wibTime = utcTime - wibOffset;
 
   return new Date(wibTime);

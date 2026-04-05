@@ -1,10 +1,15 @@
 import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
+import { ClusterAutoAssignService } from '@/app/libs/services/clusterAutoAssign.service';
+import type { ActorContext } from '@/app/types/ticket';
 
 const RANGE = 'WO_B2B_B2C!A1:HZ10000';
 const BATCH_SIZE = 25;
 const RETRY_MAX = 3;
+
+// SYSTEM_ACTOR untuk auto-assign oleh sistem (id_user 0 = sistem, bukan user riil)
+const SYSTEM_ACTOR: ActorContext = { id_user: 0, role: 'admin' };
 
 interface SyncResult {
   inserted: number;
@@ -82,6 +87,7 @@ function buildColumnMap(header: string[]) {
     SYMPTOM: find('SYMPTOM'),
     DESCRIPTION_ACTUAL_SOLUTION: find('DESCRIPTION_ACTUAL_SOLUTION'),
     DEVICE_NAME: find('DEVICE_NAME'),
+    RK_INFORMATION: find('RK_INFORMATION'),
     JENIS_TIKET: find('JENIS_TIKET2'),
     JAM_EXPIRED: find('JAM_EXPIRED'),
     REDAMAN: find('REDAMAN'),
@@ -178,6 +184,7 @@ function mapRow(row: string[], col: any) {
     get('TTR_WIFI_24_JAM'), // [46]
     get('rca'), // [47]
     get('sub_rca'), // [48]
+    get('RK_INFORMATION'), // [49]
   ];
 }
 
@@ -299,13 +306,57 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
         TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
         TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
-        rca,sub_rca,
+        rca,sub_rca,RK_INFORMATION,
         sync_date,import_batch
         ) VALUES ${placeholders}
+
+        ON DUPLICATE KEY UPDATE
+        SUMMARY       = VALUES(SUMMARY),
+        STATUS        = VALUES(STATUS),
+        WORKZONE      = VALUES(WORKZONE),
+        OWNER_GROUP   = VALUES(OWNER_GROUP),
+        STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        sync_date     = VALUES(sync_date),
+        import_batch  = VALUES(import_batch),
+        synced_at     = NOW()
         `;
 
         await prisma.$executeRawUnsafe(query, ...values);
         await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    /* -------------------- TRIGGER AUTO-ASSIGN FOR NEW TICKETS -------------------- */
+
+    // Trigger auto-assign untuk tiket baru yang belum di-assign
+    if (newRows.length > 0) {
+      const insertedIncidents = newRows.map((r) => r[0]);
+
+      // Find newly inserted tickets that are unassigned
+      const newTickets = await prisma.ticket.findMany({
+        where: {
+          INCIDENT: { in: insertedIncidents },
+          teknisi_user_id: null,
+          RK_INFORMATION: { not: null },
+        },
+        select: { id_ticket: true },
+      });
+
+      if (newTickets.length > 0) {
+        // Trigger di background (tidak block sync process) — fire-and-forget
+        void (async () => {
+          try {
+            const batchResult = await ClusterAutoAssignService.runBatch(
+              undefined,
+              SYSTEM_ACTOR.id_user,
+            );
+            console.log(
+              `[AUTO-ASSIGN] ${batchResult.assigned}/${batchResult.total} tiket berhasil di-assign otomatis`,
+            );
+          } catch (err) {
+            console.error('[AUTO-ASSIGN] Error during batch assign:', err);
+          }
+        })();
       }
     }
 
@@ -343,7 +394,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
         TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
         TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
-        rca,sub_rca,
+        rca,sub_rca,RK_INFORMATION,
         sync_date,import_batch
         ) VALUES ${placeholders}
 
@@ -397,7 +448,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         TTR_K3_DATIN_7_2_JAM,TTR_INDIBIZ_4_JAM,
         TTR_INDIBIZ_24_JAM,TTR_INDIHOME_RESELLER_6_JAM,
         TTR_INDIHOME_RESELLER_36_JAM,TTR_WIFI_24_JAM,
-        rca,sub_rca,
+        rca,sub_rca,RK_INFORMATION,
         sync_date,import_batch
         ) VALUES ${placeholders}
 

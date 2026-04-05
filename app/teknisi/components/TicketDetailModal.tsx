@@ -38,6 +38,7 @@ export default function TicketDetailModal({
 }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [headerWarning, setHeaderWarning] = useState<string | null>(null);
 
   const [currentAlamat, setCurrentAlamat] = useState<string>(
     ticket.alamat?.trim() ?? '',
@@ -374,6 +375,11 @@ export default function TicketDetailModal({
     [selectedFiles, previewUrls],
   );
 
+  // Callback untuk warning dari EvidenceUploader
+  const handleUploadWarning = useCallback((warning: string | null) => {
+    setHeaderWarning(warning);
+  }, []);
+
   // Upload evidence using fetchWithAuth (handles credentials and token refresh)
   const uploadEvidence = useCallback(async () => {
     if (!selectedFiles.length) return;
@@ -519,6 +525,12 @@ export default function TicketDetailModal({
           jenisTiket={ticket.jenisTiket}
           isClosed={isClosed}
           onClose={onClose}
+          warning={headerWarning || error}
+          warningType={headerWarning ? 'upload' : error ? 'error' : undefined}
+          onDismissWarning={() => {
+            setHeaderWarning(null);
+            setError(null);
+          }}
         />
 
         {/* ═══ SATU-SATUNYA scroll container ═══
@@ -529,12 +541,6 @@ export default function TicketDetailModal({
             TIDAK BOLEH ada overflow-y-auto lain di dalamnya */}
         <div className='flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4'>
           <div className='space-y-4'>
-            {error && (
-              <div className='rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'>
-                {error}
-              </div>
-            )}
-
             {/* TTR & SLA Section */}
             {!isClosed && (
               <div className='rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800'>
@@ -569,13 +575,6 @@ export default function TicketDetailModal({
 
             {/* Scrollable Body */}
             <div className='flex-1 space-y-3 overflow-y-auto scroll-smooth p-5 pb-2'>
-              {/* Error Banner */}
-              {error && (
-                <div className='rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600'>
-                  {error}
-                </div>
-              )}
-
               {/* MAX TTR Warning Box — hanya saat tiket BELUM closed */}
               {ttrRemaining && !isClosed && (
                 <div className='flex items-center justify-between rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 dark:border-orange-500/20 dark:bg-orange-500/10'>
@@ -850,6 +849,7 @@ export default function TicketDetailModal({
                     onRemoveImage={handleRemoveImage}
                     previewUrls={previewUrls}
                     uploading={uploading}
+                    onWarning={handleUploadWarning}
                   />
                 </div>
               )}

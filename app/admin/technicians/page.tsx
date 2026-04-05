@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import {
   RefreshCw,
@@ -20,6 +20,8 @@ import Button from '@/app/components/ui/Button';
 import Select from '@/app/components/form/Select';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import TicketDetailDrawer from '@/app/admin/components/dashboard/TicketDetailDrawer';
+import AllTicketsModal from '@/app/admin/components/technician/AllTicketsModal';
+import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import { TechnicianStatus, Technician } from '@/app/types/technician';
@@ -78,7 +80,7 @@ const STATUS_CONFIG: Record<
 
 function getTechnicianStatusValue(ticketCount: number): TechnicianStatus {
   if (ticketCount === 0) return 'IDLE';
-  if (ticketCount > 3) return 'OVERLOAD';
+  if (ticketCount > 5) return 'OVERLOAD';
   return 'AKTIF';
 }
 
@@ -178,14 +180,24 @@ function EmptyState({ hasFilters, onReset }: EmptyStateProps) {
 function TechnicianCard({
   technician,
   onDetail,
+  onShowAll,
+  onReassign,
 }: {
   technician: Technician;
   onDetail: (ticketId: number) => void;
+  onShowAll: (technician: Technician) => void;
+  onReassign: (ticket: {
+    ticketId: number;
+    ticketCode: string;
+    workzone: string;
+    currentTechnicianId: number;
+    currentTechnicianName: string;
+  }) => void;
 }) {
   const status = getTechnicianStatusValue(technician.total_assigned);
   const statusConfig = STATUS_CONFIG[status];
-  const displayTickets = technician.assigned_tickets.slice(0, 3);
-  const hasMore = technician.assigned_tickets.length > 3;
+  const displayTickets = technician.assigned_tickets.slice(0, 5);
+  const hasMore = technician.assigned_tickets.length > 5;
   const closedToday = technician.closed_tickets_today || [];
   const worstAge = getWorstTicketAge(technician.assigned_tickets);
 
@@ -248,26 +260,37 @@ function TechnicianCard({
             )}
             {statusConfig.label}
           </span>
+          {technician.cluster_today && technician.cluster_today.length > 0 && (
+            <div className='mt-1 flex flex-wrap gap-1'>
+              {technician.cluster_today.map((c) => (
+                <span
+                  key={c}
+                  className='inline-flex items-center rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400'
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className='mt-4 border-t border-slate-100 pt-3 dark:border-slate-700'>
         <div className='mb-2 flex flex-wrap gap-1.5'>
           <span className='inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'>
-            {technician.order_counts?.assigned || 0} Assigned
+            {technician.order_counts?.assigned || 0} Menunggu
           </span>
           <span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'>
-            {technician.order_counts?.on_progress || 0} On Progress
+            {technician.order_counts?.on_progress || 0} Dikerjakan
           </span>
           <span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'>
             {technician.order_counts?.pending || 0} Pending
           </span>
-          <span className='inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-500/20 dark:text-green-300'>
-            {technician.order_counts?.closed || 0} Closed
-          </span>
-          <span className='inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'>
-            {technician.total_closed_today || 0} Closed Today
-          </span>
+          {technician.total_closed_today > 0 && (
+            <span className='inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'>
+              ✓ {technician.total_closed_today} selesai hari ini
+            </span>
+          )}
         </div>
 
         {displayTickets.length === 0 ? (
@@ -319,6 +342,21 @@ function TechnicianCard({
                   >
                     Detail
                   </button>
+                  <button
+                    type='button'
+                    onClick={() =>
+                      onReassign({
+                        ticketId: ticket.idTicket,
+                        ticketCode: ticket.ticket,
+                        workzone: technician.workzone,
+                        currentTechnicianId: technician.id_user,
+                        currentTechnicianName: technician.nama,
+                      })
+                    }
+                    className='rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
+                  >
+                    Reassign
+                  </button>
                 </div>
               </div>
             ))}
@@ -358,8 +396,12 @@ function TechnicianCard({
         )}
 
         {hasMore && (
-          <button className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700/50'>
-            + {technician.total_assigned - 3} tiket lainnya →
+          <button
+            type='button'
+            onClick={() => onShowAll(technician)}
+            className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700/50'
+          >
+            + {technician.total_assigned - 5} tiket lainnya →
           </button>
         )}
       </div>
@@ -417,6 +459,27 @@ export default function TechnicianMonitoringPage() {
   const [detailTicket, setDetailTicket] = useState<any | null>(null);
   const [detailTicketId, setDetailTicketId] = useState<number | null>(null);
 
+  const [allTicketsModal, setAllTicketsModal] = useState<{
+    open: boolean;
+    technician: Technician | null;
+  }>({ open: false, technician: null });
+
+  const [reassignModal, setReassignModal] = useState<{
+    open: boolean;
+    ticketId: number | null;
+    ticketCode: string | null;
+    workzone: string | null;
+    currentTechnicianId: number | null;
+    currentTechnicianName: string | null;
+  }>({
+    open: false,
+    ticketId: null,
+    ticketCode: null,
+    workzone: null,
+    currentTechnicianId: null,
+    currentTechnicianName: null,
+  });
+
   const filters = useMemo(
     () => ({
       search: search || undefined,
@@ -471,11 +534,47 @@ export default function TechnicianMonitoringPage() {
     }
   }, []);
 
+  const handleShowAllTickets = useCallback((technician: Technician) => {
+    setAllTicketsModal({ open: true, technician });
+  }, []);
+
+  const handleReassign = useCallback(
+    (ticket: {
+      ticketId: number;
+      ticketCode: string;
+      workzone: string;
+      currentTechnicianId: number;
+      currentTechnicianName: string;
+    }) => {
+      setReassignModal({
+        open: true,
+        ticketId: ticket.ticketId,
+        ticketCode: ticket.ticketCode,
+        workzone: ticket.workzone,
+        currentTechnicianId: ticket.currentTechnicianId,
+        currentTechnicianName: ticket.currentTechnicianName,
+      });
+    },
+    [],
+  );
+
+  const handleReassignSuccess = useCallback(async () => {
+    setReassignModal({
+      open: false,
+      ticketId: null,
+      ticketCode: null,
+      workzone: null,
+      currentTechnicianId: null,
+      currentTechnicianName: null,
+    });
+    refresh();
+  }, [refresh]);
+
   const orderStats = useMemo(() => {
     let totalAssigned = 0;
     let totalOnProgress = 0;
     let totalPending = 0;
-    let totalClosed = 0;
+    let totalClosedToday = 0;
 
     technicians.forEach((tech) => {
       const counts = tech.order_counts;
@@ -483,11 +582,11 @@ export default function TechnicianMonitoringPage() {
         totalAssigned += counts.assigned;
         totalOnProgress += counts.on_progress;
         totalPending += counts.pending;
-        totalClosed += counts.closed;
       }
+      totalClosedToday += tech.total_closed_today || 0;
     });
 
-    return { totalAssigned, totalOnProgress, totalPending, totalClosed };
+    return { totalAssigned, totalOnProgress, totalPending, totalClosedToday };
   }, [technicians]);
 
   const hasFilters = Boolean(
@@ -527,6 +626,10 @@ export default function TechnicianMonitoringPage() {
             <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Monitoring Teknisi
             </h1>
+            <p className='mt-1 text-sm text-slate-500 dark:text-slate-400'>
+              Data aktif hari ini —{' '}
+              {format(new Date(), 'EEEE, d MMMM yyyy', { locale: id })}
+            </p>
             {userWorkzones.length > 0 && (
               <p className='flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400'>
                 <MapPin size={14} />
@@ -609,12 +712,12 @@ export default function TechnicianMonitoringPage() {
                     onClick={handleResetFilters}
                   />
                   <StatsCard
-                    title='Assigned'
+                    title='Menunggu'
                     value={orderStats.totalAssigned}
                     color='text-blue-500'
                   />
                   <StatsCard
-                    title='On Progress'
+                    title='Dikerjakan'
                     value={orderStats.totalOnProgress}
                     color='text-amber-600'
                   />
@@ -624,8 +727,8 @@ export default function TechnicianMonitoringPage() {
                     color='text-orange-600'
                   />
                   <StatsCard
-                    title='Closed'
-                    value={orderStats.totalClosed}
+                    title='Selesai Hari Ini'
+                    value={orderStats.totalClosedToday}
                     color='text-green-600'
                   />
                   <StatsCard
@@ -705,6 +808,8 @@ export default function TechnicianMonitoringPage() {
                           key={technician.id_user}
                           technician={technician}
                           onDetail={handleTicketDetail}
+                          onShowAll={handleShowAllTickets}
+                          onReassign={handleReassign}
                         />
                       ))}
                     </div>
@@ -731,6 +836,34 @@ export default function TechnicianMonitoringPage() {
               ? () => handleTicketDetail(detailTicketId)
               : undefined
           }
+        />
+
+        <AllTicketsModal
+          isOpen={allTicketsModal.open}
+          onClose={() => setAllTicketsModal({ open: false, technician: null })}
+          technician={allTicketsModal.technician}
+          onDetail={handleTicketDetail}
+          onReassign={handleReassign}
+        />
+
+        <AssignTechnicianModal
+          isOpen={reassignModal.open}
+          onClose={() =>
+            setReassignModal({
+              open: false,
+              ticketId: null,
+              ticketCode: null,
+              workzone: null,
+              currentTechnicianId: null,
+              currentTechnicianName: null,
+            })
+          }
+          ticketId={reassignModal.ticketId ?? ''}
+          ticketCode={reassignModal.ticketCode ?? ''}
+          ticketWorkzone={reassignModal.workzone}
+          currentTechnicianId={reassignModal.currentTechnicianId ?? undefined}
+          currentTechnicianName={reassignModal.currentTechnicianName}
+          onAssign={handleReassignSuccess}
         />
       </div>
     </AdminLayout>

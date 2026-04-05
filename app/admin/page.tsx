@@ -29,6 +29,8 @@ import ServiceAreaTable from './components/dashboard/ServiceAreaTable';
 import TicketTable from './components/dashboard/TicketTable';
 import TicketTableB2B from './components/dashboard/TicketTableB2B';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
+import { useSyncStatus } from '@/app/hooks/useSyncStatus';
+import { RefreshCw } from 'lucide-react';
 
 interface TicketData {
   idTicket: number;
@@ -123,6 +125,8 @@ export default function TicketPage() {
 
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
+
+  const { lastSyncLabel } = useSyncStatus();
 
   const { tickets: expiredTickets, refresh: refreshExpired } =
     useExpiredTickets(workzoneFilter || undefined, {
@@ -754,8 +758,16 @@ export default function TicketPage() {
         <div className='flex flex-col gap-6'>
           <div className='bg-surface overflow-hidden rounded-2xl border border-(--border)'>
             <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
-              <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
-                Semangat pagi pagi pagi ...
+              <div className='flex items-center justify-between'>
+                <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+                  Semangat pagi pagi pagi ...
+                </div>
+                {lastSyncLabel && (
+                  <div className='flex items-center gap-1 text-xs text-(--text-muted)'>
+                    <RefreshCw size={11} />
+                    {lastSyncLabel}
+                  </div>
+                )}
               </div>
             </div>
             <div className='px-4 py-4 md:px-5 md:py-5'>

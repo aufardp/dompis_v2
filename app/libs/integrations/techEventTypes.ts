@@ -20,6 +20,8 @@ export type TechEventTicket = {
   workzone: string;
   service_no: string;
   customer_name: string;
+  owner_group: string | null;
+  customer_type: string | null;
 };
 
 export type TechEventEvidenceFile = {

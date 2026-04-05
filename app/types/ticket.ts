@@ -120,6 +120,8 @@ export type LockedTicket = {
   ALAMAT: string | null;
   SERVICE_NO: string | null;
   CONTACT_NAME: string | null;
+  OWNER_GROUP: string | null;
+  CUSTOMER_TYPE: string | null;
 };
 
 export type ActorContext = {

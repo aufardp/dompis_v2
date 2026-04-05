@@ -12,13 +12,24 @@ import { saveFiles, ActionType } from '@/app/libs/upload';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { normalizeRoleKey, roleKeyToRoleId } from '@/app/libs/roles';
-import { ActivityType } from '@prisma/client';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+
+type ActivityType =
+  | 'created'
+  | 'updated'
+  | 'closed'
+  | 'reopened'
+  | 'assigned'
+  | 'unassigned'
+  | 'picked_up'
+  | 'pending'
+  | 'evidence_added'
+  | 'evidence_deleted';
 
 // Sinkronkan dengan compressed file size (bukan raw dari kamera)
 // Setelah compressImage: maxWidth 1920px, quality 0.82 → hasil ~400KB-1MB per foto
-const MAX_FILE_SIZE = 2 * 1024 * 1024;        // 2MB per file (after compress)
-const MAX_TOTAL_SIZE = 15 * 1024 * 1024;      // 15MB total payload (dengan FormData overhead)
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB per file (after compress)
+const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB total payload (dengan FormData overhead)
 const MAX_FILES = 5;
 
 export async function POST(req: NextRequest) {
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: `File ${oversizedFiles.map(f => f.name).join(', ')} terlalu besar. Maksimal 2 MB per foto setelah kompresi.`,
+          message: `File ${oversizedFiles.map((f) => f.name).join(', ')} terlalu besar. Maksimal 2 MB per foto setelah kompresi.`,
         },
         { status: 400 },
       );
@@ -114,7 +125,7 @@ export async function POST(req: NextRequest) {
           ticket_id: ticketId,
           user_id: user.id_user,
           role_id: roleId,
-          activity_type: ActivityType.UPLOAD_EVIDENCE,
+          activity_type: 'UPLOAD_EVIDENCE',
           description: `Uploaded ${savedFiles.length} evidence file(s)`,
         },
       });

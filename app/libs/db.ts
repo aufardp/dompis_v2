@@ -1,6 +1,13 @@
 import mysql, { Pool, PoolOptions } from 'mysql2/promise';
 
 /**
+ * @deprecated Gunakan Prisma client dari app/libs/prisma.ts
+ * Pool mysql2 ini sedang dihapus secara bertahap.
+ * Fungsi findUserByUsername dan findUserWorkzones sudah dipindah
+ * ke app/libs/services/users.service.ts
+ *
+ * TODO: Hapus file ini setelah semua consumer dimigrasi.
+ *
  * Legacy raw SQL pool for backward compatibility.
  * This pool is kept separate from Prisma for specific raw SQL queries.
  * Uses individual env vars instead of DATABASE_URL.

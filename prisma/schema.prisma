@@ -33,6 +33,7 @@ model service_area {
   area       area?     @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "service_area_ibfk_1")
   user_sa    user_sa[]
   attendances technician_attendance[]
+  clusters   cluster[]
 
   @@index([area_id], map: "id_area")
   @@index([nama_sa], map: "idx_nama_sa")
@@ -58,6 +59,7 @@ model ticket {
   SYMPTOM                     String?                     @db.Text
   DESCRIPTION_ACTUAL_SOLUTION String?                     @db.Text
   DEVICE_NAME                 String?                     @db.VarChar(100)
+  RK_INFORMATION              String?                     @db.VarChar(100)
   JENIS_TIKET                 String?                     @db.VarChar(255)
   JAM_EXPIRED                 String?                     @db.VarChar(255)
   REDAMAN                     String?                     @db.VarChar(255)
@@ -186,6 +188,11 @@ model users {
   activity_log   ticket_activity_log[]
   attendance_records technician_attendance[]
 
+  // Cluster relations
+  created_clusters cluster[]           @relation("cluster_creator")
+  teknisi_assignments cluster_assignment[] @relation("teknisi_assignment")
+  assigner_assignments cluster_assignment[] @relation("assigner_assignment")
+
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
 }
@@ -197,6 +204,7 @@ enum ActivityType {
   COMMENT
   UPLOAD_EVIDENCE
   CLOSE
+  AUTO_ASSIGN    // ← BARU: dibedakan dari ASSIGN manual
 }
 
 model ticket_tracking {
@@ -338,4 +346,81 @@ model manhours_config {
 
   @@index([is_active, sort_order])
   @@map("manhours_config")
+}
+
+// ── Cluster (Sub Sektor dari tabel mapping lapangan) ──────────────────────────
+model cluster {
+  id           Int      @id @default(autoincrement())
+  sa_id        Int                                   // FK → service_area (SA pemilik cluster)
+  nama_cluster String   @db.VarChar(100)             // "AREA 1", "AREA 2", dst
+  is_active    Boolean  @default(true)
+  sort_order   Int      @default(0)
+  created_by   Int                                   // FK → users (admin pembuat)
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+  updated_at   DateTime @default(now()) @db.Timestamp(0)
+
+  service_area service_area       @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade)
+  creator      users              @relation("cluster_creator", fields: [created_by], references: [id_user])
+  areas        cluster_area[]
+  nodes        cluster_node[]
+  assignments  cluster_assignment[]
+
+  @@unique([sa_id, nama_cluster])
+  @@index([sa_id, is_active])
+  @@map("cluster")
+}
+
+// ── Cluster Area (deskripsi wilayah per cluster) ──────────────────────────────
+model cluster_area {
+  id         Int    @id @default(autoincrement())
+  cluster_id Int
+  nama_area  String @db.VarChar(150)   // "ROMOKALISARI", "TAMBAK OSOWILANGUN"
+  sort_order Int    @default(0)
+
+  cluster cluster       @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
+  nodes   cluster_node[]
+
+  @@index([cluster_id])
+  @@map("cluster_area")
+}
+
+// ── Cluster Node (mapping ODC → cluster) ─────────────────────────────────────
+model cluster_node {
+  id              Int     @id @default(autoincrement())
+  cluster_id      Int
+  cluster_area_id Int?                             // opsional — boleh null
+  odc_value       String  @db.VarChar(100)        // EXACT dari RK_INFORMATION, misal "ODC-TDS-FEP"
+  is_active       Boolean @default(true)
+  sort_order      Int     @default(0)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+
+  cluster      cluster       @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
+  cluster_area cluster_area? @relation(fields: [cluster_area_id], references: [id], onDelete: SetNull)
+
+  @@unique([odc_value])       // 1 ODC hanya boleh di 1 cluster, global unique
+  @@index([cluster_id])
+  @@index([odc_value])        // lookup O(1) saat auto-assign — WAJIB
+  @@map("cluster_node")
+}
+
+// ── Cluster Assignment (plotting teknisi per hari) ────────────────────────────
+model cluster_assignment {
+  id            Int      @id @default(autoincrement())
+  cluster_id    Int
+  teknisi_id    Int
+  assigned_date String   @db.VarChar(10)   // format: "2026-03-29" (YYYY-MM-DD)
+  is_active     Boolean  @default(true)
+  assigned_by   Int
+  note          String?  @db.VarChar(255)
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+
+  cluster  cluster @relation(fields: [cluster_id], references: [id])
+  teknisi  users   @relation("teknisi_assignment", fields: [teknisi_id], references: [id_user])
+  assigner users   @relation("assigner_assignment", fields: [assigned_by], references: [id_user])
+
+  @@unique([cluster_id, teknisi_id, assigned_date])
+  @@index([assigned_date, cluster_id])
+  @@index([teknisi_id, assigned_date])
+  @@map("cluster_assignment")
 }

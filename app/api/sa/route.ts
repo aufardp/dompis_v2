@@ -49,21 +49,21 @@ export async function GET(req: Request) {
       });
       return NextResponse.json({
         success: true,
-        data: serviceAreas.map((sa) => ({
+        data: serviceAreas.map((sa: (typeof serviceAreas)[0]) => ({
           value: String(sa.id_sa),
           label: sa.nama_sa,
         })),
       });
     }
 
-    const userSas = await prisma.user_sa.findMany({
+    const userSa = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       include: { service_area: true },
     });
 
-    const rows = userSas
-      .filter((us) => us.service_area)
-      .map((us) => ({
+    const rows = userSa
+      .filter((us: { service_area: any }) => us.service_area)
+      .map((us: { service_area: any }) => ({
         value: String(us.service_area!.id_sa),
         label: us.service_area!.nama_sa,
       }));

@@ -288,7 +288,8 @@ async function lockTicketRow(
   const rows = await tx.$queryRaw<LockedTicket[]>`
     SELECT id_ticket,
       INCIDENT, WORKZONE, teknisi_user_id, STATUS_UPDATE,
-      PENDING_REASON, ALAMAT, SERVICE_NO, CONTACT_NAME
+      PENDING_REASON, ALAMAT, SERVICE_NO, CONTACT_NAME,
+      OWNER_GROUP, CUSTOMER_TYPE
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -488,6 +489,8 @@ async function handleTechnicianWorkflow(
           workzone: ticket.WORKZONE ?? '',
           service_no: ticketDetails?.service_no ?? '',
           customer_name: ticketDetails?.customer_name ?? '',
+          owner_group: ticket.OWNER_GROUP ?? null,
+          customer_type: ticket.CUSTOMER_TYPE ?? null,
         },
         status: {
           old_hasil_visit: 'ON_PROGRESS',
@@ -561,6 +564,8 @@ async function handleTechnicianWorkflow(
           workzone: ticket.WORKZONE ?? '',
           service_no: ticketDetails?.service_no ?? '',
           customer_name: ticketDetails?.customer_name ?? '',
+          owner_group: ticket.OWNER_GROUP ?? null,
+          customer_type: ticket.CUSTOMER_TYPE ?? null,
         },
         status: {
           old_hasil_visit: 'PENDING',
@@ -891,6 +896,8 @@ export class TicketWorkflowService {
               workzone: ticket.WORKZONE ?? '',
               service_no: ticket.SERVICE_NO ?? '',
               customer_name: ticket.CONTACT_NAME ?? '',
+              owner_group: ticket.OWNER_GROUP ?? null,
+              customer_type: ticket.CUSTOMER_TYPE ?? null,
             },
             status: {
               old_hasil_visit: current,
@@ -1005,6 +1012,8 @@ export class TicketWorkflowService {
               workzone: ticket.WORKZONE ?? '',
               service_no: ticket.SERVICE_NO ?? '',
               customer_name: ticket.CONTACT_NAME ?? '',
+              owner_group: ticket.OWNER_GROUP ?? null,
+              customer_type: ticket.CUSTOMER_TYPE ?? null,
             },
             status: {
               old_hasil_visit: current,
@@ -1101,6 +1110,8 @@ export class TicketWorkflowService {
               workzone: ticket.WORKZONE ?? '',
               service_no: ticketDetails?.service_no ?? '',
               customer_name: ticketDetails?.customer_name ?? '',
+              owner_group: ticket.OWNER_GROUP ?? null,
+              customer_type: ticket.CUSTOMER_TYPE ?? null,
             },
             status: {
               old_hasil_visit: 'ASSIGNED',
@@ -1229,6 +1240,8 @@ export class TicketWorkflowService {
               workzone: ticket.WORKZONE ?? '',
               service_no: ticket.SERVICE_NO ?? '',
               customer_name: ticket.CONTACT_NAME ?? '',
+              owner_group: ticket.OWNER_GROUP ?? null,
+              customer_type: ticket.CUSTOMER_TYPE ?? null,
             },
             status: {
               old_hasil_visit: 'ON_PROGRESS',

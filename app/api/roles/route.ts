@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const roles = await prisma.roles.findMany();
 
-    const options = roles.map((role) => ({
+    const options = roles.map((role: (typeof roles)[0]) => ({
       id: role.id_role,
       label: role.name,
       key: role.key,

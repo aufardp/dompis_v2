@@ -8,13 +8,14 @@ interface EvidenceUploaderProps {
   previewUrls: string[];
   uploading: boolean;
   existingCount?: number;
+  onWarning?: (warning: string | null) => void;
 }
 
 // KRITIS: Batas ini untuk file RAW sebelum kompresi
 // Foto iPhone bisa 3-8MB, setelah compressImage (1920px, 0.82) jadi ~400KB-1MB
 // Jadi batas pre-compress yang masuk akal adalah 15MB (bukan 2MB!)
 // Validasi ukuran sebenarnya (2MB) dilakukan SETELAH kompresi di parent component
-const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024;  // 15MB — file mentah sebelum compress
+const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024; // 15MB — file mentah sebelum compress
 const MAX_FILES = 5;
 const MIN_FILES = 2;
 
@@ -34,6 +35,7 @@ export default function EvidenceUploader({
   previewUrls,
   uploading,
   existingCount = 0,
+  onWarning,
 }: EvidenceUploaderProps) {
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
 
@@ -44,6 +46,8 @@ export default function EvidenceUploader({
     if (!files) return;
 
     setRejectedFiles([]);
+    onWarning?.(null);
+
     const fileArray = Array.from(files);
     const oversized: RejectedFile[] = [];
     const validFiles: File[] = [];
@@ -70,6 +74,12 @@ export default function EvidenceUploader({
     // Step 3: Set warnings for oversized files
     if (oversized.length > 0) {
       setRejectedFiles(oversized);
+      const names = oversized.map(f => f.name).join(', ');
+      onWarning?.(
+        oversized.length === 1
+          ? `${oversized[0].name} terlalu besar — maks 15 MB per foto`
+          : `${oversized.length} foto ditolak — masing-masing maks 15 MB`
+      );
     }
 
     // Step 4: Update selected files
@@ -87,8 +97,8 @@ export default function EvidenceUploader({
     <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900'>
       {/* Header with badge counter */}
       <div className='flex items-center justify-between'>
-        <h3 className='text-sm font-semibold text-slate-600 dark:text-slate-300 sm:text-base'>
-          Evidence Foto (Max {MAX_FILES}, otomatis dikompres)
+        <h3 className='text-sm font-semibold text-slate-600 sm:text-base dark:text-slate-300'>
+          Evidence Foto (Max {MAX_FILES})
         </h3>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
@@ -109,7 +119,11 @@ export default function EvidenceUploader({
             : 'hover:bg-slate-50 dark:hover:bg-slate-800'
         }`}
       >
-        + Tambah Foto (Min Foto ODP dan Barcode DC)
+        1. Foto Penyebab (Putusnya, ONT rusaknya, dll) <br />
+        2. Foto Perbaikan (Ganti ONT, Tarik Ulang, Penyambungan, dll) <br />
+        3. Capture SCC (halaman SCC layak) <br />
+        4. Foto dengan pelanggan <br />
+        5. Foto lokasi pelanggan
         <input
           type='file'
           multiple

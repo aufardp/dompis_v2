@@ -1,84 +1,56 @@
 /**
  * ManHours Service
- * 
+ *
  * Calculates technician productivity based on:
  * - REALISASI: Sum of (ticket_count_per_category × manhours_per_category)
- * - JAM_EFEKTIF: Sum of working_hours from technician_attendance
- * - PRODUKTIVITAS: REALISASI ÷ JAM_EFEKTIF
+ * - HARI_KERJA: Count of unique days the technician checked in within date range
+ * - PRODUKTIVITAS: total_tickets / HARI_KERJA (tickets per working day)
  * - TARGET: 176 hours (22 days × 8 hours)
  */
 
 import prisma from '@/app/libs/prisma';
 import { toWIB } from '@/app/utils/datetime';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { normalizeJenis, JENIS_KEYS, JenisKey } from '@/app/libs/tickets/jenis';
 
 /**
- * Standard manhour values per ticket category
- * These values are also stored in manhours_config table for database reference
+ * Manhour values per canonical jenis key.
+ * Keys HARUS sesuai dengan JENIS_KEYS di app/libs/tickets/jenis.ts.
+ *
+ * B2C: reguler, sqm, hvc, unspec
+ * B2B: sqm-ccan, indibiz, datin, reseller, wifi-id
  */
-export const MANHOUR_VALUES: Record<string, number> = {
+export const MANHOUR_VALUES: Record<JenisKey, number> = {
+  // B2C
   reguler: 2.0,
   sqm: 2.0,
+  hvc: 2.0,
   unspec: 2.0,
+  // B2B
+  'sqm-ccan': 2.0,
+  indibiz: 2.0,
   datin: 2.0,
-  'non-datin': 2.0,
-  exbis: 2.0,
-  infracare: 2.0,
-  'tangible-odp': 4.0,
-  psb: 5.3,
-  'psb-b2b': 5.3,
-  'tangible-odc': 8.0,
+  reseller: 2.0,
+  'wifi-id': 2.0,
 } as const;
 
 /**
- * Maps raw database JENIS_TIKET values to canonical keys (case-insensitive)
+ * Normalize raw DB JENIS_TIKET value to canonical manhours key.
+ * Menggunakan normalizeJenis() dari app/libs/tickets/jenis.ts sebagai single source of truth.
+ *
+ * Returns null jika jenis tidak dikenali atau tidak ada di MANHOUR_VALUES.
  */
-export const JENIS_TIKET_DB_MAP: Record<string, string> = {
-  reguler: 'reguler',
-  REGULER: 'reguler',
-  Reguler: 'reguler',
-  regular: 'reguler',
-  Regular: 'reguler',
-  REGULAR: 'reguler',
-  sqm: 'sqm',
-  SQM: 'sqm',
-  Sqm: 'sqm',
-  unspec: 'unspec',
-  UNSPEC: 'unspec',
-  Unspec: 'unspec',
-  datin: 'datin',
-  DATIN: 'datin',
-  Datin: 'datin',
-  'non-datin': 'non-datin',
-  'NON-DATIN': 'non-datin',
-  'Non-Datin': 'non-datin',
-  exbis: 'exbis',
-  EXBIS: 'exbis',
-  Exbis: 'exbis',
-  infracare: 'infracare',
-  INFRACARE: 'infracare',
-  Infracare: 'infracare',
-  'tangible-odp': 'tangible-odp',
-  'TANGIBLE-ODP': 'tangible-odp',
-  'Tangible-ODP': 'tangible-odp',
-  'tangible-odc': 'tangible-odc',
-  'TANGIBLE-ODC': 'tangible-odc',
-  'Tangible-ODC': 'tangible-odc',
-  psb: 'psb',
-  PSB: 'psb',
-  Psb: 'psb',
-  'psb-b2b': 'psb-b2b',
-  'PSB-B2B': 'psb-b2b',
-  'Psb-B2B': 'psb-b2b',
-} as const;
+export function normalizeJenisForManhours(
+  rawValue: string | null | undefined,
+): string | null {
+  if (!rawValue || !rawValue.trim()) return null;
 
-/**
- * Normalize raw JENIS_TIKET value to canonical key
- */
-export function normalizeJenisKey(rawValue: string | null): string | null {
-  if (!rawValue) return null;
-  const trimmed = rawValue.trim();
-  return JENIS_TIKET_DB_MAP[trimmed] || trimmed.toLowerCase();
+  const canonical = normalizeJenis(rawValue);
+  if (!canonical) return null;
+
+  if (!(canonical in MANHOUR_VALUES)) return null;
+
+  return canonical;
 }
 
 /**
@@ -104,7 +76,7 @@ export interface ManhoursRow {
   categories: Record<string, number>;
   total_tickets: number;
   realisasi: number;
-  jam_efektif: number;
+  hari_kerja: number;
   produktivitas: number;
   target: number;
 }
@@ -135,9 +107,9 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
  */
 export async function getManhourConfigs(): Promise<ManhourConfig[]> {
   const now = Date.now();
-  
+
   // Return cached if still valid
-  if (configCache && (now - configCache.timestamp) < CACHE_TTL_MS) {
+  if (configCache && now - configCache.timestamp < CACHE_TTL_MS) {
     return configCache.configs;
   }
 
@@ -182,7 +154,7 @@ function buildConfigMap(configs: ManhourConfig[]): Record<string, number> {
 
 /**
  * Calculate manhours for technicians based on filter
- * 
+ *
  * Formula:
  * REALISASI = Σ (jumlah_tiket_per_kategori × manhours_per_kategori)
  * JAM_EFEKTIF = Σ working_hours from technician_attendance in date range
@@ -232,7 +204,7 @@ export async function calculateManhours(
       const techWorkzones = tech.user_sa
         .map((usa) => usa.service_area?.nama_sa)
         .filter((n): n is string => !!n);
-      
+
       // Check if any of technician's workzones match admin's workzones
       return techWorkzones.some((wz) => adminWorkzones.includes(wz));
     });
@@ -298,14 +270,11 @@ export async function calculateManhours(
   });
 
   // Aggregate tickets per technician per category
-  const ticketCounts: Record<
-    number,
-    Record<string, number>
-  > = {};
+  const ticketCounts: Record<number, Record<string, number>> = {};
 
   for (const ticket of tickets) {
     const techId = ticket.teknisi_user_id!;
-    const jenisKey = normalizeJenisKey(ticket.JENIS_TIKET);
+    const jenisKey = normalizeJenisForManhours(ticket.JENIS_TIKET);
 
     if (!jenisKey) continue;
 
@@ -313,27 +282,33 @@ export async function calculateManhours(
       ticketCounts[techId] = {};
     }
 
-    // Only count if this jenis_key is in our active configs
-    if (configMap[jenisKey] !== undefined) {
-      ticketCounts[techId][jenisKey] = (ticketCounts[techId][jenisKey] || 0) + 1;
-    }
+    // Count all tickets that match canonical MANHOUR_VALUES keys
+    // DB configMap only used for overriding manhour values, not filtering
+    ticketCounts[techId][jenisKey] = (ticketCounts[techId][jenisKey] || 0) + 1;
   }
 
-  // Aggregate working hours per technician
-  const workingHoursMap: Record<number, number> = {};
+  // Aggregate HARI KERJA EFEKTIF per technician
+  // = jumlah hari unik (distinct calendar day) di mana teknisi check-in dalam date range
+  const workingDaysMap: Record<number, Set<string>> = {};
 
   for (const record of attendanceRecords) {
     const techId = record.technician_id;
-    
-    // Use working_hours if available, otherwise calculate from timestamps
-    let hours = record.working_hours ? Number(record.working_hours) : 0;
-    
-    if (hours === 0 && record.check_out_at && record.check_in_at) {
-      const diffMs = record.check_out_at.getTime() - record.check_in_at.getTime();
-      hours = Math.round((diffMs / 3600000) * 100) / 100;
+    const checkInDate = record.check_in_at;
+    if (!checkInDate) continue;
+
+    const dayKey = checkInDate.toISOString().slice(0, 10);
+
+    if (!workingDaysMap[techId]) {
+      workingDaysMap[techId] = new Set<string>();
     }
 
-    workingHoursMap[techId] = (workingHoursMap[techId] || 0) + hours;
+    workingDaysMap[techId].add(dayKey);
+  }
+
+  // Convert Set to count
+  const workingDaysCount: Record<number, number> = {};
+  for (const [techIdStr, daysSet] of Object.entries(workingDaysMap)) {
+    workingDaysCount[Number(techIdStr)] = daysSet.size;
   }
 
   // Build result rows
@@ -350,15 +325,17 @@ export async function calculateManhours(
     // Calculate REALISASI
     let realisasi = 0;
     for (const [jenisKey, count] of Object.entries(categories)) {
-      const manhourValue = configMap[jenisKey] || MANHOUR_VALUES[jenisKey] || 0;
+      const key = jenisKey as JenisKey;
+      const manhourValue = configMap[key] || MANHOUR_VALUES[key] || 0;
       realisasi += count * manhourValue;
     }
 
-    // Get JAM_EFEKTIF
-    const jamEfektif = workingHoursMap[techId] || 0;
+    // Get HARI KERJA EFEKTIF (unique days checked in)
+    const hariKerja = workingDaysCount[techId] || 0;
 
-    // Calculate PRODUKTIVITAS
-    const produktivitas = jamEfektif > 0 ? realisasi / jamEfektif : 0;
+    // PRODUKTIVITAS = total_tickets / hari_kerja
+    const produktivitas =
+      hariKerja > 0 ? Math.round((totalTickets / hariKerja) * 100) / 100 : 0;
 
     // Get STO name
     const stoName =
@@ -373,8 +350,8 @@ export async function calculateManhours(
       categories,
       total_tickets: totalTickets,
       realisasi: Math.round(realisasi * 100) / 100,
-      jam_efektif: Math.round(jamEfektif * 100) / 100,
-      produktivitas: Math.round(produktivitas * 100) / 100,
+      hari_kerja: hariKerja,
+      produktivitas,
       target: 176,
     });
   }

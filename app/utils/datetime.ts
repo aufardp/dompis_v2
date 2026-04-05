@@ -20,11 +20,12 @@ export const WIB_TIMEZONE = 'Asia/Jakarta';
  * as WIB (Asia/Jakarta).
  */
 export function parseWIBDateInput(
-  dateStr: string | null | undefined,
+  dateStr: string | Date | null | undefined,
 ): Date | null {
   if (!dateStr) return null;
 
-  const raw = String(dateStr).trim();
+  const raw =
+    typeof dateStr === 'string' ? dateStr.trim() : dateStr.toISOString();
   if (!raw) return null;
 
   try {
@@ -67,7 +68,9 @@ export function parseWIBDateInput(
   }
 }
 
-function parseDateInput(dateStr: string | null | undefined): Date | null {
+function parseDateInput(
+  dateStr: string | Date | null | undefined,
+): Date | null {
   return parseWIBDateInput(dateStr);
 }
 

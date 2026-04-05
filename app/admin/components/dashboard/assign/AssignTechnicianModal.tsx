@@ -259,7 +259,7 @@ export default function AssignTechnicianModal({
               placeholder='Search by name or NIK...'
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className='w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pr-10 pl-9 text-sm transition focus:border-blue-500 focus:bg-white focus:outline-none'
+              className='w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pr-10 pl-9 text-sm text-black transition focus:border-blue-500 focus:bg-white focus:outline-none'
             />
 
             {searchTerm.trim().length > 0 && (

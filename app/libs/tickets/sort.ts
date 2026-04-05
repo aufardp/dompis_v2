@@ -7,14 +7,16 @@ import { isDifferentWIBDay, parseWIBDateInput } from '@/app/utils/datetime';
 
 export type TicketSeverity = 'critical' | 'warning' | 'normal';
 
-function parseDateInput(dateStr: string | null | undefined): Date | null {
+function parseDateInput(
+  dateStr: string | Date | null | undefined,
+): Date | null {
   return parseWIBDateInput(dateStr);
 }
 
 export function calculateAgeInHours(
-  reportedDate: string | null | undefined,
+  reportedDate: string | Date | null | undefined,
   hasilVisit?: string | null,
-  closedAt?: string | null,
+  closedAt?: string | Date | null,
 ): number {
   if (!reportedDate) return 0;
 
@@ -53,11 +55,13 @@ export const SEVERITY_COLORS = {
   },
   warning: {
     border: 'border-l-amber-500',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
+    badge:
+      'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
   },
   normal: {
     border: 'border-l-green-500',
-    badge: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300',
+    badge:
+      'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300',
   },
 } as const;
 
