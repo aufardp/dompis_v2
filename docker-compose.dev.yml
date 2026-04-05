@@ -3,42 +3,80 @@ version: '3.9'
 services:
   mysql:
     image: mysql:8.0
-    container_name: dompis_mysql_dev
+    container_name: dompis_mysql
     restart: unless-stopped
+    mem_limit: 768m
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --innodb-buffer-pool-size=256M
+      --innodb-buffer-pool-instances=2
+      --innodb-log-file-size=64M
+      --innodb-flush-log-at-trx-commit=2
+      --max-connections=80
+      --wait-timeout=300
+      --interactive-timeout=300
+      --max-allowed-packet=64M
+      --slow-query-log=1
+      --slow-query-log-file=/var/lib/mysql/slow-queries.log
+      --long-query-time=2
+      --skip-name-resolve
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: n8n
-      MYSQL_USER: n8n_user
-      MYSQL_PASSWORD: n8n_password
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: dompis_db
+      MYSQL_USER: dompis_user
+      MYSQL_PASSWORD: dompis_password
     ports:
       - '3307:3306'
     volumes:
-      - dompis_mysql_dev_data:/var/lib/mysql
+      - dompis_mysql_data:/var/lib/mysql
+    networks:
+      - dompis-network
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 20s
+      timeout: 10s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: dompis_redis_dev
+    container_name: dompis_redis
     restart: unless-stopped
+    mem_limit: 128m
+    command: >
+      redis-server
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+      --tcp-keepalive 60
+      --timeout 300
     ports:
       - '6380:6379'
     volumes:
-      - dompis_redis_dev_data:/data
+      - dompis_redis_data:/data
+    networks:
+      - dompis-network
 
   phpmyadmin:
     image: phpmyadmin:latest
-    container_name: dompis_phpmyadmin_dev
+    container_name: dompis_phpmyadmin
     restart: unless-stopped
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
+      PMA_USER: dompis_user
+      PMA_PASSWORD: dompis_password
     ports:
       - '8081:80'
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+    networks:
+      - dompis-network
 
   n8n:
     image: n8nio/n8n:latest
-    container_name: dompis_n8n_dev
+    container_name: dompis_n8n
     restart: unless-stopped
     ports:
       - '5678:5678'
@@ -46,24 +84,34 @@ services:
       DB_TYPE: mysqldb
       DB_MYSQLDB_HOST: mysql
       DB_MYSQLDB_PORT: 3306
-      DB_MYSQLDB_DATABASE: n8n
-      DB_MYSQLDB_USER: n8n_user
-      DB_MYSQLDB_PASSWORD: n8n_password
+      DB_MYSQLDB_DATABASE: dompis_db
+      DB_MYSQLDB_USER: dompis_user
+      DB_MYSQLDB_PASSWORD: dompis_password
 
-      N8N_HOST: localhost
+      N8N_HOST: engingeng.ta-branchsby.co.id
       N8N_PORT: 5678
       N8N_PROTOCOL: http
+      WEBHOOK_URL: https://engingeng.ta-branchsby.co.id/
       TZ: Asia/Jakarta
-      N8N_ENCRYPTION_KEY: dev_key_123
-      N8N_LOG_LEVEL: debug
+
+      N8N_ENABLE_FILESYSTEM_ACCESS: 'true'
+      N8N_FILESYSTEM_ALLOW_PATHS: /home/node/.n8n-files
+      N8N_DEFAULT_BINARY_DATA_MODE: filesystem
 
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     volumes:
-      - n8n_dev_data:/home/node/.n8n
-      - ./uploads:/data/uploads
+      - dompis_n8n_data:/home/node/.n8n
+      - ./public/uploads:/data/uploads
+    networks:
+      - dompis-network
 
 volumes:
-  dompis_mysql_dev_data:
-  dompis_redis_dev_data:
-  n8n_dev_data:
+  dompis_mysql_data:
+  dompis_redis_data:
+  dompis_n8n_data:
+
+networks:
+  dompis-network:
+    driver: bridge
