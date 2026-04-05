@@ -107,6 +107,28 @@ services:
     networks:
       - dompis-network
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dompis_app
+    restart: unless-stopped
+    mem_limit: 512m
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: mysql://dompis_user:dompis_password@mysql:3306/dompis_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - dompis-network
+
 volumes:
   dompis_mysql_data:
   dompis_redis_data:

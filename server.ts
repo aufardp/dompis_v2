@@ -1,12 +1,12 @@
 import { createServer } from 'http';
-import { parse } from 'url';
 import next from 'next';
 import 'dotenv/config';
 import cron, { ScheduledTask } from 'node-cron';
-import prisma, { connectWithRetry } from '@/app/libs/prisma';
-import { closePool } from '@/app/libs/db';
 
+import { prisma, connectDB } from '@/app/libs/prisma';
+import { closePool } from '@/app/libs/db';
 import { closeRedis } from '@/lib/redis';
+
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
@@ -18,21 +18,19 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Simpan referensi cron tasks untuk shutdown
+// Cron references
 let syncTask: ScheduledTask | null = null;
 let pushTask: ScheduledTask | null = null;
-let techEventsTask1: ScheduledTask | null = null;
-let techEventsTask2: ScheduledTask | null = null;
+let techEventsTask: ScheduledTask | null = null;
 
 /**
- * DB LOCK WRAPPER
- * Mencegah cron double jalan jika menggunakan multiple instance/replica
+ * DB LOCK (SAFE)
  */
 async function withDbLock(lockName: string, fn: () => Promise<void>) {
   try {
-    const result: any = await prisma.$queryRawUnsafe(
-      `SELECT GET_LOCK('${lockName}', 0) as locked`,
-    );
+    const result: any = await prisma.$queryRaw`
+      SELECT GET_LOCK(${lockName}, 0) as locked
+    `;
 
     if (!result?.[0]?.locked) {
       console.log(`[CRON] ${lockName} skipped (already running)`);
@@ -42,7 +40,9 @@ async function withDbLock(lockName: string, fn: () => Promise<void>) {
     try {
       await fn();
     } finally {
-      await prisma.$queryRawUnsafe(`SELECT RELEASE_LOCK('${lockName}')`);
+      await prisma.$queryRaw`
+        SELECT RELEASE_LOCK(${lockName})
+      `;
     }
   } catch (error) {
     console.error(`[CRON] Lock error (${lockName}):`, error);
@@ -63,7 +63,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 async function startServer() {
   try {
-    await connectWithRetry();
+    await connectDB();
   } catch (err) {
     console.error('[Server] DB connection failed, starting anyway:', err);
   }
@@ -105,33 +105,44 @@ async function startServer() {
     });
 
     /**
-     * TECH EVENTS — setiap 30 detik
+     * TECH EVENTS — setiap 30 detik (ANTI OVERLAP)
      */
+    let isRunning = false;
+
     const runTechEvents = async () => {
+      if (isRunning) return;
+      isRunning = true;
+
       console.log('[CRON] Running tech events dispatch...');
-      await withDbLock('tech_events_lock', async () => {
-        try {
+
+      try {
+        await withDbLock('tech_events_lock', async () => {
           const result = await withTimeout(dispatchTechEvents(), 30 * 1000);
           console.log('[CRON] Tech events result:', result);
-        } catch (error) {
-          console.error('[CRON] Tech events error:', error);
-        }
-      });
+        });
+      } catch (error) {
+        console.error('[CRON] Tech events error:', error);
+      } finally {
+        isRunning = false;
+      }
     };
 
-    techEventsTask1 = cron.schedule('* * * * *', runTechEvents);
-    techEventsTask2 = cron.schedule('* * * * *', () => {
-      setTimeout(runTechEvents, 30000);
-    });
+    techEventsTask = cron.schedule('*/30 * * * * *', runTechEvents);
 
     console.log('[CRON] Scheduled: sync(3m), push(10m), tech-events(30s)');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }
 
+  /**
+   * HTTP SERVER (NO url.parse)
+   */
   const server = createServer((req, res) => {
-    const parsedUrl = parse(req.url || '/', true);
-    handle(req, res, parsedUrl);
+    const parsedUrl = new URL(req.url || '/', `http://${req.headers.host}`);
+
+    // Next.js expects a URL object with specific properties, but we can pass
+    // the parsed URL directly since handle() only uses pathname and query
+    handle(req, res, parsedUrl as any);
   });
 
   server.listen(port, () => {
@@ -139,39 +150,38 @@ async function startServer() {
   });
 
   /**
-   * Graceful shutdown - complete
+   * GRACEFUL SHUTDOWN
    */
   const shutdown = async (signal: string) => {
-    console.log(`[Server] Received ${signal} — starting graceful shutdown...`);
+    console.log(`[Server] Received ${signal} — starting shutdown...`);
 
-    // 1. Stop all cron jobs
+    // Stop cron
     syncTask?.stop();
     pushTask?.stop();
-    techEventsTask1?.stop();
-    techEventsTask2?.stop();
-    console.log('[Server] Cron jobs stopped');
+    techEventsTask?.stop();
+    console.log('[Server] Cron stopped');
 
-    // 2. Stop HTTP server
+    // Stop HTTP server
     await new Promise<void>((resolve) => {
-      const forceClose = setTimeout(() => {
-        console.warn('[Server] Force closing — timeout reached');
+      const timeout = setTimeout(() => {
+        console.warn('[Server] Force close (timeout)');
         resolve();
-      }, 10_000);
+      }, 10000);
 
       server.close(() => {
-        clearTimeout(forceClose);
+        clearTimeout(timeout);
         console.log('[Server] HTTP server closed');
         resolve();
       });
     });
 
-    // 3. Disconnect all connections
+    // Close connections
     await Promise.allSettled([
       prisma
         .$disconnect()
         .then(() => console.log('[Server] Prisma disconnected')),
       closeRedis(),
-      closePool().then(() => console.log('[Server] mysql2 pool closed')),
+      closePool().then(() => console.log('[Server] MySQL pool closed')),
     ]);
 
     console.log('[Server] Shutdown complete');
@@ -180,7 +190,7 @@ async function startServer() {
 
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
-  process.on('SIGUSR2', () => void shutdown('SIGUSR2')); // PM2 reload
+  process.on('SIGUSR2', () => void shutdown('SIGUSR2')); // PM2
 }
 
 startServer().catch((err) => {

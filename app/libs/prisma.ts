@@ -3,61 +3,42 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  adapter: PrismaMariaDb | undefined;
 };
 
-function createPrismaClient() {
-  const adapter = new PrismaMariaDb(process.env.DATABASE_URL!);
-  return new PrismaClient({
+const adapter =
+  globalForPrisma.adapter ??
+  new PrismaMariaDb(process.env.DATABASE_URL!);
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.adapter = adapter;
+}
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
     adapter,
     log:
-      process.env.NODE_ENV === 'development' &&
-      process.env.PRISMA_DEBUG === 'false'
-        ? ['query', 'info', 'error', 'warn']
-        : ['error', 'warn'],
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'info', 'warn', 'error']
+        : ['error'],
   });
-}
 
-if (process.env.NODE_ENV === 'production') {
-  if (process.env.DEBUG?.includes('prisma')) {
-    delete process.env.DEBUG;
-  }
-}
-
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
+// Prevent multiple instances in development (Next.js hot reload)
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-prisma.$on('error' as never, (e: { message: string }) => {
-  console.error('[Prisma] Error:', e.message);
-});
-
-prisma.$on('warn' as never, (e: { message: string }) => {
-  console.warn('[Prisma] Warning:', e.message);
-});
-
-export async function connectWithRetry(): Promise<void> {
-  const maxAttempts = 5;
-  const delayMs = 3000;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`[Prisma] Connecting... attempt ${attempt}/${maxAttempts}`);
-    try {
-      await prisma.$connect();
-      console.log('[Prisma] Connected to database');
-      return;
-    } catch (err) {
-      if (attempt === maxAttempts) {
-        console.error('[Prisma] Connection failed after all attempts:', err);
-        throw err;
-      }
-      console.warn(
-        `[Prisma] Connection attempt ${attempt} failed, retrying in ${delayMs}ms...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+// Optional: connect early (good for Docker / production stability)
+export async function connectDB() {
+  try {
+    await prisma.$connect();
+    console.log('✅ Database connected');
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    process.exit(1);
   }
 }
 
+// Default export for backward compatibility with `import prisma from ...`
 export default prisma;
