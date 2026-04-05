@@ -12,13 +12,7 @@ RUN npm install
 
 COPY . .
 
-# 🔥 kasih flag build
-ENV PRISMA_GENERATE=true
-
 RUN npx prisma generate
-
-# balik ke normal
-ENV PRISMA_GENERATE=false
 
 RUN npm run build
 

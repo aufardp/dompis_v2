@@ -1,42 +1,31 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
-  adapter?: PrismaMariaDb;
 };
 
-// ❗ DETECT BUILD PHASE
-const isBuild = process.env.PRISMA_GENERATE === 'true';
-
-let prisma: PrismaClient;
-
-if (isBuild) {
-  // 🔥 saat build → JANGAN pakai adapter
-  prisma = new PrismaClient();
-} else {
-  const adapter =
-    globalForPrisma.adapter ?? new PrismaMariaDb(process.env.DATABASE_URL!);
-
-  if (process.env.NODE_ENV !== 'production') {
-    globalForPrisma.adapter = adapter;
-  }
-
-  const options: any = {
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
         ? ['query', 'info', 'warn', 'error']
         : ['error'],
-  };
+  });
 
-  options.adapter = adapter;
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
 
-  prisma = globalForPrisma.prisma ?? new PrismaClient(options);
-
-  if (process.env.NODE_ENV !== 'production') {
-    globalForPrisma.prisma = prisma;
+// Optional: connect early (recommended for Docker)
+export async function connectDB() {
+  try {
+    await prisma.$connect();
+    console.log('✅ Database connected');
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    process.exit(1);
   }
 }
 
-export { prisma };
 export default prisma;
