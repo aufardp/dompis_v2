@@ -11,6 +11,7 @@ export interface TechnicianTicket {
   reportedDate: string;
   statusUpdate?: string | null;
   hasilVisit: TicketVisitStatus;
+  workzone?: string | null;
   age: string;
   ageHours: number;
   closedAt?: string | null;

@@ -80,6 +80,7 @@ function mapTechnicianTicket(t: {
   SERVICE_NO: string | null;
   REPORTED_DATE: string | null;
   STATUS_UPDATE: string | null;
+  WORKZONE?: string | null;
 }) {
   const { age, hours } = calculateAge(t.REPORTED_DATE);
   return {
@@ -90,6 +91,7 @@ function mapTechnicianTicket(t: {
     serviceNo: t.SERVICE_NO,
     reportedDate: t.REPORTED_DATE,
     statusUpdate: t.STATUS_UPDATE,
+    workzone: t.WORKZONE ?? null,
     age,
     ageHours: hours,
   };
@@ -259,6 +261,7 @@ export async function GET(request: NextRequest) {
         STATUS_UPDATE: true,
         teknisi_user_id: true,
         closed_at: true,
+        WORKZONE: true,
       },
       orderBy: { REPORTED_DATE: 'asc' },
     });

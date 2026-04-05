@@ -771,6 +771,7 @@ export class TicketWorkflowService {
     ticketId: number,
     technicianId: number,
     actor: ActorContext,
+    opts?: { forceReassign?: boolean },
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Invalid ticketId');
@@ -800,10 +801,15 @@ export class TicketWorkflowService {
 
         if (current === 'CLOSE') throw new Error('Ticket already closed');
 
-        if (current === 'ON_PROGRESS')
+        // Allow force-reassign for admin/superadmin when ticket is ON_PROGRESS
+        if (current === 'ON_PROGRESS' && !opts?.forceReassign) {
           throw new Error('Ticket is in progress and cannot be reassigned');
+        }
 
-        assertTransition('ASSIGN', current);
+        // Bypass assertTransition for force-reassign from ON_PROGRESS
+        if (!(current === 'ON_PROGRESS' && opts?.forceReassign)) {
+          assertTransition('ASSIGN', current);
+        }
 
         const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
 

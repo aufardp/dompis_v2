@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id,
     );
     const ticketId = Number(body.ticketId);
+    const forceReassign = Boolean(body.forceReassign);
 
     if (!ticketId || !teknisiUserId) {
       return NextResponse.json(
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       Number(ticketId),
       Number(teknisiUserId),
       user,
+      { forceReassign },
     );
 
     await invalidateTicketsCache();

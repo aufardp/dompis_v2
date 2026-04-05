@@ -163,7 +163,7 @@ export default function AllTicketsModal({
                     onReassign({
                       ticketId: ticket.idTicket,
                       ticketCode: ticket.ticket,
-                      workzone: technician.workzone,
+                      workzone: ticket.workzone ?? technician.workzone,
                       currentTechnicianId: technician.id_user,
                       currentTechnicianName: technician.nama,
                     })
