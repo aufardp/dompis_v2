@@ -6,43 +6,37 @@ const globalForPrisma = globalThis as unknown as {
   adapter?: PrismaMariaDb;
 };
 
-// Init adapter (singleton)
-const adapter =
-  globalForPrisma.adapter ?? new PrismaMariaDb(process.env.DATABASE_URL!);
+// ❗ DETECT BUILD PHASE
+const isBuild = process.env.PRISMA_GENERATE === 'true';
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.adapter = adapter;
-}
+let prisma: PrismaClient;
 
-// 👉 FIX: use options object with type escape
-const prismaOptions: any = {
-  log:
-    process.env.NODE_ENV === 'development'
-      ? ['query', 'info', 'warn', 'error']
-      : ['error'],
-};
+if (isBuild) {
+  // 🔥 saat build → JANGAN pakai adapter
+  prisma = new PrismaClient();
+} else {
+  const adapter =
+    globalForPrisma.adapter ?? new PrismaMariaDb(process.env.DATABASE_URL!);
 
-// inject adapter safely
-if (adapter) {
-  prismaOptions.adapter = adapter;
-}
+  if (process.env.NODE_ENV !== 'production') {
+    globalForPrisma.adapter = adapter;
+  }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient(prismaOptions);
+  const options: any = {
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'info', 'warn', 'error']
+        : ['error'],
+  };
 
-// prevent multiple instances (Next.js dev)
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+  options.adapter = adapter;
 
-// Optional: connect early (recommended for Docker)
-export async function connectDB() {
-  try {
-    await prisma.$connect();
-    console.log('✅ Database connected');
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
-    process.exit(1);
+  prisma = globalForPrisma.prisma ?? new PrismaClient(options);
+
+  if (process.env.NODE_ENV !== 'production') {
+    globalForPrisma.prisma = prisma;
   }
 }
 
+export { prisma };
 export default prisma;
