@@ -80,22 +80,32 @@ export async function GET(
       },
     });
 
-    const data = rows.map((r) => {
-      // Arahkan ke /api/files/... bukan /uploads/...
-      // Karena Next.js tidak serve runtime-uploaded files dari public/
-      const url = buildFileUrl(r.file_path);
+    const data = rows.map(
+      (r: {
+        file_path: string;
+        id: any;
+        file_name: any;
+        n8n_web_url: any;
+        file_size: any;
+        mime_type: any;
+        created_at: string | Date | null | undefined;
+      }) => {
+        // Arahkan ke /api/files/... bukan /uploads/...
+        // Karena Next.js tidak serve runtime-uploaded files dari public/
+        const url = buildFileUrl(r.file_path);
 
-      return {
-        id: r.id,
-        fileName: r.file_name,
-        filePath: r.file_path,
-        url,
-        driveUrl: r.n8n_web_url ?? null,
-        fileSize: r.file_size ?? null,
-        mimeType: r.mime_type ?? null,
-        createdAt: toISODateString(r.created_at),
-      };
-    });
+        return {
+          id: r.id,
+          fileName: r.file_name,
+          filePath: r.file_path,
+          url,
+          driveUrl: r.n8n_web_url ?? null,
+          fileSize: r.file_size ?? null,
+          mimeType: r.mime_type ?? null,
+          createdAt: toISODateString(r.created_at),
+        };
+      },
+    );
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {

@@ -83,8 +83,8 @@ export async function GET(request: NextRequest) {
     });
 
     const currentUserSaIds: number[] = currentUserServiceAreas
-      .map((usa) => usa.sa_id)
-      .filter((id): id is number => id !== null && id !== undefined);
+      .map((usa: { sa_id: number | null }) => usa.sa_id)
+      .filter((id: number | null | undefined): id is number => id !== null && id !== undefined);
 
     let technicianIds: number[] | undefined;
 
@@ -99,8 +99,8 @@ export async function GET(request: NextRequest) {
       technicianIds = Array.from(
         new Set(
           techniciansInSameArea
-            .map((usa) => usa.user_id)
-            .filter((id): id is number => id !== null && id !== undefined),
+            .map((usa: { user_id: number | null }) => usa.user_id)
+            .filter((id: number | null | undefined): id is number => id !== null && id !== undefined),
         ),
       );
     }

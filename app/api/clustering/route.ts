@@ -26,8 +26,8 @@ export async function GET(req: Request) {
     }
 
     const saIds = userSas
-      .map((us) => us.sa_id)
-      .filter((id): id is number => id !== null);
+      .map((us: { sa_id: number | null }) => us.sa_id)
+      .filter((id: number | null): id is number => id !== null);
 
     // Get clusters for all SAs this admin manages
     const allClusters = await prisma.cluster.findMany({
@@ -61,7 +61,19 @@ export async function GET(req: Request) {
       orderBy: [{ sort_order: 'asc' }, { nama_cluster: 'asc' }],
     });
 
-    const clusters = allClusters.map((c) => ({
+    const clusters = allClusters.map((c: {
+      id: number;
+      sa_id: number;
+      nama_cluster: string;
+      is_active: boolean;
+      sort_order: number;
+      created_by: number | null;
+      created_at: Date;
+      updated_at: Date;
+      nodes: Array<{ id: number }>;
+      areas: Array<{ nama_area: string }>;
+      assignments: Array<{ teknisi: { id_user: number; nama: string | null; nik: string | null } }>;
+    }) => ({
       id: c.id,
       sa_id: c.sa_id,
       nama_cluster: c.nama_cluster,

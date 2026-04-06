@@ -60,8 +60,8 @@ export async function GET(req: Request) {
     const allTechIds = [
       ...new Set(
         techInSa
-          .map((t) => t.user_id)
-          .filter((id): id is number => id !== null),
+          .map((t: { user_id: number | null }) => t.user_id)
+          .filter((id: number | null): id is number => id !== null),
       ),
     ];
 
@@ -84,26 +84,26 @@ export async function GET(req: Request) {
     const today = dateParam ?? AttendanceService.getTodayDateString();
     const presentIds = await prisma.technician_attendance.findMany({
       where: {
-        technician_id: { in: teknisiUsers.map((t) => t.id_user) },
+        technician_id: { in: teknisiUsers.map((t: { id_user: number }) => t.id_user) },
         date: today,
       },
       select: { technician_id: true },
     });
-    const presentSet = new Set(presentIds.map((p) => p.technician_id));
+    const presentSet = new Set(presentIds.map((p: { technician_id: number }) => p.technician_id));
 
-    const teknisiHadir = teknisiUsers.filter((t) => presentSet.has(t.id_user));
+    const teknisiHadir = teknisiUsers.filter((t: { id_user: number; nama: string | null; nik: string | null }) => presentSet.has(t.id_user));
 
     // 6. Hitung workload aktif masing-masing
     const workloads = await prisma.ticket.groupBy({
       by: ['teknisi_user_id'],
       where: {
-        teknisi_user_id: { in: teknisiHadir.map((t) => t.id_user) },
+        teknisi_user_id: { in: teknisiHadir.map((t: { id_user: number }) => t.id_user) },
         STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
       },
       _count: { id_ticket: true },
     });
     const loadMap = new Map(
-      workloads.map((w) => [w.teknisi_user_id!, w._count.id_ticket]),
+      workloads.map((w: { teknisi_user_id: number | null; _count: { id_ticket: number } }) => [w.teknisi_user_id!, w._count.id_ticket]),
     );
 
     // 7. Ambil teknisi yang sudah di-plot ke cluster ini hari ini
@@ -111,9 +111,9 @@ export async function GET(req: Request) {
       where: { cluster_id: clusterId, assigned_date: today, is_active: true },
       select: { teknisi_id: true },
     });
-    const plottedIds = new Set(existingPlot.map((p) => p.teknisi_id));
+    const plottedIds = new Set(existingPlot.map((p: { teknisi_id: number }) => p.teknisi_id));
 
-    const result = teknisiHadir.map((t) => ({
+    const result = teknisiHadir.map((t: { id_user: number; nama: string | null; nik: string | null }) => ({
       id_user: t.id_user,
       nama: t.nama,
       nik: t.nik,

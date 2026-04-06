@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
 
       const csv = [
         headers.join(','),
-        ...rows.map((t) =>
+        ...rows.map((t: any) =>
           [
             t.id_ticket,
             t.INCIDENT,
@@ -130,8 +130,8 @@ export async function GET(req: NextRequest) {
       select: { sa_id: true },
     });
     const adminSaIds = adminSaRows
-      .map((r) => r.sa_id)
-      .filter((v): v is number => v != null);
+      .map((r: { sa_id: number | null }) => r.sa_id)
+      .filter((v: number | null): v is number => v != null);
 
     const technicianIds =
       adminSaIds.length > 0
@@ -140,11 +140,11 @@ export async function GET(req: NextRequest) {
               where: { sa_id: { in: adminSaIds } },
               select: { user_id: true },
             })
-            .then((rows) => [
+            .then((rows: { user_id: number | null }[]) => [
               ...new Set(
                 rows
-                  .map((r) => r.user_id)
-                  .filter((v): v is number => v != null),
+                  .map((r: { user_id: number | null }) => r.user_id)
+                  .filter((v: number | null): v is number => v != null),
               ),
             ])
         : await prisma.users
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
               where: { role_id: technicianRoleId },
               select: { id_user: true },
             })
-            .then((rows) => rows.map((r) => r.id_user));
+            .then((rows: { id_user: number }[]) => rows.map((r: { id_user: number }) => r.id_user));
 
     const technicians = await prisma.users.findMany({
       where: { id_user: { in: technicianIds }, role_id: technicianRoleId },

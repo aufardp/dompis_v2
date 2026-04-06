@@ -117,15 +117,15 @@ export async function GET(
 
     // 3. Service Area Access Control
     const adminSaIds =
-      currentUser?.user_sa.map((sa) => sa.sa_id).filter((id) => id !== null) ||
+      currentUser?.user_sa.map((sa: { sa_id: number | null }) => sa.sa_id).filter((id: number | null): id is number => id !== null) ||
       [];
     const techSaIds =
-      technician.user_sa.map((sa) => sa.sa_id).filter((id) => id !== null) ||
+      technician.user_sa.map((sa: { sa_id: number | null }) => sa.sa_id).filter((id: number | null): id is number => id !== null) ||
       [];
 
     if (
       adminSaIds.length === 0 ||
-      !techSaIds.some((id) => adminSaIds.includes(id))
+      !techSaIds.some((id: number) => adminSaIds.includes(id))
     ) {
       return NextResponse.json(
         { success: false, message: 'Access denied' },
@@ -148,8 +148,12 @@ export async function GET(
     // 5. Workzone String Construction
     const workzone =
       technician.user_sa
-        .map((usa) => usa.service_area?.nama_sa)
-        .filter((name): name is string => !!name)
+        .flatMap(
+          (
+            usa: { service_area: { nama_sa: string | null } | null },
+          ) =>
+            usa.service_area?.nama_sa ? [usa.service_area.nama_sa] : [],
+        )
         .join(', ') || 'Unknown';
 
     // 6. Ticket Data Processing
@@ -202,13 +206,16 @@ export async function GET(
     // 7. Performance Calculation
     let avgResolveHours: number | null = null;
     if (recentClosed.length > 0) {
-      const totalMinutes = recentClosed.reduce((acc, t) => {
-        const start = parseDateInput(t.REPORTED_DATE);
-        const end = t.closed_at ? new Date(t.closed_at) : null;
-        if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime()))
-          return acc;
-        return acc + (end.getTime() - start.getTime()) / 60000;
-      }, 0);
+      const totalMinutes = recentClosed.reduce(
+        (acc: number, t: { REPORTED_DATE: Date | string | null; closed_at: Date | string | null }) => {
+          const start = parseDateInput(t.REPORTED_DATE);
+          const end = t.closed_at ? new Date(t.closed_at) : null;
+          if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime()))
+            return acc;
+          return acc + (end.getTime() - start.getTime()) / 60000;
+        },
+        0,
+      );
       avgResolveHours = totalMinutes / recentClosed.length / 60;
     }
 
@@ -227,12 +234,12 @@ export async function GET(
         status: getTechnicianStatus(mappedTickets.length),
         order_counts: {
           assigned: assignedTickets.filter(
-            (t) => t.STATUS_UPDATE === 'ASSIGNED',
+            (t: TicketType) => t.STATUS_UPDATE === 'ASSIGNED',
           ).length,
           on_progress: assignedTickets.filter(
-            (t) => t.STATUS_UPDATE === 'ON_PROGRESS',
+            (t: TicketType) => t.STATUS_UPDATE === 'ON_PROGRESS',
           ).length,
-          pending: assignedTickets.filter((t) => t.STATUS_UPDATE === 'PENDING')
+          pending: assignedTickets.filter((t: TicketType) => t.STATUS_UPDATE === 'PENDING')
             .length,
           closed: totalClosedAll,
         },

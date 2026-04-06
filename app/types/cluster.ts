@@ -34,7 +34,7 @@ export interface ClusterNode {
   id: number;
   cluster_id: number;
   cluster_area_id: number | null;
-  odc_value: string; // contoh: "ODC-TDS-FEP"
+  odc_value: string | null; // contoh: "ODC-TDS-FEP"
   is_active: boolean;
   sort_order: number;
   created_at: string;
