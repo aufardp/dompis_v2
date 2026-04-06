@@ -12,8 +12,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
-    "@prisma/adapter-mariadb": "^7.6.0",
-    "@prisma/client": "^7.6.0",
+    "@prisma/client": "^5.22.0",
     "@radix-ui/react-popover": "^1.1.15",
     "@tanstack/react-query": "^5.90.21",
     "axios": "^1.13.5",
@@ -41,6 +40,7 @@
     "swr": "^2.4.0",
     "tailwind-merge": "^3.4.0",
     "ts-node": "^10.9.2",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -54,6 +54,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/xlsx": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "cross-env": "^10.1.0",
@@ -64,7 +65,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "prisma": "^7.6.0",
+    "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
