@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 
     const saIds = saIdParam
       ? [Number(saIdParam)]
-      : userSas.map((us) => us.sa_id).filter((id): id is number => id !== null);
+      : userSas.map((us: { sa_id: number | null }) => us.sa_id).filter((id: number | null): id is number => id !== null);
 
     // Get clusters for the SA(s)
     const clusters = await prisma.cluster.findMany({
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       },
     });
 
-    const clusterIds = clusters.map((c) => c.id);
+    const clusterIds = clusters.map((c: { id: number }) => c.id);
 
     // Get assignments for the date
     const assignments = await prisma.cluster_assignment.findMany({
@@ -75,12 +75,12 @@ export async function GET(req: Request) {
     });
 
     // Group by cluster
-    const result = clusters.map((c) => ({
+    const result = clusters.map((c: { id: number; nama_cluster: string }) => ({
       cluster_id: c.id,
       cluster_name: c.nama_cluster,
       assignments: assignments
-        .filter((a) => a.cluster_id === c.id)
-        .map((a) => ({
+        .filter((a: { cluster_id: number; id: number; teknisi_id: number; assigned_date: string; note: string | null; teknisi: { nama: string | null; nik: string | null } }) => a.cluster_id === c.id)
+        .map((a: { cluster_id: number; id: number; teknisi_id: number; assigned_date: string; note: string | null; teknisi: { nama: string | null; nik: string | null } }) => ({
           id: a.id,
           teknisi_id: a.teknisi_id,
           teknisi_nama: a.teknisi.nama,

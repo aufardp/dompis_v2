@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
 
     const filteredTechnicians = includeAbsent
       ? technicians
-      : technicians.filter((tech) =>
+      : technicians.filter((tech: { id_user: number }) =>
           presentTechnicianIds.includes(tech.id_user),
         );
 
@@ -337,30 +337,32 @@ export async function GET(request: NextRequest) {
     let idleCount = 0;
 
     const mappedTechnicians = filteredTechnicians
-      .map((tech) => {
+      .map((tech: { id_user: number; nama: any; nik: any }) => {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
         const assignedTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'assigned',
+          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'assigned',
         );
         const onProgressTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'on_progress',
+          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'on_progress',
         );
         const pendingTickets = tickets.filter(
-          (t) => t.STATUS_UPDATE === 'pending',
+          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'pending',
         );
-        const closedTickets = tickets.filter((t) =>
-          isTicketClosed(t.STATUS_UPDATE),
+        const closedTickets = tickets.filter(
+          (t: { STATUS_UPDATE: string | null | undefined }) =>
+            isTicketClosed(t.STATUS_UPDATE),
         );
         const activeTickets = tickets.filter(
-          (t) => !isTicketClosed(t.STATUS_UPDATE),
+          (t: { STATUS_UPDATE: string | null | undefined }) =>
+            !isTicketClosed(t.STATUS_UPDATE),
         );
         const mappedTickets = activeTickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
         const techStatus = getTechnicianStatus(ticketCount);
 
         const mappedClosedToday = includeClosedToday
-          ? (closedTodayByTech.get(tech.id_user) || []).map((t) => {
+          ? (closedTodayByTech.get(tech.id_user) || []).map((t: any) => {
               const base = mapTechnicianTicket(t as any);
               return {
                 ...base,

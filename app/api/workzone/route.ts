@@ -19,7 +19,7 @@ export async function GET() {
         orderBy: { nama_sa: 'asc' },
       });
 
-      const rows = serviceAreas.map((sa) => ({
+      const rows = serviceAreas.map((sa: { id_sa: any; nama_sa: any }) => ({
         value: String(sa.id_sa),
         label: sa.nama_sa,
       }));
@@ -33,8 +33,8 @@ export async function GET() {
     });
 
     const rows = userSas
-      .filter((us) => us.service_area)
-      .map((us) => ({
+      .filter((us: { service_area: any }) => us.service_area)
+      .map((us: { service_area: any }) => ({
         value: String(us.service_area!.id_sa),
         label: us.service_area!.nama_sa,
       }));

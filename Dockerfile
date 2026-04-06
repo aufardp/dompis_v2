@@ -1,19 +1,19 @@
-FROM node:20-slim
+FROM node:20-alpine
+
+RUN apk add --no-cache openssl libc6-compat
 
 WORKDIR /app
 
-RUN apt-get update -y && apt-get install -y \
-    openssl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY package*.json ./
+
 RUN npm install
 
 COPY . .
 
+# generate prisma client
 RUN npx prisma generate
 
+# build nextjs
 RUN npm run build
 
 EXPOSE 3000

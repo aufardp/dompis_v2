@@ -76,7 +76,7 @@ export async function POST(req: Request) {
         });
       }
 
-      saIds = userSas.map((us) => us.sa_id).filter((id): id is number => id !== null);
+      saIds = userSas.map((us: { sa_id: number | null }) => us.sa_id).filter((id: number | null): id is number => id !== null);
     }
 
     const result = await ClusterService.copyFromDate(

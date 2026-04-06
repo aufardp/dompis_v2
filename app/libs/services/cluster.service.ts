@@ -61,7 +61,7 @@ export class ClusterService {
       nama_cluster: string;
       is_active: boolean;
       sort_order: number;
-      created_by: number | null;
+      created_by: number;
       created_at: Date;
       updated_at: Date;
       nodes: Array<{ id: number }>;
@@ -554,8 +554,11 @@ export class ClusterService {
       assigned_date: string;
       is_active: boolean;
       created_at: Date;
+      updated_at: Date;
+      assigned_by: number;
+      note: string | null;
       teknisi: { id_user: number; nama: string | null; nik: string | null };
-      cluster: { id: number; nama_cluster: string };
+      assigner: { nama: string | null };
     }) => ({
       id: a.id,
       cluster_id: a.cluster_id,
@@ -766,6 +769,9 @@ export class ClusterService {
       assigned_date: string;
       is_active: boolean;
       created_at: Date;
+      updated_at: Date;
+      assigned_by: number;
+      note: string | null;
       teknisi: { id_user: number; nama: string | null; nik: string | null };
     }) => {
       schedule[a.assigned_date].push({
