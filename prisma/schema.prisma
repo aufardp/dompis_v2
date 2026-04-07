@@ -124,6 +124,7 @@ model ticket {
   @@index([FLAGGING_MANJA], map: "idx_ticket_flagging")
   @@index([GUARANTE_STATUS], map: "idx_ticket_guarantee")
   @@index([REPORTED_DATE], map: "idx_ticket_reported")
+  @@index([teknisi_user_id, STATUS_UPDATE, RK_INFORMATION], map: "idx_auto_assign_lookup")
 }
 
 

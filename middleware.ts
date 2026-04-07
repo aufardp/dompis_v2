@@ -1,4 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
+import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { normalizeRoleKey, type NormalizedRoleKey } from './app/libs/roles';
 
 // --- CONFIGURATION & TYPES ---
@@ -23,7 +24,14 @@ const GUARDS = [
   { prefix: '/teknisi', allowed: ['teknisi'] },
 ];
 
-// --- JWT & CRYPTO HELPERS (Dari proxy.ts) ---
+// --- HELPER: SAFE REDIRECT (Solusi HTTPS:/ Single Slash) ---
+function safeRedirect(req: NextRequest, targetPath: string) {
+  const host = req.headers.get('host') || 'dompis.ta-branchsby.co.id';
+  // Memaksa format https:// (Double Slash)
+  return NextResponse.redirect(`https://${host}${targetPath}`);
+}
+
+// --- JWT & CRYPTO HELPERS ---
 function base64UrlToUint8Array(base64Url: string): Uint8Array {
   const base64 = base64Url
     .replace(/-/g, '+')
@@ -83,9 +91,11 @@ async function refreshAccessToken(req: NextRequest): Promise<string | null> {
   const refreshToken = req.cookies.get('refreshToken')?.value;
   if (!refreshToken) return null;
 
-  const baseUrl = req.nextUrl.origin;
+  const host = req.headers.get('host') || 'dompis.ta-branchsby.co.id';
+  const refreshUrl = `https://${host}/api/auth/refresh`;
+
   try {
-    const res = await fetch(new URL('/api/auth/refresh', baseUrl), {
+    const res = await fetch(refreshUrl, {
       method: 'POST',
       headers: { cookie: req.headers.get('cookie') || '' },
       cache: 'no-store',
@@ -99,7 +109,7 @@ async function refreshAccessToken(req: NextRequest): Promise<string | null> {
 }
 
 function clearAuthAndRedirect(req: NextRequest) {
-  const res = NextResponse.redirect(new URL('/login', req.nextUrl.origin));
+  const res = safeRedirect(req, '/login');
   res.cookies.delete('token');
   res.cookies.delete('refreshToken');
   return res;
@@ -108,7 +118,6 @@ function clearAuthAndRedirect(req: NextRequest) {
 // --- MAIN MIDDLEWARE ---
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const origin = req.nextUrl.origin;
 
   // 1. Bypass untuk path publik & auth internal
   const isApi = pathname.startsWith('/api');
@@ -135,7 +144,6 @@ export async function middleware(req: NextRequest) {
 
   let newAccessToken: string | null = null;
 
-  // Jika token tidak ada/invalid/expired, coba refresh
   if (!token || !payload || isExpired(payload)) {
     newAccessToken = await refreshAccessToken(req);
     if (!newAccessToken)
@@ -151,9 +159,7 @@ export async function middleware(req: NextRequest) {
   // 4. Authorization (Role Check)
   const userRole = normalizeRoleKey(String(payload.role || ''));
   if (guard && !guard.allowed.includes(userRole as any)) {
-    const res = NextResponse.redirect(
-      new URL(ROLE_HOME[userRole] || '/login', origin),
-    );
+    const res = safeRedirect(req, ROLE_HOME[userRole] || '/login');
     if (newAccessToken)
       res.cookies.set('token', newAccessToken, {
         httpOnly: true,
@@ -163,12 +169,47 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // 5. Final Response (Attach new token if refreshed)
+  // 5. Teknisi Attendance Enforcement
+  if (userRole === 'teknisi') {
+    const isAttendancePage = pathname === '/teknisi/attendance';
+    const isStatusApi = pathname.startsWith(
+      '/api/technicians/attendance/status',
+    );
+
+    if (!isApi || isStatusApi) {
+      const status = await AttendanceService.getOwnStatus(
+        Number(payload.id_user!),
+      );
+
+      if (!status.checked_in && !isAttendancePage) {
+        const res = safeRedirect(req, '/teknisi/attendance');
+        if (newAccessToken)
+          res.cookies.set('token', newAccessToken, {
+            httpOnly: true,
+            path: '/',
+            maxAge: 3600,
+          });
+        return res;
+      }
+      if (status.checked_in && isAttendancePage) {
+        const res = safeRedirect(req, '/teknisi');
+        if (newAccessToken)
+          res.cookies.set('token', newAccessToken, {
+            httpOnly: true,
+            path: '/',
+            maxAge: 3600,
+          });
+        return res;
+      }
+    }
+  }
+
+  // 6. Final Response
   const res = NextResponse.next();
   if (newAccessToken) {
     res.cookies.set('token', newAccessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 3600,
