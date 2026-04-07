@@ -138,14 +138,7 @@ async function startServer() {
    * HTTP SERVER (NO url.parse)
    */
   const server = createServer((req, res) => {
-    let protocol = 'http://';
-    if (
-      req.headers.host?.startsWith('https://') ||
-      process.env.NODE_ENV === 'production'
-    ) {
-      protocol = 'https://';
-    }
-    const parsedUrl = new URL(req.url || '/', `${protocol}${req.headers.host}`);
+    const parsedUrl = new URL(req.url || '/', `http://${req.headers.host}`);
 
     // Next.js expects a URL object with specific properties, but we can pass
     // the parsed URL directly since handle() only uses pathname and query
