@@ -785,6 +785,11 @@ export class TicketWorkflowService {
     const roleKey = normalizeRoleKey(actor.role);
     assertRoleAllowed(roleKey, ['admin', 'helpdesk', 'superadmin']);
 
+    // Only admin / superadmin can force-reassign (bypass ON_PROGRESS block)
+    if (opts?.forceReassign && !['admin', 'superadmin', 'super_admin'].includes(roleKey)) {
+      throw new Error('Only admin atau superadmin yang dapat melakukan force reassign');
+    }
+
     const roleId = roleKeyToRoleId(roleKey);
     const now = new Date();
 

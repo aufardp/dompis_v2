@@ -37,12 +37,37 @@ export async function GET(
       );
     }
 
-    const row = await prisma.ticket.findUnique({
-      where: { id_ticket: ticketId },
-      include: {
-        users: { select: { nama: true } },
-      },
-    });
+    const [row, tracking, activityLogs, assignmentHistory] = await Promise.all([
+      prisma.ticket.findUnique({
+        where: { id_ticket: ticketId },
+        include: {
+          users: { select: { nama: true } },
+        },
+      }),
+      prisma.ticket_tracking.findFirst({
+        where: { ticket_id: ticketId },
+        include: {
+          assigner: { select: { nama: true } },
+          technician: { select: { nama: true } },
+        },
+      }),
+      prisma.ticket_activity_log.findMany({
+        where: { ticket_id: ticketId },
+        include: {
+          user: { select: { nama: true, role_id: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 50,
+      }),
+      prisma.ticket_assignment_history.findMany({
+        where: { ticket_id: ticketId },
+        include: {
+          assigner: { select: { nama: true } },
+          technician: { select: { nama: true } },
+        },
+        orderBy: { assigned_at: 'desc' },
+      }),
+    ]);
 
     if (!row) {
       return NextResponse.json(
@@ -110,6 +135,35 @@ export async function GET(
       teknisiUserId: row.teknisi_user_id,
       technicianName: row.users?.nama,
       closedAt: row.closed_at ? row.closed_at.toISOString() : null,
+      // Tracking data
+      tracking: tracking
+        ? {
+            assignedAt: tracking.assigned_at?.toISOString() ?? null,
+            assignedBy: tracking.assigner?.nama ?? null,
+            assignedTo: tracking.technician?.nama ?? null,
+            pickedUpAt: tracking.picked_up_at?.toISOString() ?? null,
+            onProgressAt: tracking.on_progress_at?.toISOString() ?? null,
+            pendingAt: tracking.pending_at?.toISOString() ?? null,
+            closedAt: tracking.closed_at?.toISOString() ?? null,
+            pendingReason: tracking.pending_reason ?? null,
+          }
+        : null,
+      activityLog: activityLogs.map((log) => ({
+        id: log.id,
+        type: log.activity_type,
+        description: log.description,
+        userName: log.user?.nama ?? null,
+        roleId: log.role_id,
+        createdAt: log.created_at.toISOString(),
+      })),
+      assignmentHistory: assignmentHistory.map((h) => ({
+        id: h.id,
+        assignerName: h.assigner?.nama ?? null,
+        technicianName: h.technician?.nama ?? null,
+        assignedAt: h.assigned_at.toISOString(),
+        unassignedAt: h.unassigned_at?.toISOString() ?? null,
+        isActive: h.is_active,
+      })),
     };
 
     return NextResponse.json({ success: true, data: mapped });

@@ -17,7 +17,6 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-// Optional: connect early (recommended for Docker)
 export async function connectDB() {
   try {
     await prisma.$connect();

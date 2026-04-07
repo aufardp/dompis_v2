@@ -194,12 +194,44 @@ function TechnicianCard({
     currentTechnicianName: string;
   }) => void;
 }) {
+  const [localFilter, setLocalFilter] = useState<
+    'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
+  >('all');
+
   const status = getTechnicianStatusValue(technician.total_assigned);
   const statusConfig = STATUS_CONFIG[status];
-  const displayTickets = technician.assigned_tickets.slice(0, 5);
-  const hasMore = technician.assigned_tickets.length > 5;
   const closedToday = technician.closed_tickets_today || [];
+
   const worstAge = getWorstTicketAge(technician.assigned_tickets);
+
+  const { displayTickets, displaySource, hasMore } = useMemo(() => {
+    const allTickets = technician.assigned_tickets;
+
+    let source: typeof allTickets | typeof closedToday;
+    if (localFilter === 'closed') {
+      source = closedToday;
+    } else if (localFilter === 'all') {
+      source = allTickets;
+    } else {
+      source = allTickets.filter((t) => {
+        const s = (t.statusUpdate ?? '').toLowerCase();
+        return s === localFilter;
+      });
+    }
+
+    return {
+      displaySource: source,
+      displayTickets: source.slice(0, 5),
+      hasMore: source.length > 5,
+    };
+  }, [technician.assigned_tickets, closedToday, localFilter]);
+
+  const counts = {
+    assigned: technician.order_counts?.assigned || 0,
+    on_progress: technician.order_counts?.on_progress || 0,
+    pending: technician.order_counts?.pending || 0,
+    closed: technician.total_closed_today || 0,
+  };
 
   const borderColor =
     status === 'IDLE'
@@ -254,7 +286,7 @@ function TechnicianCard({
           >
             {status === 'OVERLOAD' && (
               <span className='mr-1.5 flex h-2 w-2'>
-                <span className='absolute inline-flex h-2 w-2 animate-ping rounded-full bg-red-400 opacity-75' />
+                <span className='relative inline-flex h-2 w-2 animate-ping rounded-full bg-red-400 opacity-75' />
                 <span className='relative inline-flex h-2 w-2 rounded-full bg-red-500' />
               </span>
             )}
@@ -276,28 +308,104 @@ function TechnicianCard({
       </div>
 
       <div className='mt-4 border-t border-slate-100 pt-3 dark:border-slate-700'>
-        <div className='mb-2 flex flex-wrap gap-1.5'>
-          <span className='inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'>
-            {technician.order_counts?.assigned || 0} Menunggu
-          </span>
-          <span className='inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'>
-            {technician.order_counts?.on_progress || 0} Dikerjakan
-          </span>
-          <span className='inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'>
-            {technician.order_counts?.pending || 0} Pending
-          </span>
-          {technician.total_closed_today > 0 && (
-            <span className='inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'>
-              ✓ {technician.total_closed_today} selesai hari ini
-            </span>
+        {/* Clickable Tab Filters */}
+        <div className='mb-3 flex flex-wrap gap-1.5'>
+          <button
+            type='button'
+            onClick={() =>
+              setLocalFilter(
+                localFilter === 'assigned' ? 'all' : 'assigned',
+              )
+            }
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+              localFilter === 'assigned'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/30'
+            }`}
+          >
+            {counts.assigned} Menunggu
+            {localFilter === 'assigned' && (
+              <span className='ml-0.5 text-[10px]'>✕</span>
+            )}
+          </button>
+
+          <button
+            type='button'
+            onClick={() =>
+              setLocalFilter(
+                localFilter === 'on_progress' ? 'all' : 'on_progress',
+              )
+            }
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+              localFilter === 'on_progress'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30'
+            }`}
+          >
+            {counts.on_progress} Dikerjakan
+            {localFilter === 'on_progress' && (
+              <span className='ml-0.5 text-[10px]'>✕</span>
+            )}
+          </button>
+
+          <button
+            type='button'
+            onClick={() =>
+              setLocalFilter(
+                localFilter === 'pending' ? 'all' : 'pending',
+              )
+            }
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+              localFilter === 'pending'
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:hover:bg-orange-500/30'
+            }`}
+          >
+            {counts.pending} Pending
+            {localFilter === 'pending' && (
+              <span className='ml-0.5 text-[10px]'>✕</span>
+            )}
+          </button>
+
+          {counts.closed > 0 && (
+            <button
+              type='button'
+              onClick={() =>
+                setLocalFilter(localFilter === 'closed' ? 'all' : 'closed')
+              }
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+                localFilter === 'closed'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/30'
+              }`}
+            >
+              ✓ {counts.closed} Selesai
+              {localFilter === 'closed' && (
+                <span className='ml-0.5 text-[10px]'>✕</span>
+              )}
+            </button>
           )}
         </div>
+
+        {/* Active filter label */}
+        {localFilter !== 'all' && (
+          <p className='mb-2 text-[10px] text-slate-400 dark:text-slate-500'>
+            Menampilkan {displaySource.length} tiket
+            <button
+              onClick={() => setLocalFilter('all')}
+              className='ml-1 text-blue-500 hover:underline'
+            >
+              (tampilkan semua)
+            </button>
+          </p>
+        )}
 
         {displayTickets.length === 0 ? (
           <div className='flex flex-col items-center py-4 text-center'>
             <AlertCircle className='h-8 w-8 text-slate-300 dark:text-slate-600' />
             <p className='mt-2 text-sm text-slate-400 dark:text-slate-500'>
-              Tidak ada tiket aktif
+              Tidak ada tiket{' '}
+              {localFilter !== 'all' ? `dengan status ini` : 'aktif'}
             </p>
           </div>
         ) : (
@@ -342,56 +450,26 @@ function TechnicianCard({
                   >
                     Detail
                   </button>
-                  <button
-                    type='button'
-                    onClick={() =>
-                      onReassign({
-                        ticketId: ticket.idTicket,
-                        ticketCode: ticket.ticket,
-                        workzone: ticket.workzone ?? technician.workzone,
-                        currentTechnicianId: technician.id_user,
-                        currentTechnicianName: technician.nama,
-                      })
-                    }
-                    className='rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
-                  >
-                    Reassign
-                  </button>
+                  {localFilter !== 'closed' && (
+                    <button
+                      type='button'
+                      onClick={() =>
+                        onReassign({
+                          ticketId: ticket.idTicket,
+                          ticketCode: ticket.ticket,
+                          workzone: ticket.workzone ?? technician.workzone,
+                          currentTechnicianId: technician.id_user,
+                          currentTechnicianName: technician.nama,
+                        })
+                      }
+                      className='rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
+                    >
+                      Reassign
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {closedToday.length > 0 && (
-          <div className='mt-4'>
-            <p className='mb-2 text-xs font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400'>
-              Closed Today
-            </p>
-            <div className='space-y-2'>
-              {closedToday.map((t, idx) => (
-                <div
-                  key={`${t.idTicket}-${idx}`}
-                  className='flex items-center justify-between rounded-lg border-l-2 border-l-emerald-500 bg-emerald-50/60 p-2 dark:bg-emerald-500/10'
-                >
-                  <div className='min-w-0 flex-1'>
-                    <p className='truncate text-xs font-medium text-slate-700 dark:text-slate-200'>
-                      {t.ticket}
-                    </p>
-                    <p className='truncate text-xs text-slate-500 dark:text-slate-400'>
-                      {t.contactName}
-                    </p>
-                  </div>
-                  <button
-                    type='button'
-                    onClick={() => onDetail(t.idTicket)}
-                    className='ml-2 shrink-0 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-slate-700 dark:text-emerald-400 dark:hover:bg-emerald-500/15'
-                  >
-                    Detail
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
@@ -401,7 +479,7 @@ function TechnicianCard({
             onClick={() => onShowAll(technician)}
             className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700/50'
           >
-            + {technician.total_assigned - 5} tiket lainnya →
+            + {displaySource.length - 5} tiket lainnya →
           </button>
         )}
       </div>

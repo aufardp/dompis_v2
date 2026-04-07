@@ -31,14 +31,23 @@ export default function TeknisiLayout({
         const res = await fetchWithAuth('/api/technicians/attendance/status');
         if (res?.ok) {
           const data = await res.json();
-          if (data.success) setAttendance(data.data);
+          if (data.success) {
+            setAttendance(data.data);
+            // Enforce attendance page redirect
+            const isAttendancePage = window.location.pathname === '/teknisi/attendance';
+            if (!data.data.checked_in && !isAttendancePage) {
+              router.replace('/teknisi/attendance');
+            } else if (data.data.checked_in && isAttendancePage) {
+              router.replace('/teknisi');
+            }
+          }
         }
       } catch (err) {
         console.error('Error fetching attendance status:', err);
       }
     };
     void fetchAttendance();
-  }, []);
+  }, [router]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
