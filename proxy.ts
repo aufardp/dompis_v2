@@ -137,7 +137,11 @@ async function refreshAccessToken(req: NextRequest): Promise<string | null> {
   const refreshToken = req.cookies.get('refreshToken')?.value;
   if (!refreshToken) return null;
 
-  const res = await fetch(new URL('/api/auth/refresh', req.url), {
+  const baseUrl =
+    req.nextUrl.origin ||
+    process.env.APP_URL ||
+    `http://127.0.0.1:${process.env.PORT || 3000}`;
+  const res = await fetch(new URL('/api/auth/refresh', baseUrl), {
     method: 'POST',
     headers: {
       cookie: req.headers.get('cookie') || '',
