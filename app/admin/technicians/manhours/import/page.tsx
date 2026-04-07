@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { format, subMonths, startOfMonth } from 'date-fns';
-import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import {
   Upload,
@@ -13,10 +12,8 @@ import {
   ArrowRight,
   ArrowLeft,
   Loader2,
-  Users,
-  Calendar,
-  Settings,
   BarChart3,
+  RotateCcw,
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
@@ -25,26 +22,20 @@ import { JENIS_LABELS, JenisKey } from '@/app/libs/tickets/jenis';
 
 type Step = 1 | 2 | 3;
 
-interface ParsedRow {
-  incident: string;
-  resolveDate: string | null;
-  technician: string | null;
-  teknisi_user_id: number | null;
-  status: string | null;
-  workzone: string | null;
-  customer_type: string | null;
-  summary: string | null;
-  reported_date: string | null;
-  owner_group: string | null;
-  service_no: string | null;
-  contact_name: string | null;
-  description_actual_solution: string | null;
-  rk_information: string | null;
-  symptom: string | null;
-  lapul: string | null;
-  gaul: string | null;
-  valid: boolean;
-  error?: string;
+interface PreviewResponse {
+  total_rows: number;
+  unique_technicians: { name: string; count: number }[];
+  sample: Record<string, string | null>[];
+  tech_column_detected: string | null;
+  headers: string[];
+}
+
+interface UniqueTeknisi {
+  nameFromExcel: string;
+  ticketCount: number;
+  resolvedId: number | null;
+  resolvedName: string | null;
+  confidence: 'auto' | 'saved' | 'manual' | null;
 }
 
 interface TeknisiUser {
@@ -71,93 +62,103 @@ const JENIS_OPTIONS = Object.entries(JENIS_LABELS).map(([key, label]) => ({
   label,
 }));
 
-function findColumn(
-  row: Record<string, any>,
-  candidates: string[],
-): string | null {
-  for (const key of Object.keys(row)) {
-    const normalizedKey = key.trim().toUpperCase().replace(/\s+/g, ' ');
-    for (const candidate of candidates) {
-      if (normalizedKey === candidate.toUpperCase()) {
-        return row[key];
+const STORAGE_KEY = 'dompis:teknisi_name_mapping_v1';
+
+// ─── Utility: normalize nama teknisi ────────────────────────────────
+function normalizeTeknisiName(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s*\(GGN\)/gi, '')
+    .replace(/\bGGN\b/gi, '')
+    .replace(/\bSE\b/gi, '')
+    .replace(/\bST\b/gi, '')
+    .replace(/\bMITRA\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// ─── Smart Matching Berlapis ────────────────────────────────────────
+function matchTeknisi(
+  nameFromExcel: string,
+  teknisiList: TeknisiUser[],
+): { id_user: number; nama: string } | null {
+  const excelNorm = normalizeTeknisiName(nameFromExcel);
+  if (!excelNorm) return null;
+
+  // Layer 1: Exact match setelah normalisasi
+  for (const user of teknisiList) {
+    const dbNorm = normalizeTeknisiName(user.nama ?? '');
+    if (excelNorm === dbNorm) {
+      return { id_user: user.id_user, nama: user.nama ?? '' };
+    }
+  }
+
+  // Layer 2: Token match — semua kata dari Excel ada di nama DB
+  const excelTokens = excelNorm.split(' ').filter((t) => t.length > 2);
+  if (excelTokens.length > 0) {
+    let bestMatch: { id_user: number; nama: string } | null = null;
+    let bestScore = 0;
+
+    for (const user of teknisiList) {
+      const dbNorm = normalizeTeknisiName(user.nama ?? '');
+      const matchedTokens = excelTokens.filter((t) => dbNorm.includes(t));
+      const score = matchedTokens.length / excelTokens.length;
+
+      if (score === 1.0 && score > bestScore) {
+        bestScore = score;
+        bestMatch = { id_user: user.id_user, nama: user.nama ?? '' };
       }
     }
-  }
-  return null;
-}
-
-function parseResolveDate(raw: any): string | null {
-  if (!raw) return null;
-
-  if (raw instanceof Date && !isNaN(raw.getTime())) {
-    return format(raw, 'yyyy-MM-dd HH:mm:ss');
+    if (bestMatch) return bestMatch;
   }
 
-  const str = String(raw).trim();
-  if (!str) return null;
-
-  const ddMmYyyy = str.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/,
-  );
-  if (ddMmYyyy) {
-    const [, d, m, y, h = '0', min = '0'] = ddMmYyyy;
-    const date = new Date(
-      parseInt(y),
-      parseInt(m) - 1,
-      parseInt(d),
-      parseInt(h),
-      parseInt(min),
-    );
-    return format(date, 'yyyy-MM-dd HH:mm:ss');
-  }
-
-  const isoDate = new Date(str);
-  if (!isNaN(isoDate.getTime())) {
-    return format(isoDate, 'yyyy-MM-dd HH:mm:ss');
-  }
-
-  return null;
-}
-
-function normalizeValue(value: any): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  return String(value).trim();
-}
-
-function matchTeknisi(
-  nameFromExcel: string | null,
-  teknisiList: TeknisiUser[],
-): { matched: boolean; id_user?: number; nama?: string } {
-  if (!nameFromExcel?.trim()) return { matched: false };
-
-  const searchName = nameFromExcel
-    .trim()
-    .toLowerCase()
-    .replace(/\s*\(ggn\)/gi, '')
-    .replace(/\s*ggn\s*/gi, '')
-    .replace(/\s*mitra\s*/gi, '')
-    .trim();
-
+  // Layer 3: DB name adalah subset dari Excel name
   for (const user of teknisiList) {
-    const userName = (user.nama ?? '').toLowerCase().trim();
-    if (
-      userName === searchName ||
-      userName.includes(searchName) ||
-      searchName.includes(userName)
-    ) {
-      return { matched: true, id_user: user.id_user, nama: user.nama ?? '' };
+    const dbNorm = normalizeTeknisiName(user.nama ?? '');
+    if (dbNorm.length > 3 && excelNorm.includes(dbNorm)) {
+      return { id_user: user.id_user, nama: user.nama ?? '' };
     }
   }
 
-  return { matched: false };
+  return null;
 }
 
+// ─── localStorage persistent mapping ────────────────────────────────
+function saveMapping(entries: UniqueTeknisi[]) {
+  const existing = loadMapping();
+  const updated = { ...existing };
+  for (const entry of entries) {
+    if (entry.nameFromExcel && entry.resolvedId !== null) {
+      updated[entry.nameFromExcel] = entry.resolvedId;
+    }
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // localStorage penuh — silent fail
+  }
+}
+
+function loadMapping(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function clearMapping() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+// ─── Main Component ─────────────────────────────────────────────────
 export default function ImportPage() {
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [defaultJenis, setDefaultJenis] = useState<string>('reguler');
-  const [onlyImportClosed, setOnlyImportClosed] = useState(true);
+  const [onlyClosed, setOnlyClosed] = useState(true);
   const [syncDate, setSyncDate] = useState<string>(() => {
     const d = subMonths(new Date(), 1);
     return format(startOfMonth(d), 'yyyy-MM-dd');
@@ -166,235 +167,206 @@ export default function ImportPage() {
     () => `IMPORT_EXCEL_${format(new Date(), 'yyyy-MM')}`,
   );
 
-  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const [previewData, setPreviewData] = useState<PreviewResponse | null>(null);
+  const [uniqueNames, setUniqueNames] = useState<UniqueTeknisi[]>([]);
   const [teknisiList, setTeknisiList] = useState<TeknisiUser[]>([]);
-  const [technicianMap, setTechnicianMap] = useState<
-    Map<string, number | null>
-  >(new Map());
-
   const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [loading, setLoading] = useState(false);
   const [loadingTeknisi, setLoadingTeknisi] = useState(false);
 
-  const fetchTeknisiList = useCallback(async () => {
-    setLoadingTeknisi(true);
-    try {
-      const res = await fetchWithAuth('/api/users/teknisi');
-      if (res?.ok) {
-        const json = await res.json();
-        setTeknisiList(json.data || []);
+  // Fetch teknisi list on mount
+  useEffect(() => {
+    const fetchTeknisiList = async () => {
+      setLoadingTeknisi(true);
+      try {
+        const res = await fetchWithAuth('/api/users/teknisi');
+        if (res?.ok) {
+          const json = await res.json();
+          setTeknisiList(json.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch teknisi:', err);
+      } finally {
+        setLoadingTeknisi(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch teknisi:', err);
-    } finally {
-      setLoadingTeknisi(false);
-    }
+    };
+    fetchTeknisiList();
   }, []);
 
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFile = e.target.files?.[0];
-      if (!selectedFile) return;
+  const savedMapping = useMemo(() => loadMapping(), []);
+  const savedMappingCount = Object.keys(savedMapping).length;
 
-      setFile(selectedFile);
-      setFileName(selectedFile.name);
-      setImportResult(null);
+  // ─── Step 1 → 2: Upload ke /preview endpoint ────────────────────
+  const handlePreview = useCallback(async () => {
+    if (!file || teknisiList.length === 0) return;
+    setLoading(true);
+    setImportResult(null);
 
-      await fetchTeknisiList();
-
-      const buffer = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
-        raw: false,
-        defval: null,
-      });
-
-      const parsed: ParsedRow[] = rawRows.map((raw) => {
-        const incident = normalizeValue(
-          findColumn(raw, ['INCIDENT', 'incident', 'Ticket ID']),
-        );
-        const resolveDate = parseResolveDate(
-          findColumn(raw, [
-            'RESOLVE DATE',
-            'RESOLVED DATE',
-            'CLOSED DATE',
-            'STATUS DATE',
-          ]),
-        );
-        const technician = normalizeValue(
-          findColumn(raw, ['TECHNICIAN', 'TEKNISI', 'CLOSED BY']),
-        );
-        const status = normalizeValue(findColumn(raw, ['STATUS', 'status']));
-        const workzone = normalizeValue(
-          findColumn(raw, ['WORKZONE', 'WITEL', 'witel']),
-        );
-        const customer_type = normalizeValue(
-          findColumn(raw, ['CUSTOMER TYPE', 'CUSTOMER_TYPE']),
-        );
-        const summary = normalizeValue(findColumn(raw, ['SUMMARY', 'summary']));
-        const reported_date = normalizeValue(
-          findColumn(raw, ['REPORTED DATE', 'REPORTED_DATE']),
-        );
-        const owner_group = normalizeValue(
-          findColumn(raw, ['OWNER GROUP', 'OWNER_GROUP']),
-        );
-        const service_no = normalizeValue(
-          findColumn(raw, ['SERVICE NO', 'SERVICE_NO', 'SERVICE ID']),
-        );
-        const contact_name = normalizeValue(
-          findColumn(raw, ['CONTACT NAME', 'CONTACT_NAME', 'CUSTOMER NAME']),
-        );
-        const description_actual_solution = normalizeValue(
-          findColumn(raw, [
-            'DESCRIPTION ACTUAL SOLUTION',
-            'SOLUTION',
-            'RESOLUTION',
-          ]),
-        );
-        const rk_information = normalizeValue(
-          findColumn(raw, ['RK INFORMATION', 'RK_INFORMATION']),
-        );
-        const symptom = normalizeValue(findColumn(raw, ['SYMPTOM', 'symptom']));
-        const lapul = normalizeValue(findColumn(raw, ['LAPUL', 'lapul']));
-        const gaul = normalizeValue(findColumn(raw, ['GAUL', 'gaul']));
-
-        let valid = true;
-        let error = '';
-
-        if (!incident) {
-          valid = false;
-          error = 'INCIDENT kosong';
-        } else if (onlyImportClosed && status?.toUpperCase() !== 'CLOSED') {
-          valid = false;
-          error = 'Status bukan CLOSED';
-        }
-
-        return {
-          incident: incident!,
-          resolveDate,
-          technician,
-          teknisi_user_id: null,
-          status,
-          workzone,
-          customer_type,
-          summary,
-          reported_date,
-          owner_group,
-          service_no,
-          contact_name,
-          description_actual_solution,
-          rk_information,
-          symptom,
-          lapul,
-          gaul,
-          valid,
-          error,
-        };
-      });
-
-      const newTechnicianMap = new Map<string, number | null>();
-      parsed.forEach((row) => {
-        if (row.technician && row.valid) {
-          const match = matchTeknisi(row.technician, teknisiList);
-          newTechnicianMap.set(
-            row.incident,
-            match.matched ? match.id_user! : null,
-          );
-        }
-      });
-
-      setParsedRows(parsed);
-      setTechnicianMap(newTechnicianMap);
-    },
-    [onlyImportClosed, teknisiList, fetchTeknisiList],
-  );
-
-  const handleTechnicianSelect = useCallback(
-    (incident: string, teknisiId: number | null) => {
-      setTechnicianMap((prev) => new Map(prev).set(incident, teknisiId));
-    },
-    [],
-  );
-
-  const handleStartImport = useCallback(async () => {
-    const rowsToImport = parsedRows
-      .filter((r) => r.valid && technicianMap.get(r.incident))
-      .map((r) => ({
-        incident: r.incident,
-        teknisi_user_id: technicianMap.get(r.incident)!,
-        jenis_tiket: defaultJenis,
-        closed_at: r.resolveDate || format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-        sync_date: syncDate,
-        status_update: 'close',
-        workzone: r.workzone,
-        customer_type: r.customer_type,
-        summary: r.summary,
-        reported_date: r.reported_date,
-        owner_group: r.owner_group,
-        service_no: r.service_no,
-        contact_name: r.contact_name,
-        description_actual_solution: r.description_actual_solution,
-        rk_information: r.rk_information,
-        symptom: r.symptom,
-        lapul: r.lapul,
-        gaul: r.gaul,
-      }));
-
-    if (rowsToImport.length === 0) {
-      setImportResult({
-        success: false,
-        message: 'Tidak ada data yang valid untuk diimport',
-      });
-      return;
-    }
-
-    setImporting(true);
-    setImportProgress(0);
-    setStep(3);
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      const res = await fetchWithAuth('/api/technicians/manhours/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: rowsToImport,
-          import_batch: importBatch,
-        }),
-      });
+      const res = await fetchWithAuth(
+        '/api/technicians/manhours/import/preview',
+        { method: 'POST', body: formData },
+      );
 
-      const result: ImportResult = res?.ok
-        ? await res.json()
-        : { success: false, message: 'Import gagal' };
+      const json = await res?.json();
+      if (json?.success) {
+        setPreviewData(json.data);
 
-      setImportResult(result);
+        // Build uniqueNames dari data server + apply saved mapping + auto-match
+        const saved = loadMapping();
+        const names: UniqueTeknisi[] = json.data.unique_technicians.map(
+          (item: { name: string; count: number }) => {
+            // Cek localStorage dulu
+            const savedId = saved[item.name];
+            if (savedId) {
+              const user = teknisiList.find((t) => t.id_user === savedId);
+              if (user) {
+                return {
+                  nameFromExcel: item.name,
+                  ticketCount: item.count,
+                  resolvedId: savedId,
+                  resolvedName: user.nama ?? null,
+                  confidence: 'saved' as const,
+                };
+              }
+            }
+            // Auto-match
+            const match = matchTeknisi(item.name, teknisiList);
+            if (match) {
+              return {
+                nameFromExcel: item.name,
+                ticketCount: item.count,
+                resolvedId: match.id_user,
+                resolvedName: match.nama,
+                confidence: 'auto' as const,
+              };
+            }
+            // No match
+            return {
+              nameFromExcel: item.name,
+              ticketCount: item.count,
+              resolvedId: null,
+              resolvedName: null,
+              confidence: null,
+            };
+          },
+        );
+        setUniqueNames(names);
+        setStep(2);
+      } else {
+        setImportResult({
+          success: false,
+          message: json?.message || 'Gagal mempreview file',
+        });
+        setStep(3);
+      }
     } catch (err) {
       setImportResult({
         success: false,
-        message: err instanceof Error ? err.message : 'Import gagal',
+        message: err instanceof Error ? err.message : 'Gagal mempreview file',
       });
-    } finally {
-      setImporting(false);
-      setImportProgress(100);
+      setStep(3);
     }
-  }, [parsedRows, technicianMap, defaultJenis, syncDate, importBatch]);
+    setLoading(false);
+  }, [file, teknisiList]);
 
+  // ─── Handle manual teknisi select for a unique name ──────────────
+  const handleManualSelect = useCallback(
+    (nameFromExcel: string, userId: number | null) => {
+      setUniqueNames((prev) =>
+        prev.map((entry) => {
+          if (entry.nameFromExcel !== nameFromExcel) return entry;
+          if (userId === null) {
+            return {
+              ...entry,
+              resolvedId: null,
+              resolvedName: null,
+              confidence: null,
+            };
+          }
+          const user = teknisiList.find((t) => t.id_user === userId);
+          return {
+            ...entry,
+            resolvedId: userId,
+            resolvedName: user?.nama ?? null,
+            confidence: 'manual' as const,
+          };
+        }),
+      );
+    },
+    [teknisiList],
+  );
+
+  // ─── Step 2 → 3: Submit import ──────────────────────────────────
+  const handleImport = useCallback(async () => {
+    if (!file) return;
+    setImporting(true);
+
+    // Simpan mapping ke localStorage sebelum import
+    saveMapping(uniqueNames);
+
+    const mappingObject: Record<string, number> = {};
+    for (const u of uniqueNames) {
+      if (u.resolvedId !== null) mappingObject[u.nameFromExcel] = u.resolvedId;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mapping', JSON.stringify(mappingObject));
+    formData.append('default_jenis', defaultJenis);
+    formData.append('sync_date', syncDate);
+    formData.append('import_batch', importBatch);
+    formData.append('only_closed', String(onlyClosed));
+
+    try {
+      const res = await fetchWithAuth('/api/technicians/manhours/import/run', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res?.json();
+      if (json?.success) {
+        setImportResult(json);
+        setStep(3);
+      } else {
+        setImportResult({
+          success: false,
+          message: json?.message || 'Gagal import data',
+        });
+        setStep(3);
+      }
+    } catch (err) {
+      setImportResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Gagal import data',
+      });
+      setStep(3);
+    }
+    setImporting(false);
+  }, [file, uniqueNames, defaultJenis, syncDate, importBatch, onlyClosed]);
+
+  // ─── Computed stats ──────────────────────────────────────────────
   const stats = useMemo(() => {
-    const total = parsedRows.length;
-    const valid = parsedRows.filter(
-      (r) => r.valid && technicianMap.get(r.incident),
-    ).length;
-    const matched = parsedRows.filter(
-      (r) => r.valid && technicianMap.get(r.incident),
-    ).length;
-    const unmatched = parsedRows.filter(
-      (r) => r.valid && !technicianMap.get(r.incident),
-    ).length;
-    const skipped = parsedRows.filter((r) => !r.valid).length;
-    return { total, valid, matched, unmatched, skipped };
-  }, [parsedRows, technicianMap]);
+    const resolved = uniqueNames.filter((u) => u.resolvedId !== null);
+    const unresolved = uniqueNames.filter((u) => u.resolvedId === null);
+    const readyCount = resolved.reduce((sum, u) => sum + u.ticketCount, 0);
+    const unresolvedCount = unresolved.reduce(
+      (sum, u) => sum + u.ticketCount,
+      0,
+    );
+    return {
+      resolvedCount: resolved.length,
+      unresolvedNames: unresolved.length,
+      readyCount,
+      unresolvedCount,
+      totalNames: uniqueNames.length,
+      totalRows: previewData?.total_rows ?? 0,
+    };
+  }, [uniqueNames, previewData]);
 
   const syncDateValid = useMemo(() => {
     const inputDate = new Date(syncDate);
@@ -403,9 +375,51 @@ export default function ImportPage() {
     return inputDate <= today;
   }, [syncDate]);
 
+  // ─── Reset all ───────────────────────────────────────────────────
+  const handleReset = useCallback(() => {
+    setStep(1);
+    setFile(null);
+    setFileName('');
+    setPreviewData(null);
+    setUniqueNames([]);
+    setImportResult(null);
+  }, []);
+
+  // ─── Clear saved mapping ─────────────────────────────────────────
+  const handleClearMapping = useCallback(() => {
+    clearMapping();
+    // Re-apply mapping reset to current uniqueNames
+    setUniqueNames((prev) =>
+      prev.map((entry) => {
+        if (entry.confidence === 'saved') {
+          // Re-attempt auto-match
+          const match = matchTeknisi(entry.nameFromExcel, teknisiList);
+          if (match) {
+            return {
+              ...entry,
+              resolvedId: match.id_user,
+              resolvedName: match.nama,
+              confidence: 'auto' as const,
+            };
+          }
+          return {
+            ...entry,
+            resolvedId: null,
+            resolvedName: null,
+            confidence: null,
+          };
+        }
+        return entry;
+      }),
+    );
+    // Force re-render by updating savedMappingCount workaround
+    window.location.reload();
+  }, [teknisiList]);
+
   return (
     <AdminLayout>
       <div className='mx-auto max-w-4xl space-y-6 p-6'>
+        {/* Breadcrumb */}
         <div className='flex items-center gap-2 text-sm text-slate-500'>
           <Link
             href='/admin/technicians/manhours'
@@ -420,6 +434,7 @@ export default function ImportPage() {
         </div>
 
         <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+          {/* Header */}
           <div className='mb-6 flex items-center justify-between'>
             <h1 className='text-xl font-semibold text-gray-800 dark:text-gray-100'>
               Import Data Tiket Historis
@@ -442,13 +457,22 @@ export default function ImportPage() {
             </div>
           </div>
 
+          {/* ════════════════════ STEP 1 ════════════════════ */}
           {step === 1 && (
             <div className='space-y-6'>
+              {/* File Upload */}
               <div className='rounded-lg border-2 border-dashed border-slate-300 p-8 text-center dark:border-slate-600'>
                 <input
                   type='file'
                   accept='.xlsx,.xls,.csv'
-                  onChange={handleFileChange}
+                  onChange={(e) => {
+                    const selectedFile = e.target.files?.[0];
+                    if (selectedFile) {
+                      setFile(selectedFile);
+                      setFileName(selectedFile.name);
+                      setImportResult(null);
+                    }
+                  }}
                   className='hidden'
                   id='import-file'
                 />
@@ -467,16 +491,17 @@ export default function ImportPage() {
                     <div className='flex flex-col items-center'>
                       <Upload size={48} className='text-slate-400' />
                       <p className='mt-2 font-medium text-slate-700 dark:text-slate-200'>
-                        Klik atau drag & drop file Excel
+                        Klik atau drag &amp; drop file Excel
                       </p>
                       <p className='text-sm text-slate-500'>
-                        Format: .xlsx, .xls, .csv
+                        Format: .xlsx, .xls, .csv (maks 50MB)
                       </p>
                     </div>
                   )}
                 </label>
               </div>
 
+              {/* Configuration */}
               <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                 <div>
                   <label className='mb-1.5 block text-xs font-semibold text-slate-600 uppercase dark:text-slate-300'>
@@ -529,8 +554,8 @@ export default function ImportPage() {
                   <input
                     type='checkbox'
                     id='only-closed'
-                    checked={onlyImportClosed}
-                    onChange={(e) => setOnlyImportClosed(e.target.checked)}
+                    checked={onlyClosed}
+                    onChange={(e) => setOnlyClosed(e.target.checked)}
                     className='h-4 w-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500'
                   />
                   <label
@@ -542,32 +567,57 @@ export default function ImportPage() {
                 </div>
               </div>
 
+              {importResult && !importResult.success && (
+                <div className='rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20'>
+                  <p className='font-medium text-red-700 dark:text-red-300'>
+                    {importResult.message}
+                  </p>
+                </div>
+              )}
+
               <div className='flex justify-end'>
                 <Button
-                  onClick={() => setStep(2)}
-                  disabled={!file || !syncDateValid || loadingTeknisi}
+                  onClick={handlePreview}
+                  disabled={
+                    !file ||
+                    !syncDateValid ||
+                    loading ||
+                    loadingTeknisi ||
+                    teknisiList.length === 0
+                  }
                 >
-                  <ArrowRight size={16} className='mr-2' />
-                  Lanjut ke Preview
+                  {loading ? (
+                    <>
+                      <Loader2 size={16} className='mr-2 animate-spin' />
+                      Memproses...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight size={16} className='mr-2' />
+                      Lanjut ke Preview
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
           )}
 
+          {/* ════════════════════ STEP 2 ════════════════════ */}
           {step === 2 && (
             <div className='space-y-6'>
+              {/* Summary Stats */}
               <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
                 <div className='rounded-lg bg-slate-50 p-4 text-center dark:bg-slate-700'>
                   <BarChart3 className='mx-auto mb-2 text-teal-500' />
                   <p className='text-2xl font-bold text-slate-800 dark:text-slate-100'>
-                    {stats.total}
+                    {stats.totalRows}
                   </p>
                   <p className='text-xs text-slate-500'>Total Baris</p>
                 </div>
                 <div className='rounded-lg bg-green-50 p-4 text-center dark:bg-green-900/30'>
                   <Check className='mx-auto mb-2 text-green-500' />
                   <p className='text-2xl font-bold text-green-700 dark:text-green-400'>
-                    {stats.matched}
+                    {stats.readyCount}
                   </p>
                   <p className='text-xs text-green-600 dark:text-green-400'>
                     Siap Import
@@ -576,126 +626,145 @@ export default function ImportPage() {
                 <div className='rounded-lg bg-yellow-50 p-4 text-center dark:bg-yellow-900/30'>
                   <AlertTriangle className='mx-auto mb-2 text-yellow-500' />
                   <p className='text-2xl font-bold text-yellow-700 dark:text-yellow-400'>
-                    {stats.unmatched}
+                    {stats.unresolvedCount}
                   </p>
                   <p className='text-xs text-yellow-600 dark:text-yellow-400'>
                     Teknisi Tidak Ditemukan
                   </p>
                 </div>
-                <div className='rounded-lg bg-red-50 p-4 text-center dark:bg-red-900/30'>
-                  <X className='mx-auto mb-2 text-red-500' />
-                  <p className='text-2xl font-bold text-red-700 dark:text-red-400'>
-                    {stats.skipped}
+                <div className='rounded-lg bg-blue-50 p-4 text-center dark:bg-blue-900/30'>
+                  <FileSpreadsheet className='mx-auto mb-2 text-blue-500' />
+                  <p className='text-2xl font-bold text-blue-700 dark:text-blue-400'>
+                    {stats.totalNames}
                   </p>
-                  <p className='text-xs text-red-600 dark:text-red-400'>
-                    Dilewati
+                  <p className='text-xs text-blue-600 dark:text-blue-400'>
+                    Nama Unik
                   </p>
                 </div>
               </div>
 
-              {stats.unmatched > 0 && (
+              {/* Saved mapping info */}
+              {savedMappingCount > 0 && (
+                <div className='flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20'>
+                  <div className='flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300'>
+                    <span>
+                      💾 {savedMappingCount} mapping tersimpan dari import
+                      sebelumnya
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleClearMapping}
+                    className='flex items-center gap-1 text-xs text-red-500 hover:underline'
+                  >
+                    <RotateCcw size={12} />
+                    Reset
+                  </button>
+                </div>
+              )}
+
+              {/* Warning for unresolved */}
+              {stats.unresolvedCount > 0 && (
                 <div className='rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20'>
                   <p className='font-medium text-yellow-800 dark:text-yellow-200'>
-                    {stats.unmatched} teknisi tidak cocok dengan data di sistem
+                    {stats.unresolvedCount} nama teknisi tidak cocok dengan data
+                    di sistem ({stats.unresolvedCount} baris akan dilewati)
                   </p>
                   <p className='mt-1 text-sm text-yellow-700 dark:text-yellow-300'>
                     Pilih teknisi manual dari dropdown atau data akan dilewati
+                    saat import.
                   </p>
                 </div>
               )}
 
+              {/* Table: Unique Names */}
               <div className='max-h-96 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700'>
                 <table className='w-full text-sm'>
                   <thead className='sticky top-0 bg-slate-50 dark:bg-slate-800'>
                     <tr>
                       <th className='px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300'>
-                        INCIDENT
+                        Nama di Excel
+                      </th>
+                      <th className='px-3 py-2 text-center font-medium text-slate-600 dark:text-slate-300'>
+                        Jumlah Tiket
                       </th>
                       <th className='px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300'>
-                        Teknisi
+                        Teknisi di Dompis
                       </th>
-                      <th className='px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300'>
-                        Jenis
-                      </th>
-                      <th className='px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300'>
-                        Closed At
-                      </th>
-                      <th className='px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300'>
-                        Status
+                      <th className='px-3 py-2 text-center font-medium text-slate-600 dark:text-slate-300'>
+                        Conf.
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parsedRows.slice(0, 20).map((row, idx) => {
-                      const matchedTech = technicianMap.get(row.incident);
-                      const teknisi = matchedTech
-                        ? teknisiList.find((t) => t.id_user === matchedTech)
-                        : null;
-
-                      return (
-                        <tr
-                          key={idx}
-                          className={`border-t border-slate-100 dark:border-slate-700 ${
-                            !row.valid
-                              ? 'bg-red-50 dark:bg-red-900/20'
-                              : !matchedTech
-                                ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                                : ''
-                          }`}
-                        >
-                          <td className='px-3 py-2 font-mono text-xs'>
-                            {row.incident}
-                          </td>
-                          <td className='px-3 py-2'>
-                            {row.valid ? (
-                              matchedTech ? (
-                                <span className='text-green-600 dark:text-green-400'>
-                                  {teknisi?.nama || 'Unknown'}
-                                </span>
-                              ) : (
-                                <select
-                                  value={matchedTech ?? ''}
-                                  onChange={(e) =>
-                                    handleTechnicianSelect(
-                                      row.incident,
-                                      e.target.value
-                                        ? parseInt(e.target.value)
-                                        : null,
-                                    )
-                                  }
-                                  className='w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-700'
-                                >
-                                  <option value=''>Pilih Teknisi</option>
-                                  {teknisiList.map((t) => (
-                                    <option key={t.id_user} value={t.id_user}>
-                                      {t.nama}
-                                    </option>
-                                  ))}
-                                </select>
-                              )
-                            ) : (
-                              <span className='text-red-500'>{row.error}</span>
-                            )}
-                          </td>
-                          <td className='px-3 py-2 text-xs'>{defaultJenis}</td>
-                          <td className='px-3 py-2 text-xs'>
-                            {row.resolveDate || '-'}
-                          </td>
-                          <td className='px-3 py-2 text-xs'>
-                            {row.status || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {uniqueNames.map((entry, idx) => (
+                      <tr
+                        key={idx}
+                        className={`border-t border-slate-100 dark:border-slate-700 ${
+                          entry.resolvedId === null
+                            ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                            : ''
+                        }`}
+                      >
+                        <td className='px-3 py-2 font-medium text-slate-700 dark:text-slate-200'>
+                          {entry.nameFromExcel}
+                        </td>
+                        <td className='px-3 py-2 text-center text-slate-600 dark:text-slate-300'>
+                          {entry.ticketCount}
+                        </td>
+                        <td className='px-3 py-2'>
+                          {entry.resolvedId !== null ? (
+                            <span className='text-green-600 dark:text-green-400'>
+                              {entry.resolvedName}
+                            </span>
+                          ) : (
+                            <select
+                              value=''
+                              onChange={(e) =>
+                                handleManualSelect(
+                                  entry.nameFromExcel,
+                                  e.target.value
+                                    ? parseInt(e.target.value)
+                                    : null,
+                                )
+                              }
+                              className='w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-700'
+                            >
+                              <option value=''>Pilih Teknisi</option>
+                              {teknisiList.map((t) => (
+                                <option key={t.id_user} value={t.id_user}>
+                                  {t.nama}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                        <td className='px-3 py-2 text-center'>
+                          {entry.confidence === 'auto' && (
+                            <span className='rounded-full bg-green-100 px-2 py-0.5 text-[10px] text-green-700 dark:bg-green-900/40 dark:text-green-300'>
+                              Auto
+                            </span>
+                          )}
+                          {entry.confidence === 'saved' && (
+                            <span className='rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'>
+                              💾 Tersimpan
+                            </span>
+                          )}
+                          {entry.confidence === 'manual' && (
+                            <span className='rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'>
+                              Manual
+                            </span>
+                          )}
+                          {entry.confidence === null && (
+                            <span className='rounded-full bg-red-100 px-2 py-0.5 text-[10px] text-red-700 dark:bg-red-900/40 dark:text-red-300'>
+                              -
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-
-              {parsedRows.length > 20 && (
-                <p className='text-center text-sm text-slate-500'>
-                  Menampilkan 20 dari {parsedRows.length} baris
-                </p>
-              )}
 
               <div className='flex justify-between'>
                 <Button variant='outline' onClick={() => setStep(1)}>
@@ -703,32 +772,33 @@ export default function ImportPage() {
                   Kembali
                 </Button>
                 <Button
-                  onClick={handleStartImport}
-                  disabled={stats.matched === 0}
+                  onClick={handleImport}
+                  disabled={stats.readyCount === 0}
                 >
                   <Upload size={16} className='mr-2' />
-                  Mulai Import ({stats.matched} data)
+                  Mulai Import ({stats.readyCount} tiket siap)
                 </Button>
               </div>
             </div>
           )}
 
+          {/* ════════════════════ STEP 3 ════════════════════ */}
           {step === 3 && (
             <div className='space-y-6'>
               {importing && (
                 <div className='rounded-lg border border-slate-200 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800'>
                   <div className='flex items-center gap-4'>
-                    <Loader2 className='animate-spin text-teal-500' size={32} />
+                    <Loader2
+                      className='animate-spin text-teal-500'
+                      size={32}
+                    />
                     <div className='flex-1'>
                       <p className='font-medium text-slate-700 dark:text-slate-200'>
                         Mengimport data...
                       </p>
-                      <div className='mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700'>
-                        <div
-                          className='h-full bg-teal-500 transition-all duration-300'
-                          style={{ width: `${importProgress}%` }}
-                        />
-                      </div>
+                      <p className='text-sm text-slate-500'>
+                        Mohon tunggu, proses bisa memakan waktu beberapa menit
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -826,16 +896,7 @@ export default function ImportPage() {
               )}
 
               <div className='flex justify-start'>
-                <Button
-                  variant='outline'
-                  onClick={() => {
-                    setStep(1);
-                    setFile(null);
-                    setFileName('');
-                    setParsedRows([]);
-                    setImportResult(null);
-                  }}
-                >
+                <Button variant='outline' onClick={handleReset}>
                   Import Lagi
                 </Button>
               </div>
