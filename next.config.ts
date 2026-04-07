@@ -3,15 +3,18 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // --- PERBAIKAN REDIRECT LOOP ---
+  // Memaksa Next.js untuk mempercayai header dari Nginx (X-Forwarded-Proto)
+  // Ini mencegah Next.js melakukan redirect internal yang tidak perlu
+  skipMiddlewareUrlNormalize: true,
+
   // 1. Solusi untuk error "Circular Structure" ESLint di Next.js 15
   eslint: {
-    // Mengabaikan linting saat build agar proses tidak terhenti oleh bug ESLint 9/Next 15
     ignoreDuringBuilds: true,
   },
 
   // 2. Kontrol ketat pada Type Safety
   typescript: {
-    // Tetap biarkan false agar build gagal jika ada error logic TS yang fatal
     ignoreBuildErrors: false,
   },
 
@@ -36,7 +39,6 @@ const nextConfig: NextConfig = {
       '@tanstack/react-query',
       'lucide-react',
     ],
-    // Konfigurasi Server Actions (bodySizeLimit sudah stabil di format ini)
     serverActions: {
       bodySizeLimit: '15mb',
     },
@@ -67,7 +69,6 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // 6. Kompresi untuk performa (Gzip/Brotli)
   compress: true,
 };
 
