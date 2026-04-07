@@ -4,6 +4,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { AttendanceCheckInInput } from '@/app/types/attendance';
 import prisma from '@/app/libs/prisma';
+import { signAccessToken } from '@/app/libs/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +39,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    // ─── Refresh JWT token after successful check-in ───────────────
+    // Update attendance claims so middleware reads fresh data immediately.
+    const today = AttendanceService.getTodayDateString();
+    const newAccessToken = signAccessToken({
+      id_user: decoded.id_user,
+      role: decoded.role,
+      role_id: decoded.role_id,
+      workzone: decoded.workzone,
+      attendance_checked_in: true,
+      attendance_date: today,
+      attendance_status: result.status ?? null,
+      attendance_check_in_at: result.check_in_at ?? null,
+    });
+
+    const response = NextResponse.json({
       success: true,
       data: {
         check_in_at: result.check_in_at,
         status: result.status,
       },
     });
+
+    // Set the refreshed access token cookie
+    response.cookies.set({
+      name: 'token',
+      value: newAccessToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60, // 1 hour
+      path: '/',
+    });
+
+    return response;
   } catch (error: unknown) {
     console.error('POST /technicians/attendance error:', error);
     return NextResponse.json(
