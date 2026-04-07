@@ -56,7 +56,7 @@ export default function AttendancePage() {
       if (statusRes?.ok) {
         const statusData = await statusRes.json();
         if (statusData.success && statusData.data.checked_in) {
-          router.push('/teknisi');
+          router.replace('/teknisi');
           return;
         }
       }
@@ -92,7 +92,7 @@ export default function AttendancePage() {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     } else if (checkInResult?.success && countdown === 0) {
-      router.push('/teknisi');
+      router.replace('/teknisi');
     }
   }, [checkInResult, countdown, router]);
 
