@@ -2,11 +2,9 @@ import { createServer } from 'http';
 import next from 'next';
 import 'dotenv/config';
 import cron, { ScheduledTask } from 'node-cron';
-
 import { prisma, connectDB } from '@/app/libs/prisma';
 import { closePool } from '@/app/libs/db';
 import { closeRedis } from '@/lib/redis';
-
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
@@ -74,9 +72,7 @@ async function startServer() {
   const cronEnabled = process.env.CRON_ENABLED === 'true';
 
   if (cronEnabled) {
-    /**
-     * SYNC — setiap 3 menit
-     */
+    // 3 menit
     syncTask = cron.schedule('*/3 * * * *', async () => {
       console.log('[CRON] Running sync...');
       await withDbLock('sync_lock', async () => {
@@ -89,9 +85,7 @@ async function startServer() {
       });
     });
 
-    /**
-     * PUSH — setiap 10 menit
-     */
+    // 10 menit
     pushTask = cron.schedule('*/10 * * * *', async () => {
       console.log('[CRON] Running push...');
       await withDbLock('push_lock', async () => {
@@ -104,9 +98,7 @@ async function startServer() {
       });
     });
 
-    /**
-     * TECH EVENTS — setiap 30 detik (ANTI OVERLAP)
-     */
+    // kojek 30 detik
     let isRunning = false;
 
     const runTechEvents = async () => {
@@ -138,10 +130,14 @@ async function startServer() {
    * HTTP SERVER (NO url.parse)
    */
   const server = createServer((req, res) => {
-    const parsedUrl = new URL(req.url || '/', `http://${req.headers.host}`);
+    const protocol =
+      req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host || hostname;
 
-    // Next.js expects a URL object with specific properties, but we can pass
-    // the parsed URL directly since handle() only uses pathname and query
+    // Memastikan base URL selalu valid (Double Slash)
+    const baseUrl = `${protocol}://${host}`;
+    const parsedUrl = new URL(req.url || '/', baseUrl);
+
     handle(req, res, parsedUrl as any);
   });
 

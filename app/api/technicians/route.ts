@@ -10,7 +10,7 @@ import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 export const dynamic = 'force-dynamic';
 
-const TECHNICIANS_CACHE_TTL = 300;
+const TECHNICIANS_CACHE_TTL = 60;
 
 function parseDateInput(
   dateStr: string | Date | null | undefined,

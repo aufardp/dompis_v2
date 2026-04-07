@@ -87,7 +87,7 @@ function buildColumnMap(header: string[]) {
     SYMPTOM: find('SYMPTOM'),
     DESCRIPTION_ACTUAL_SOLUTION: find('DESCRIPTION_ACTUAL_SOLUTION'),
     DEVICE_NAME: find('DEVICE_NAME'),
-    RK_INFORMATION: find('RK_INFORMATION'),
+    RK_INFORMATION: find('ODC_FIX'),
     JENIS_TIKET: find('JENIS_TIKET2'),
     JAM_EXPIRED: find('JAM_EXPIRED'),
     REDAMAN: find('REDAMAN'),
