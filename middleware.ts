@@ -10,10 +10,11 @@ const ROLE_HOME: Record<string, string> = {
 };
 
 // --- SAFE REDIRECT HELPER ---
-// Always produces absolute https:// URLs to prevent double-slash / path-stacking bugs
+// Use Next.js built-in redirect to avoid infinite loop
 function safeRedirect(req: NextRequest, path: string): NextResponse {
-  const host = req.headers.get('host') ?? req.nextUrl.host;
-  const url = `https://${host}${path}`;
+  const url = req.nextUrl.clone();
+  url.pathname = path;
+  url.search = '';
   return NextResponse.redirect(url);
 }
 
@@ -48,13 +49,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. ENFORCE HTTPS via X-Forwarded-Proto (set by Nginx SSL terminator)
-  const forwardedProto = req.headers.get('x-forwarded-proto');
-  if (forwardedProto !== 'https') {
-    return safeRedirect(req, pathname);
-  }
-
-  // 3. TOKEN CHECK
+  // 2. TOKEN CHECK
   const token = req.cookies.get('token')?.value;
   if (!token) {
     if (pathname.startsWith('/api'))

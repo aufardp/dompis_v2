@@ -3,11 +3,6 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
-  // --- PERBAIKAN REDIRECT LOOP ---
-  // Memaksa Next.js untuk mempercayai header dari Nginx (X-Forwarded-Proto)
-  // Ini mencegah Next.js melakukan redirect internal yang tidak perlu
-  skipMiddlewareUrlNormalize: true,
-
   // 1. Solusi untuk error "Circular Structure" ESLint di Next.js 15
   eslint: {
     ignoreDuringBuilds: true,
