@@ -1,8 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { normalizeRoleKey } from './app/libs/roles';
 
-// --- CONFIG & HELPERS ---
+// --- CONFIG ---
 const ROLE_HOME: Record<string, string> = {
   superadmin: '/superadmin',
   admin: '/admin',
@@ -10,99 +9,106 @@ const ROLE_HOME: Record<string, string> = {
   teknisi: '/teknisi',
 };
 
-// Fungsi redirect yang aman dari tumpukan URL
-function absoluteRedirect(req: NextRequest, path: string) {
-  const host = req.headers.get('host') || 'dompis.ta-branchsby.co.id';
-  // Gunakan string literal untuk memastikan double slash (//)
+// --- SAFE REDIRECT HELPER ---
+// Always produces absolute https:// URLs to prevent double-slash / path-stacking bugs
+function safeRedirect(req: NextRequest, path: string): NextResponse {
+  const host = req.headers.get('host') ?? req.nextUrl.host;
   const url = `https://${host}${path}`;
   return NextResponse.redirect(url);
 }
 
-// Helper JWT Sederhana untuk Edge Runtime
-async function getPayload(token: string) {
+// --- JWT DECODER (Edge-compatible, no verification) ---
+// Relies on cookie signature already verified by the auth flow
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    return JSON.parse(
-      new TextDecoder().decode(
-        Uint8Array.from(
-          atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')),
-          (c) => c.charCodeAt(0),
-        ),
-      ),
-    );
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return null;
   }
 }
 
+// --- MAIN MIDDLEWARE ---
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const protocol = req.headers.get('x-forwarded-proto');
 
-  // 1. BYPASS LOGIC
-  // Jika sudah di https (dari nginx) atau path publik, jangan redirect protokol
+  // 1. BYPASS — public / internal paths
   if (
     pathname.startsWith('/api/auth') ||
     pathname === '/login' ||
-    pathname === '/_next' ||
+    pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next();
   }
 
-  // 2. TOKEN & AUTH
+  // 2. ENFORCE HTTPS via X-Forwarded-Proto (set by Nginx SSL terminator)
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+  if (forwardedProto !== 'https') {
+    return safeRedirect(req, pathname);
+  }
+
+  // 3. TOKEN CHECK
   const token = req.cookies.get('token')?.value;
   if (!token) {
     if (pathname.startsWith('/api'))
       return NextResponse.json({ success: false }, { status: 401 });
     return pathname === '/login'
       ? NextResponse.next()
-      : absoluteRedirect(req, '/login');
+      : safeRedirect(req, '/login');
   }
 
-  const payload = await getPayload(token);
+  // 4. DECODE & VALIDATE
+  const payload = decodeJwtPayload(token);
   if (
     !payload ||
-    (payload.exp && payload.exp <= Math.floor(Date.now() / 1000))
+    (typeof payload.exp === 'number' &&
+      payload.exp <= Math.floor(Date.now() / 1000))
   ) {
-    const res = absoluteRedirect(req, '/login');
+    const res = safeRedirect(req, '/login');
     res.cookies.delete('token');
+    res.cookies.delete('refreshToken');
     return res;
   }
 
-  // 3. ROLE & ATTENDANCE GUARD
-  const userRole = normalizeRoleKey(String(payload.role || ''));
-  const isTeknisi = userRole === 'teknisi';
+  // 5. ROLE GUARD
+  const userRole = normalizeRoleKey(String(payload.role ?? ''));
 
-  // Proteksi Folder: Jika admin mau masuk ke /teknisi atau sebaliknya
+  // /admin → only admin & superadmin
   if (
     pathname.startsWith('/admin') &&
     userRole !== 'admin' &&
     userRole !== 'superadmin'
   ) {
-    return absoluteRedirect(req, ROLE_HOME[userRole]);
-  }
-  if (pathname.startsWith('/teknisi') && !isTeknisi) {
-    return absoluteRedirect(req, ROLE_HOME[userRole]);
+    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
   }
 
-  // Khusus Teknisi Attendance
-  if (isTeknisi) {
-    const isAttendancePage = pathname === '/teknisi/attendance';
-    // Hanya cek DB jika bukan request API biasa (biar hemat resource)
-    if (
-      !pathname.startsWith('/api') ||
-      pathname.startsWith('/api/technicians/attendance/status')
-    ) {
-      const status = await AttendanceService.getOwnStatus(payload.id_user);
-      if (!status.checked_in && !isAttendancePage)
-        return absoluteRedirect(req, '/teknisi/attendance');
-      if (status.checked_in && isAttendancePage)
-        return absoluteRedirect(req, '/teknisi');
-    }
+  // /helpdesk → only helpdesk & superadmin
+  if (
+    pathname.startsWith('/helpdesk') &&
+    userRole !== 'helpdesk' &&
+    userRole !== 'superadmin'
+  ) {
+    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
   }
 
+  // /superadmin → only superadmin
+  if (pathname.startsWith('/superadmin') && userRole !== 'superadmin') {
+    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+  }
+
+  // /teknisi → only teknisi
+  if (pathname.startsWith('/teknisi') && userRole !== 'teknisi') {
+    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+  }
+
+  // 6. ALLOW (attendance enforcement is handled client-side in teknisi layout)
   return NextResponse.next();
 }
 
