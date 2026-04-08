@@ -707,6 +707,7 @@ export class TicketWorkflowService {
     ticketId: number,
     search?: string,
     actor?: ActorContext,
+    saId?: number,
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0) {
       throw new Error('Invalid ticket id');
@@ -720,21 +721,46 @@ export class TicketWorkflowService {
 
       if (!ticket) throw new Error('Ticket not found');
 
-      const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
-      if (!sa) {
-        return {
-          ticketId,
-          workzone: ticket.WORKZONE,
-          serviceAreaId: null,
-          serviceAreaName: null,
-          technicians: [],
-        };
+      let targetSa: { id_sa: number; nama_sa: string | null } | null = null;
+      let serviceAreaName = 'Unknown';
+
+      if (saId) {
+        const saRecord = await tx.service_area.findUnique({
+          where: { id_sa: saId },
+          select: { id_sa: true, nama_sa: true },
+        });
+        if (saRecord) {
+          targetSa = saRecord;
+          serviceAreaName = saRecord.nama_sa || `SA ${saId}`;
+        }
       }
 
-      if (actor) {
+      if (!targetSa) {
+        const resolvedSa = await resolveServiceAreaForWorkzone(
+          tx,
+          ticket.WORKZONE,
+        );
+        if (!resolvedSa) {
+          return {
+            ticketId,
+            workzone: ticket.WORKZONE,
+            serviceAreaId: null,
+            serviceAreaName: null,
+            technicians: [],
+          };
+        }
+        targetSa = resolvedSa;
+        serviceAreaName = resolvedSa.nama_sa || 'Unknown';
+      }
+
+      if (actor && targetSa) {
         const roleKey = normalizeRoleKey(actor.role);
         if (roleKey === 'admin') {
-          await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
+          await assertAdminHasAccessToServiceArea(
+            tx,
+            actor.id_user,
+            targetSa.id_sa,
+          );
         }
       }
 
@@ -743,7 +769,7 @@ export class TicketWorkflowService {
       const technicians = await tx.users.findMany({
         where: {
           roles: { is: { key: 'teknisi' } },
-          user_sa: { some: { sa_id: sa.id_sa } },
+          user_sa: { some: { sa_id: targetSa.id_sa } },
           ...(keyword
             ? {
                 OR: [
@@ -760,8 +786,8 @@ export class TicketWorkflowService {
       return {
         ticketId,
         workzone: ticket.WORKZONE,
-        serviceAreaId: sa.id_sa,
-        serviceAreaName: sa.nama_sa,
+        serviceAreaId: targetSa.id_sa,
+        serviceAreaName,
         technicians,
       };
     });
@@ -786,8 +812,13 @@ export class TicketWorkflowService {
     assertRoleAllowed(roleKey, ['admin', 'helpdesk', 'superadmin']);
 
     // Only admin / superadmin can force-reassign (bypass ON_PROGRESS block)
-    if (opts?.forceReassign && !['admin', 'superadmin', 'super_admin'].includes(roleKey)) {
-      throw new Error('Only admin atau superadmin yang dapat melakukan force reassign');
+    if (
+      opts?.forceReassign &&
+      !['admin', 'superadmin', 'super_admin'].includes(roleKey)
+    ) {
+      throw new Error(
+        'Only admin atau superadmin yang dapat melakukan force reassign',
+      );
     }
 
     const roleId = roleKeyToRoleId(roleKey);

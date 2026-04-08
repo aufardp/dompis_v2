@@ -34,7 +34,11 @@ export function useTechnicians() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchTechnicians = useCallback(
-    async (opts?: { ticketId?: string | number; search?: string }) => {
+    async (opts?: {
+      ticketId?: string | number;
+      search?: string;
+      saId?: number;
+    }) => {
       setLoading(true);
       setError(null);
       setTechnicians([]);
@@ -43,10 +47,15 @@ export function useTechnicians() {
       try {
         const search = opts?.search?.trim();
         const ticketId = opts?.ticketId;
+        const saId = opts?.saId;
+
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (saId) params.append('sa_id', String(saId));
 
         const query = ticketId
           ? `/api/tickets/${encodeURIComponent(String(ticketId))}/technicians${
-              search ? `?search=${encodeURIComponent(search)}` : ''
+              params.toString() ? `?${params.toString()}` : ''
             }`
           : search
             ? `/api/users/role/4?search=${encodeURIComponent(search)}`

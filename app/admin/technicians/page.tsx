@@ -24,6 +24,7 @@ import AllTicketsModal from '@/app/admin/components/technician/AllTicketsModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
+import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
 import { TechnicianStatus, Technician } from '@/app/types/technician';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
@@ -313,9 +314,7 @@ function TechnicianCard({
           <button
             type='button'
             onClick={() =>
-              setLocalFilter(
-                localFilter === 'assigned' ? 'all' : 'assigned',
-              )
+              setLocalFilter(localFilter === 'assigned' ? 'all' : 'assigned')
             }
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
               localFilter === 'assigned'
@@ -351,9 +350,7 @@ function TechnicianCard({
           <button
             type='button'
             onClick={() =>
-              setLocalFilter(
-                localFilter === 'pending' ? 'all' : 'pending',
-              )
+              setLocalFilter(localFilter === 'pending' ? 'all' : 'pending')
             }
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
               localFilter === 'pending'
@@ -530,6 +527,9 @@ export default function TechnicianMonitoringPage() {
   const [statusFilter, setStatusFilter] = useState<TechnicianStatus | 'all'>(
     'all',
   );
+  const [selectedSaId, setSelectedSaId] = useState<number | null>(null);
+
+  const { serviceAreas, loading: saLoading } = useUserManagedSAs();
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -624,6 +624,11 @@ export default function TechnicianMonitoringPage() {
       currentTechnicianId: number;
       currentTechnicianName: string;
     }) => {
+      if (!selectedSaId) {
+        alert('Pilih SA terlebih dahulu untuk melakukan reassign teknisi');
+        return;
+      }
+
       setReassignModal({
         open: true,
         ticketId: ticket.ticketId,
@@ -633,7 +638,7 @@ export default function TechnicianMonitoringPage() {
         currentTechnicianName: ticket.currentTechnicianName,
       });
     },
-    [],
+    [selectedSaId],
   );
 
   const handleReassignSuccess = useCallback(async () => {
@@ -690,6 +695,16 @@ export default function TechnicianMonitoringPage() {
     { value: 'IDLE', label: 'Idle' },
     { value: 'OVERLOAD', label: 'Overload' },
   ];
+
+  const saOptions = useMemo(() => {
+    if (!serviceAreas.length) return [];
+    return serviceAreas
+      .filter((sa) => sa.id_sa)
+      .map((sa) => ({
+        value: String(sa.id_sa),
+        label: sa.nama_sa || `SA ${sa.id_sa}`,
+      }));
+  }, [serviceAreas]);
 
   const getTimeAgo = () => {
     if (!lastUpdated) return '';
@@ -837,7 +852,18 @@ export default function TechnicianMonitoringPage() {
                         className='w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400'
                       />
                     </div>
-                    <div className='flex items-center gap-2'>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      {saOptions.length > 0 && (
+                        <Select
+                          options={saOptions}
+                          placeholder='Pilih SA'
+                          value={selectedSaId ? String(selectedSaId) : ''}
+                          onChange={(v) =>
+                            setSelectedSaId(v ? Number(v) : null)
+                          }
+                          className='w-48'
+                        />
+                      )}
                       <Select
                         options={workzoneOptions}
                         placeholder='All Workzone'
@@ -943,6 +969,7 @@ export default function TechnicianMonitoringPage() {
           currentTechnicianName={reassignModal.currentTechnicianName}
           onAssign={handleReassignSuccess}
           forceReassign={true}
+          selectedSaId={selectedSaId ?? undefined}
         />
       </div>
     </AdminLayout>

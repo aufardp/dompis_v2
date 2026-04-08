@@ -28,11 +28,14 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || undefined;
+    const saIdParam = searchParams.get('sa_id');
+    const saId = saIdParam ? Number(saIdParam) : undefined;
 
     const data = await TicketWorkflowService.getEligibleTechniciansByTicketId(
       ticketId,
       search,
       { id_user: actor.id_user, role: actor.role },
+      saId,
     );
 
     return NextResponse.json({ success: true, data });

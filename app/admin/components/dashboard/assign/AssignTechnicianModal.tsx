@@ -16,6 +16,7 @@ interface Props {
   currentTechnicianName?: string | null;
   onAssign: () => Promise<void>;
   forceReassign?: boolean;
+  selectedSaId?: number;
 }
 
 export default function AssignTechnicianModal({
@@ -28,6 +29,7 @@ export default function AssignTechnicianModal({
   currentTechnicianName,
   onAssign,
   forceReassign,
+  selectedSaId,
 }: Props) {
   const { technicians, meta, loading, error, fetchTechnicians } =
     useTechnicians();
@@ -44,11 +46,11 @@ export default function AssignTechnicianModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchTechnicians({ ticketId });
+      fetchTechnicians({ ticketId, saId: selectedSaId });
       setSubmitError(null);
       setSearchTerm('');
     }
-  }, [isOpen, ticketId, fetchTechnicians]);
+  }, [isOpen, ticketId, selectedSaId, fetchTechnicians]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -251,9 +253,12 @@ export default function AssignTechnicianModal({
         {/* Warning for force reassign */}
         {forceReassign && currentTechnicianId && (
           <div className='mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3'>
-            <p className='text-sm font-medium text-amber-800'>⚠️ Force Reassign</p>
-            <p className='text-xs text-amber-700 mt-0.5'>
-              Tiket sedang dikerjakan oleh {currentTechnicianName || `teknisi #${currentTechnicianId}`}.
+            <p className='text-sm font-medium text-amber-800'>
+              ⚠️ Force Reassign
+            </p>
+            <p className='mt-0.5 text-xs text-amber-700'>
+              Tiket sedang dikerjakan oleh{' '}
+              {currentTechnicianName || `teknisi #${currentTechnicianId}`}.
               Reassign akan mengembalikan status ke <strong>Assigned</strong>.
             </p>
           </div>
