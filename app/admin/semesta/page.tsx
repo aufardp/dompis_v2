@@ -15,11 +15,49 @@ import { useSemestaTickets } from '@/app/hooks/useSemestaTickets';
 import { TicketCtype } from '@/app/types/ticket';
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X, ChevronDown } from 'lucide-react';
-import StatsCards from './components/dashboard/StatsCards';
-import TicketTypeChart from './components/dashboard/TicketTypeChart';
-import WorkzoneChart from './components/dashboard/WorkzoneChart';
-import TicketTrendChart from './components/dashboard/TicketTrendChart';
-import DashboardSkeleton from './components/dashboard/DashboardSkeleton';
+import dynamic from 'next/dynamic';
+
+const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
+  ssr: false,
+  loading: () => <div className='bg-surface-2 h-24 animate-pulse rounded-xl' />,
+});
+
+const TicketTypeChart = dynamic(
+  () => import('./components/dashboard/TicketTypeChart'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+    ),
+  },
+);
+
+const WorkzoneChart = dynamic(
+  () => import('./components/dashboard/WorkzoneChart'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+    ),
+  },
+);
+
+const TicketTrendChart = dynamic(
+  () => import('./components/dashboard/TicketTrendChart'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+    ),
+  },
+);
+
+const DashboardSkeleton = dynamic(
+  () => import('./components/dashboard/DashboardSkeleton'),
+  {
+    ssr: false,
+  },
+);
 import DateRangePicker from './components/filters/DateRangePicker';
 import { useTickets } from '@/app/hooks/useTickets';
 import type { Ticket } from '@/app/types/ticket';

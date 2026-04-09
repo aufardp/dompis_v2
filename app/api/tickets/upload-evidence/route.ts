@@ -8,6 +8,7 @@ export const config = {
 };
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { saveFiles, ActionType } from '@/app/libs/upload';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
@@ -108,26 +109,54 @@ export async function POST(req: NextRequest) {
     const savedFiles = await saveFiles(files, incident, actionType);
 
     // Save to database
-    await prisma.$transaction(async (tx) => {
+    interface SavedFile {
+      fileName: string;
+      filePath: string;
+      fileSize: number;
+      mimeType: string;
+    }
+
+    interface TicketEvidenceData {
+      ticket_id: number;
+      incident: string;
+      file_name: string;
+      file_path: string;
+      file_size: number;
+      mime_type: string;
+    }
+
+    interface TicketActivityLogData {
+      ticket_id: number;
+      user_id: number;
+      role_id: number;
+      activity_type: 'UPLOAD_EVIDENCE';
+      description: string;
+    }
+
+    const evidenceData: TicketEvidenceData[] = savedFiles.map((file: SavedFile) => ({
+      ticket_id: ticketId,
+      incident,
+      file_name: file.fileName,
+      file_path: file.filePath,
+      file_size: file.fileSize,
+      mime_type: file.mimeType,
+    }));
+
+    const activityLogData: TicketActivityLogData = {
+      ticket_id: ticketId,
+      user_id: user.id_user,
+      role_id: roleId,
+      activity_type: 'UPLOAD_EVIDENCE',
+      description: `Uploaded ${savedFiles.length} evidence file(s)`,
+    };
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.ticket_evidence.createMany({
-        data: savedFiles.map((file) => ({
-          ticket_id: ticketId,
-          incident,
-          file_name: file.fileName,
-          file_path: file.filePath,
-          file_size: file.fileSize,
-          mime_type: file.mimeType,
-        })),
+        data: evidenceData,
       });
 
       await tx.ticket_activity_log.create({
-        data: {
-          ticket_id: ticketId,
-          user_id: user.id_user,
-          role_id: roleId,
-          activity_type: 'UPLOAD_EVIDENCE',
-          description: `Uploaded ${savedFiles.length} evidence file(s)`,
-        },
+        data: activityLogData,
       });
     });
 

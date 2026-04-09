@@ -20,16 +20,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketWorkflowService.pickupTicket(
+    const result = (await TicketWorkflowService.pickupTicket(
       Number(ticketId),
       user,
-    );
+    )) as { message: string };
 
     await invalidateTicketsCache();
     await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('pickup');
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Failed to pickup');
     return NextResponse.json(

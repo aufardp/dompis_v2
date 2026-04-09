@@ -148,15 +148,15 @@ export async function GET(
             pendingReason: tracking.pending_reason ?? null,
           }
         : null,
-      activityLog: activityLogs.map((log) => ({
+      activityLog: activityLogs.map((log: { id: number; activity_type: string | null; description: string | null; user: { nama: string | null; role_id: number | null } | null; created_at: Date }) => ({
         id: log.id,
         type: log.activity_type,
         description: log.description,
         userName: log.user?.nama ?? null,
-        roleId: log.role_id,
+        roleId: log.user?.role_id ?? null,
         createdAt: log.created_at.toISOString(),
       })),
-      assignmentHistory: assignmentHistory.map((h) => ({
+      assignmentHistory: assignmentHistory.map((h: { id: number; assigner: { nama: string | null } | null; technician: { nama: string | null } | null; assigned_at: Date; unassigned_at: Date | null; is_active: boolean }) => ({
         id: h.id,
         assignerName: h.assigner?.nama ?? null,
         technicianName: h.technician?.nama ?? null,

@@ -28,19 +28,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketWorkflowService.closeTicket(
+    const result = (await TicketWorkflowService.closeTicket(
       Number(ticketId),
       user,
       String(rca || ''),
       String(subRca || ''),
       String(descriptionActualSolution).trim(),
-    );
+    )) as { message: string };
 
     await invalidateTicketsCache();
     await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('close');
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Failed to close ticket');
     return NextResponse.json(

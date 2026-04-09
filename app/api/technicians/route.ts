@@ -415,7 +415,7 @@ export async function GET(request: NextRequest) {
           },
         };
       })
-      .filter((t): t is NonNullable<typeof t> => t !== null);
+      .filter((t: unknown): t is NonNullable<typeof t> => t !== null);
 
     const responseData = {
       technicians: mappedTechnicians,

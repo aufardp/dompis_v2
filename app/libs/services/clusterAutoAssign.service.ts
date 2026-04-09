@@ -1,7 +1,8 @@
 // app/libs/services/clusterAutoAssign.service.ts
 
 import prisma from '@/app/libs/prisma';
-import { ActivityType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { ActivityType } from '@/app/helpers/ticket.helpers';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logActivity } from '@/app/helpers/ticket.helpers';
@@ -41,12 +42,21 @@ export class ClusterAutoAssignService {
         odc_value: { in: [trimmed, upper] },
       },
       include: {
-        cluster: true,
+        cluster: {
+          select: {
+            id: true,
+            nama_cluster: true,
+            is_active: true,
+          },
+        },
       },
-    });
+    }) as Array<{
+      odc_value: string;
+      cluster: { id: number; nama_cluster: string; is_active: boolean } | null;
+    }>;
 
     const matched = nodes.find(
-      (n) =>
+      (n: { odc_value: string; cluster: { id: number; nama_cluster: string; is_active: boolean } | null }) =>
         (n.odc_value.toUpperCase() === upper) && n.cluster?.is_active,
     );
 
@@ -67,7 +77,12 @@ export class ClusterAutoAssignService {
       },
       _count: { id_ticket: true },
     });
-    return new Map(loads.map((l) => [l.teknisi_user_id!, l._count.id_ticket]));
+    return new Map(
+      loads.map(
+        (l: { teknisi_user_id: number | null; _count: { id_ticket: number } }) =>
+          [l.teknisi_user_id!, l._count.id_ticket],
+      ),
+    );
   }
 
   /**
@@ -157,13 +172,21 @@ export class ClusterAutoAssignService {
         };
       }
 
-      const teknisiIds = assignments.map((a) => a.teknisi_id);
+      const teknisiIds = assignments.map((a: { teknisi_id: number }) => a.teknisi_id);
 
       // 4. Round-robin: pilih teknisi dengan beban paling ringan
       const loadMap = await this.getWorkloadMap(teknisiIds);
       const sorted = assignments
-        .map((a) => ({ ...a, load: loadMap.get(a.teknisi_id) ?? 0 }))
-        .sort((a, b) => a.load - b.load);
+        .map((a: { teknisi_id: number; teknisi: { nama: string | null }; load?: number }) => ({
+          ...a,
+          load: loadMap.get(a.teknisi_id) ?? 0,
+        }))
+        .sort(
+          (
+            a: { teknisi_id: number; teknisi: { nama: string | null }; load: number },
+            b: { teknisi_id: number; teknisi: { nama: string | null }; load: number },
+          ) => a.load - b.load,
+        );
 
       const chosen = sorted[0];
       const now = new Date();
@@ -174,7 +197,7 @@ export class ClusterAutoAssignService {
       );
 
       // 5. Assign dalam transaction
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         await tx.ticket.update({
           where: { id_ticket: ticketId },
           data: {
@@ -289,7 +312,7 @@ export class ClusterAutoAssignService {
       select: { odc_value: true },
     });
 
-    const activeOdcValues = activeNodes.map((n) => n.odc_value);
+    const activeOdcValues = activeNodes.map((n: { odc_value: string }) => n.odc_value);
 
     console.log(
       `[AutoAssign Batch] Active ODC values: ${activeOdcValues.length} nodes`,

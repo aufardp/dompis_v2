@@ -6,7 +6,7 @@ export async function getAllServiceArea() {
     orderBy: { id_sa: 'asc' },
   });
 
-  return serviceAreas.map((sa) => ({
+  return serviceAreas.map((sa: { id_sa: number; nama_sa: string | null; area: { nama_area: string } | null }) => ({
     id: sa.id_sa,
     serviceArea: sa.nama_sa,
     area: sa.area?.nama_area || null,
@@ -39,7 +39,7 @@ export async function getServiceAreaByArea(area_id: string) {
     orderBy: { id_sa: 'asc' },
   });
 
-  return serviceAreas.map((sa) => ({
+  return serviceAreas.map((sa: { id_sa: number; nama_sa: string | null }) => ({
     value: sa.id_sa,
     label: sa.nama_sa,
   }));

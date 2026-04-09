@@ -62,16 +62,16 @@ export async function POST(req: Request) {
         note: 'Resume work',
       };
 
-      const result = await TicketWorkflowService.updateTicket(ticketId, user, {
+      const result = (await TicketWorkflowService.updateTicket(ticketId, user, {
         workflow,
-      });
+      })) as { message: string };
 
       // Invalidate cache to ensure fresh data on next fetch
       await invalidateTicketsCache();
       await new Promise((r) => setTimeout(r, 150));
       broadcastTicketInvalidate('update');
 
-      return NextResponse.json({ success: true, ...result });
+      return NextResponse.json({ success: true, message: result.message });
     }
 
     /* =====================================================
@@ -104,20 +104,20 @@ export async function POST(req: Request) {
           note: 'Progress update by technician',
         };
 
-        const result = await TicketWorkflowService.updateTicket(
+        const result = (await TicketWorkflowService.updateTicket(
           ticketId,
           user,
           {
             workflow,
           },
-        );
+        )) as { message: string };
 
         // Invalidate cache to ensure fresh data on next fetch
         await invalidateTicketsCache();
         await new Promise((r) => setTimeout(r, 150));
         broadcastTicketInvalidate('update');
 
-        return NextResponse.json({ success: true, ...result });
+        return NextResponse.json({ success: true, message: result.message });
       }
     }
 
@@ -174,17 +174,17 @@ export async function POST(req: Request) {
       workflow = { status: rawWorkflowStatus, pendingReason, note };
     }
 
-    const result = await TicketWorkflowService.updateTicket(ticketId, user, {
+    const result = (await TicketWorkflowService.updateTicket(ticketId, user, {
       patch,
       workflow,
-    });
+    })) as { message: string };
 
     // Invalidate cache to ensure fresh data on next fetch
     await invalidateTicketsCache();
     await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('update');
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Failed to update ticket');
     return NextResponse.json(

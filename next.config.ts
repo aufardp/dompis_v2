@@ -2,18 +2,9 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-
-  // 1. Solusi untuk error "Circular Structure" ESLint di Next.js 15
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
-  // 2. Kontrol ketat pada Type Safety
   typescript: {
     ignoreBuildErrors: false,
   },
-
-  // 3. Konfigurasi Image untuk integrasi Google
   images: {
     remotePatterns: [
       {
@@ -26,8 +17,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-
-  // 4. Fitur Experimental & Optimasi
   experimental: {
     optimizePackageImports: [
       '@heroicons/react',
@@ -35,11 +24,12 @@ const nextConfig: NextConfig = {
       'lucide-react',
     ],
     serverActions: {
+      // Naikkan batas untuk upload foto evidence teknisi
+      // 5 foto × compressed ~1MB + FormData overhead = ~6-8MB
+      // 15mb memberikan safety margin yang cukup
       bodySizeLimit: '15mb',
     },
   },
-
-  // 5. Konfigurasi API Headers & CORS
   async headers() {
     return [
       {
@@ -63,7 +53,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-
   compress: true,
 };
 

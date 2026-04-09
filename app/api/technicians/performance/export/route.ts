@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
 
     const selectedWz = selectedWorkzone?.trim().toLowerCase();
     const filteredTechnicians = selectedWz
-      ? technicians.filter((t) => {
+      ? technicians.filter((t: { id_user: number; nama: string | null; nik: string | null }) => {
           const wzs = techWorkzones.get(t.id_user) || [];
           return wzs.some((wz) =>
             String(wz || '')
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
         })
       : technicians;
 
-    const finalTechIds = filteredTechnicians.map((t) => t.id_user);
+    const finalTechIds = filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => t.id_user);
 
     const closedCounts = await prisma.ticket.groupBy({
       by: ['teknisi_user_id'],
@@ -205,7 +205,7 @@ export async function GET(req: NextRequest) {
     const headers = ['Nama', 'NIK', 'Workzone', 'Closed Count (Month)'];
     const csv = [
       headers.join(','),
-      ...filteredTechnicians.map((t) => {
+      ...filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => {
         const wzs = techWorkzones.get(t.id_user) || [];
         return [
           t.nama,

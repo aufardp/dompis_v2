@@ -1,8 +1,5 @@
 import prisma from '@/app/libs/prisma';
-import {
-  Prisma,
-  AttendanceStatus as PrismaAttendanceStatus,
-} from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   format,
   getDaysInMonth,
@@ -20,18 +17,24 @@ import {
   ManualAttendanceInput,
 } from '@/app/types/attendance';
 
+// Define locally since Prisma types aren't generated
+enum LocalAttendanceStatus {
+  PRESENT = 'PRESENT',
+  LATE = 'LATE',
+}
+
 const CHECK_IN_CUTOFF_HOUR = 8;
 const CHECK_IN_CUTOFF_MINUTE = 0;
 
 export class AttendanceService {
-  static computeStatus(checkInTime: Date): PrismaAttendanceStatus {
+  static computeStatus(checkInTime: Date): LocalAttendanceStatus {
     const checkInWIB = toWIB(checkInTime);
     const cutoffTime = new Date(checkInWIB);
     cutoffTime.setHours(CHECK_IN_CUTOFF_HOUR, CHECK_IN_CUTOFF_MINUTE, 0, 0);
 
     return checkInWIB <= cutoffTime
-      ? PrismaAttendanceStatus.PRESENT
-      : PrismaAttendanceStatus.LATE;
+      ? LocalAttendanceStatus.PRESENT
+      : LocalAttendanceStatus.LATE;
   }
 
   static getTodayDateString(): string {
