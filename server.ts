@@ -1,13 +1,26 @@
 import { createServer } from 'http';
 import next from 'next';
+
+// --- Debug: isolate which import throws the JSON parse error ---
+console.log('[boot] 1. Loading dotenv...');
 import 'dotenv/config';
-import cron, { ScheduledTask } from 'node-cron';
+
+console.log('[boot] 2. Loading Prisma...');
 import { prisma, connectDB } from '@/app/libs/prisma';
+
+console.log('[boot] 3. Loading Redis...');
 import { closePool } from '@/app/libs/db';
 import { closeRedis } from '@/lib/redis';
+
+console.log('[boot] 4. Loading Google Sheets sync/push...');
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
+
+console.log('[boot] 5. Loading tech events dispatch...');
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
+import cron, { ScheduledTask } from 'node-cron';
+
+console.log('[boot] All modules loaded successfully.');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
@@ -109,7 +122,7 @@ async function startServer() {
 
       try {
         await withDbLock('tech_events_lock', async () => {
-          const result = await withTimeout(dispatchTechEvents(), 30 * 1000);
+          const result = await withTimeout(dispatchTechEvents(), 120 * 1000);
           console.log('[CRON] Tech events result:', result);
         });
       } catch (error) {

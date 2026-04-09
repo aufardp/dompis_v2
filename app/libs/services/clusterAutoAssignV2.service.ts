@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '@/app/libs/prisma';
-import { ActivityType } from '@prisma/client';
+import { ActivityType } from '@/app/helpers/ticket.helpers';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logActivity } from '@/app/helpers/ticket.helpers';
@@ -58,6 +58,17 @@ interface TicketWithRk {
   CONTACT_NAME: string | null;
   OWNER_GROUP: string | null;
   CUSTOMER_TYPE: string | null;
+}
+
+interface TicketForTechEvent {
+  id_ticket: number;
+  INCIDENT: string;
+  WORKZONE: string | null;
+  SERVICE_NO: string | null;
+  CONTACT_NAME: string | null;
+  OWNER_GROUP: string | null;
+  CUSTOMER_TYPE: string | null;
+  STATUS_UPDATE: string | null;
 }
 
 interface ClusterInfo {
@@ -133,7 +144,14 @@ export class ClusterAutoAssignServiceV2 {
       _count: { id_ticket: true },
     });
 
-    return new Map(loads.map((l) => [l.teknisi_user_id!, l._count.id_ticket]));
+    return new Map(
+      loads.map(
+        (l: { teknisi_user_id: number | null; _count: { id_ticket: number } }) => [
+          l.teknisi_user_id!,
+          l._count.id_ticket,
+        ],
+      ),
+    );
   }
 
   static async getActiveTeknisiForClusters(
@@ -252,7 +270,7 @@ export class ClusterAutoAssignServiceV2 {
 
     if (assignments.length > 0) {
       try {
-        await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           for (const a of assignments) {
             await tx.ticket.update({
               where: { id_ticket: a.ticketId },
@@ -341,7 +359,11 @@ export class ClusterAutoAssignServiceV2 {
       },
     });
 
-    const ticketMap = new Map(ticketData.map((t) => [t.id_ticket, t]));
+    const ticketMap = new Map(
+      (ticketData as unknown as TicketForTechEvent[]).map(
+        (t: TicketForTechEvent) => [t.id_ticket, t],
+      ),
+    );
 
     const dispatchPromises = assignments.map(async (a) => {
       const ticket = ticketMap.get(a.ticketId);
@@ -415,7 +437,9 @@ export class ClusterAutoAssignServiceV2 {
       select: { odc_value: true },
     });
 
-    const activeOdcValues = activeNodes.map((n) => n.odc_value);
+    const activeOdcValues = activeNodes.map(
+      (n: { odc_value: string }) => n.odc_value,
+    );
 
     if (!activeOdcValues.length) {
       autoAssignLogger.batchStart(0);

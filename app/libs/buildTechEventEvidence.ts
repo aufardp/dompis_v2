@@ -3,11 +3,11 @@ import { TechEventEvidence } from '@/app/libs/integrations/techEventTypes';
 
 /**
  * Builds evidence metadata for tech event payloads.
- * 
+ *
  * Queries ticket_evidence table and transforms rows into TechEventEvidence format.
  * The local_path is generated as /data/uploads/evidence/{incident}/{file_name}
  * to enable n8n filesystem access via shared volume mount.
- * 
+ *
  * @param incident - The incident identifier (e.g., "INC-2025-001")
  * @param tx - Optional Prisma transaction client
  * @returns TechEventEvidence if evidence exists, null otherwise

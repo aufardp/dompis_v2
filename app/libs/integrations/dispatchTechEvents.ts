@@ -42,7 +42,7 @@ export async function dispatchTechEvents() {
     return { message: 'No pending events' };
   }
 
-  const ids = events.map((e) => e.id);
+  const ids = events.map((e: { id: number }) => e.id);
 
   // Mark sebagai SENDING dulu (hindari double send)
   await prisma.tech_event_outbox.updateMany({

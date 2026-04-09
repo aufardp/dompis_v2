@@ -238,8 +238,11 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     });
 
     // Map: INCIDENT → STATUS_UPDATE saat ini di DB
-    const existingMap = new Map(
-      existing.map((r) => [r.INCIDENT, r.STATUS_UPDATE]),
+    const existingMap = new Map<string, string | null>(
+      existing.map((r: { INCIDENT: string; STATUS_UPDATE: string | null }) => [
+        r.INCIDENT,
+        r.STATUS_UPDATE,
+      ]),
     );
 
     /* -------------------------- PREPARE FINAL DATA -------------------------- */

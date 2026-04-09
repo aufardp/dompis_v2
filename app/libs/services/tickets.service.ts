@@ -401,7 +401,7 @@ export class TicketService {
       take: 20,
     });
 
-    return tickets.map((t) => ({
+    return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
       ticket: t.INCIDENT,
       contactName: t.CONTACT_NAME,
@@ -426,7 +426,7 @@ export class TicketService {
       take: 20,
     });
 
-    return tickets.map((t) => ({
+    return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
       ticket: t.INCIDENT,
       contactName: t.CONTACT_NAME,
@@ -451,7 +451,7 @@ export class TicketService {
       take: 20,
     });
 
-    return tickets.map((t) => ({
+    return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
       ticket: t.INCIDENT,
       serviceNo: t.SERVICE_NO,
@@ -471,7 +471,7 @@ export class TicketService {
       take: 200,
     });
 
-    return tickets.map((t) => ({
+    return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
       ticket: t.INCIDENT,
       summary: t.SUMMARY,
@@ -498,7 +498,7 @@ export class TicketService {
       orderBy: { CUSTOMER_TYPE: 'asc' },
     });
 
-    return tickets.map((t) => ({ customerType: t.CUSTOMER_TYPE }));
+    return tickets.map((t: any) => ({ customerType: t.CUSTOMER_TYPE }));
   }
 
   // ── Workflow Delegation ───────────────────────────────────────────────────────
@@ -602,7 +602,7 @@ export class TicketService {
     };
 
     const now = new Date();
-    const expiredTickets = tickets.filter((ticket) => {
+    const expiredTickets = tickets.filter((ticket: any) => {
       if (!ticket.REPORTED_DATE) return false;
       const slaHours = SLA_HOURS[ticket.CUSTOMER_TYPE || ''] || 24;
       const reportedDate = new Date(ticket.REPORTED_DATE);
@@ -611,7 +611,7 @@ export class TicketService {
       return hoursElapsed > slaHours;
     });
 
-    return expiredTickets.map((t) => ({
+    return expiredTickets.map((t: any) => ({
       idTicket: t.id_ticket,
       ticket: t.INCIDENT,
       customerType: t.CUSTOMER_TYPE,

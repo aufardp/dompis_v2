@@ -3,11 +3,16 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
-import { Prisma } from '@prisma/client';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+
+type AdminSaRow = { sa_id: number | null };
+type TechSaRow = { user_id: number | null; service_area: { nama_sa: string | null } | null };
+type TechIdRow = { user_id: number | null } | { id_user: number };
+type Technician = { id_user: number; nama: string | null; nik: string | null };
+type ClosedCountRow = { teknisi_user_id: number | null; _count: number };
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -23,8 +28,8 @@ function monthRange(year: number, month: number) {
 function buildWorkzoneTicketFilter(
   workzones: string[],
   selected?: string,
-): Prisma.ticketWhereInput | undefined {
-  const filters: Prisma.ticketWhereInput[] = [];
+): Record<string, unknown> | undefined {
+  const filters: Record<string, unknown>[] = [];
   const wz = selected?.trim();
   if (wz) {
     filters.push({ WORKZONE: { contains: wz } });
@@ -70,14 +75,14 @@ export async function GET(req: NextRequest) {
     );
     const wzFilter = buildWorkzoneTicketFilter(userWorkzones, selectedWorkzone);
 
-    // Technician universe: technicians in the same service areas as admin (or all if admin has no SA mapping)
+    // Technician universe
     const adminSaRows = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       select: { sa_id: true },
-    });
+    }) as unknown as AdminSaRow[];
     const adminSaIds = adminSaRows
-      .map((r) => r.sa_id)
-      .filter((v): v is number => v != null);
+      .map((r: AdminSaRow) => r.sa_id)
+      .filter((v: number | null): v is number => v != null);
 
     const technicianRoleId = 4;
     const technicianIds =
@@ -87,11 +92,11 @@ export async function GET(req: NextRequest) {
               where: { sa_id: { in: adminSaIds } },
               select: { user_id: true },
             })
-            .then((rows) => [
+            .then((rows: TechIdRow[]) => [
               ...new Set(
                 rows
-                  .map((r) => r.user_id)
-                  .filter((v): v is number => v != null),
+                  .map((r: TechIdRow) => (r as { user_id: number | null }).user_id)
+                  .filter((v: number | null): v is number => v != null),
               ),
             ])
         : await prisma.users
@@ -99,7 +104,9 @@ export async function GET(req: NextRequest) {
               where: { role_id: technicianRoleId },
               select: { id_user: true },
             })
-            .then((rows) => rows.map((r) => r.id_user));
+            .then((rows: TechIdRow[]) =>
+              rows.map((r: TechIdRow) => (r as { id_user: number }).id_user),
+            );
 
     if (technicianIds.length === 0) {
       return NextResponse.json({
@@ -118,7 +125,7 @@ export async function GET(req: NextRequest) {
     const techSa = await prisma.user_sa.findMany({
       where: { user_id: { in: technicianIds } },
       include: { service_area: { select: { nama_sa: true } } },
-    });
+    }) as unknown as TechSaRow[];
     const techWorkzones = new Map<number, string[]>();
     for (const usa of techSa) {
       if (!usa.user_id || !usa.service_area?.nama_sa) continue;
@@ -129,9 +136,9 @@ export async function GET(req: NextRequest) {
 
     const selectedWz = selectedWorkzone?.trim().toLowerCase();
     const finalTechnicianIds = selectedWz
-      ? technicianIds.filter((id) => {
+      ? technicianIds.filter((id: number) => {
           const wzs = techWorkzones.get(id) || [];
-          return wzs.some((wz) =>
+          return wzs.some((wz: string) =>
             String(wz || '')
               .toLowerCase()
               .includes(selectedWz),
@@ -159,10 +166,10 @@ export async function GET(req: NextRequest) {
       },
       select: { id_user: true, nama: true, nik: true },
       orderBy: { nama: 'asc' },
-    });
+    }) as unknown as Technician[];
 
     // Closed counts from ticket table
-    const closedWhere: Prisma.ticketWhereInput = {
+    const closedWhere = {
       teknisi_user_id: { in: finalTechnicianIds },
       STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
       closed_at: { gte: start, lt: end },
@@ -173,7 +180,7 @@ export async function GET(req: NextRequest) {
       by: ['teknisi_user_id'],
       where: closedWhere,
       _count: true,
-    });
+    }) as unknown as ClosedCountRow[];
     const closedCountMap = new Map<number, number>();
     for (const row of closedCounts) {
       if (row.teknisi_user_id)
@@ -181,25 +188,31 @@ export async function GET(req: NextRequest) {
     }
 
     // Avg resolve hours (tracking) via raw SQL join to apply workzone filter
-    let wzSql = Prisma.empty;
+    const Prisma: any = (await import('@prisma/client')).Prisma;
+
+    const wzConditions: any[] = [];
     if (selectedWorkzone) {
-      wzSql = Prisma.sql`${wzSql} AND t.WORKZONE LIKE ${`%${selectedWorkzone}%`} `;
+      wzConditions.push(Prisma.sql`t.WORKZONE LIKE ${`%${selectedWorkzone}%`}`);
     }
     if (userWorkzones.length > 0) {
-      let orSql = Prisma.empty;
-      const wzList = userWorkzones.filter((wz) => wz && wz.trim() !== '');
-      wzList.forEach((wz, idx) => {
-        const clause = Prisma.sql`t.WORKZONE LIKE ${`%${wz}%`}`;
-        orSql = idx === 0 ? clause : Prisma.sql`${orSql} OR ${clause}`;
-      });
+      const wzList = userWorkzones.filter((wz: string) => wz && wz.trim() !== '');
       if (wzList.length > 0) {
-        wzSql = Prisma.sql`${wzSql} AND (${orSql}) `;
+        const orClauses: any[] = wzList.map(
+          (wz: string) => Prisma.sql`t.WORKZONE LIKE ${`%${wz}%`}`,
+        );
+        wzConditions.push(
+          Prisma.sql`(${Prisma.join(orClauses, Prisma.sql` OR `)})`,
+        );
       }
     }
+    const wzSql = wzConditions.length > 0
+      ? Prisma.sql`AND ${Prisma.join(wzConditions, Prisma.sql` AND `)}`
+      : Prisma.empty !== undefined
+        ? Prisma.empty
+        : Prisma.sql``;
 
-    const avgRows = await prisma.$queryRaw<
-      Array<{ tech_id: number; avg_hours: number | null; n: number }>
-    >(Prisma.sql`
+    const avgRows = await prisma.$queryRaw(
+      Prisma.sql`
       SELECT tt.assigned_to as tech_id,
              AVG(TIMESTAMPDIFF(SECOND, tt.assigned_at, tt.closed_at)) / 3600 as avg_hours,
              COUNT(*) as n
@@ -215,7 +228,8 @@ export async function GET(req: NextRequest) {
         AND t.teknisi_user_id IN (${Prisma.join(finalTechnicianIds)})
         ${wzSql}
       GROUP BY tt.assigned_to
-    `);
+    `,
+    ) as unknown as Array<{ tech_id: number; avg_hours: number | null; n: number }>;
 
     const avgMap = new Map<number, number>();
     for (const r of avgRows) {
@@ -223,7 +237,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = technicians
-      .map((t) => {
+      .map((t: Technician) => {
         const wzs = techWorkzones.get(t.id_user) || [];
         return {
           id_user: t.id_user,

@@ -477,7 +477,7 @@ export class DailyTicketService {
     if (serviceAreas.length === 0) return [];
 
     const results = await Promise.all(
-      serviceAreas.map(async (sa) => {
+      serviceAreas.map(async (sa: { id_sa: number; nama_sa: string | null }) => {
         const where: Record<string, any> = {
           WORKZONE: { contains: sa.nama_sa },
         };

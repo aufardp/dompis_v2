@@ -27,7 +27,7 @@ export async function postTechEvents(
   url.searchParams.set('signature', signature);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(url.toString(), {

@@ -50,16 +50,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketWorkflowService.unassignTicket(
+    const result = (await TicketWorkflowService.unassignTicket(
       Number(ticketId),
       user,
-    );
+    )) as { message: string };
 
     await invalidateTicketsCache();
     await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('unassign');
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Failed to unassign ticket');
     return NextResponse.json(

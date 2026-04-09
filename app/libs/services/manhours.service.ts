@@ -121,7 +121,19 @@ export async function getManhourConfigs(): Promise<ManhourConfig[]> {
 
   // Update cache
   configCache = {
-    configs: configs.map((c) => ({
+    configs: (configs as unknown as Array<{
+      jenis_key: string;
+      label: string;
+      manhours: number | string;
+      is_active: boolean;
+      sort_order: number;
+    }>).map((c: {
+      jenis_key: string;
+      label: string;
+      manhours: number | string;
+      is_active: boolean;
+      sort_order: number;
+    }) => ({
       jenis_key: c.jenis_key,
       label: c.label,
       manhours: Number(c.manhours),
@@ -200,22 +212,30 @@ export async function calculateManhours(
   // Filter technicians by workzone (admin's service area)
   let filteredTechnicians = technicians;
   if (adminWorkzones && adminWorkzones.length > 0) {
-    filteredTechnicians = technicians.filter((tech) => {
+    filteredTechnicians = technicians.filter((tech: {
+      user_sa: Array<{
+        service_area: { nama_sa: string | null } | null;
+      }>;
+    }) => {
       const techWorkzones = tech.user_sa
-        .map((usa) => usa.service_area?.nama_sa)
-        .filter((n): n is string => !!n);
+        .map((usa: { service_area: { nama_sa: string | null } | null }) => usa.service_area?.nama_sa)
+        .filter((n: string | null | undefined): n is string => !!n);
 
       // Check if any of technician's workzones match admin's workzones
-      return techWorkzones.some((wz) => adminWorkzones.includes(wz));
+      return techWorkzones.some((wz: string) => adminWorkzones.includes(wz));
     });
   }
 
   // Further filter by STO if specified
   if (sto) {
-    filteredTechnicians = filteredTechnicians.filter((tech) => {
+    filteredTechnicians = filteredTechnicians.filter((tech: {
+      user_sa: Array<{
+        service_area: { nama_sa: string | null } | null;
+      }>;
+    }) => {
       const techWorkzones = tech.user_sa
-        .map((usa) => usa.service_area?.nama_sa)
-        .filter((n): n is string => !!n);
+        .map((usa: { service_area: { nama_sa: string | null } | null }) => usa.service_area?.nama_sa)
+        .filter((n: string | null | undefined): n is string => !!n);
       return techWorkzones.includes(sto);
     });
   }
@@ -224,7 +244,7 @@ export async function calculateManhours(
   if (name) {
     const searchLower = name.toLowerCase();
     filteredTechnicians = filteredTechnicians.filter(
-      (tech) =>
+      (tech: { nama: string | null; nik: string | null }) =>
         tech.nama?.toLowerCase().includes(searchLower) ||
         tech.nik?.toLowerCase().includes(searchLower),
     );
@@ -234,7 +254,7 @@ export async function calculateManhours(
     return [];
   }
 
-  const technicianIdsList = filteredTechnicians.map((t) => t.id_user);
+  const technicianIdsList = filteredTechnicians.map((t: { id_user: number }) => t.id_user);
 
   // Get closed tickets in date range grouped by technician and jenis
   const tickets = await prisma.ticket.findMany({
@@ -339,7 +359,7 @@ export async function calculateManhours(
 
     // Get STO name
     const stoName =
-      tech.user_sa.find((usa) => usa.service_area?.nama_sa)?.service_area
+      tech.user_sa.find((usa: { service_area: { nama_sa: string | null } | null }) => usa.service_area?.nama_sa)?.service_area
         ?.nama_sa || 'Unknown';
 
     results.push({
@@ -382,8 +402,8 @@ export async function getStoOptions(
   });
 
   return serviceAreas
-    .filter((sa) => sa.nama_sa)
-    .map((sa) => ({
+    .filter((sa: { nama_sa: string | null }) => sa.nama_sa)
+    .map((sa: { nama_sa: string | null }) => ({
       value: sa.nama_sa!,
       label: sa.nama_sa!,
     }));

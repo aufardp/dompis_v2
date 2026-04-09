@@ -1,7 +1,18 @@
 // app/services/ticket.helpers.ts
 
 import prisma from '@/app/libs/prisma';
-import { Prisma, ActivityType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+// ── ActivityType enum (defined locally since Prisma types aren't generated) ──
+export enum ActivityType {
+  ASSIGN = 'ASSIGN',
+  REASSIGN = 'REASSIGN',
+  STATUS_CHANGE = 'STATUS_CHANGE',
+  COMMENT = 'COMMENT',
+  UPLOAD_EVIDENCE = 'UPLOAD_EVIDENCE',
+  CLOSE = 'CLOSE',
+  AUTO_ASSIGN = 'AUTO_ASSIGN',
+}
 
 // ── Workzone ──────────────────────────────────────────────────────────────────
 export async function getWorkzonesForUser(userId: number): Promise<string[]> {

@@ -6,7 +6,7 @@ import {
   normalizeRoleKey,
   roleKeyToRoleId,
 } from '@/app/libs/roles';
-import { ActivityType } from '@prisma/client';
+import { ActivityType } from '@/app/helpers/ticket.helpers';
 import { Prisma } from '@prisma/client';
 import {
   upsertTracking,
@@ -713,7 +713,7 @@ export class TicketWorkflowService {
       throw new Error('Invalid ticket id');
     }
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const ticket = await tx.ticket.findUnique({
         where: { id_ticket: ticketId },
         select: { id_ticket: true, WORKZONE: true },
@@ -825,7 +825,7 @@ export class TicketWorkflowService {
     const now = new Date();
 
     return commitAndInvalidate(
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
 
         if (!ticket) throw new Error('Ticket not found');
@@ -985,7 +985,7 @@ export class TicketWorkflowService {
     const now = new Date();
 
     return commitAndInvalidate(
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
 
         if (!ticket) throw new Error('Ticket not found');
@@ -1090,7 +1090,7 @@ export class TicketWorkflowService {
     const now = new Date();
 
     return commitAndInvalidate(
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
         if (!ticket) throw new Error('Ticket not found');
 
@@ -1208,7 +1208,7 @@ export class TicketWorkflowService {
       throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
     return commitAndInvalidate(
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
 
         if (!ticket) throw new Error('Ticket not found');
@@ -1365,7 +1365,7 @@ export class TicketWorkflowService {
     const now = new Date();
 
     return commitAndInvalidate(
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
         if (!ticket) throw new Error('Ticket not found');
 

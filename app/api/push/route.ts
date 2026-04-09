@@ -31,8 +31,10 @@ async function handlePush() {
     return NextResponse.json({
       success: true,
       message: 'Push berhasil',
+      deleted: result.deleted ?? 0,
       updated: result.updated ?? 0,
       inserted: result.inserted ?? 0,
+      skipped: result.skipped ?? 0,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

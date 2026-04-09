@@ -50,12 +50,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await TicketWorkflowService.assignToUser(
+    const result = (await TicketWorkflowService.assignToUser(
       Number(ticketId),
       Number(teknisiUserId),
       user,
       { forceReassign },
-    );
+    )) as { message: string };
 
     await invalidateTicketsCache();
     await new Promise((r) => setTimeout(r, 150));
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      ...result,
+      message: result.message,
     });
   } catch (error: unknown) {
     return NextResponse.json(
