@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "dev:server": "tsx server.ts",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next build",
-    "start": "cross-env NODE_ENV=production tsx server.ts",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=2048 next build",
+    "start": "next start",
     "test:webhook": "tsx scripts/test-webhook.ts",
     "lint": "eslint ."
   },

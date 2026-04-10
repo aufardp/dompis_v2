@@ -1,7 +1,25 @@
-node_modules
-npm-debug.log
+# Dependencies
+.npm
+
+# Build outputs
 dist
+out
+build
+
+# Debug & Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment & Secrets
+.env*.local
+.vercel
+
+# Source Control
 .git
-.env
-Dockerfile
-docker-compose.yml
+.gitignore
+
+# IDE / OS Files
+.vscode
+.DS_Store
