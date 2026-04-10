@@ -1,21 +1,51 @@
-FROM node:20-alpine
+FROM node:20-alpine AS runner
 
-RUN apk add --no-cache openssl libc6-compat
+# Instal openssl karena Prisma memerlukannya untuk runtime
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-COPY package*.json ./
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
 
-RUN npm install --legacy-peer-deps
+# Tambahkan user non-root demi keamanan
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
-COPY . .
+# Pastikan Anda sudah menjalankan 'npm run build' di local sebelum 'docker build'
+# 1. Salin semua source code agar path alias @/ bisa dibaca tsx
+COPY app ./app
+COPY lib ./lib
+COPY server.ts ./server.ts
+COPY tsconfig.json ./tsconfig.json
+COPY next-env.d.ts ./next-env.d.ts
 
-# generate prisma client
+# 2. Salin file kredensial Google (WAJIB)
+COPY dompis-99aa242a4864.json ./dompis-99aa242a4864.json
+
+# 3. Salin file .env agar terbaca oleh server.ts
+COPY .env ./
+
+# 4. Salin hasil build & node_modules dari Windows
+COPY .next ./.next
+COPY node_modules ./node_modules
+COPY package.json ./package.json
+COPY prisma ./prisma
+COPY public ./public
+
+# 5. Fix binary untuk Linux & Generate Prisma
+RUN npm rebuild esbuild
 RUN npx prisma generate
 
-# build nextjs with dummy env vars for static routes
-RUN SPREADSHEET_ID=1y2a0FTik5ZCHaq8NW3NLb9ccPjK4fZsV9lCenCsvVTg SECRET_KEY=dummy DATABASE_URL=mysql://dompis_user:dompis_password@mysql:3306/dompis_db?connection_limit=25 GOOGLE_CLIENT_ID=dummy GOOGLE_CLIENT_SECRET=dummy GOOGLE_REDIRECT_URI=dummy npm run build
+# 6. Pastikan permission folder benar
+RUN chown -R nextjs:nodejs /app
 
+USER nextjs
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Gunakan HOSTNAME 0.0.0.0 agar bisa diakses dari Windows
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
+
+# Use next start directly (set in package.json)
+CMD ["sh", "-c", "node node_modules/next/dist/bin/next start"]

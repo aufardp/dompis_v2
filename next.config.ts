@@ -2,8 +2,14 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  trailingSlash: false,
   typescript: {
+    // skip typescript saat build
     ignoreBuildErrors: false,
+  },
+  eslint: {
+    // skip eslint saat build
+    ignoreDuringBuilds: false,
   },
   images: {
     remotePatterns: [

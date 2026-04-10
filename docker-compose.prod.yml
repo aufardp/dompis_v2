@@ -25,8 +25,8 @@ services:
       MYSQL_DATABASE: dompis_db
       MYSQL_USER: dompis_user
       MYSQL_PASSWORD: dompis_password
-    ports:
-      - '3307:3306'
+    # ports:  # <- hapus, hanya akses lokal
+    #   - '3307:3306'
     volumes:
       - dompis_mysql_data:/var/lib/mysql
     networks:
@@ -50,12 +50,33 @@ services:
       --appendonly no
       --tcp-keepalive 60
       --timeout 300
-    ports:
-      - '6380:6379'
+    # ports:  # <- hapus, hanya akses lokal
+    #   - '6380:6379'
     volumes:
       - dompis_redis_data:/data
     networks:
       - dompis-network
+
+  app:
+    container_name: dompis_app
+    build: .
+    restart: unless-stopped
+    command: sh -c "node node_modules/next/dist/bin/next start"
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./public/uploads:/app/public/uploads
+    networks:
+      - dompis-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -66,8 +87,9 @@ services:
       PMA_PORT: 3306
       PMA_USER: dompis_user
       PMA_PASSWORD: dompis_password
+    # Akses hanya via localhost:8081
     ports:
-      - '8081:80'
+      - '127.0.0.1:8081:80'
     depends_on:
       mysql:
         condition: service_healthy
@@ -78,8 +100,9 @@ services:
     image: n8nio/n8n:latest
     container_name: dompis_n8n
     restart: unless-stopped
+    # Akses hanya via localhost:5678
     ports:
-      - '5678:5678'
+      - '127.0.0.1:5678:5678'
     environment:
       DB_TYPE: mysqldb
       DB_MYSQLDB_HOST: mysql
@@ -88,10 +111,10 @@ services:
       DB_MYSQLDB_USER: dompis_user
       DB_MYSQLDB_PASSWORD: dompis_password
 
-      N8N_HOST: engingeng.ta-branchsby.co.id
+      N8N_HOST: dompis.ta-branchsby.co.id
       N8N_PORT: 5678
       N8N_PROTOCOL: http
-      WEBHOOK_URL: https://engingeng.ta-branchsby.co.id/
+      WEBHOOK_URL: https://dompis.ta-branchsby.co.id/
       TZ: Asia/Jakarta
 
       N8N_ENABLE_FILESYSTEM_ACCESS: 'true'
@@ -103,7 +126,7 @@ services:
         condition: service_healthy
     volumes:
       - dompis_n8n_data:/home/node/.n8n
-      - /root/dompis_v2/public/uploads/evidence:/home/node/.n8n-files/evidence
+      - ./public/uploads/evidence:/home/node/.n8n-files/evidence
     networks:
       - dompis-network
 

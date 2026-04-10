@@ -1,4 +1,5 @@
 import { createServer } from 'http';
+import { parse } from 'url';
 import next from 'next';
 
 // --- Debug: isolate which import throws the JSON parse error ---
@@ -111,7 +112,6 @@ async function startServer() {
       });
     });
 
-    // kojek 30 detik
     let isRunning = false;
 
     const runTechEvents = async () => {
@@ -140,18 +140,11 @@ async function startServer() {
   }
 
   /**
-   * HTTP SERVER (NO url.parse)
+   * HTTP SERVER - use Next.js default handling with proper URL parsing
    */
   const server = createServer((req, res) => {
-    const protocol =
-      req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    const host = req.headers.host || hostname;
-
-    // Memastikan base URL selalu valid (Double Slash)
-    const baseUrl = `${protocol}://${host}`;
-    const parsedUrl = new URL(req.url || '/', baseUrl);
-
-    handle(req, res, parsedUrl as any);
+    const parsedUrl = parse(req.url || '/', true);
+    handle(req, res, parsedUrl);
   });
 
   server.listen(port, () => {

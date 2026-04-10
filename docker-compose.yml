@@ -16,7 +16,7 @@ services:
       MYSQL_USER: dompis_user
       MYSQL_PASSWORD: dompis_password
     ports:
-      - '3307:3306'
+      - '3306:3306'
     volumes:
       - dompis_mysql_data:/var/lib/mysql
     networks:
@@ -37,7 +37,7 @@ services:
       --maxmemory 64mb
       --maxmemory-policy allkeys-lru
     ports:
-      - '6380:6379'
+      - '6379:6379'
     volumes:
       - dompis_redis_data:/data
     networks:
@@ -47,6 +47,7 @@ services:
     container_name: dompis_app
     build: .
     restart: unless-stopped
+    command: sh -c "node node_modules/next/dist/bin/next start"
     env_file:
       - .env
     ports:
@@ -56,10 +57,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    volumes:
-      - /root/dompis_v2/public/uploads:/app/public/uploads
+    # volumes:
+    #   - ./public/uploads:/app/public/uploads
     networks:
       - dompis-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -107,7 +110,7 @@ services:
         condition: service_healthy
     volumes:
       - dompis_n8n_data:/home/node/.n8n
-      - /root/dompis_v2/public/uploads/evidence:/home/node/.n8n-files/evidence
+      - ./public/uploads/evidence:/home/node/.n8n-files/evidence
     networks:
       - dompis-network
 
