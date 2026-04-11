@@ -47,7 +47,6 @@ services:
     container_name: dompis_app
     build: .
     restart: unless-stopped
-    command: sh -c "node node_modules/next/dist/bin/next start"
     env_file:
       - .env
     ports:

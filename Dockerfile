@@ -48,4 +48,4 @@ ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
 
 # Use next start directly (set in package.json)
-CMD ["sh", "-c", "node node_modules/next/dist/bin/next start"]
+CMD ["sh", "-c", "npx tsx server.ts"]
