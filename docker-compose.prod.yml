@@ -61,7 +61,6 @@ services:
     container_name: dompis_app
     build: .
     restart: unless-stopped
-    command: sh -c "node node_modules/next/dist/bin/next start"
     env_file:
       - .env
     ports:
@@ -71,8 +70,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    volumes:
-      - ./public/uploads:/app/public/uploads
+    # volumes:
+    #   - ./public/uploads:/app/public/uploads
     networks:
       - dompis-network
     extra_hosts:
