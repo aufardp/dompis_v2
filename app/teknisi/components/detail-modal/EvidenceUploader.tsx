@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
@@ -51,11 +51,77 @@ export default function EvidenceUploader({
   instructions,
 }: EvidenceUploaderProps) {
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
+  const [compressing, setCompressing] = useState(false);
+
+  const compressImage = useCallback(
+    async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
+      // Skip non-image files
+      if (!file.type.startsWith('image/')) return file;
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+
+          // Pass 1: kompres dengan setting normal
+          const canvas = document.createElement('canvas');
+          const scale = Math.min(1, maxWidthPx / img.width);
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          canvas.toBlob(
+            async (blob1) => {
+              if (!blob1) { resolve(file); return; }
+
+              // Jika hasil pass 1 sudah < 2MB, selesai
+              if (blob1.size <= 2 * 1024 * 1024) {
+                resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                return;
+              }
+
+              // Pass 2: kurangi quality dan resolusi jika masih terlalu besar
+              const scale2 = Math.min(1, 1280 / img.width); // turun ke 1280px
+              canvas.width = Math.round(img.width * scale2);
+              canvas.height = Math.round(img.height * scale2);
+              const ctx2 = canvas.getContext('2d')!;
+              ctx2.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+              canvas.toBlob(
+                (blob2) => {
+                  if (!blob2) { 
+                    resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })); 
+                    return; 
+                  }
+                  resolve(new File([blob2], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                },
+                'image/jpeg',
+                0.70,  // quality lebih rendah di pass 2
+              );
+            },
+            'image/jpeg',
+            quality,
+          );
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(file); // fallback: kirim file original jika tidak bisa decode
+        };
+
+        img.src = url;
+      });
+    },
+    [],
+  );
 
   const totalFiles = existingCount + previewUrls.length;
   const availableSlots = Math.max(0, maxFiles - totalFiles);
 
-  const handleFileChange = (files: FileList | null) => {
+  const handleFileChange = async (files: FileList | null) => {
     if (!files) return;
 
     setRejectedFiles([]);
@@ -95,23 +161,35 @@ export default function EvidenceUploader({
       );
     }
 
-    // Step 4: Update selected files
+    // Step 4: Auto compress images before passing to parent
     if (filesToAdd.length > 0) {
-      onFilesChange(filesToAdd);
+      setCompressing(true);
+      try {
+        const compressed = await Promise.all(
+          filesToAdd.map((f) =>
+            f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
+          ),
+        );
+        onFilesChange(compressed);
+      } catch {
+        onWarning?.('Gagal mengkompres foto. Coba lagi.');
+      } finally {
+        setCompressing(false);
+      }
     }
   };
 
   const oversizedFiles = rejectedFiles.filter((f) => f.reason === 'oversized');
 
   const isComplete = totalFiles >= minFiles;
-  const progressLabel = `${totalFiles}/${maxFiles} foto${minFiles > 0 ? ` · min ${minFiles}` : ''}`;
+  const progressLabel = `${totalFiles}/${maxFiles} foto${minFiles > 0 ? ` · wajib ${minFiles}` : ''}`;
 
   return (
     <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900'>
       {/* Header with badge counter */}
       <div className='flex items-center justify-between'>
         <h3 className='text-sm font-semibold text-slate-600 sm:text-base dark:text-slate-300'>
-          Evidence Foto (Max {maxFiles})
+          Evidence Foto (Wajib {maxFiles})
         </h3>
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
@@ -149,7 +227,7 @@ export default function EvidenceUploader({
 
       {availableSlots <= 0 && (
         <p className='text-xs text-amber-600 dark:text-amber-400'>
-          Slot foto sudah penuh (maksimal {maxFiles} foto)
+          Slot foto sudah penuh (mantap sudah {maxFiles} foto)
         </p>
       )}
 
@@ -208,6 +286,16 @@ export default function EvidenceUploader({
               />
             </label>
           )}
+        </div>
+      )}
+
+      {compressing && (
+        <div className='flex items-center justify-center gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'>
+          <svg className='h-4 w-4 animate-spin' fill='none' viewBox='0 0 24 24'>
+            <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4' />
+            <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z' />
+          </svg>
+          Mengompres foto... harap tunggu
         </div>
       )}
 

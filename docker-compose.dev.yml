@@ -1,38 +1,28 @@
-version: '3.9'
-
 services:
   mysql:
     image: mysql:8.0
     container_name: dompis_mysql
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: 512m
     command: >
       --default-authentication-plugin=mysql_native_password
-      --innodb-buffer-pool-size=256M
-      --innodb-buffer-pool-instances=2
-      --innodb-log-file-size=64M
-      --innodb-flush-log-at-trx-commit=2
-      --max-connections=80
+      --innodb-buffer-pool-size=64M
+      --max-connections=50
       --wait-timeout=300
       --interactive-timeout=300
-      --max-allowed-packet=64M
-      --slow-query-log=1
-      --slow-query-log-file=/var/lib/mysql/slow-queries.log
-      --long-query-time=2
-      --skip-name-resolve
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: dompis_db
       MYSQL_USER: dompis_user
       MYSQL_PASSWORD: dompis_password
     ports:
-      - '3307:3306'
+      - '3306:3306'
     volumes:
       - dompis_mysql_data:/var/lib/mysql
     networks:
       - dompis-network
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-prootpassword']
       interval: 20s
       timeout: 10s
       retries: 5
@@ -46,16 +36,32 @@ services:
       redis-server
       --maxmemory 64mb
       --maxmemory-policy allkeys-lru
-      --save ""
-      --appendonly no
-      --tcp-keepalive 60
-      --timeout 300
     ports:
-      - '6380:6379'
+      - '6379:6379'
     volumes:
       - dompis_redis_data:/data
     networks:
       - dompis-network
+
+  app:
+    container_name: dompis_app
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # volumes:
+    #   - ./public/uploads:/app/public/uploads
+    networks:
+      - dompis-network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -103,7 +109,7 @@ services:
         condition: service_healthy
     volumes:
       - dompis_n8n_data:/home/node/.n8n
-      - ./public/uploads:/data/uploads
+      - ./public/uploads/evidence:/home/node/.n8n-files/evidence
     networks:
       - dompis-network
 

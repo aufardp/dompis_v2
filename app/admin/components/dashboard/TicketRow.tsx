@@ -1,17 +1,18 @@
-import { RefreshCw, UserPlus, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
-import { getJenisStyle } from '@/app/libs/tickets/jenis'; // ← ADDED
+import { getJenisStyle } from '@/app/libs/tickets/jenis';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import TtrCountdownBadge from './TtrCountdownBadge';
 import MaxTtrCell from './MaxTtrCell';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
+import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
 
 export interface TicketRowProps {
   ticket: {
@@ -322,48 +323,13 @@ export default function TicketRow({
 
       {/* ── Merged Action: Detail + Assign ── */}
       <td className='px-3 py-3 text-center'>
-        {isClosed ? (
-          /* CLOSED → Detail only */
-          <button
-            onClick={handleDetailClick}
-            title='Lihat Detail'
-            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
-          >
-            <Eye size={13} />
-          </button>
-        ) : (
-          /* ACTIVE → Detail + Assign */
-          <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
-            {/* Detail */}
-            <button
-              onClick={handleDetailClick}
-              title='Lihat Detail'
-              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
-            >
-              <Eye size={13} />
-            </button>
-
-            {/* Assign / Reassign */}
-            <button
-              onClick={handleAssignClick}
-              title={
-                ticket.teknisiUserId ? 'Reassign Teknisi' : 'Assign Teknisi'
-              }
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white transition',
-                ticket.teknisiUserId
-                  ? 'bg-amber-500 hover:bg-amber-600'
-                  : 'bg-blue-600 hover:bg-blue-700',
-              )}
-            >
-              {ticket.teknisiUserId ? (
-                <RefreshCw size={12} />
-              ) : (
-                <UserPlus size={12} />
-              )}
-            </button>
-          </div>
-        )}
+        <TicketActionButtons
+          hasAssignee={!!ticket.teknisiUserId}
+          isClosed={isClosed}
+          onDetail={handleDetailClick}
+          onAssign={handleAssignClick}
+          size='sm'
+        />
       </td>
     </tr>
   );

@@ -2,6 +2,7 @@
 
 import { Technician, TechnicianTicket } from '@/app/types/technician';
 import { X } from 'lucide-react';
+import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
 
 interface AllTicketsModalProps {
   isOpen: boolean;
@@ -150,16 +151,11 @@ export default function AllTicketsModal({
                 >
                   {ticket.age}
                 </span>
-                <button
-                  type='button'
-                  onClick={() => onDetail(ticket.idTicket)}
-                  className='rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                >
-                  Detail
-                </button>
-                <button
-                  type='button'
-                  onClick={() =>
+                <TicketActionButtons
+                  hasAssignee={true}
+                  isClosed={false}
+                  onDetail={() => onDetail(ticket.idTicket)}
+                  onAssign={() =>
                     onReassign({
                       ticketId: ticket.idTicket,
                       ticketCode: ticket.ticket,
@@ -168,10 +164,8 @@ export default function AllTicketsModal({
                       currentTechnicianName: technician.nama,
                     })
                   }
-                  className='rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
-                >
-                  Reassign
-                </button>
+                  size='xs'
+                />
               </div>
             </div>
           ))}

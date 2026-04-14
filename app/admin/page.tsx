@@ -168,7 +168,7 @@ export default function TicketPage() {
 
   // Polling as fallback (reduced frequency since SSE handles real-time)
   useAutoRefresh({
-    intervalMs: 60_000,
+    intervalMs: 180_000,  // 3 menit — SSE menangani real-time, polling hanya safety net
     refreshers: [refresh, refreshExpired, refreshDiamond],
     pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
   });

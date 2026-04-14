@@ -15,13 +15,14 @@ import {
   CheckCircle,
   TrendingUp,
 } from 'lucide-react';
+import clsx from 'clsx';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
-import Select from '@/app/components/form/Select';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import TicketDetailDrawer from '@/app/admin/components/dashboard/TicketDetailDrawer';
 import AllTicketsModal from '@/app/admin/components/technician/AllTicketsModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
+import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
@@ -183,6 +184,7 @@ function TechnicianCard({
   onDetail,
   onShowAll,
   onReassign,
+  externalFilter,
 }: {
   technician: Technician;
   onDetail: (ticketId: number) => void;
@@ -194,10 +196,18 @@ function TechnicianCard({
     currentTechnicianId: number;
     currentTechnicianName: string;
   }) => void;
+  externalFilter?: 'all' | 'assigned' | 'on_progress' | 'pending' | 'closed';
 }) {
   const [localFilter, setLocalFilter] = useState<
     'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
   >('all');
+
+  // Sync localFilter dengan externalFilter saat berubah dari luar
+  useEffect(() => {
+    if (externalFilter !== undefined) {
+      setLocalFilter(externalFilter);
+    }
+  }, [externalFilter]);
 
   const status = getTechnicianStatusValue(technician.total_assigned);
   const statusConfig = STATUS_CONFIG[status];
@@ -440,30 +450,21 @@ function TechnicianCard({
                   >
                     {ticket.age}
                   </span>
-                  <button
-                    type='button'
-                    onClick={() => onDetail(ticket.idTicket)}
-                    className='rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                  >
-                    Detail
-                  </button>
-                  {localFilter !== 'closed' && (
-                    <button
-                      type='button'
-                      onClick={() =>
-                        onReassign({
-                          ticketId: ticket.idTicket,
-                          ticketCode: ticket.ticket,
-                          workzone: ticket.workzone ?? technician.workzone,
-                          currentTechnicianId: technician.id_user,
-                          currentTechnicianName: technician.nama,
-                        })
-                      }
-                      className='rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
-                    >
-                      Reassign
-                    </button>
-                  )}
+                  <TicketActionButtons
+                    hasAssignee={true}
+                    isClosed={localFilter === 'closed'}
+                    onDetail={() => onDetail(ticket.idTicket)}
+                    onAssign={() =>
+                      onReassign({
+                        ticketId: ticket.idTicket,
+                        ticketCode: ticket.ticket,
+                        workzone: ticket.workzone ?? technician.workzone,
+                        currentTechnicianId: technician.id_user,
+                        currentTechnicianName: technician.nama,
+                      })
+                    }
+                    size='xs'
+                  />
                 </div>
               </div>
             ))}
@@ -528,6 +529,9 @@ export default function TechnicianMonitoringPage() {
     'all',
   );
   const [selectedSaId, setSelectedSaId] = useState<number | null>(null);
+  const [globalTicketFilter, setGlobalTicketFilter] = useState<
+    'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
+  >('all');
 
   const { serviceAreas, loading: saLoading } = useUserManagedSAs();
 
@@ -580,11 +584,11 @@ export default function TechnicianMonitoringPage() {
     closedTodayLimit: 3,
   });
 
-  // Auto refresh technicians list every 60s, pause while ticket detail is open.
+  // Auto refresh technicians list every 180s, pause while ticket detail or reassign modal is open.
   useAutoRefresh({
-    intervalMs: 60_000,
+    intervalMs: 180_000,  // 3 menit — SSE menangani real-time, polling hanya safety net
     refreshers: [refresh],
-    pauseWhen: [detailOpen],
+    pauseWhen: [detailOpen, reassignModal.open],
   });
 
   const handleTicketDetail = useCallback(async (ticketId: number) => {
@@ -624,11 +628,7 @@ export default function TechnicianMonitoringPage() {
       currentTechnicianId: number;
       currentTechnicianName: string;
     }) => {
-      if (!selectedSaId) {
-        alert('Pilih SA terlebih dahulu untuk melakukan reassign teknisi');
-        return;
-      }
-
+      // Tidak perlu validasi SA — service layer auto-resolve dari ticket.WORKZONE
       setReassignModal({
         open: true,
         ticketId: ticket.ticketId,
@@ -638,7 +638,7 @@ export default function TechnicianMonitoringPage() {
         currentTechnicianName: ticket.currentTechnicianName,
       });
     },
-    [selectedSaId],
+    [],
   );
 
   const handleReassignSuccess = useCallback(async () => {
@@ -680,6 +680,7 @@ export default function TechnicianMonitoringPage() {
     setSearch('');
     setWorkzoneFilter('');
     setStatusFilter('all');
+    setGlobalTicketFilter('all');
   }, []);
 
   const workzoneOptions = useMemo(() => {
@@ -688,13 +689,6 @@ export default function TechnicianMonitoringPage() {
     ];
     return uniqueWorkzones.map((wz) => ({ value: wz, label: wz }));
   }, [userWorkzones]);
-
-  const statusOptions = [
-    { value: 'all', label: 'All Status' },
-    { value: 'AKTIF', label: 'Aktif' },
-    { value: 'IDLE', label: 'Idle' },
-    { value: 'OVERLOAD', label: 'Overload' },
-  ];
 
   const saOptions = useMemo(() => {
     if (!serviceAreas.length) return [];
@@ -795,41 +789,85 @@ export default function TechnicianMonitoringPage() {
               defaultOpen: true,
               children: (
                 <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6'>
+                  {/* Total Teknisi — reset semua filter */}
                   <StatsCard
                     title='Total Teknisi'
                     value={summary.total_active + summary.idle_count}
                     color='text-blue-600'
                     isActive={
-                      statusFilter === 'all' && !search && !workzoneFilter
+                      statusFilter === 'all' &&
+                      !search &&
+                      !workzoneFilter &&
+                      globalTicketFilter === 'all'
                     }
                     onClick={handleResetFilters}
                   />
+
+                  {/* Menunggu — filter tiket assigned di semua card */}
                   <StatsCard
                     title='Menunggu'
                     value={orderStats.totalAssigned}
                     color='text-blue-500'
+                    isActive={globalTicketFilter === 'assigned'}
+                    onClick={() =>
+                      setGlobalTicketFilter(
+                        globalTicketFilter === 'assigned' ? 'all' : 'assigned',
+                      )
+                    }
                   />
+
+                  {/* Dikerjakan — filter tiket on_progress */}
                   <StatsCard
                     title='Dikerjakan'
                     value={orderStats.totalOnProgress}
                     color='text-amber-600'
+                    isActive={globalTicketFilter === 'on_progress'}
+                    onClick={() =>
+                      setGlobalTicketFilter(
+                        globalTicketFilter === 'on_progress'
+                          ? 'all'
+                          : 'on_progress',
+                      )
+                    }
                   />
+
+                  {/* Pending */}
                   <StatsCard
                     title='Pending'
                     value={orderStats.totalPending}
                     color='text-orange-600'
+                    isActive={globalTicketFilter === 'pending'}
+                    onClick={() =>
+                      setGlobalTicketFilter(
+                        globalTicketFilter === 'pending' ? 'all' : 'pending',
+                      )
+                    }
                   />
+
+                  {/* Selesai Hari Ini */}
                   <StatsCard
                     title='Selesai Hari Ini'
                     value={orderStats.totalClosedToday}
                     color='text-green-600'
+                    isActive={globalTicketFilter === 'closed'}
+                    onClick={() =>
+                      setGlobalTicketFilter(
+                        globalTicketFilter === 'closed' ? 'all' : 'closed',
+                      )
+                    }
                   />
+
+                  {/* Overload — filter status teknisi (tidak berubah) */}
                   <StatsCard
                     title='Overload'
                     value={summary.overload_count}
                     color='text-red-600'
                     isActive={statusFilter === 'OVERLOAD'}
-                    onClick={() => setStatusFilter('OVERLOAD')}
+                    onClick={() =>
+                      setStatusFilter(
+                        statusFilter === 'OVERLOAD' ? 'all' : 'OVERLOAD',
+                      )
+                    }
                   />
                 </div>
               ),
@@ -841,55 +879,97 @@ export default function TechnicianMonitoringPage() {
               right: hasFilters ? `${technicians.length} shown` : undefined,
               children: (
                 <div className='space-y-4'>
-                  <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
-                    <div className='relative max-w-md flex-1'>
-                      <Search className='absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400' />
+                  {/* Badge indikator filter aktif */}
+                  {globalTicketFilter !== 'all' && (
+                    <div className='flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'>
+                      <span>
+                        Menampilkan:{' '}
+                        <strong>
+                          {globalTicketFilter === 'assigned' && 'Menunggu'}
+                          {globalTicketFilter === 'on_progress' && 'Dikerjakan'}
+                          {globalTicketFilter === 'pending' && 'Pending'}
+                          {globalTicketFilter === 'closed' && 'Selesai Hari Ini'}
+                        </strong>
+                      </span>
+                      <button
+                        type='button'
+                        onClick={() => setGlobalTicketFilter('all')}
+                        className='ml-auto rounded px-1.5 py-0.5 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20'
+                      >
+                        ✕ Reset
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Filter bar compact */}
+                  <div className='flex flex-wrap items-center gap-2'>
+                    {/* Search */}
+                    <div className='relative min-w-[160px] flex-1 max-w-xs'>
+                      <Search className='absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400' />
                       <input
                         type='text'
                         placeholder='Cari teknisi...'
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className='w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400'
+                        className='h-8 w-full rounded-lg border border-slate-200 bg-white py-1.5 pr-3 pl-8 text-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500'
                       />
                     </div>
-                    <div className='flex flex-wrap items-center gap-2'>
-                      {saOptions.length > 0 && (
-                        <Select
-                          options={saOptions}
-                          placeholder='Pilih SA'
-                          value={selectedSaId ? String(selectedSaId) : ''}
-                          onChange={(v) =>
-                            setSelectedSaId(v ? Number(v) : null)
-                          }
-                          className='w-48'
-                        />
-                      )}
-                      <Select
-                        options={workzoneOptions}
-                        placeholder='All Workzone'
+
+                    {/* Workzone — compact native select */}
+                    {workzoneOptions.length > 0 && (
+                      <select
                         value={workzoneFilter}
-                        onChange={setWorkzoneFilter}
-                        className='w-40'
-                      />
-                      <Select
-                        options={statusOptions}
-                        placeholder='All Status'
-                        value={statusFilter}
-                        onChange={(v) =>
-                          setStatusFilter(v as TechnicianStatus | 'all')
-                        }
-                        className='w-36'
-                      />
-                      {hasFilters && (
-                        <Button
-                          variant='outline'
-                          size='sm'
-                          onClick={handleResetFilters}
+                        onChange={(e) => setWorkzoneFilter(e.target.value)}
+                        className={clsx(
+                          'h-8 rounded-lg border px-2.5 text-xs font-medium cursor-pointer outline-none transition',
+                          workzoneFilter
+                            ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/15 dark:text-blue-300'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                        )}
+                      >
+                        <option value=''>Semua Area</option>
+                        {workzoneOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Status chips */}
+                    <div className='flex items-center gap-1'>
+                      {(
+                        [
+                          { value: 'all', label: 'Semua', activeClass: 'bg-slate-700 text-white border-slate-700 dark:bg-slate-600 dark:border-slate-600' },
+                          { value: 'AKTIF', label: 'Aktif', activeClass: 'bg-blue-500 text-white border-blue-500' },
+                          { value: 'IDLE', label: 'Idle', activeClass: 'bg-slate-400 text-white border-slate-400' },
+                          { value: 'OVERLOAD', label: 'Overload', activeClass: 'bg-red-500 text-white border-red-500' },
+                        ] as const
+                      ).map(({ value, label, activeClass }) => (
+                        <button
+                          key={value}
+                          type='button'
+                          onClick={() => setStatusFilter(value as TechnicianStatus | 'all')}
+                          className={clsx(
+                            'h-8 rounded-lg border px-2.5 text-xs font-medium transition',
+                            statusFilter === value
+                              ? activeClass
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                          )}
                         >
-                          Reset
-                        </Button>
-                      )}
+                          {label}
+                        </button>
+                      ))}
                     </div>
+
+                    {/* Reset */}
+                    {hasFilters && (
+                      <button
+                        type='button'
+                        onClick={handleResetFilters}
+                        className='flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-500 transition hover:border-red-200 hover:text-red-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                      >
+                        ✕ Reset
+                      </button>
+                    )}
                   </div>
 
                   {hasFilters && (
@@ -914,6 +994,7 @@ export default function TechnicianMonitoringPage() {
                           onDetail={handleTicketDetail}
                           onShowAll={handleShowAllTickets}
                           onReassign={handleReassign}
+                          externalFilter={globalTicketFilter}
                         />
                       ))}
                     </div>

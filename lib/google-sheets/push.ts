@@ -10,12 +10,17 @@ const MAX_READ_ROW = 50000;
 
 let isPushRunning = false;
 
-// Helper untuk deteksi perubahan data (Hashing)
+/**
+ * Helper untuk deteksi perubahan data (Hashing)
+ * Membandingkan kolom O (Status) dan AC-AG (Detail Perbaikan)
+ */
 function hashRow(data: any[]) {
   return data.map((v) => v?.toString()?.trim() ?? '').join('|');
 }
 
-// Helper Retry untuk koneksi Google API
+/**
+ * Helper Retry untuk koneksi Google API
+ */
 async function retryGoogle(fn: () => Promise<any>) {
   let attempt = 0;
   while (attempt < RETRY_MAX) {
@@ -32,19 +37,18 @@ async function retryGoogle(fn: () => Promise<any>) {
 export async function pushSpreadsheet() {
   if (isPushRunning)
     return { success: false, message: 'Process already running' };
+
   isPushRunning = true;
 
   try {
-    console.log('[PUSH] START', nowWIB());
+    console.log('[PUSH] START SYNC', nowWIB());
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    // 1️⃣ FILTER: Hanya ambil data yang sync_date-nya HARI INI
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    // 1️⃣ FILTER: Ambil data tiket dengan sync_date hari ini
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
     const tickets = await prisma.ticket.findMany({
       where: {
@@ -62,21 +66,21 @@ export async function pushSpreadsheet() {
         sub_rca: true,
         DESCRIPTION_ACTUAL_SOLUTION: true,
         closed_at: true,
-        users: { select: { nama: true, username: true } },
+        users: {
+          select: {
+            nama: true,
+            username: true,
+          },
+        },
       },
     });
 
-    const todayIncidentSet = new Set(
-      tickets.map((t: { INCIDENT: string }) => t.INCIDENT),
-    );
-    console.log(`[PUSH] Tickets hari ini: ${tickets.length}`);
-
     if (tickets.length === 0) {
-      console.log('[PUSH] Tidak ada data dengan sync_date hari ini.');
-      return { success: true, updated: 0, inserted: 0, deleted: 0 };
+      console.log('[PUSH] Tidak ada data tiket untuk sync_date hari ini.');
+      return { success: true, updated: 0, skipped: 0, notInSheet: 0 };
     }
 
-    // 2️⃣ AMBIL DATA EXISTING DARI SHEET (B-AH) UNTUK MAPPING
+    // 2️⃣ AMBIL DATA EXISTING DARI SHEET (B-AH) UNTUK PENCCOKAN
     const sheetRes = await retryGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -87,69 +91,30 @@ export async function pushSpreadsheet() {
     const sheetRows = sheetRes.data.values || [];
     const sheetMap = new Map<string, { row: number; hash: string }>();
 
-    // Build map dari sheet: INCIDENT -> {row, hash}
+    // Mapping: INCIDENT -> { Nomor Baris, Fingerprint Data }
     sheetRows.forEach((r: any[], i: number) => {
-      const incidentId = r[0]; // Kolom B (index 0 dalam array = kolom B)
+      const incidentId = r[0]; // Kolom B
       if (!incidentId) return;
 
-      // Hash kolom yang sering berubah untuk deteksi update (O, AC-AG)
+      // Hash kolom O (index 13) dan AC-AG (index 27-31)
       const hash = hashRow([r[13], r[27], r[28], r[29], r[30], r[31]]);
-      sheetMap.set(incidentId, { row: START_ROW + i, hash });
+      sheetMap.set(incidentId.toString().trim(), {
+        row: START_ROW + i,
+        hash,
+      });
     });
 
-    console.log(`[PUSH] Rows di sheet: ${sheetMap.size}`);
-
-    // 3️⃣ DELETE LAMA: Hapus baris yang tidak ada di sync_date hari ini
-    // EXTRA PROTECTION: Jangan pernah delete row 5 (START_ROW = 6, jadi aman)
-    const rowsToDelete: number[] = [];
-
-    for (const [incidentId, data] of sheetMap) {
-      if (!todayIncidentSet.has(incidentId)) {
-        rowsToDelete.push(data.row);
-      }
-    }
-
-    console.log(`[PUSH] Rows untuk dihapus: ${rowsToDelete.length}`);
-
-    // Delete dalam batch
-    if (rowsToDelete.length > 0) {
-      const deleteRequests = rowsToDelete.map((row) => ({
-        deleteDimension: {
-          range: {
-            sheetId: 0, // Sheet pertama
-            dimension: 'ROWS',
-            startRowIndex: row - 1, // Google Sheets uses 0-indexed
-            endRowIndex: row,
-          },
-        },
-      }));
-
-      // Eksekusi delete dalam batch (maks 50 per request)
-      for (let i = 0; i < deleteRequests.length; i += 50) {
-        const chunk = deleteRequests.slice(i, i + 50);
-        await retryGoogle(() =>
-          sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: { requests: chunk },
-          }),
-        );
-        console.log(
-          `[PUSH] Deleted chunk ${Math.floor(i / 50) + 1}/${Math.ceil(deleteRequests.length / 50)}`,
-        );
-      }
-    }
-
-    // 4️⃣ LOGIKA UPDATE: INSERT ATAU UPDATE untuk data hari ini
+    // 3️⃣ PROSES MAPPING & UPDATE
     const updates: any[] = [];
-    const inserts: any[][] = [];
     let skipped = 0;
+    let notInSheet = 0;
 
     for (const t of tickets) {
       const closedAtStr = t.closed_at
         ? new Date(t.closed_at).toLocaleString('id-ID')
         : '';
 
-      // Hash data dari DB untuk dibandingkan dengan Sheet
+      // Hash data dari Database
       const dbHash = hashRow([
         t.STATUS_UPDATE ?? '', // O
         t.STATUS_UPDATE ?? '', // AC
@@ -159,40 +124,29 @@ export async function pushSpreadsheet() {
         t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
       ]);
 
-      const existingInSheet = sheetMap.get(t.INCIDENT);
+      const existingInSheet = sheetMap.get(t.INCIDENT.trim());
 
+      // JIKA INCIDENT TIDAK ADA DI SHEET -> ABAIKAN (Sesuai Permintaan)
       if (!existingInSheet) {
-        // JIKA TIDAK ADA DI SHEET -> INSERT BARU (B-AH)
-        // EXTRA PROTECTION: Array index 0 = Kolom B (bukan A)
-        const newRow = new Array(33).fill('');
-        newRow[0] = t.INCIDENT; // B (index 0 dalam range B-AH)
-        newRow[13] = t.STATUS_UPDATE ?? ''; // O
-        newRow[20] = t.ALAMAT ?? ''; // V
-        newRow[21] = t.users?.nama ?? ''; // W
-        newRow[22] = t.users?.username ?? ''; // X
-        newRow[27] = t.STATUS_UPDATE ?? ''; // AC
-        newRow[28] = t.PENDING_REASON ?? ''; // AD
-        newRow[29] = t.rca ?? ''; // AE
-        newRow[30] = t.sub_rca ?? ''; // AF
-        newRow[31] = t.DESCRIPTION_ACTUAL_SOLUTION ?? ''; // AG
-        newRow[32] = closedAtStr; // AH
-        inserts.push(newRow);
-      } else if (existingInSheet.hash !== dbHash) {
-        // JIKA ADA TAPI HASH BEDA -> UPDATE KOLOM TERTENTU (V-AH)
-        // EXTRA PROTECTION: Range dimulai dari V (tidak pernah menyentuh A atau B)
+        notInSheet++;
+        continue;
+      }
+
+      // JIKA ADA TAPI DATA BERBEDA -> UPDATE
+      if (existingInSheet.hash !== dbHash) {
         updates.push({
           range: `'${SHEET_NAME}'!V${existingInSheet.row}:AH${existingInSheet.row}`,
           values: [
             [
               t.ALAMAT ?? '', // V
               t.users?.nama ?? '', // W
-              t.users?.username ?? '', // X
+              t.users?.username ?? '', // X (Labor Code)
               '',
               '',
-              '', // Y, Z, AA (Kosongkan jika tidak dipakai)
-              '', // AB
-              t.STATUS_UPDATE ?? '', // AC
-              t.PENDING_REASON ?? '', // AD
+              '',
+              '', // Y, Z, AA, AB (Kosong/Tetap)
+              t.STATUS_UPDATE ?? '', // AC (Status Dompis)
+              t.PENDING_REASON ?? '', // AD (Update Kendala)
               t.rca ?? '', // AE
               t.sub_rca ?? '', // AF
               t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
@@ -200,56 +154,45 @@ export async function pushSpreadsheet() {
             ],
           ],
         });
+
+        // Update juga kolom O (Status Awal) jika diperlukan
+        updates.push({
+          range: `'${SHEET_NAME}'!O${existingInSheet.row}`,
+          values: [[t.STATUS_UPDATE ?? '']],
+        });
       } else {
         skipped++;
       }
     }
 
-    console.log(
-      `[PUSH] Insert: ${inserts.length}, Update: ${updates.length}, Skip: ${skipped}`,
-    );
-
-    // 5️⃣ EKSEKUSI UPDATE (BATCH)
+    // 4️⃣ EKSEKUSI BATCH UPDATE KE GOOGLE SHEETS
     if (updates.length > 0) {
+      // Pecah menjadi chunk agar tidak melebihi limit payload Google API
       for (let i = 0; i < updates.length; i += BATCH_SIZE) {
         const chunk = updates.slice(i, i + BATCH_SIZE);
         await retryGoogle(() =>
           sheets.spreadsheets.values.batchUpdate({
             spreadsheetId,
-            requestBody: { valueInputOption: 'RAW', data: chunk },
+            requestBody: {
+              valueInputOption: 'RAW',
+              data: chunk,
+            },
           }),
         );
       }
-      console.log(`[PUSH] Updated ${updates.length} rows`);
-    }
-
-    // 6️⃣ EKSEKUSI INSERT (APPEND)
-    // EXTRA PROTECTION: Range eksplisit 'B6:AH' - JANGAN pernah tulis ke kolom A
-    if (inserts.length > 0) {
-      // Insert dalam batch maksimal 500 row per request
-      for (let i = 0; i < inserts.length; i += 500) {
-        const chunk = inserts.slice(i, i + 500);
-        await retryGoogle(() =>
-          sheets.spreadsheets.values.append({
-            spreadsheetId,
-            range: `'${SHEET_NAME}'!B${START_ROW}:AH`, // EXTRA PROTECTION: Explicit mulai dari B
-            valueInputOption: 'RAW',
-            requestBody: { values: chunk },
-          }),
-        );
-      }
-      console.log(`[PUSH] Inserted ${inserts.length} rows`);
     }
 
     console.log(
-      `[PUSH] DONE | Deleted: ${rowsToDelete.length} | New: ${inserts.length} | Updated: ${updates.length} | Skipped: ${skipped}`,
+      `[PUSH] SELESAI | Updated: ${updates.length / 2} | Skipped: ${skipped} | Not in Sheet: ${notInSheet}`,
     );
+
     return {
       success: true,
-      deleted: rowsToDelete.length,
-      updated: updates.length,
-      inserted: inserts.length,
+      deleted: 0,
+      inserted: 0,
+      updated: updates.length / 2,
       skipped,
+      notInSheet,
     };
   } catch (err: any) {
     console.error('[PUSH] FATAL ERROR:', err);

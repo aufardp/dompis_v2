@@ -74,39 +74,6 @@ export default function TicketDetailModal({
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  // Helper: compress image in browser before upload
-  const compressImage = useCallback(
-    async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(url);
-          const canvas = document.createElement('canvas');
-          const scale = Math.min(1, maxWidthPx / img.width);
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) {
-                resolve(file);
-                return;
-              }
-              resolve(new File([blob], file.name, { type: 'image/jpeg' }));
-            },
-            'image/jpeg',
-            quality,
-          );
-        };
-        img.onerror = () => resolve(file); // fallback: use original file
-        img.src = url;
-      });
-    },
-    [],
-  );
-
   // Status derived values
   const status = useMemo(() => {
     const raw = ticket.STATUS_UPDATE ?? ticket.hasilVisit ?? '';
@@ -328,39 +295,29 @@ export default function TicketDetailModal({
     }
   }, [ticket.idTicket, onUpdated]);
 
-  // File handlers — compress images before storing
-  const handleFileChange = useCallback(
-    async (files: File[]) => {
-      // 1. Compress all images in parallel before preview
-      const compressed = await Promise.all(
-        files.map((f) =>
-          f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
-        ),
+  // File handlers — files sudah dikompres di EvidenceUploader
+  const handleFileChange = useCallback((files: File[]) => {
+    // 1. Validate size (file sudah dikompres dari EvidenceUploader)
+    // Naikkan batas dari 2MB ke 3MB — lebih realistis untuk foto HP modern
+    const MAX_AFTER = 3 * 1024 * 1024;
+    const stillTooLarge = files.filter((f) => f.size > MAX_AFTER);
+    if (stillTooLarge.length > 0) {
+      setError(
+        `${stillTooLarge.length} foto masih terlalu besar setelah kompresi (maks 3MB per foto). Coba ambil foto dengan kualitas lebih rendah di kamera HP Anda.`,
       );
+      return;
+    }
 
-      // 2. Re-validate size AFTER compression
-      // Jika file masih > 2MB setelah compress (mis. file bukan gambar), tolak
-      const MAX_AFTER = 2 * 1024 * 1024;
-      const stillTooLarge = compressed.filter((f) => f.size > MAX_AFTER);
-      if (stillTooLarge.length > 0) {
-        setError(
-          `${stillTooLarge.length} file masih terlalu besar setelah kompresi. Coba foto dengan resolusi lebih rendah.`,
-        );
-        return;
-      }
+    // 2. Check total size
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    if (totalSize > 10 * 1024 * 1024) {
+      setError('Total ukuran foto melebihi 10MB. Kurangi jumlah foto.');
+      return;
+    }
 
-      // 3. Check total size
-      const totalSize = compressed.reduce((sum, f) => sum + f.size, 0);
-      if (totalSize > 10 * 1024 * 1024) {
-        setError('Total ukuran foto melebihi 10MB. Kurangi jumlah foto.');
-        return;
-      }
-
-      setSelectedFiles(compressed);
-      setPreviewUrls(compressed.map((f) => URL.createObjectURL(f)));
-    },
-    [compressImage],
-  );
+    setSelectedFiles(files);
+    setPreviewUrls(files.map((f) => URL.createObjectURL(f)));
+  }, []);
 
   const handleRemoveImage = useCallback(
     (index: number) => {

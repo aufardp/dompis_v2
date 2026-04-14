@@ -270,7 +270,7 @@ export async function GET(request: NextRequest) {
       ? await prisma.ticket.findMany({
           where: {
             teknisi_user_id: { in: uniqueTechnicianIds },
-            STATUS_UPDATE: 'closed',
+            STATUS_UPDATE: { in: ['close', 'closed'] },
             closed_at: {
               gte: today,
               lte: todayEnd,
@@ -288,6 +288,7 @@ export async function GET(request: NextRequest) {
             closed_at: true,
           },
           orderBy: { closed_at: 'desc' },
+          take: closedTodayLimit,
         })
       : [];
 
