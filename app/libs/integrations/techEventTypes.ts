@@ -66,6 +66,7 @@ export type TechEventActor = {
 export type TechEventPayload = {
   event_id: string;
   event_type: TechEventType;
+  event_label: string;  // Format: "TICKET_ASSIGNED_INC45678765"
   occurred_at: string;
   ticket: TechEventTicket;
   status: TechEventStatus;
