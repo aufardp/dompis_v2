@@ -1,5 +1,6 @@
 import prisma from '@/app/libs/prisma';
 import { postTechEvents } from './techEvents';
+import { TechEventWebhookBatch, TechEventPayload } from './techEventTypes';
 
 const MAX_RETRY = 5;
 const BASE_BACKOFF_MS = 60 * 1000; // 1 menit
@@ -28,6 +29,21 @@ export async function dispatchTechEvents() {
 
   const now = new Date();
 
+  // Reset SENDING yang stuck lebih dari 5 menit
+  // (Artinya proses crash sebelum update status ke SENT/FAILED/PENDING)
+  const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);
+  await prisma.tech_event_outbox.updateMany({
+    where: {
+      status: 'SENDING',
+      updated_at: { lte: stuckCutoff },
+    },
+    data: {
+      status: 'PENDING',
+      last_error: 'Reset from stuck SENDING state',
+      next_attempt_at: null,
+    },
+  });
+
   // Ambil event yang boleh dikirim
   const events = await prisma.tech_event_outbox.findMany({
     where: {
@@ -54,7 +70,12 @@ export async function dispatchTechEvents() {
 
   for (const event of events) {
     try {
-      const res = await postTechEvents({ url, secret }, event.payload as any);
+      // Bungkus single event payload ke dalam batch format yang benar
+      const batch: TechEventWebhookBatch = {
+        events: [event.payload as TechEventPayload],
+      };
+
+      const res = await postTechEvents({ url, secret }, batch);
 
       if (res.ok) {
         await prisma.tech_event_outbox.update({

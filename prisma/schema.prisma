@@ -291,6 +291,7 @@ model tech_event_outbox {
   id              Int       @id @default(autoincrement())
   event_id        String    @unique @db.VarChar(36)
   event_type      String    @db.VarChar(100)
+  event_label     String?   @db.VarChar(200)
   payload         Json
   status          String    @default("PENDING") @db.VarChar(20)
   attempt_count   Int       @default(0)
@@ -302,6 +303,7 @@ model tech_event_outbox {
 
   @@index([status, next_attempt_at], map: "idx_outbox_status_next")
   @@index([event_type], map: "idx_outbox_event_type")
+  @@index([event_label], map: "idx_outbox_event_label")
   @@index([created_at], map: "idx_outbox_created")
   @@map("tech_event_outbox")
 }

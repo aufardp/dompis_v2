@@ -34,7 +34,9 @@ export async function postTechEvents(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-source': 'dompis', // optional audit
+        'x-source': 'dompis',
+        'x-event-id': body.events[0]?.event_id ?? '',  // idempotency untuk GAS
+        'x-idempotency-key': body.events[0]?.event_id ?? '',  // alias untuk GAS
       },
       body: rawBody,
       signal: controller.signal,
@@ -42,8 +44,16 @@ export async function postTechEvents(
 
     const text = await res.text().catch(() => '');
 
+    // GAS Web App kadang return 302 redirect atau 200 dengan body "Success"
+    // Anggap sukses jika status 2xx ATAU 302 ATAU body mengandung "success"
+    const isSuccess =
+      res.ok ||
+      res.status === 302 ||
+      text.toLowerCase().includes('"success"') ||
+      text.toLowerCase().includes('success');
+
     return {
-      ok: res.ok,
+      ok: isSuccess,
       status: res.status,
       text,
     };

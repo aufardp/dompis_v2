@@ -5,6 +5,7 @@
 dist
 out
 build
+.next
 
 # Debug & Logs
 npm-debug.log*
