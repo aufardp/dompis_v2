@@ -1,51 +1,57 @@
-FROM node:20-alpine AS runner
-
-# Instal openssl karena Prisma memerlukannya untuk runtime
-RUN apk add --no-cache openssl
-
+# STAGE 1: Base & Install
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
+# Salin package.json dan lock file
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies (termasuk yang dibutuhkan untuk build)
+RUN npm install --legacy-peer-deps
+
+# STAGE 2: Build
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Generate prisma & build aplikasi
+RUN npx prisma generate
+ENV NEXT_TELEMETRY_DISABLED 1
+# Gunakan SKIP_ENV_VALIDATION=true jika kamu pakai zod-env
+RUN SKIP_ENV_VALIDATION=true npm run build
+
+# STAGE 3: Runner (Image Akhir yang Kecil)
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache openssl
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# Tambahkan user non-root demi keamanan
+# Security: Non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Pastikan Anda sudah menjalankan 'npm run build' di local sebelum 'docker build'
-# 1. Salin semua source code agar path alias @/ bisa dibaca tsx
-COPY app ./app
-COPY lib ./lib
-COPY server.ts ./server.ts
-COPY tsconfig.json ./tsconfig.json
-COPY next-env.d.ts ./next-env.d.ts
+# Salin file-file penting saja
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/dompis-99aa242a4864.json ./dompis-99aa242a4864.json
 
-# 2. Salin file kredensial Google (WAJIB)
-COPY dompis-99aa242a4864.json ./dompis-99aa242a4864.json
-
-# 3. Salin file .env agar terbaca oleh server.ts
-COPY .env ./
-
-# 4. Salin hasil build & node_modules dari Windows
-COPY .next ./.next
-COPY node_modules ./node_modules
-COPY package.json ./package.json
-COPY prisma ./prisma
-COPY public ./public
-
-# 5. Fix binary untuk Linux & Generate Prisma
-RUN npm rebuild esbuild
-RUN npx prisma generate
-
-# 6. Pastikan permission folder benar
+# Permission fix
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 EXPOSE 3000
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
 
-# Gunakan HOSTNAME 0.0.0.0 agar bisa diakses dari Windows
-ENV HOSTNAME="0.0.0.0"
-ENV PORT=3000
-
-# Use next start directly (set in package.json)
-CMD ["sh", "-c", "npx tsx server.ts"]
+CMD ["npx", "tsx", "server.ts"]
