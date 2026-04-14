@@ -1,11 +1,28 @@
-# Dependencies
+# Dependencies (WAJIB)
+# Jangan kirim node_modules lokal ke docker, 
+# biarkan docker menginstall sendiri di dalam container
+node_modules
 .npm
 
-# Build outputs
+# Build outputs (WAJIB)
+# Jangan kirim hasil build lokal agar tidak bentrok dengan build di Linux Docker
 dist
 out
 build
 .next
+
+# Prisma (PENTING)
+# Jangan kirim folder generate prisma lokal
+/prisma/generated-client
+
+# Environment & Secrets (KEAMANAN)
+.env
+.env*.local
+.vercel
+*.pem
+*.json
+!dompis-99aa242a4864.json 
+# (Tanda seru di atas memastikan file tersebut tetap terikut jika memang dibutuhkan di dalam image)
 
 # Debug & Logs
 npm-debug.log*
@@ -13,14 +30,17 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Environment & Secrets
-.env*.local
-.vercel
-
 # Source Control
 .git
 .gitignore
 
 # IDE / OS Files
 .vscode
+.idea
 .DS_Store
+Thumbs.db
+
+# Docker Files (Opsional)
+Dockerfile
+docker-compose.yml
+deploy.sh
