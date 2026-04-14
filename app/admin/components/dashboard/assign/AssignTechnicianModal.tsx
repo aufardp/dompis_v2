@@ -90,8 +90,7 @@ export default function AssignTechnicianModal({
     setSelectedId(eligible ? currentTechnicianId : undefined);
   }, [isOpen, technicians, currentTechnicianId]);
 
-  if (!isOpen) return null;
-
+  // WAJIB di atas early return — Rules of Hooks melarang hook setelah conditional return
   const filteredTechnicians = useMemo(() => {
     return technicians.filter((tech: any) =>
       `${tech.nama ?? ''} ${tech.nik ?? ''}`
@@ -99,6 +98,8 @@ export default function AssignTechnicianModal({
         .includes(searchTerm.toLowerCase()),
     );
   }, [technicians, searchTerm]);
+
+  if (!isOpen) return null;
 
   const handleSubmit = async () => {
     if (!selectedId) {

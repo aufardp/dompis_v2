@@ -29,7 +29,8 @@ type ActivityType =
 
 // Sinkronkan dengan compressed file size (bukan raw dari kamera)
 // Setelah compressImage: maxWidth 1920px, quality 0.82 → hasil ~400KB-1MB per foto
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB per file (after compress)
+// Multi-pass compression: jika masih > 2MB, pass 2 akan turun ke 1280px, quality 0.70
+const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB per file (after compress, konsisten dengan client)
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB total payload (dengan FormData overhead)
 const MAX_FILES = 5;
 
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: `File ${oversizedFiles.map((f) => f.name).join(', ')} terlalu besar. Maksimal 2 MB per foto setelah kompresi.`,
+          message: `File ${oversizedFiles.map((f) => f.name).join(', ')} terlalu besar. Maksimal 3 MB per foto setelah kompresi.`,
         },
         { status: 400 },
       );
