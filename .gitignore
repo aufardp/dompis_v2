@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,9 +41,17 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Prisma & Uploads
 /generated/prisma
 /public/uploads
 
-*.json
+# Secrets (Hanya abaikan file kunci spesifik)
+# Jangan gunakan *.json karena akan memblokir package.json
 dompis-*.json
+*.pem
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
 .qwen
