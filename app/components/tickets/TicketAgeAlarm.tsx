@@ -41,7 +41,7 @@ export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
 
     loadExpiredTickets();
 
-    const interval = setInterval(loadExpiredTickets, 60000);
+    const interval = setInterval(loadExpiredTickets, 180000);  // 3 menit — SSE menangani real-time
     return () => clearInterval(interval);
   }, []);
 

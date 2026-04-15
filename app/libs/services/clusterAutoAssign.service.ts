@@ -36,7 +36,7 @@ export class ClusterAutoAssignService {
     const upper = trimmed.toUpperCase();
 
     // Try exact match first, then uppercase match
-    const nodes = await prisma.cluster_node.findMany({
+    const nodes = (await prisma.cluster_node.findMany({
       where: {
         is_active: true,
         odc_value: { in: [trimmed, upper] },
@@ -50,14 +50,20 @@ export class ClusterAutoAssignService {
           },
         },
       },
-    }) as Array<{
+    })) as Array<{
       odc_value: string;
       cluster: { id: number; nama_cluster: string; is_active: boolean } | null;
     }>;
 
     const matched = nodes.find(
-      (n: { odc_value: string; cluster: { id: number; nama_cluster: string; is_active: boolean } | null }) =>
-        (n.odc_value.toUpperCase() === upper) && n.cluster?.is_active,
+      (n: {
+        odc_value: string;
+        cluster: {
+          id: number;
+          nama_cluster: string;
+          is_active: boolean;
+        } | null;
+      }) => n.odc_value.toUpperCase() === upper && n.cluster?.is_active,
     );
 
     return matched?.cluster ?? null;
@@ -67,7 +73,9 @@ export class ClusterAutoAssignService {
    * Hitung workload aktif tiap teknisi hari ini
    * (jumlah tiket dengan status assigned/on_progress/pending)
    */
-  static async getWorkloadMap(teknisiIds: number[]): Promise<Map<number, number>> {
+  static async getWorkloadMap(
+    teknisiIds: number[],
+  ): Promise<Map<number, number>> {
     if (!teknisiIds.length) return new Map();
     const loads = await prisma.ticket.groupBy({
       by: ['teknisi_user_id'],
@@ -79,8 +87,10 @@ export class ClusterAutoAssignService {
     });
     return new Map(
       loads.map(
-        (l: { teknisi_user_id: number | null; _count: { id_ticket: number } }) =>
-          [l.teknisi_user_id!, l._count.id_ticket],
+        (l: {
+          teknisi_user_id: number | null;
+          _count: { id_ticket: number };
+        }) => [l.teknisi_user_id!, l._count.id_ticket],
       ),
     );
   }
@@ -126,7 +136,9 @@ export class ClusterAutoAssignService {
       );
 
       if (ticket.teknisi_user_id) {
-        console.log(`[AutoAssign] SKIP ${ticket.INCIDENT}: already assigned to user #${ticket.teknisi_user_id}`);
+        console.log(
+          `[AutoAssign] SKIP ${ticket.INCIDENT}: already assigned to user #${ticket.teknisi_user_id}`,
+        );
         return { assigned: false, ticketId, reason: 'already_assigned' };
       }
 
@@ -154,7 +166,7 @@ export class ClusterAutoAssignService {
           is_active: true,
         },
         include: {
-          teknisi: { select: { id_user: true, nama: true } },
+          teknisi: { select: { id_user: true, nama: true, nik: true } },
         },
       });
 
@@ -172,19 +184,35 @@ export class ClusterAutoAssignService {
         };
       }
 
-      const teknisiIds = assignments.map((a: { teknisi_id: number }) => a.teknisi_id);
+      const teknisiIds = assignments.map(
+        (a: { teknisi_id: number }) => a.teknisi_id,
+      );
 
       // 4. Round-robin: pilih teknisi dengan beban paling ringan
       const loadMap = await this.getWorkloadMap(teknisiIds);
       const sorted = assignments
-        .map((a: { teknisi_id: number; teknisi: { nama: string | null }; load?: number }) => ({
-          ...a,
-          load: loadMap.get(a.teknisi_id) ?? 0,
-        }))
+        .map(
+          (a: {
+            teknisi_id: number;
+            teknisi: { nama: string | null; nik: string | null };
+            load?: number;
+          }) => ({
+            ...a,
+            load: loadMap.get(a.teknisi_id) ?? 0,
+          }),
+        )
         .sort(
           (
-            a: { teknisi_id: number; teknisi: { nama: string | null }; load: number },
-            b: { teknisi_id: number; teknisi: { nama: string | null }; load: number },
+            a: {
+              teknisi_id: number;
+              teknisi: { nama: string | null; nik: string | null };
+              load: number;
+            },
+            b: {
+              teknisi_id: number;
+              teknisi: { nama: string | null; nik: string | null };
+              load: number;
+            },
           ) => a.load - b.load,
         );
 
@@ -248,7 +276,8 @@ export class ClusterAutoAssignService {
               customer_type: ticket.CUSTOMER_TYPE ?? null,
             },
             status: {
-              old_hasil_visit: (ticket.STATUS_UPDATE?.toUpperCase() as any) ?? 'OPEN',
+              old_hasil_visit:
+                (ticket.STATUS_UPDATE?.toUpperCase() as any) ?? 'OPEN',
               new_hasil_visit: 'ASSIGNED',
               pending_reason: null,
               evidence,
@@ -258,7 +287,7 @@ export class ClusterAutoAssignService {
             old_technician: null,
             new_technician: {
               id_user: chosen.teknisi_id,
-              nik: null,
+              nik: chosen.teknisi.nik ?? null,
               nama: chosen.teknisi.nama ?? null,
             },
             actor: {
@@ -312,7 +341,9 @@ export class ClusterAutoAssignService {
       select: { odc_value: true },
     });
 
-    const activeOdcValues = activeNodes.map((n: { odc_value: string }) => n.odc_value);
+    const activeOdcValues = activeNodes.map(
+      (n: { odc_value: string }) => n.odc_value,
+    );
 
     console.log(
       `[AutoAssign Batch] Active ODC values: ${activeOdcValues.length} nodes`,

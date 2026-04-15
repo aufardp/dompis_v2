@@ -33,20 +33,20 @@ export default function TicketUpdateModal({
   // File handlers — files sudah dikompres di EvidenceUploader
   const handleFileChange = useCallback((files: File[]) => {
     // 1. Validate size (file sudah dikompres dari EvidenceUploader)
-    // Naikkan batas dari 2MB ke 3MB — lebih realistis untuk foto HP modern
-    const MAX_AFTER = 3 * 1024 * 1024;
+    // Naikkan batas dari 3MB ke 4MB — kompresi multi-pass jamin < 3MB, buffer aman
+    const MAX_AFTER = 4 * 1024 * 1024;
     const stillTooLarge = files.filter((f) => f.size > MAX_AFTER);
     if (stillTooLarge.length > 0) {
       setError(
-        `${stillTooLarge.length} foto masih terlalu besar setelah kompresi (maks 3MB per foto). Coba ambil foto dengan kualitas lebih rendah di kamera HP Anda.`,
+        `${stillTooLarge.length} foto masih terlalu besar setelah kompresi (maks 4MB per foto). Coba foto dengan pencahayaan lebih baik atau resolusi kamera lebih rendah.`,
       );
       return;
     }
 
-    // 2. Check total size
+    // 2. Check total size: 5 foto × 4MB = 20MB max → set 15MB total
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    if (totalSize > 10 * 1024 * 1024) {
-      setError('Total ukuran foto melebihi 10MB. Kurangi jumlah foto.');
+    if (totalSize > 15 * 1024 * 1024) {
+      setError('Total ukuran foto melebihi 15MB. Kurangi jumlah foto.');
       return;
     }
 

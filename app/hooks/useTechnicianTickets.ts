@@ -19,7 +19,7 @@ interface UseTechnicianTicketsReturn {
 
 export function useTechnicianTickets(
   filters: TechnicianFilters,
-  autoRefreshSeconds = 60,
+  autoRefreshSeconds = 180,  // 3 menit — SSE menangani real-time, polling hanya safety net
   includeAbsent = false,
   opts?: { includeClosedToday?: boolean; closedTodayLimit?: number },
 ): UseTechnicianTicketsReturn {

@@ -47,6 +47,7 @@ type OpenDiamondTicketApi = {
   hasilVisit?: string | null;
   HASIL_VISIT?: string | null;
   status?: string | null;
+  STATUS_UPDATE?: string | null;
   teknisiUserId?: number | null;
   teknisi_user_id?: number | null;
   workzone?: string | null;
@@ -87,9 +88,9 @@ export function useOpenDiamondTickets(
       if (opts?.ticketType && opts.ticketType !== 'all') {
         params.set('ticketType', opts.ticketType);
       }
-      // Always filter for Diamond and OPEN
+      // Don't filter by statusUpdate on the API — filter client-side instead
+      // to avoid issues with sync_date and closed tickets leaking through
       params.set('ctype', 'HVC_DIAMOND');
-      params.set('statusUpdate', 'open');
       params.set('limit', '100'); // Get more tickets
 
       console.log(
@@ -151,7 +152,12 @@ export function useOpenDiamondTickets(
         }
       }
 
-      const status = String(t.hasilVisit || t.status || 'OPEN');
+      const status = String(t.hasilVisit || t.STATUS_UPDATE || t.status || 'OPEN')
+        .trim()
+        .toLowerCase();
+
+      // Skip tickets that are already closed — only show open/active tickets
+      if (status === 'close' || status === 'closed') continue;
 
       // Extract customer name and service number from summary/SUMMARY if not available directly
       let contactName = t.contactName || t.CONTACT_NAME || '';
@@ -176,7 +182,7 @@ export function useOpenDiamondTickets(
         idTicket,
         ticketId: ticketId || `TICKET_${idTicket}`,
         customerType,
-        status,
+        status: String(t.hasilVisit || t.STATUS_UPDATE || t.status || 'OPEN'),
         reportedAt,
         technicianName: t.users?.nama || null,
         teknisiUserId: t.teknisiUserId || t.teknisi_user_id || null,

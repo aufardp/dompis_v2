@@ -54,7 +54,7 @@ export default function EvidenceUploader({
   const [compressing, setCompressing] = useState(false);
 
   const compressImage = useCallback(
-    async (file: File, maxWidthPx = 1920, quality = 0.82): Promise<File> => {
+    async (file: File): Promise<File> => {
       // Skip non-image files
       if (!file.type.startsWith('image/')) return file;
 
@@ -65,11 +65,13 @@ export default function EvidenceUploader({
         img.onload = () => {
           URL.revokeObjectURL(url);
 
-          // Pass 1: kompres dengan setting normal
+          const TARGET_SIZE = 3 * 1024 * 1024; // 3MB — target per file after compression
+
+          // Pass 1: kompres ke 1920px, quality 0.82
           const canvas = document.createElement('canvas');
-          const scale = Math.min(1, maxWidthPx / img.width);
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
+          const scale1 = Math.min(1, 1920 / Math.max(img.width, img.height));
+          canvas.width = Math.round(img.width * scale1);
+          canvas.height = Math.round(img.height * scale1);
           const ctx = canvas.getContext('2d')!;
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
@@ -77,33 +79,54 @@ export default function EvidenceUploader({
             async (blob1) => {
               if (!blob1) { resolve(file); return; }
 
-              // Jika hasil pass 1 sudah < 2MB, selesai
-              if (blob1.size <= 2 * 1024 * 1024) {
+              // Jika hasil pass 1 sudah ≤ 3MB → selesai
+              if (blob1.size <= TARGET_SIZE) {
                 resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
                 return;
               }
 
-              // Pass 2: kurangi quality dan resolusi jika masih terlalu besar
-              const scale2 = Math.min(1, 1280 / img.width); // turun ke 1280px
+              // Pass 2: turunkan ke 1280px, quality 0.70
+              const scale2 = Math.min(1, 1280 / Math.max(img.width, img.height));
               canvas.width = Math.round(img.width * scale2);
               canvas.height = Math.round(img.height * scale2);
-              const ctx2 = canvas.getContext('2d')!;
-              ctx2.drawImage(img, 0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
               canvas.toBlob(
-                (blob2) => {
-                  if (!blob2) { 
-                    resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })); 
-                    return; 
+                async (blob2) => {
+                  if (!blob2) {
+                    resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                    return;
                   }
-                  resolve(new File([blob2], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+
+                  // Jika pass 2 masih > 3MB → pass 3: 960px, quality 0.60
+                  if (blob2.size <= TARGET_SIZE) {
+                    resolve(new File([blob2], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                    return;
+                  }
+
+                  // Pass 3: fallback ke 960px, quality 0.60
+                  const scale3 = Math.min(1, 960 / Math.max(img.width, img.height));
+                  canvas.width = Math.round(img.width * scale3);
+                  canvas.height = Math.round(img.height * scale3);
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                  canvas.toBlob(
+                    (blob3) => {
+                      resolve(new File(
+                        [blob3 ?? blob2],
+                        file.name.replace(/\.[^.]+$/, '.jpg'),
+                        { type: 'image/jpeg' }
+                      ));
+                    },
+                    'image/jpeg',
+                    0.60,
+                  );
                 },
                 'image/jpeg',
-                0.70,  // quality lebih rendah di pass 2
+                0.70,
               );
             },
             'image/jpeg',
-            quality,
+            0.82,
           );
         };
 
