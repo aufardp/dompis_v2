@@ -19,6 +19,9 @@ COPY . .
 # Generate prisma & build aplikasi
 RUN npx prisma generate
 ENV NEXT_TELEMETRY_DISABLED 1
+ARG SPREADSHEET_ID=placeholder
+ENV SPREADSHEET_ID=$SPREADSHEET_ID
+
 # Gunakan SKIP_ENV_VALIDATION=true jika kamu pakai zod-env
 RUN SKIP_ENV_VALIDATION=true npm run build
 

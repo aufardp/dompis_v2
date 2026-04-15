@@ -47,6 +47,21 @@ export default function ClusteringPage() {
   >([]);
   const [plotModalLoading, setPlotModalLoading] = useState(false);
 
+  // Edit & Delete Cluster state
+  const [editModal, setEditModal] = useState<{
+    open: boolean;
+    cluster: { id: number; nama_cluster: string; is_active: boolean } | null;
+  }>({ open: false, cluster: null });
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    clusterId: number | null;
+    clusterName: string;
+  }>({ open: false, clusterId: null, clusterName: '' });
+
+  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const { serviceAreas, loading: sasLoading } = useUserManagedSAs();
   const {
     clusters,
@@ -188,6 +203,54 @@ export default function ClusteringPage() {
 
   const handleDetailClick = (clusterId: number) => {
     router.push(`/admin/clustering/${clusterId}`);
+  };
+
+  // ── Edit & Delete Cluster Handlers ────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteConfirm.clusterId) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/clustering/${deleteConfirm.clusterId}`,
+        { method: 'DELETE' },
+      );
+      const json = await res?.json();
+      if (!json?.success)
+        throw new Error(json?.message || 'Gagal menghapus cluster');
+      setDeleteConfirm({ open: false, clusterId: null, clusterName: '' });
+      refreshClusters();
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus cluster');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSave = async (nama: string, isActive: boolean) => {
+    if (!editModal.cluster) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/clustering/${editModal.cluster.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nama_cluster: nama,
+            is_active: isActive,
+          }),
+        },
+      );
+      const json = await res?.json();
+      if (!json?.success)
+        throw new Error(json?.message || 'Gagal menyimpan cluster');
+      setEditModal({ open: false, cluster: null });
+      refreshClusters();
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan cluster');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Plot Teknisi Modal Handlers ───────────────────────────────────────────
@@ -618,12 +681,46 @@ export default function ClusteringPage() {
                           )}
                         </td>
                         <td className='px-4 py-3 text-right'>
-                          <button
-                            onClick={() => handleDetailClick(cluster.id)}
-                            className='rounded-lg bg-white/5 px-3 py-1.5 text-xs font-medium text-(--text-primary) hover:bg-white/10'
-                          >
-                            Detail
-                          </button>
+                          <div className='inline-flex gap-2'>
+                            {/* Detail — tetap ada */}
+                            <button
+                              onClick={() => handleDetailClick(cluster.id)}
+                              className='rounded-lg border border-(--border) bg-white px-3 py-1.5 text-xs font-semibold text-(--text-primary) hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800'
+                            >
+                              Detail
+                            </button>
+
+                            {/* Edit — BARU */}
+                            <button
+                              onClick={() =>
+                                setEditModal({
+                                  open: true,
+                                  cluster: {
+                                    id: cluster.id,
+                                    nama_cluster: cluster.nama_cluster,
+                                    is_active: cluster.is_active,
+                                  },
+                                })
+                              }
+                              className='rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400'
+                            >
+                              Edit
+                            </button>
+
+                            {/* Delete — BARU */}
+                            <button
+                              onClick={() =>
+                                setDeleteConfirm({
+                                  open: true,
+                                  clusterId: cluster.id,
+                                  clusterName: cluster.nama_cluster,
+                                })
+                              }
+                              className='rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400'
+                            >
+                              Hapus
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -822,6 +919,103 @@ export default function ClusteringPage() {
                 className='rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50'
               >
                 {plotModalLoading ? 'Menyimpan...' : 'Simpan Plot'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Cluster Modal */}
+      {editModal.open && editModal.cluster && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+          <div className='w-full max-w-md rounded-2xl bg-white p-6 dark:bg-slate-800'>
+            <h3 className='mb-4 text-lg font-semibold text-slate-800 dark:text-slate-100'>
+              Edit Cluster
+            </h3>
+            <div className='space-y-4'>
+              <div>
+                <label className='mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300'>
+                  Nama Cluster
+                </label>
+                <input
+                  type='text'
+                  defaultValue={editModal.cluster.nama_cluster}
+                  id='edit-cluster-name'
+                  className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white'
+                />
+              </div>
+              <div className='flex items-center gap-2'>
+                <input
+                  type='checkbox'
+                  id='edit-cluster-active'
+                  defaultChecked={editModal.cluster.is_active}
+                />
+                <label
+                  htmlFor='edit-cluster-active'
+                  className='text-sm text-slate-700 dark:text-slate-300'
+                >
+                  Aktif
+                </label>
+              </div>
+            </div>
+            <div className='mt-6 flex gap-3'>
+              <button
+                onClick={() => setEditModal({ open: false, cluster: null })}
+                className='flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700'
+              >
+                Batal
+              </button>
+              <button
+                disabled={saving}
+                onClick={() => {
+                  const nama = (
+                    document.getElementById('edit-cluster-name') as HTMLInputElement
+                  )?.value?.trim();
+                  const isActive = (
+                    document.getElementById('edit-cluster-active') as HTMLInputElement
+                  )?.checked;
+                  if (nama) handleSave(nama, isActive);
+                }}
+                className='flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'
+              >
+                {saving ? 'Menyimpan...' : 'Simpan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.open && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+          <div className='w-full max-w-sm rounded-2xl bg-white p-6 dark:bg-slate-800'>
+            <h3 className='mb-2 text-lg font-semibold text-slate-800 dark:text-slate-100'>
+              Hapus Cluster
+            </h3>
+            <p className='mb-6 text-sm text-slate-600 dark:text-slate-300'>
+              Apakah yakin ingin menghapus cluster{' '}
+              <strong>"{deleteConfirm.clusterName}"</strong>? Tindakan ini tidak
+              bisa dibatalkan.
+            </p>
+            <div className='flex gap-3'>
+              <button
+                onClick={() =>
+                  setDeleteConfirm({
+                    open: false,
+                    clusterId: null,
+                    clusterName: '',
+                  })
+                }
+                className='flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700'
+              >
+                Batal
+              </button>
+              <button
+                disabled={deleting}
+                onClick={handleDelete}
+                className='flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50'
+              >
+                {deleting ? 'Menghapus...' : 'Hapus'}
               </button>
             </div>
           </div>

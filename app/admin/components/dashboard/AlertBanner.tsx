@@ -109,32 +109,51 @@ export function DiamondAlertBanner({
 
       {/* All Tickets List */}
       <div className='mt-3 space-y-2'>
-        {tickets.map((ticket, index) => (
-          <div
-            key={ticket.ticketId || ticket.idTicket || index}
-            className='flex flex-wrap items-center gap-2 rounded-lg border border-cyan-500/10 bg-cyan-500/5 px-3 py-2'
-          >
-            <span className='font-syne min-w-25 font-bold text-cyan-400'>
-              {ticket.ticketId}
-            </span>
-            <span className='text-cyan-300'>⚡ {ticket.customerType}</span>
-            {ticket.workzone && (
-              <span className='text-cyan-300'>📍 {ticket.workzone}</span>
-            )}
-            <span className='text-cyan-300'>
-              {new Date(ticket.reportedAt).toLocaleString('id-ID')}
-            </span>
-            <span className='font-medium text-cyan-400'>{ticket.status}</span>
-            {onAssign && (
-              <button
-                onClick={() => onAssign(ticket.ticketId, ticket.idTicket)}
-                className='ml-auto rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/25'
+        {tickets.map((ticket, index) => {
+          const statusLower = (ticket.status || '').toLowerCase();
+          const statusBadgeClass =
+            statusLower === 'open'
+              ? 'bg-yellow-500/20 text-yellow-400'
+              : statusLower === 'assigned'
+                ? 'bg-blue-500/20 text-blue-400'
+                : statusLower === 'on_progress'
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'bg-slate-500/20 text-slate-400';
+
+          return (
+            <div
+              key={ticket.ticketId || ticket.idTicket || index}
+              className='flex flex-wrap items-center gap-2 rounded-lg border border-cyan-500/10 bg-cyan-500/5 px-3 py-2'
+            >
+              <span className='font-syne min-w-25 font-bold text-cyan-400'>
+                {ticket.ticketId}
+              </span>
+              <span className='text-cyan-300'>⚡ {ticket.customerType}</span>
+              {ticket.workzone && (
+                <span className='text-cyan-300'>📍 {ticket.workzone}</span>
+              )}
+              <span className='text-cyan-300'>
+                {new Date(ticket.reportedAt).toLocaleString('id-ID')}
+              </span>
+
+              {/* Status badge */}
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeClass}`}
               >
-                Assign
-              </button>
-            )}
-          </div>
-        ))}
+                {(ticket.status || 'OPEN').toUpperCase()}
+              </span>
+
+              {onAssign && statusLower !== 'on_progress' && (
+                <button
+                  onClick={() => onAssign(ticket.ticketId, ticket.idTicket)}
+                  className='ml-auto rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-3 py-1 text-xs font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/25'
+                >
+                  {statusLower === 'assigned' ? 'Reassign' : 'Assign'}
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

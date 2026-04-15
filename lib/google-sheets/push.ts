@@ -96,8 +96,8 @@ export async function pushSpreadsheet() {
       const incidentId = r[0]; // Kolom B
       if (!incidentId) return;
 
-      // Hash kolom O (index 13) dan AC-AG (index 27-31)
-      const hash = hashRow([r[13], r[27], r[28], r[29], r[30], r[31]]);
+      // Hash kolom AC-AG saja (kolom O tidak di-update karena A-U tidak disentuh)
+      const hash = hashRow([r[28], r[29], r[30], r[31], r[32]]);
       sheetMap.set(incidentId.toString().trim(), {
         row: START_ROW + i,
         hash,
@@ -114,14 +114,17 @@ export async function pushSpreadsheet() {
         ? new Date(t.closed_at).toLocaleString('id-ID')
         : '';
 
-      // Hash data dari Database
+      // Hash data dari Database - hanya kolom V, W, X, AC-AG, AH yang di-push
       const dbHash = hashRow([
-        t.STATUS_UPDATE ?? '', // O
-        t.STATUS_UPDATE ?? '', // AC
-        t.PENDING_REASON ?? '', // AD
-        t.rca ?? '', // AE
-        t.sub_rca ?? '', // AF
-        t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
+        t.ALAMAT ?? '',
+        t.users?.nama ?? '',
+        t.users?.username ?? '',
+        t.STATUS_UPDATE ?? '',
+        t.PENDING_REASON ?? '',
+        t.rca ?? '',
+        t.sub_rca ?? '',
+        t.DESCRIPTION_ACTUAL_SOLUTION ?? '',
+        closedAtStr,
       ]);
 
       const existingInSheet = sheetMap.get(t.INCIDENT.trim());
@@ -141,10 +144,10 @@ export async function pushSpreadsheet() {
               t.ALAMAT ?? '', // V
               t.users?.nama ?? '', // W
               t.users?.username ?? '', // X (Labor Code)
-              '',
-              '',
-              '',
-              '', // Y, Z, AA, AB (Kosong/Tetap)
+              null, // Y - skip, biarkan data sheet
+              null, // Z - skip, biarkan data sheet
+              null, // AA - skip, biarkan data sheet
+              null, // AB - skip, biarkan data sheet
               t.STATUS_UPDATE ?? '', // AC (Status Dompis)
               t.PENDING_REASON ?? '', // AD (Update Kendala)
               t.rca ?? '', // AE
@@ -153,12 +156,6 @@ export async function pushSpreadsheet() {
               closedAtStr, // AH
             ],
           ],
-        });
-
-        // Update juga kolom O (Status Awal) jika diperlukan
-        updates.push({
-          range: `'${SHEET_NAME}'!O${existingInSheet.row}`,
-          values: [[t.STATUS_UPDATE ?? '']],
         });
       } else {
         skipped++;
@@ -183,14 +180,14 @@ export async function pushSpreadsheet() {
     }
 
     console.log(
-      `[PUSH] SELESAI | Updated: ${updates.length / 2} | Skipped: ${skipped} | Not in Sheet: ${notInSheet}`,
+      `[PUSH] SELESAI | Updated: ${updates.length} | Skipped: ${skipped} | Not in Sheet: ${notInSheet}`,
     );
 
     return {
       success: true,
       deleted: 0,
       inserted: 0,
-      updated: updates.length / 2,
+      updated: updates.length,
       skipped,
       notInSheet,
     };

@@ -157,7 +157,7 @@ export class ClusterAutoAssignServiceV2 {
   static async getActiveTeknisiForClusters(
     clusterIds: number[],
     today: string,
-  ): Promise<Map<number, { teknisi_id: number; nama: string }[]>> {
+  ): Promise<Map<number, { teknisi_id: number; nama: string; nik: string | null }[]>> {
     if (!clusterIds.length) return new Map();
 
     const assignments = await prisma.cluster_assignment.findMany({
@@ -167,16 +167,17 @@ export class ClusterAutoAssignServiceV2 {
         is_active: true,
       },
       include: {
-        teknisi: { select: { id_user: true, nama: true } },
+        teknisi: { select: { id_user: true, nama: true, nik: true } },
       },
     });
 
-    const result = new Map<number, { teknisi_id: number; nama: string }[]>();
+    const result = new Map<number, { teknisi_id: number; nama: string; nik: string | null }[]>();
     for (const assignment of assignments) {
       const existing = result.get(assignment.cluster_id) || [];
       existing.push({
         teknisi_id: assignment.teknisi_id,
         nama: assignment.teknisi.nama ?? 'Unknown',
+        nik: assignment.teknisi.nik ?? null,
       });
       result.set(assignment.cluster_id, existing);
     }
@@ -186,7 +187,7 @@ export class ClusterAutoAssignServiceV2 {
   private static async processChunkWithRetry(
     tickets: TicketWithRk[],
     clusterMap: Map<string, ClusterInfo>,
-    teknisiMap: Map<number, { teknisi_id: number; nama: string }[]>,
+    teknisiMap: Map<number, { teknisi_id: number; nama: string; nik: string | null }[]>,
     workloadMap: Map<number, number>,
     actorId: number,
     chunkIndex: number,
@@ -202,6 +203,7 @@ export class ClusterAutoAssignServiceV2 {
       incident: string;
       teknisiId: number;
       teknisiNama: string;
+      teknisiNik: string | null;
       clusterName: string;
       oldStatus: string | null;
     }> = [];
@@ -258,6 +260,7 @@ export class ClusterAutoAssignServiceV2 {
         incident: ticket.INCIDENT,
         teknisiId: chosen.teknisi_id,
         teknisiNama: chosen.nama,
+        teknisiNik: chosen.nik,
         clusterName: cluster.nama_cluster,
         oldStatus: ticket.STATUS_UPDATE,
       });
@@ -338,6 +341,7 @@ export class ClusterAutoAssignServiceV2 {
       incident: string;
       teknisiId: number;
       teknisiNama: string;
+      teknisiNik: string | null;
       clusterName: string;
       oldStatus: string | null;
     }>,
@@ -395,7 +399,7 @@ export class ClusterAutoAssignServiceV2 {
           old_technician: null,
           new_technician: {
             id_user: a.teknisiId,
-            nik: null,
+            nik: a.teknisiNik,
             nama: a.teknisiNama ?? null,
           },
           actor: {

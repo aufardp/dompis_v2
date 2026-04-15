@@ -163,7 +163,7 @@ export default function TechnicianDetailPage() {
     useSingleTechnician(technicianId);
 
   useAutoRefresh({
-    intervalMs: 60_000,
+    intervalMs: 180_000,  // 3 menit — SSE menangani real-time, polling hanya safety net
     refreshers: [refresh],
   });
 

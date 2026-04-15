@@ -45,6 +45,15 @@ export default function TechnicianPerformancePage() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
+  // Detail Modal state
+  const [detailModal, setDetailModal] = useState<{
+    open: boolean;
+    techName: string;
+    techId: number | null;
+    tickets: any[];
+    loading: boolean;
+  }>({ open: false, techName: '', techId: null, tickets: [], loading: false });
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -110,40 +119,68 @@ export default function TechnicianPerformancePage() {
     return uniq.map((wz) => ({ value: wz, label: wz }));
   }, [userWorkzones]);
 
-  const downloadCsv = useCallback(
-    async (type: 'summary' | 'tickets') => {
-      setExporting(true);
+  const downloadExcel = useCallback(async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        month: String(month),
+        year: String(year),
+      });
+      if (workzone) params.set('workzone', workzone);
+
+      const res = await fetchWithAuth(
+        `/api/technicians/performance/export-excel?${params.toString()}`,
+      );
+      if (!res || !res.ok) throw new Error('Gagal export');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Performa_Teknisi_${MONTHS[month - 1]}_${year}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Export gagal');
+    } finally {
+      setExporting(false);
+    }
+  }, [month, year, workzone]);
+
+  // Detail ticket handler
+  const handleDetailClick = useCallback(
+    async (row: PerfRow) => {
+      setDetailModal({
+        open: true,
+        techName: row.nama,
+        techId: row.id_user,
+        tickets: [],
+        loading: true,
+      });
       try {
         const params = new URLSearchParams({
+          tech_id: String(row.id_user),
           month: String(month),
           year: String(year),
-          type,
         });
-        if (workzone) params.set('workzone', workzone);
-
         const res = await fetchWithAuth(
-          `/api/technicians/performance/export?${params.toString()}`,
+          `/api/technicians/performance/tickets?${params.toString()}`,
         );
-        if (!res || !res.ok) {
-          const body = res ? await res.json().catch(() => null) : null;
-          throw new Error(body?.message || 'Failed to export CSV');
+        const json = await res?.json();
+        if (json?.success) {
+          setDetailModal((prev) => ({
+            ...prev,
+            tickets: json.data.tickets,
+            loading: false,
+          }));
+        } else {
+          setDetailModal((prev) => ({ ...prev, loading: false }));
         }
-
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download =
-          type === 'summary'
-            ? `technicians_summary_${year}-${String(month).padStart(2, '0')}.csv`
-            : `technicians_closed_tickets_${year}-${String(month).padStart(2, '0')}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } finally {
-        setExporting(false);
+      } catch {
+        setDetailModal((prev) => ({ ...prev, loading: false }));
       }
     },
-    [month, year, workzone],
+    [month, year],
   );
 
   return (
@@ -168,19 +205,11 @@ export default function TechnicianPerformancePage() {
           <div className='flex flex-wrap items-center gap-2'>
             <Button
               variant='outline'
-              onClick={() => downloadCsv('summary')}
-              disabled={loading}
+              onClick={downloadExcel}
+              disabled={exporting || loading || rows.length === 0}
             >
               <Download size={16} className='mr-2' />
-              Export Summary CSV
-            </Button>
-            <Button
-              variant='outline'
-              onClick={() => downloadCsv('tickets')}
-              disabled={loading}
-            >
-              <Download size={16} className='mr-2' />
-              Export Ticket List CSV
+              {exporting ? 'Mengunduh...' : 'Download Excel'}
             </Button>
           </div>
         </div>
@@ -234,13 +263,14 @@ export default function TechnicianPerformancePage() {
                   <th className='px-4 py-3 text-left'>Workzone</th>
                   <th className='px-4 py-3 text-center'>Closed (Month)</th>
                   <th className='px-4 py-3 text-center'>Avg Resolve (h)</th>
+                  <th className='px-4 py-3 text-center'>Aksi</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-slate-100 dark:divide-slate-700'>
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className='px-4 py-10 text-center text-slate-400 dark:text-slate-500'
                     >
                       Loading...
@@ -249,7 +279,7 @@ export default function TechnicianPerformancePage() {
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className='px-4 py-10 text-center text-slate-400 dark:text-slate-500'
                     >
                       No data
@@ -278,6 +308,14 @@ export default function TechnicianPerformancePage() {
                           ? '-'
                           : r.avg_resolve_time_hours.toFixed(1)}
                       </td>
+                      <td className='px-4 py-3 text-center'>
+                        <button
+                          onClick={() => handleDetailClick(r)}
+                          className='rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400'
+                        >
+                          Detail Tiket
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -286,6 +324,103 @@ export default function TechnicianPerformancePage() {
           </div>
         </div>
       </div>
+
+      {/* Detail Tiket Modal */}
+      {detailModal.open && (
+        <div
+          className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+          onClick={() => setDetailModal((p) => ({ ...p, open: false }))}
+        >
+          <div
+            className='flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800'
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className='flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700'>
+              <div>
+                <h3 className='text-lg font-semibold text-slate-800 dark:text-slate-100'>
+                  Detail Tiket — {detailModal.techName}
+                </h3>
+                <p className='text-sm text-slate-500'>
+                  {MONTHS[month - 1]} {year} · {detailModal.tickets.length}{' '}
+                  tiket selesai
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailModal((p) => ({ ...p, open: false }))}
+                className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className='flex-1 overflow-y-auto'>
+              {detailModal.loading ? (
+                <div className='flex items-center justify-center py-16 text-slate-400'>
+                  Loading...
+                </div>
+              ) : detailModal.tickets.length === 0 ? (
+                <div className='flex items-center justify-center py-16 text-slate-400'>
+                  Tidak ada tiket pada periode ini
+                </div>
+              ) : (
+                <table className='w-full text-sm'>
+                  <thead className='sticky top-0 bg-slate-50 text-xs font-semibold text-slate-500 uppercase dark:bg-slate-700/80 dark:text-slate-400'>
+                    <tr>
+                      <th className='px-4 py-3 text-left'>No Tiket</th>
+                      <th className='px-4 py-3 text-left'>Customer</th>
+                      <th className='px-4 py-3 text-left'>Tipe</th>
+                      <th className='px-4 py-3 text-left'>Jenis</th>
+                      <th className='px-4 py-3 text-left'>Workzone</th>
+                      <th className='px-4 py-3 text-center'>Resolve (h)</th>
+                      <th className='px-4 py-3 text-left'>Selesai</th>
+                    </tr>
+                  </thead>
+                  <tbody className='divide-y divide-slate-100 dark:divide-slate-700'>
+                    {detailModal.tickets.map((t) => (
+                      <tr
+                        key={t.idTicket}
+                        className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                      >
+                        <td className='px-4 py-2.5 font-mono text-xs font-semibold text-blue-600 dark:text-blue-400'>
+                          {t.incident}
+                        </td>
+                        <td className='px-4 py-2.5 text-slate-700 dark:text-slate-300'>
+                          {t.contactName || '-'}
+                        </td>
+                        <td className='px-4 py-2.5 text-slate-600 dark:text-slate-400'>
+                          {t.customerType || '-'}
+                        </td>
+                        <td className='px-4 py-2.5 text-slate-600 dark:text-slate-400'>
+                          {t.jenisTiket || '-'}
+                        </td>
+                        <td className='px-4 py-2.5 text-xs text-slate-500'>
+                          {t.workzone || '-'}
+                        </td>
+                        <td className='px-4 py-2.5 text-center font-semibold text-slate-700 dark:text-slate-200'>
+                          {t.resolveHours || '-'}
+                        </td>
+                        <td className='px-4 py-2.5 text-xs text-slate-500'>
+                          {t.closedAt
+                            ? new Date(t.closedAt).toLocaleString('id-ID', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

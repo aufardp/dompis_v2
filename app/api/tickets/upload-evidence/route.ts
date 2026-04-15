@@ -28,10 +28,10 @@ type ActivityType =
   | 'evidence_deleted';
 
 // Sinkronkan dengan compressed file size (bukan raw dari kamera)
-// Setelah compressImage: maxWidth 1920px, quality 0.82 → hasil ~400KB-1MB per foto
-// Multi-pass compression: jika masih > 2MB, pass 2 akan turun ke 1280px, quality 0.70
-const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB per file (after compress, konsisten dengan client)
-const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB total payload (dengan FormData overhead)
+// Multi-pass compression: pass1: 1920px/0.82, pass2: 1280px/0.70, pass3: 960px/0.60
+// Target per pass: ≤ 3MB → client validate ≤ 4MB (buffer aman)
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB per file (after compress, konsisten dengan client)
+const MAX_TOTAL_SIZE = 20 * 1024 * 1024; // 20MB total payload (5 foto × 4MB)
 const MAX_FILES = 5;
 
 export async function POST(req: NextRequest) {
@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: `File ${oversizedFiles.map((f) => f.name).join(', ')} terlalu besar. Maksimal 3 MB per foto setelah kompresi.`,
+          message: `File ${oversizedFiles.map((f) => f.name).join(', ')} terlalu besar (maks 4MB per foto). ` +
+                   `Aplikasi akan otomatis mengompres, coba pilih ulang foto tersebut.`,
         },
         { status: 400 },
       );
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: `Total ukuran foto (${(totalSize / 1024 / 1024).toFixed(1)} MB) melebihi batas. Maksimal 15 MB total.`,
+          message: `Total ukuran foto (${(totalSize / 1024 / 1024).toFixed(1)} MB) melebihi batas. Maksimal 20 MB total.`,
         },
         { status: 413 },
       );

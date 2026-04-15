@@ -20,7 +20,7 @@ build
 .env*.local
 .vercel
 *.pem
-*.json
+dompis-*.json
 !dompis-99aa242a4864.json 
 # (Tanda seru di atas memastikan file tersebut tetap terikut jika memang dibutuhkan di dalam image)
 

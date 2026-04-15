@@ -1,6 +1,6 @@
 import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
-import { nowWIB } from './helpers';
+import { nowWIB, todayWIB } from './helpers';
 import { ClusterAutoAssignService } from '@/app/libs/services/clusterAutoAssign.service';
 import type { ActorContext } from '@/app/types/ticket';
 
@@ -251,7 +251,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     const safeRows: any[] = []; // UPDATE aman (status belum di-workflow)
     const protectedRows: any[] = []; // UPDATE dengan STATUS_UPDATE dikunci
 
-    const syncDate = new Date().toISOString().split('T')[0];
+    const syncDate = todayWIB();
     const batchId = `SYNC_${syncDate}_${Date.now()}`;
 
     for (const row of mappedRows) {

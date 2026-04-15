@@ -3,10 +3,10 @@ services:
     image: mysql:8.0
     container_name: dompis_mysql
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 2g
     command: >
       --default-authentication-plugin=mysql_native_password
-      --innodb-buffer-pool-size=64M
+      --innodb-buffer-pool-size=1g
       --max-connections=50
       --wait-timeout=300
       --interactive-timeout=300
@@ -31,7 +31,7 @@ services:
     image: redis:7-alpine
     container_name: dompis_redis
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 512m
     command: >
       redis-server
       --maxmemory 64mb
