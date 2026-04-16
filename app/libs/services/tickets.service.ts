@@ -8,7 +8,8 @@ import {
 } from '../../helpers/ticket.helpers';
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
-import { fromZonedTime } from 'date-fns-tz';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
+import { startOfDay, endOfDay } from 'date-fns';
 import { AttendanceService } from './attendance.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -161,17 +162,53 @@ export class TicketService {
     console.log('[buildWorkzoneWhere]', { role, userId, selectedWorkzone });
 
     if (role === 'teknisi') {
-      // Untuk teknisi: tampilkan berdasarkan status saja, bukan tanggal
-      // - Tiket AKTIF: assigned/on_progress/pending (tanpa batas waktu — tugas yang belum selesai)
-      // - Tiket CLOSED: SEMUA history (bukan hanya hari ini) — untuk tab Selesai
+      // ============================================================
+      // DAILY-BASED FILTER LOGIC
+      //Requirement:
+      // - assigned → HARI INI saja (wajib hilang jika berganti hari)
+      // - on_progress → HARI INI saja (wajib hilang jika berganti hari)
+      // - pending → SEMUA (tetap muncul meski sudah berganti hari)
+      // - close → SEMUA history (tetap muncul semua)
+      // ============================================================
+
+      // Get today's date range in WIB timezone
+      const now = new Date();
+      const wibNow = toZonedTime(now, 'Asia/Jakarta');
+      const todayStart = startOfDay(wibNow);
+      const todayEnd = endOfDay(wibNow);
+
+      // Get ticket IDs that were assigned ON TODAY (using ticket_assignment_history)
+      const todayAssignments = await prisma.ticket_assignment_history.findMany({
+        where: {
+          assigned_to: userId,
+          assigned_at: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+          is_active: true,
+        },
+        select: { ticket_id: true },
+      });
+      const todayTicketIds = todayAssignments.map((a) => a.ticket_id);
+
       const where: Record<string, any> = {
         teknisi_user_id: userId,
         OR: [
-          // Tiket aktif yang masih perlu dikerjakan
+          // assigned & on_progress: HANYA yang di-assign hari ini (berdasarkan assignment history)
           {
-            STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
+            AND: [
+              { STATUS_UPDATE: { in: ['assigned', 'on_progress'] } },
+              {
+                id_ticket:
+                  todayTicketIds.length > 0
+                    ? { in: todayTicketIds }
+                    : { equals: -1 }, // No tickets if empty
+              },
+            ],
           },
-          // SEMUA tiket yang sudah di-close (history lengkap)
+          // pending: SEMUA (tidak dibatasi tanggal)
+          { STATUS_UPDATE: 'pending' },
+          // close: SEMUA history
           { STATUS_UPDATE: 'close' },
         ],
       };

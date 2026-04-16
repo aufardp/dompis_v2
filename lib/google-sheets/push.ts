@@ -1,27 +1,26 @@
 import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
+import { formatInTimeZone } from 'date-fns-tz';
 
 const SHEET_NAME = 'Dummy_Dompis';
 const START_ROW = 6;
-const BATCH_SIZE = 200;
+const BATCH_SIZE = 100;
 const RETRY_MAX = 3;
-const MAX_READ_ROW = 50000;
+const MAX_READ_ROW = 100000;
+const WIB = 'Asia/Jakarta';
 
 let isPushRunning = false;
 
-/**
- * Helper untuk deteksi perubahan data (Hashing)
- * Membandingkan kolom O (Status) dan AC-AG (Detail Perbaikan)
- */
-function hashRow(data: any[]) {
-  return data.map((v) => v?.toString()?.trim() ?? '').join('|');
+// ──────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────────────────────────────────────
+
+function hashRow(data: any[]): string {
+  return data.map((v) => (v?.toString()?.trim() ?? '')).join('|');
 }
 
-/**
- * Helper Retry untuk koneksi Google API
- */
-async function retryGoogle(fn: () => Promise<any>) {
+async function retryGoogle<T>(fn: () => Promise<T>): Promise<T> {
   let attempt = 0;
   while (attempt < RETRY_MAX) {
     try {
@@ -29,171 +28,236 @@ async function retryGoogle(fn: () => Promise<any>) {
     } catch (err) {
       attempt++;
       if (attempt >= RETRY_MAX) throw err;
-      await new Promise((r) => setTimeout(r, attempt * 1500));
+      await new Promise((r) => setTimeout(r, attempt * 2000));
     }
   }
+  throw new Error('Max retries exceeded');
 }
 
-export async function pushSpreadsheet() {
-  if (isPushRunning)
-    return { success: false, message: 'Process already running' };
+function formatDateWIB(date: Date | null | undefined): string {
+  if (!date) return '';
+  return formatInTimeZone(date, WIB, 'dd/MM/yyyy HH:mm:ss');
+}
 
+// ──────────────────────────────────────────────────────────────────────────────
+// MAIN PUSH FUNCTION
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function pushSpreadsheet() {
+  if (isPushRunning) {
+    return { success: false, message: 'Process already running' };
+  }
   isPushRunning = true;
 
   try {
-    console.log('[PUSH] START SYNC', nowWIB());
+    console.log('[PUSH] START', nowWIB());
+
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    // 1️⃣ FILTER: Ambil data tiket dengan sync_date hari ini
-    const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 1: Baca SEMUA INCIDENT dari kolom B di Dummy_Dompis
+    //         Bangun map: INCIDENT → nomor baris di sheet
+    // ──────────────────────────────────────────────────────────────────────────
 
-    const tickets = await prisma.ticket.findMany({
-      where: {
-        sync_date: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      },
-      select: {
-        INCIDENT: true,
-        STATUS_UPDATE: true,
-        ALAMAT: true,
-        PENDING_REASON: true,
-        rca: true,
-        sub_rca: true,
-        DESCRIPTION_ACTUAL_SOLUTION: true,
-        closed_at: true,
-        users: {
-          select: {
-            nama: true,
-            username: true,
-          },
-        },
-      },
-    });
-
-    if (tickets.length === 0) {
-      console.log('[PUSH] Tidak ada data tiket untuk sync_date hari ini.');
-      return { success: true, updated: 0, skipped: 0, notInSheet: 0 };
-    }
-
-    // 2️⃣ AMBIL DATA EXISTING DARI SHEET (B-AH) UNTUK PENCCOKAN
-    const sheetRes = await retryGoogle(() =>
+    const incidentColRes = await retryGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'${SHEET_NAME}'!B${START_ROW}:AH${MAX_READ_ROW}`,
+        range: `'${SHEET_NAME}'!B${START_ROW}:B${MAX_READ_ROW}`,
       }),
     );
 
-    const sheetRows = sheetRes.data.values || [];
-    const sheetMap = new Map<string, { row: number; hash: string }>();
+    const incidentRows: string[][] = incidentColRes.data.values || [];
 
-    // Mapping: INCIDENT -> { Nomor Baris, Fingerprint Data }
-    sheetRows.forEach((r: any[], i: number) => {
-      const incidentId = r[0]; // Kolom B
-      if (!incidentId) return;
+    if (incidentRows.length === 0) {
+      console.log('[PUSH] Sheet kosong, tidak ada INCIDENT ditemukan.');
+      return { success: true, updated: 0, skipped: 0 };
+    }
 
-      // Hash kolom AC-AG saja (kolom O tidak di-update karena A-U tidak disentuh)
-      const hash = hashRow([r[28], r[29], r[30], r[31], r[32]]);
-      sheetMap.set(incidentId.toString().trim(), {
-        row: START_ROW + i,
-        hash,
-      });
+    // Map: INCIDENT → row number di sheet (1-indexed, sesuai Google Sheets API)
+    const incidentToRowMap = new Map<string, number>();
+    incidentRows.forEach((row, idx) => {
+      const incident = row[0]?.trim();
+      if (incident) {
+        const sheetRowNum = START_ROW + idx;
+        incidentToRowMap.set(incident, sheetRowNum);
+      }
     });
 
-    // 3️⃣ PROSES MAPPING & UPDATE
-    const updates: any[] = [];
+    console.log(`[PUSH] Ditemukan ${incidentToRowMap.size} INCIDENT di sheet`);
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 2: Baca kolom V-AH yang sudah ada di sheet untuk deteksi perubahan
+    //         Ini untuk avoid update jika data sama
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const currentVAHRes = await retryGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${SHEET_NAME}'!B${START_ROW}:AH${MAX_READ_ROW}`,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+      }),
+    );
+
+    const currentRows: any[][] = currentVAHRes.data.values || [];
+
+    // Map: INCIDENT → hash kolom V-AH saat ini di sheet
+    const sheetHashMap = new Map<string, string>();
+    currentRows.forEach((row) => {
+      const incident = row[0]?.toString()?.trim(); // kolom B = index 0
+      if (!incident) return;
+
+      // Kolom V-AH = index 20-32 dalam range B:AH (B=0, C=1, ..., V=20, AH=32)
+      const vahData = row.slice(20, 33); // V sampai AH = 13 kolom
+      sheetHashMap.set(incident, hashRow(vahData));
+    });
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 3: Ambil data dari MySQL untuk SEMUA INCIDENT yang ada di sheet
+    //         Tidak dibatasi sync_date — ambil semua yang punya perubahan
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const allIncidents = Array.from(incidentToRowMap.keys());
+
+    if (allIncidents.length === 0) {
+      return { success: true, updated: 0, skipped: 0 };
+    }
+
+    // Ambil dalam batch agar tidak melebihi limit query
+    const DB_BATCH_SIZE = 1000;
+    const allTickets: any[] = [];
+
+    for (let i = 0; i < allIncidents.length; i += DB_BATCH_SIZE) {
+      const batch = allIncidents.slice(i, i + DB_BATCH_SIZE);
+      const tickets = await prisma.ticket.findMany({
+        where: {
+          INCIDENT: { in: batch },
+        },
+        select: {
+          INCIDENT: true,
+          ALAMAT: true,
+          STATUS_UPDATE: true,
+          PENDING_REASON: true,
+          rca: true,
+          sub_rca: true,
+          DESCRIPTION_ACTUAL_SOLUTION: true,
+          closed_at: true,
+          teknisi_user_id: true,
+          users: {
+            select: {
+              nama: true,
+              nik: true,
+              username: true,
+            },
+          },
+        },
+      });
+      allTickets.push(...tickets);
+    }
+
+    console.log(`[PUSH] Data MySQL: ${allTickets.length} tiket ditemukan`);
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 4: Bandingkan data MySQL vs sheet, buat list update
+    //         HANYA UPDATE kolom V-AH jika ada perubahan
+    //         TIDAK PERNAH insert baris baru atau sentuh kolom A-U
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const updates: Array<{ range: string; values: any[][] }> = [];
     let skipped = 0;
     let notInSheet = 0;
 
-    for (const t of tickets) {
-      const closedAtStr = t.closed_at
-        ? new Date(t.closed_at).toLocaleString('id-ID')
-        : '';
+    for (const t of allTickets) {
+      const sheetRow = incidentToRowMap.get(t.INCIDENT);
 
-      // Hash data dari Database - hanya kolom V, W, X, AC-AG, AH yang di-push
-      const dbHash = hashRow([
-        t.ALAMAT ?? '',
-        t.users?.nama ?? '',
-        t.users?.username ?? '',
-        t.STATUS_UPDATE ?? '',
-        t.PENDING_REASON ?? '',
-        t.rca ?? '',
-        t.sub_rca ?? '',
-        t.DESCRIPTION_ACTUAL_SOLUTION ?? '',
-        closedAtStr,
-      ]);
-
-      const existingInSheet = sheetMap.get(t.INCIDENT.trim());
-
-      // JIKA INCIDENT TIDAK ADA DI SHEET -> ABAIKAN (Sesuai Permintaan)
-      if (!existingInSheet) {
+      if (!sheetRow) {
+        // Tiket ada di DB tapi tidak ada di sheet — skip, tidak bisa insert
         notInSheet++;
         continue;
       }
 
-      // JIKA ADA TAPI DATA BERBEDA -> UPDATE
-      if (existingInSheet.hash !== dbHash) {
-        updates.push({
-          range: `'${SHEET_NAME}'!V${existingInSheet.row}:AH${existingInSheet.row}`,
-          values: [
-            [
-              t.ALAMAT ?? '', // V
-              t.users?.nama ?? '', // W
-              t.users?.username ?? '', // X (Labor Code)
-              null, // Y - skip, biarkan data sheet
-              null, // Z - skip, biarkan data sheet
-              null, // AA - skip, biarkan data sheet
-              null, // AB - skip, biarkan data sheet
-              t.STATUS_UPDATE ?? '', // AC (Status Dompis)
-              t.PENDING_REASON ?? '', // AD (Update Kendala)
-              t.rca ?? '', // AE
-              t.sub_rca ?? '', // AF
-              t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG
-              closedAtStr, // AH
-            ],
-          ],
-        });
-      } else {
+      const closedAtStr = formatDateWIB(t.closed_at);
+      const teknisiNama = t.users?.nama ?? '';
+      const teknisiNik = t.users?.nik ?? ''; // NIK sebagai labor code
+
+      // Build data untuk kolom V-AH (13 kolom: V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH)
+      const vahValues = [
+        t.ALAMAT ?? '', // V  = ALAMAT
+        teknisiNama, // W  = TEKNISI 1 (nama)
+        teknisiNik, // X  = LABOR CODE 1 (NIK teknisi)
+        '', // Y  = SEKTOR (kosong, diisi manual)
+        '', // Z  = TEKNISI 2 (kosong)
+        '', // AA = LABOR CODE 2 (kosong)
+        '', // AB = STATUS INSERA (kosong, sistem lain)
+        t.STATUS_UPDATE ?? '', // AC = STATUS DOMPIS
+        t.PENDING_REASON ?? '', // AD = UPDATE_KENDALA
+        t.rca ?? '', // AE = RCA
+        t.sub_rca ?? '', // AF = SUB_RCA
+        t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG = DETAIL_PERBAIKAN
+        closedAtStr, // AH = CLOSED_AT
+      ];
+
+      // Cek apakah data berubah dibanding sheet saat ini
+      const newHash = hashRow(vahValues);
+      const currentHash = sheetHashMap.get(t.INCIDENT) ?? '';
+
+      if (newHash === currentHash) {
         skipped++;
+        continue; // Tidak ada perubahan, skip
       }
+
+      // Ada perubahan → tambahkan ke list update
+      updates.push({
+        range: `'${SHEET_NAME}'!V${sheetRow}:AH${sheetRow}`,
+        values: [vahValues],
+      });
     }
 
-    // 4️⃣ EKSEKUSI BATCH UPDATE KE GOOGLE SHEETS
-    if (updates.length > 0) {
-      // Pecah menjadi chunk agar tidak melebihi limit payload Google API
-      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-        const chunk = updates.slice(i, i + BATCH_SIZE);
-        await retryGoogle(() =>
-          sheets.spreadsheets.values.batchUpdate({
-            spreadsheetId,
-            requestBody: {
-              valueInputOption: 'RAW',
-              data: chunk,
-            },
-          }),
-        );
+    console.log(
+      `[PUSH] Updates: ${updates.length} | Skipped (no change): ${skipped} | Not in sheet: ${notInSheet}`,
+    );
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // STEP 5: Eksekusi update ke Google Sheets dalam batch
+    //         Hanya kolom V-AH, TIDAK menyentuh A-U sama sekali
+    // ──────────────────────────────────────────────────────────────────────────
+
+    if (updates.length === 0) {
+      console.log('[PUSH] Tidak ada perubahan. Sheet sudah sinkron.');
+      return { success: true, updated: 0, skipped };
+    }
+
+    let totalUpdated = 0;
+
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const chunk = updates.slice(i, i + BATCH_SIZE);
+
+      await retryGoogle(() =>
+        sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            valueInputOption: 'USER_ENTERED', // USER_ENTERED agar tanggal diparse dengan benar
+            data: chunk,
+          },
+        }),
+      );
+
+      totalUpdated += chunk.length;
+      console.log(`[PUSH] Progress: ${totalUpdated}/${updates.length}`);
+
+      // Throttle agar tidak kena rate limit Google API
+      if (i + BATCH_SIZE < updates.length) {
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
     console.log(
-      `[PUSH] SELESAI | Updated: ${updates.length} | Skipped: ${skipped} | Not in Sheet: ${notInSheet}`,
+      `[PUSH] DONE | Updated: ${totalUpdated} | Skipped: ${skipped} | ${nowWIB()}`,
     );
-
-    return {
-      success: true,
-      deleted: 0,
-      inserted: 0,
-      updated: updates.length,
-      skipped,
-      notInSheet,
-    };
+    return { success: true, updated: totalUpdated, skipped };
   } catch (err: any) {
-    console.error('[PUSH] FATAL ERROR:', err);
-    return { success: false, error: err.message };
+    console.error('[PUSH] FATAL ERROR:', err?.message ?? err);
+    return { success: false, error: err?.message ?? 'Unknown error' };
   } finally {
     isPushRunning = false;
   }
