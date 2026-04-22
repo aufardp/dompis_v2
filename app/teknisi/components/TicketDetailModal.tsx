@@ -73,6 +73,7 @@ export default function TicketDetailModal({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   // Status derived values
   const status = useMemo(() => {
@@ -89,7 +90,7 @@ export default function TicketDetailModal({
   );
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
-  const CLOSE_PHOTO_MIN = 5; // close wajib 5 foto
+  const CLOSE_PHOTO_MIN = 2; // close wajib 2 foto, max 5 foto
   const isEvidenceIncomplete = selectedFiles.length < CLOSE_PHOTO_MIN;
   const photoRequired = CLOSE_PHOTO_MIN;
 
@@ -339,44 +340,44 @@ export default function TicketDetailModal({
     setHeaderWarning(warning);
   }, []);
 
-  // Upload evidence using fetchWithAuth (handles credentials and token refresh)
+  // Upload evidence menggunakan sequential per-file upload (hindari timeout di slow connection)
   const uploadEvidence = useCallback(async () => {
     if (!selectedFiles.length) return;
 
-    const formData = new FormData();
-    formData.append('incident', ticket.ticket);
-    formData.append('ticketId', String(ticket.idTicket));
-    formData.append('actionType', 'close');
+    // Upload files satu per satu secara sequential
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      setUploadProgress(`Mengupload foto ${i + 1}/${selectedFiles.length}...`);
 
-    selectedFiles.forEach((file) => {
+      const formData = new FormData();
+      formData.append('incident', ticket.ticket);
+      formData.append('ticketId', String(ticket.idTicket));
+      formData.append('actionType', 'close');
       formData.append('files', file);
-    });
 
-    // fetchWithAuth automatically includes credentials: 'include' and handles token refresh
-    // DO NOT set Content-Type manually - browser will set multipart/form-data boundary automatically
-    const res = await fetchWithAuth('/api/tickets/upload-evidence', {
-      method: 'POST',
-      body: formData,
-    });
+      const res = await fetchWithAuth('/api/tickets/upload-evidence', {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (!res) {
-      throw new Error('Upload gagal: tidak ada respon dari server');
-    }
+      if (!res) {
+        throw new Error('Upload gagal: tidak ada respon dari server');
+      }
 
-    if (!res.ok) {
-      // Tangkap 413 khusus dengan pesan ramah
-      if (res.status === 413) {
+      if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error(
+            `Foto ${i + 1} masih terlalu besar. Coba foto ulang dengan kamera resolusi lebih rendah.`,
+          );
+        }
+        const errorData = await res.json().catch(() => null);
         throw new Error(
-          'Foto terlalu besar untuk dikirim. Coba pilih lebih sedikit foto atau foto dengan ukuran lebih kecil.',
+          errorData?.message || `Upload foto ${i + 1} gagal: ${res.status}`,
         );
       }
-      const errorData = await res.json().catch(() => null);
-      throw new Error(
-        errorData?.message || `Upload gagal: ${res.status} ${res.statusText}`,
-      );
     }
 
-    return await res.json();
+    setUploadProgress(null);
   }, [selectedFiles, ticket.ticket, ticket.idTicket]);
 
   // Close ticket handler
@@ -813,8 +814,9 @@ export default function TicketDetailModal({
                     onRemoveImage={handleRemoveImage}
                     previewUrls={previewUrls}
                     uploading={uploading}
+                    uploadProgress={uploadProgress}
                     onWarning={handleUploadWarning}
-                    minFiles={5}
+                    minFiles={2}
                     maxFiles={5}
                     instructions={[
                       'Foto Penyebab (Putusnya, ONT rusaknya, dll)',

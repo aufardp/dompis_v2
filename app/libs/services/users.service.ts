@@ -392,6 +392,12 @@ export async function findUserWorkzones(userId: number): Promise<string[]> {
   });
 
   return userSas
-    .map((usa: { service_area: { nama_sa: string | null } | null }) => usa.service_area?.nama_sa)
-    .filter((sa: string | null | undefined): sa is string => sa !== null && sa !== undefined);
+    .map(
+      (usa: { service_area: { nama_sa: string | null } | null }) =>
+        usa.service_area?.nama_sa,
+    )
+    .filter(
+      (sa: string | null | undefined): sa is string =>
+        sa !== null && sa !== undefined,
+    );
 }

@@ -8,6 +8,7 @@ interface B2BGroupSummaryProps {
   regulerCount: number;
   sqmCount: number;
   ffgCount: number;
+  gamasCount: number;
   p1Count: number;
   pPlusCount: number;
   accentColor: string;
@@ -59,6 +60,7 @@ export default function B2BGroupSummary({
   regulerCount,
   sqmCount,
   ffgCount,
+  gamasCount,
   p1Count,
   pPlusCount,
   accentColor,
@@ -69,6 +71,7 @@ export default function B2BGroupSummary({
   const ffgPct = total > 0 ? Math.round((ffgCount / total) * 100) : 0;
   const p1Pct = total > 0 ? Math.round((p1Count / total) * 100) : 0;
   const pPlusPct = total > 0 ? Math.round((pPlusCount / total) * 100) : 0;
+  const gamasPct = total > 0 ? Math.round((gamasCount / total) * 100) : 0;
 
   return (
     <div
@@ -165,6 +168,15 @@ export default function B2BGroupSummary({
               {pPlusCount.toLocaleString()}
             </p>
             <p className='text-[9px] text-slate-400 dark:text-slate-500'>{pPlusPct}% of total</p>
+          </div>
+          <div>
+            <p className='mb-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500'>
+              GAMAS
+            </p>
+            <p className='text-xl font-bold text-slate-700 dark:text-slate-200'>
+              {gamasCount.toLocaleString()}
+            </p>
+            <p className='text-[9px] text-slate-400 dark:text-slate-500'>{gamasPct}% of total</p>
           </div>
         </div>
 

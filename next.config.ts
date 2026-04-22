@@ -23,25 +23,33 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Naikkan batas body size untuk API routes (App Router) - Next.js 15
+  // Juga untuk serverActions
+  serverActions: {
+    bodySizeLimit: '25mb',
+  },
   experimental: {
     optimizePackageImports: [
       '@heroicons/react',
       '@tanstack/react-query',
       'lucide-react',
     ],
-    serverActions: {
-      // Naikkan batas untuk upload foto evidence teknisi
-      // 5 foto × compressed ~1MB + FormData overhead = ~6-8MB
-      // 15mb memberikan safety margin yang cukup
-      bodySizeLimit: '15mb',
-    },
   },
   async headers() {
+    const allowedOrigins = [
+      process.env.NEXT_PUBLIC_URL || 'http://localhost:3000',
+      'https://dompis.yourdomain.com', // ganti dengan production domain
+    ].filter(Boolean);
+
     return [
       {
         source: '/api/:path*',
         headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: allowedOrigins[0] || '*',
+          },
+          { key: 'Access-Control-Allow-Credentials', value: 'true' },
           {
             key: 'Access-Control-Allow-Methods',
             value: 'GET,POST,PUT,DELETE,OPTIONS',
@@ -55,6 +63,7 @@ const nextConfig: NextConfig = {
             key: 'Access-Control-Expose-Headers',
             value: 'Content-Length, Retry-After',
           },
+          { key: 'Vary', value: 'Origin' },
         ],
       },
     ];

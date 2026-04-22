@@ -12,6 +12,7 @@ interface B2CData {
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
+    gamasCount: number;
     p1Count: number;
     pPlusCount: number;
   };
@@ -24,6 +25,7 @@ interface B2CData {
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
+    gamasCount: number;
     p1Count: number;
     pPlusCount: number;
   };
@@ -36,6 +38,7 @@ interface B2CData {
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
+    gamasCount: number;
     p1Count: number;
     pPlusCount: number;
   };
@@ -48,6 +51,7 @@ interface B2CData {
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
+    gamasCount: number;
     p1Count: number;
     pPlusCount: number;
   };
@@ -60,6 +64,7 @@ interface B2CData {
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
+    gamasCount: number;
     p1Count: number;
     pPlusCount: number;
   };
@@ -145,8 +150,12 @@ export default function B2CSection({
             👥
           </div>
           <div>
-            <p className='text-sm font-bold text-slate-800 dark:text-slate-100'>B2C Overview</p>
-            <p className='text-[10px] text-slate-400 dark:text-slate-500'>Customer Type Overview</p>
+            <p className='text-sm font-bold text-slate-800 dark:text-slate-100'>
+              B2C Overview
+            </p>
+            <p className='text-[10px] text-slate-400 dark:text-slate-500'>
+              Customer Type Overview
+            </p>
           </div>
         </div>
 
@@ -197,6 +206,7 @@ export default function B2CSection({
         sqmCount={data.summary.sqmCount}
         unspecCount={data.summary.unspecCount}
         ffgCount={data.summary.ffgCount}
+        gamasCount={data.summary.gamasCount}
         p1Count={data.summary.p1Count}
         pPlusCount={data.summary.pPlusCount}
         isDailyScope={isDailyScope}
@@ -219,6 +229,7 @@ export default function B2CSection({
               sqmCount={d.sqmCount}
               unspecCount={d.unspecCount}
               ffgCount={d.ffgCount}
+              gamasCount={d.gamasCount}
               p1Count={d.p1Count}
               pPlusCount={d.pPlusCount}
               accentColor={tier.accentColor}

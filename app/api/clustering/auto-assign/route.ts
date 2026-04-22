@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssignV2.service';
+import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssign.service';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import {
   broadcastAutoAssignProgress,

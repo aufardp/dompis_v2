@@ -84,6 +84,7 @@ function mapTicket(t: any) {
     customerType: t.CUSTOMER_TYPE,
     ctype: t.CUSTOMER_TYPE || undefined,
     serviceNo: t.SERVICE_NO,
+    ticketIdGamas: t.TICKET_ID_GAMAS ?? null,
     contactName: t.CONTACT_NAME,
     contactPhone: t.CONTACT_PHONE,
     deviceName: t.DEVICE_NAME,
@@ -386,6 +387,7 @@ export class TicketService {
           sub_rca: true,
           closed_at: true,
           teknisi_user_id: true,
+          TICKET_ID_GAMAS: true,
           users: {
             select: {
               nama: true,

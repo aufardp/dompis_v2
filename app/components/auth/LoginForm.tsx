@@ -1,11 +1,8 @@
 'use client';
 import { EyeSlashIcon, EyeIcon } from '@heroicons/react/24/outline';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
 export default function LoginForm() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +17,7 @@ export default function LoginForm() {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -32,19 +30,19 @@ export default function LoginForm() {
         const { role, needsAttendanceCheck } = data;
 
         if (role === 'superadmin') {
-          router.push('/superadmin');
+          window.location.replace('/superadmin');
         } else if (role === 'admin') {
-          router.push('/admin');
+          window.location.replace('/admin');
         } else if (role === 'teknisi') {
           if (needsAttendanceCheck) {
-            router.push('/teknisi/attendance');
+            window.location.replace('/teknisi/attendance');
           } else {
-            router.push('/teknisi');
+            window.location.replace('/teknisi');
           }
         } else if (role === 'helpdesk') {
-          router.push('/helpdesk');
+          window.location.replace('/helpdesk');
         } else {
-          router.push('/');
+          window.location.replace('/');
         }
       } else {
         setError(data.message || 'Login failed');

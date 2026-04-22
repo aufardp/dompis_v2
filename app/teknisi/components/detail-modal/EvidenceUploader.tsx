@@ -7,6 +7,7 @@ interface EvidenceUploaderProps {
   onRemoveImage: (index: number) => void;
   previewUrls: string[];
   uploading: boolean;
+  uploadProgress?: string | null;
   existingCount?: number;
   onWarning?: (warning: string | null) => void;
   minFiles?: number;
@@ -15,10 +16,20 @@ interface EvidenceUploaderProps {
 }
 
 // KRITIS: Batas ini untuk file RAW sebelum kompresi
-// Foto iPhone bisa 3-8MB, setelah compressImage (1920px, 0.82) jadi ~400KB-1MB
+// Foto iPhone bisa 3-8MB, setelah compressImage (1280px, 0.75) jadi ~400KB-800KB
 // Jadi batas pre-compress yang masuk akal adalah 15MB (bukan 2MB!)
-// Validasi ukuran sebenarnya (2MB) dilakukan SETELAH kompresi di parent component
+// Validasi ukuran sebenarnya (500KB) dilakukan SETELAH kompresi di parent component
 const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024; // 15MB — file mentah sebelum compress
+
+// Timeout wrapper untuk compression
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Compress timeout')), ms)
+    ),
+  ]);
+}
 
 // Default instructions for close ticket (5 steps)
 const DEFAULT_INSTRUCTIONS = [
@@ -44,6 +55,7 @@ export default function EvidenceUploader({
   onRemoveImage,
   previewUrls,
   uploading,
+  uploadProgress,
   existingCount = 0,
   onWarning,
   minFiles = 2,
@@ -58,76 +70,84 @@ export default function EvidenceUploader({
       // Skip non-image files
       if (!file.type.startsWith('image/')) return file;
 
-      return new Promise((resolve) => {
+      const HARD_CAP = 4 * 1024 * 1024; // 4MB - hard cap untuk security
+      const TARGET_SIZE = 500 * 1024; // 500KB target untuk hemat storage VPS
+
+      const compressPass = (
+        img: HTMLImageElement,
+        canvas: HTMLCanvasElement,
+        ctx: CanvasRenderingContext2D,
+        maxDim: number,
+        quality: number,
+      ): Promise<File> => {
+        return new Promise((resolve) => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve(file);
+                return;
+              }
+
+              // Hard cap: jika > 4MB meskipun sudah dikompres, return original
+              if (blob.size > HARD_CAP) {
+                resolve(file);
+                return;
+              }
+
+              resolve(
+                new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                  type: 'image/jpeg',
+                }),
+              );
+            },
+            'image/jpeg',
+            quality,
+          );
+        });
+      };
+
+      return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
 
         img.onload = () => {
           URL.revokeObjectURL(url);
-
-          const TARGET_SIZE = 3 * 1024 * 1024; // 3MB — target per file after compression
-
-          // Pass 1: kompres ke 1920px, quality 0.82
           const canvas = document.createElement('canvas');
-          const scale1 = Math.min(1, 1920 / Math.max(img.width, img.height));
-          canvas.width = Math.round(img.width * scale1);
-          canvas.height = Math.round(img.height * scale1);
           const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          canvas.toBlob(
-            async (blob1) => {
-              if (!blob1) { resolve(file); return; }
+          // Pass 1: 1280px, quality 0.75 → ~800KB
+          compressPass(img, canvas, ctx, 1280, 0.75).then((result1) => {
+            if (result1.size <= TARGET_SIZE) {
+              resolve(result1);
+              return;
+            }
 
-              // Jika hasil pass 1 sudah ≤ 3MB → selesai
-              if (blob1.size <= TARGET_SIZE) {
-                resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+            // Pass 2: 800px, quality 0.60 → ~400KB
+            compressPass(img, canvas, ctx, 800, 0.60).then((result2) => {
+              if (result2.size <= TARGET_SIZE) {
+                resolve(result2);
                 return;
               }
 
-              // Pass 2: turunkan ke 1280px, quality 0.70
-              const scale2 = Math.min(1, 1280 / Math.max(img.width, img.height));
-              canvas.width = Math.round(img.width * scale2);
-              canvas.height = Math.round(img.height * scale2);
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              // Pass 3: 640px, quality 0.50 → ~250KB
+              compressPass(img, canvas, ctx, 640, 0.50).then((result3) => {
+                if (result3.size <= TARGET_SIZE) {
+                  resolve(result3);
+                  return;
+                }
 
-              canvas.toBlob(
-                async (blob2) => {
-                  if (!blob2) {
-                    resolve(new File([blob1], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
-                    return;
-                  }
-
-                  // Jika pass 2 masih > 3MB → pass 3: 960px, quality 0.60
-                  if (blob2.size <= TARGET_SIZE) {
-                    resolve(new File([blob2], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
-                    return;
-                  }
-
-                  // Pass 3: fallback ke 960px, quality 0.60
-                  const scale3 = Math.min(1, 960 / Math.max(img.width, img.height));
-                  canvas.width = Math.round(img.width * scale3);
-                  canvas.height = Math.round(img.height * scale3);
-                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                  canvas.toBlob(
-                    (blob3) => {
-                      resolve(new File(
-                        [blob3 ?? blob2],
-                        file.name.replace(/\.[^.]+$/, '.jpg'),
-                        { type: 'image/jpeg' }
-                      ));
-                    },
-                    'image/jpeg',
-                    0.60,
-                  );
-                },
-                'image/jpeg',
-                0.70,
-              );
-            },
-            'image/jpeg',
-            0.82,
-          );
+                // Pass 4 (emergency): 480px, quality 0.40 → ~150KB
+                compressPass(img, canvas, ctx, 480, 0.40).then((result4) => {
+                  resolve(result4);
+                });
+              });
+            });
+          });
         };
 
         img.onerror = () => {
@@ -184,13 +204,15 @@ export default function EvidenceUploader({
       );
     }
 
-    // Step 4: Auto compress images before passing to parent
+    // Step 4: Auto compress images before passing to parent (dengan timeout 15 detik)
     if (filesToAdd.length > 0) {
       setCompressing(true);
       try {
         const compressed = await Promise.all(
           filesToAdd.map((f) =>
-            f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f),
+            f.type.startsWith('image/')
+              ? withTimeout(compressImage(f), 15000).catch(() => f) // fallback ke original jika timeout
+              : Promise.resolve(f),
           ),
         );
         onFilesChange(compressed);
@@ -324,7 +346,7 @@ export default function EvidenceUploader({
 
       {uploading && (
         <p className='text-center text-sm text-blue-600 dark:text-blue-400'>
-          Mengupload evidence...
+          {uploadProgress || 'Mengupload evidence...'}
         </p>
       )}
     </div>

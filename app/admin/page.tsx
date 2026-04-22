@@ -53,6 +53,7 @@ interface JenisCounts {
   open: number;
   assigned: number;
   close: number;
+  gamasCount: number;
   ffgCount: number;
   p1Count: number;
   pPlusCount: number;
@@ -95,7 +96,7 @@ export default function TicketPage() {
     'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
   >('all');
   const [b2cFlaggingFilter, setB2cFlaggingFilter] = useState<
-    'all' | 'P1' | 'P+'
+    'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS'
   >('all');
 
   // B2B filter state
@@ -106,7 +107,7 @@ export default function TicketPage() {
     'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
   >('all');
   const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<
-    'all' | 'P1' | 'P+'
+    'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS'
   >('all');
 
   // Separate pagination state for B2C and B2B tables
@@ -168,7 +169,7 @@ export default function TicketPage() {
 
   // Polling as fallback (reduced frequency since SSE handles real-time)
   useAutoRefresh({
-    intervalMs: 180_000,  // 3 menit — SSE menangani real-time, polling hanya safety net
+    intervalMs: 180_000, // 3 menit — SSE menangani real-time, polling hanya safety net
     refreshers: [refresh, refreshExpired, refreshDiamond],
     pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
   });
@@ -186,11 +187,24 @@ export default function TicketPage() {
 
   // Compute summary from B2C daily tickets
   const b2cDailySummary = useMemo(() => {
-    const summary = {
+    const summary: {
+      total: number;
+      open: number;
+      assigned: number;
+      close: number;
+      gamasCount: number;
+      regulerCount: number;
+      sqmCount: number;
+      unspecCount: number;
+      ffgCount: number;
+      p1Count: number;
+      pPlusCount: number;
+    } = {
       total: b2cDailyTickets.length,
       open: 0,
       assigned: 0,
       close: 0,
+      gamasCount: 0,
       regulerCount: 0,
       sqmCount: 0,
       unspecCount: 0,
@@ -221,6 +235,24 @@ export default function TicketPage() {
       else summary.unspecCount++;
 
       // Flagging counts
+      {
+        const candidates = [
+          t.ticketIdGamas,
+          (t as any).ticket_id_gamas,
+          (t as any).TICKET_ID_GAMAS,
+        ];
+        const raw = candidates.find((v) => v !== null && v !== undefined);
+        const normalized = String(raw ?? '').trim();
+        if (
+          normalized &&
+          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+            normalized.toLowerCase(),
+          )
+        ) {
+          summary.gamasCount++;
+        }
+      }
+
       if (t.guaranteeStatus?.toLowerCase() === 'guarantee') summary.ffgCount++;
       if (t.flaggingManja === 'P1') summary.p1Count++;
       if (t.flaggingManja === 'P+') summary.pPlusCount++;
@@ -238,6 +270,7 @@ export default function TicketPage() {
         open: number;
         assigned: number;
         close: number;
+        gamasCount: number;
         regulerCount: number;
         sqmCount: number;
         unspecCount: number;
@@ -247,18 +280,32 @@ export default function TicketPage() {
       }
     >();
 
-    const initType = () => ({
-      total: 0,
-      open: 0,
-      assigned: 0,
-      close: 0,
-      regulerCount: 0,
-      sqmCount: 0,
-      unspecCount: 0,
-      ffgCount: 0,
-      p1Count: 0,
-      pPlusCount: 0,
-    });
+    const initType = () =>
+      ({
+        total: 0,
+        open: 0,
+        assigned: 0,
+        close: 0,
+        gamasCount: 0,
+        regulerCount: 0,
+        sqmCount: 0,
+        unspecCount: 0,
+        ffgCount: 0,
+        p1Count: 0,
+        pPlusCount: 0,
+      }) as {
+        total: number;
+        open: number;
+        assigned: number;
+        close: number;
+        gamasCount: number;
+        regulerCount: number;
+        sqmCount: number;
+        unspecCount: number;
+        ffgCount: number;
+        p1Count: number;
+        pPlusCount: number;
+      };
 
     for (const t of b2cDailyTickets) {
       const type = (t.ctype || t.customerType || 'Unspec').toUpperCase();
@@ -280,6 +327,24 @@ export default function TicketPage() {
       if (jenisType === 'reguler') data.regulerCount++;
       else if (jenisType === 'sqm') data.sqmCount++;
       else data.unspecCount++;
+
+      {
+        const candidates = [
+          t.ticketIdGamas,
+          (t as any).ticket_id_gamas,
+          (t as any).TICKET_ID_GAMAS,
+        ];
+        const raw = candidates.find((v) => v !== null && v !== undefined);
+        const normalized = String(raw ?? '').trim();
+        if (
+          normalized &&
+          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+            normalized.toLowerCase(),
+          )
+        ) {
+          data.gamasCount++;
+        }
+      }
 
       if (t.guaranteeStatus?.toLowerCase() === 'guarantee') data.ffgCount++;
       if (t.flaggingManja === 'P1') data.p1Count++;
@@ -438,7 +503,9 @@ export default function TicketPage() {
     setB2cPage(1);
   };
 
-  const handleB2cFlaggingChange = (flagging: 'all' | 'P1' | 'P+') => {
+  const handleB2cFlaggingChange = (
+    flagging: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS',
+  ) => {
     setB2cFlaggingFilter(flagging);
     setB2cPage(1);
   };
@@ -457,7 +524,9 @@ export default function TicketPage() {
     setB2bPage(1);
   };
 
-  const handleB2bFlaggingChange = (flagging: 'all' | 'P1' | 'P+') => {
+  const handleB2bFlaggingChange = (
+    flagging: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS',
+  ) => {
     setB2bFlaggingFilter(flagging);
     setB2bPage(1);
   };
@@ -495,6 +564,21 @@ export default function TicketPage() {
     ffgCount: arr.filter(
       (t) => t.guaranteeStatus?.toLowerCase() === 'guarantee',
     ).length,
+
+    gamasCount: arr.filter((t) => {
+      const candidates = [
+        t.ticketIdGamas,
+        (t as any).ticket_id_gamas,
+        (t as any).TICKET_ID_GAMAS,
+      ];
+      const raw = candidates.find((v) => v !== null && v !== undefined);
+      const normalized = String(raw ?? '').trim();
+      if (!normalized) return false;
+      return !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+        normalized.toLowerCase(),
+      );
+    }).length,
+
     p1Count: arr.filter((t) => t.flaggingManja === 'P1').length,
     pPlusCount: arr.filter((t) => t.flaggingManja === 'P+').length,
   });
@@ -546,6 +630,12 @@ export default function TicketPage() {
         datin.ffgCount +
         reseller.ffgCount +
         wifiId.ffgCount,
+      gamasCount:
+        sqmCcan.gamasCount +
+        indibiz.gamasCount +
+        datin.gamasCount +
+        reseller.gamasCount +
+        wifiId.gamasCount,
       p1Count:
         sqmCcan.p1Count +
         indibiz.p1Count +
@@ -577,6 +667,7 @@ export default function TicketPage() {
           sqmCount: 0,
           unspecCount: 0,
           ffgCount: 0,
+          gamasCount: 0,
           p1Count: 0,
           pPlusCount: 0,
         }
@@ -658,6 +749,27 @@ export default function TicketPage() {
     idTicket: t.idTicket,
     ticket: t.ticket,
     serviceNo: t.serviceNo,
+
+    ticketIdGamas: (() => {
+      const candidates = [
+        t.ticketIdGamas,
+        (t as any).ticketIdGamas,
+        (t as any).ticket_id_gamas,
+        (t as any).TICKET_ID_GAMAS,
+      ];
+      const raw = candidates.find((v) => v !== null && v !== undefined);
+      const normalized = String(raw ?? '').trim();
+      if (
+        !normalized ||
+        ['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+          normalized.toLowerCase(),
+        )
+      ) {
+        return null;
+      }
+      return normalized;
+    })(),
+
     contactName: t.contactName,
     contactPhone: t.contactPhone,
     alamat: t.alamat,
@@ -704,6 +816,30 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2cFlaggingFilter === 'all') return true;
+      if (b2cFlaggingFilter === 'FFG') {
+        return (
+          String(t.guaranteeStatus ?? '')
+            .trim()
+            .toLowerCase() === 'guarantee'
+        );
+      }
+
+      if (b2cFlaggingFilter === 'GAMAS') {
+        const candidates = [
+          t.ticketIdGamas,
+          (t as any).ticket_id_gamas,
+          (t as any).TICKET_ID_GAMAS,
+        ];
+        const raw = candidates.find((v) => v !== null && v !== undefined);
+        const normalized = String(raw ?? '').trim();
+        return (
+          normalized &&
+          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+            normalized.toLowerCase(),
+          )
+        );
+      }
+
       return t.flaggingManja === b2cFlaggingFilter;
     });
 
@@ -723,6 +859,30 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2bFlaggingFilter === 'all') return true;
+      if (b2bFlaggingFilter === 'FFG') {
+        return (
+          String(t.guaranteeStatus ?? '')
+            .trim()
+            .toLowerCase() === 'guarantee'
+        );
+      }
+
+      if (b2bFlaggingFilter === 'GAMAS') {
+        const candidates = [
+          t.ticketIdGamas,
+          (t as any).ticket_id_gamas,
+          (t as any).TICKET_ID_GAMAS,
+        ];
+        const raw = candidates.find((v) => v !== null && v !== undefined);
+        const normalized = String(raw ?? '').trim();
+        return (
+          normalized &&
+          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+            normalized.toLowerCase(),
+          )
+        );
+      }
+
       return t.flaggingManja === b2bFlaggingFilter;
     });
 
@@ -859,6 +1019,7 @@ export default function TicketPage() {
                     <TicketTableB2B
                       tickets={b2bTicketTableData}
                       tableSummary={b2bTableSummary}
+                      flaggingFilter={b2bFlaggingFilter}
                       loading={loading}
                       onAssign={handleAssignClick}
                       pagination={{
@@ -901,6 +1062,7 @@ export default function TicketPage() {
                     <TicketTable
                       tickets={b2cTicketTableData}
                       tableSummary={b2cTableSummary}
+                      flaggingFilter={b2cFlaggingFilter}
                       loading={loading}
                       onAssign={handleAssignClick}
                       pagination={{
