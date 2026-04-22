@@ -6,6 +6,7 @@ interface JenisCounts {
   open: number;
   assigned: number;
   close: number;
+  gamasCount: number;
   ffgCount: number;
   p1Count: number;
   pPlusCount: number;
@@ -30,7 +31,7 @@ export default function B2BSection({ data }: B2BSectionProps) {
       {/* Section header / Summary Banner */}
       <B2BGroupSummary
         title='B2B'
-        icon='🏢'
+        icon='📋'
         total={data.summary.total}
         open={data.summary.open}
         assigned={data.summary.assigned}
@@ -38,6 +39,7 @@ export default function B2BSection({ data }: B2BSectionProps) {
         regulerCount={0}
         sqmCount={0}
         ffgCount={data.summary.ffgCount}
+        gamasCount={data.summary.gamasCount}
         p1Count={data.summary.p1Count}
         pPlusCount={data.summary.pPlusCount}
         accentColor='#3b82f6'

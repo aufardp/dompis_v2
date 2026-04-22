@@ -246,10 +246,36 @@ export async function GET(request: NextRequest) {
       clusterMap.set(ca.teknisi_id, existing);
     }
 
-    const assignedTickets = await prisma.ticket.findMany({
+    const pendingTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
+        STATUS_UPDATE: 'pending',
+      },
+      select: {
+        id_ticket: true,
+        INCIDENT: true,
+        CONTACT_NAME: true,
+        CUSTOMER_TYPE: true,
+        SERVICE_NO: true,
+        REPORTED_DATE: true,
+        STATUS_UPDATE: true,
+        teknisi_user_id: true,
+        closed_at: true,
+        WORKZONE: true,
+      },
+      orderBy: { REPORTED_DATE: 'asc' },
+    });
+
+    const todayAssignedTickets = await prisma.ticket.findMany({
+      where: {
+        teknisi_user_id: { in: uniqueTechnicianIds },
+        STATUS_UPDATE: { in: ['assigned', 'on_progress'] },
+        ticket_assignment_history: {
+          some: {
+            assigned_at: { gte: today, lte: todayEnd },
+            is_active: true,
+          },
+        },
       },
       select: {
         id_ticket: true,
@@ -312,12 +338,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const ticketsByTech = new Map<number, typeof assignedTickets>();
-    for (const ticket of assignedTickets) {
+    const ticketsByTech = new Map<number, typeof pendingTickets>();
+
+    for (const ticket of pendingTickets) {
       if (ticket.teknisi_user_id) {
         const existing = ticketsByTech.get(ticket.teknisi_user_id) || [];
         existing.push(ticket);
         ticketsByTech.set(ticket.teknisi_user_id, existing);
+      }
+    }
+
+    for (const ticket of todayAssignedTickets) {
+      if (ticket.teknisi_user_id) {
+        const existing = ticketsByTech.get(ticket.teknisi_user_id) || [];
+        const existingIds = new Set(existing.map(e => e.id_ticket));
+        if (!existingIds.has(ticket.id_ticket)) {
+          existing.push(ticket);
+          ticketsByTech.set(ticket.teknisi_user_id, existing);
+        }
       }
     }
 
@@ -341,24 +379,17 @@ export async function GET(request: NextRequest) {
       .map((tech: { id_user: number; nama: any; nik: any }) => {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
-        const assignedTickets = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'assigned',
-        );
-        const onProgressTickets = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'on_progress',
-        );
-        const pendingTickets = tickets.filter(
+        const pendingList = tickets.filter(
           (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'pending',
         );
-        const closedTickets = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) =>
-            isTicketClosed(t.STATUS_UPDATE),
+        const assignedList = tickets.filter(
+          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'assigned',
         );
-        const activeTickets = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) =>
-            !isTicketClosed(t.STATUS_UPDATE),
+        const onProgressList = tickets.filter(
+          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'on_progress',
         );
-        const mappedTickets = activeTickets.map(mapTechnicianTicket);
+
+        const mappedTickets = tickets.map(mapTechnicianTicket);
         const ticketCount = mappedTickets.length;
         const techStatus = getTechnicianStatus(ticketCount);
 
@@ -409,10 +440,10 @@ export async function GET(request: NextRequest) {
           total_closed_today: closedTodayMap.get(tech.id_user) || 0,
           average_resolve_time_hours: null,
           order_counts: {
-            assigned: assignedTickets.length,
-            on_progress: onProgressTickets.length,
-            pending: pendingTickets.length,
-            closed: closedTickets.length,
+            assigned: assignedList.length,
+            on_progress: onProgressList.length,
+            pending: pendingList.length,
+            closed: closedTodayMap.get(tech.id_user) || 0,
           },
         };
       })

@@ -38,6 +38,7 @@ export interface AdminTicketTableProps {
     idTicket?: number;
     ticket?: string;
     serviceNo?: string;
+    ticketIdGamas?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
     alamat?: string | null;
@@ -78,6 +79,7 @@ export interface AdminTicketTableProps {
     assigned: number;
     close: number;
   };
+  flaggingFilter?: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS';
 }
 
 interface SortConfig {
@@ -153,12 +155,7 @@ export default function TicketTable({
   const [drawerDetail, setDrawerDetail] = useState<any | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
-    new Set(),
-  );
-  const [visibleCols, setVisibleCols] =
-    useState<Record<ColKey, boolean>>(DEFAULT_COLS);
-  const [showColMenu, setShowColMenu] = useState(false);
+  // Removed selectedIds, visibleCols, showColMenu states
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -232,30 +229,7 @@ export default function TicketTable({
   const handleAssign = onAssign ?? (() => {});
 
   // Selection helpers
-  const allIds = pageTickets.map((t) => t.idTicket ?? t.ticket ?? '');
-  const allSelected =
-    allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
-  const someSelected = selectedIds.size > 0;
-
-  function toggleAll() {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allIds));
-    }
-  }
-
-  function toggleSelect(id: string | number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-  }
+  // Removed selection helpers: allIds, allSelected, someSelected, toggleAll, toggleSelect, clearSelection
 
   const renderSortableHeader = (label: string, field: SortField) => (
     <th
@@ -276,32 +250,6 @@ export default function TicketTable({
   return (
     <div className='space-y-3'>
       {/* ── Bulk action bar (appears when rows are selected) ── */}
-      {someSelected && (
-        <div className='flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5'>
-          <span className='text-sm font-semibold text-blue-700'>
-            {selectedIds.size} tiket dipilih
-          </span>
-          <div className='flex gap-2'>
-            {onBulkAssign && (
-              <button
-                onClick={() => {
-                  onBulkAssign([...selectedIds]);
-                  clearSelection();
-                }}
-                className='rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700'
-              >
-                Assign Semua
-              </button>
-            )}
-            <button
-              onClick={clearSelection}
-              className='flex items-center gap-1 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50'
-            >
-              <X size={12} /> Batal
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
@@ -330,45 +278,6 @@ export default function TicketTable({
             <p className='text-xs text-(--text-secondary)'>
               {pagination?.total ?? sortedTickets.length} tiket
             </p>
-            {/* Column customizer */}
-            <div className='relative'>
-              <button
-                onClick={() => setShowColMenu((v) => !v)}
-                className='bg-surface flex items-center gap-1.5 rounded-lg border border-(--border) px-2.5 py-1.5 text-xs font-semibold text-(--text-secondary) transition-colors hover:border-blue-300 hover:text-blue-600'
-              >
-                <Columns3 size={13} />
-                Kolom
-              </button>
-              {showColMenu && (
-                <div className='bg-surface absolute top-9 right-0 z-50 w-44 rounded-2xl border border-(--border) shadow-xl'>
-                  <div className='border-b border-(--border) px-3 py-2 text-[10px] font-bold tracking-wider text-(--text-secondary) uppercase'>
-                    Tampilkan Kolom
-                  </div>
-                  <div className='space-y-0.5 p-2'>
-                    {(Object.entries(COL_LABELS) as [ColKey, string][]).map(
-                      ([key, label]) => (
-                        <label
-                          key={key}
-                          className='hover:bg-surface-2 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5'
-                        >
-                          <input
-                            type='checkbox'
-                            checked={visibleCols[key]}
-                            onChange={() =>
-                              setVisibleCols((v) => ({ ...v, [key]: !v[key] }))
-                            }
-                            className='rounded border-slate-300 accent-blue-600'
-                          />
-                          <span className='text-xs text-(--text-primary)'>
-                            {label}
-                          </span>
-                        </label>
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* ← ADDED: Summary bar */}
@@ -380,48 +289,30 @@ export default function TicketTable({
             <table className='w-full text-sm'>
               <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
                 <tr>
-                  {/* Checkbox all */}
-                  <th className='w-10 px-3 py-3 text-center'>
-                    <input
-                      type='checkbox'
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      className='rounded border-slate-300 accent-blue-600'
-                    />
-                  </th>
-                  <th className='w-16 px-3 py-3 text-center'>#</th>
+                  <th className='w-12 px-3 py-2.5 text-center'>#</th>
                   {renderSortableHeader('Ticket', 'ticket')}
-                  {visibleCols.service &&
-                    renderSortableHeader('Service', 'serviceNo')}
-                  {visibleCols.customer &&
-                    renderSortableHeader('Customer', 'contactName')}
-                  {visibleCols.address && (
-                    <th className='px-3 py-3 text-center'>Address</th>
-                  )}
-                  {visibleCols.bookingDate &&
-                    renderSortableHeader('Booking Date', 'bookingDate')}
-                  {visibleCols.type &&
-                    renderSortableHeader('Type', 'customerType')}
-                  {visibleCols.maxTtr && (
-                    <th className='px-3 py-3 text-center'>Max TTR</th>
-                  )}
-                  {visibleCols.age && renderSortableHeader('Age / SLA', 'age')}
-                  {visibleCols.jenis &&
-                    renderSortableHeader('Jenis Tiket', 'jenisTiket')}
-                  {visibleCols.workzone &&
-                    renderSortableHeader('Workzone', 'workzone')}
-                  {visibleCols.technician &&
-                    renderSortableHeader('Teknisi', 'technicianName')}
-                  {visibleCols.status && (
-                    <th className='px-3 py-3 text-center'>Status</th>
-                  )}
-                  {/* Merged action column */}
-                  <th className='px-3 py-3 text-center'>Aksi</th>
+                  {renderSortableHeader('Service', 'serviceNo')}
+                  {renderSortableHeader('Customer', 'contactName')}
+                  <th className='px-3 py-2.5 text-center'>Address</th>
+                  {renderSortableHeader('Booking Date', 'bookingDate')}
+                  {renderSortableHeader('Type', 'customerType')}
+                  <th className='px-3 py-2.5 text-center'>Max TTR</th>
+                  {renderSortableHeader('Age / SLA', 'age')}
+                  {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
+                  {renderSortableHeader('Workzone', 'workzone')}
+                  {renderSortableHeader('Teknisi', 'technicianName')}
+                  <th className='px-3 py-2.5 text-center'>Status</th>
+                  {/* Action */}
+                  <th className='px-3 py-2.5 text-center'>Aksi</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-(--border)'>
                 {loading ? (
-                  <tr><td colSpan={15}><TableLoadingSkeleton rows={6} cols={15} /></td></tr>
+                  <tr>
+                    <td colSpan={15}>
+                      <TableLoadingSkeleton rows={6} cols={15} />
+                    </td>
+                  </tr>
                 ) : sortedTickets.length === 0 ? (
                   <TableEmptyState
                     colSpan={15}
@@ -443,7 +334,6 @@ export default function TicketTable({
                             : ttrCountdown.status === 'warning'
                               ? 'At Risk'
                               : 'On Track';
-                    const isSelected = selectedIds.has(ticketId ?? '');
 
                     return (
                       <TicketRow
@@ -458,8 +348,6 @@ export default function TicketTable({
                         severity={ticketInfo?.severity}
                         slaLabel={slaLabel}
                         ttrCountdown={ttrCountdown}
-                        selected={isSelected}
-                        onSelect={() => toggleSelect(ticketId ?? '')}
                       />
                     );
                   })

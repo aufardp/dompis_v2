@@ -13,6 +13,7 @@ interface CustomerTypeCardProps {
   sqmCount?: number;
   unspecCount?: number;
   ffgCount?: number;
+  gamasCount?: number;
   p1Count?: number;
   pPlusCount?: number;
   totalAll?: number;
@@ -97,6 +98,7 @@ export default function CustomerTypeCard({
   sqmCount,
   unspecCount,
   ffgCount,
+  gamasCount,
   p1Count,
   pPlusCount,
   totalAll,
@@ -115,11 +117,18 @@ export default function CustomerTypeCard({
         'bg-white dark:bg-slate-800/70',
         'shadow-sm hover:shadow-md dark:shadow-none',
         !active && 'border border-slate-200 dark:border-slate-700/60',
-      ].filter(Boolean).join(' ')}
-      style={active ? {
-        border: `2px solid ${accentColor}`,
-        boxShadow: `0 4px 20px ${accentColor}28`,
-      } : undefined}
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={{
+        borderTopColor: `${accentColor}`,
+        ...(active
+          ? {
+              border: `2px solid ${accentColor}`,
+              boxShadow: `0 4px 20px ${accentColor}28`,
+            }
+          : {}),
+      }}
     >
       {/* Header */}
       <div className='mb-3 flex items-start justify-between'>
@@ -208,6 +217,11 @@ export default function CustomerTypeCard({
           {pPlusCount !== undefined && pPlusCount > 0 && (
             <span className='flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-300'>
               ⚡ P+: {pPlusCount}
+            </span>
+          )}
+          {gamasCount !== undefined && gamasCount > 0 && (
+            <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-300'>
+              GAMAS: {gamasCount}
             </span>
           )}
         </div>

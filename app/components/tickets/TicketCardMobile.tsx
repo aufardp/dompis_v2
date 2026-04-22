@@ -67,6 +67,11 @@ export default function TicketCardMobile({
           <div className='min-w-0'>
             <p className='text-[11px] text-slate-500'>Service</p>
             <p className='truncate font-semibold'>{ticket.serviceNo || '-'}</p>
+            {ticket.ticketIdGamas && (
+              <span className='mt-0.5 inline-block rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
+                Gamas: +{ticket.ticketIdGamas}
+              </span>
+            )}
           </div>
         </div>
         <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>

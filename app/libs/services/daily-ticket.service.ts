@@ -89,6 +89,7 @@ function mapTicket(t: any) {
     sourceTicket: t.SOURCE_TICKET,
     jenisTiket: t.JENIS_TIKET,
     flaggingManja: t.FLAGGING_MANJA,
+    ticketIdGamas: t.TICKET_ID_GAMAS ?? null,
     guaranteeStatus: t.GUARANTE_STATUS,
     pendingReason: t.PENDING_REASON,
     teknisiUserId: t.teknisi_user_id,
@@ -477,43 +478,45 @@ export class DailyTicketService {
     if (serviceAreas.length === 0) return [];
 
     const results = await Promise.all(
-      serviceAreas.map(async (sa: { id_sa: number; nama_sa: string | null }) => {
-        const where: Record<string, any> = {
-          WORKZONE: { contains: sa.nama_sa },
-        };
+      serviceAreas.map(
+        async (sa: { id_sa: number; nama_sa: string | null }) => {
+          const where: Record<string, any> = {
+            WORKZONE: { contains: sa.nama_sa },
+          };
 
-        await this.applyDailyTicketFilter(where);
+          await this.applyDailyTicketFilter(where);
 
-        if (options?.statusUpdate && options.statusUpdate !== 'all') {
-          applyStatusUpdateWhere(where, options.statusUpdate);
-        }
+          if (options?.statusUpdate && options.statusUpdate !== 'all') {
+            applyStatusUpdateWhere(where, options.statusUpdate);
+          }
 
-        if (options?.dept && options.dept !== 'all') {
-          const { getJenisWhereClause } = await import('@/lib/jenis');
-          const jenisClause = getJenisWhereClause(options.dept);
-          Object.assign(where, jenisClause);
-        }
+          if (options?.dept && options.dept !== 'all') {
+            const { getJenisWhereClause } = await import('@/lib/jenis');
+            const jenisClause = getJenisWhereClause(options.dept);
+            Object.assign(where, jenisClause);
+          }
 
-        if (options?.ticketType && options.ticketType !== 'all') {
-          const { getJenisWhereClause } = await import('@/lib/jenis');
-          const jenisClause = getJenisWhereClause(options.ticketType);
-          Object.assign(where, jenisClause);
-        }
+          if (options?.ticketType && options.ticketType !== 'all') {
+            const { getJenisWhereClause } = await import('@/lib/jenis');
+            const jenisClause = getJenisWhereClause(options.ticketType);
+            Object.assign(where, jenisClause);
+          }
 
-        const statusCounts = await this.countStatuses(where);
+          const statusCounts = await this.countStatuses(where);
 
-        return {
-          id_sa: sa.id_sa,
-          nama_sa: sa.nama_sa ?? '',
-          total: statusCounts.total,
-          unassigned: statusCounts.unassigned,
-          open: statusCounts.open,
-          assigned: statusCounts.assigned,
-          onProgress: statusCounts.onProgress ?? 0,
-          pending: statusCounts.pending ?? 0,
-          close: statusCounts.close,
-        };
-      }),
+          return {
+            id_sa: sa.id_sa,
+            nama_sa: sa.nama_sa ?? '',
+            total: statusCounts.total,
+            unassigned: statusCounts.unassigned,
+            open: statusCounts.open,
+            assigned: statusCounts.assigned,
+            onProgress: statusCounts.onProgress ?? 0,
+            pending: statusCounts.pending ?? 0,
+            close: statusCounts.close,
+          };
+        },
+      ),
     );
 
     return results.sort((a, b) => b.total - a.total);

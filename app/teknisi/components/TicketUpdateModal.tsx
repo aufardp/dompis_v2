@@ -22,6 +22,7 @@ export default function TicketUpdateModal({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   const PHOTO_MIN = 2;
   const PHOTO_MAX = 5;
@@ -61,31 +62,40 @@ export default function TicketUpdateModal({
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const uploadEvidence = async () => {
-    const formData = new FormData();
-    formData.append('incident', ticket.ticket);
-    formData.append('ticketId', String(ticket.idTicket));
-    formData.append('actionType', 'pending');
-    selectedFiles.forEach((file) => formData.append('files', file));
+    if (!selectedFiles.length) return;
 
-    const res = await fetchWithAuth('/api/tickets/upload-evidence', {
-      method: 'POST',
-      body: formData,
-    });
+    // Upload files satu per satu secara sequential
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      setUploadProgress(`Mengupload foto ${i + 1}/${selectedFiles.length}...`);
 
-    if (!res) {
-      throw new Error('Upload gagal: tidak ada respon dari server');
-    }
+      const formData = new FormData();
+      formData.append('incident', ticket.ticket);
+      formData.append('ticketId', String(ticket.idTicket));
+      formData.append('actionType', 'pending');
+      formData.append('files', file);
 
-    if (!res.ok) {
-      // Tangkap 413 khusus dengan pesan ramah
-      if (res.status === 413) {
-        throw new Error(
-          'Foto terlalu besar untuk dikirim. Coba pilih lebih sedikit foto atau foto dengan ukuran lebih kecil.',
-        );
+      const res = await fetchWithAuth('/api/tickets/upload-evidence', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res) {
+        throw new Error('Upload gagal: tidak ada respon dari server');
       }
-      const errorData = await res.json().catch(() => null);
-      throw new Error(errorData?.message || `Upload gagal: ${res.status}`);
+
+      if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error(
+            `Foto ${i + 1} masih terlalu besar. Coba foto ulang dengan kamera resolusi lebih rendah.`,
+          );
+        }
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `Upload foto ${i + 1} gagal: ${res.status}`);
+      }
     }
+
+    setUploadProgress(null);
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -264,6 +274,7 @@ export default function TicketUpdateModal({
                 onRemoveImage={handleRemoveImage}
                 previewUrls={previewUrls}
                 uploading={uploading}
+                uploadProgress={uploadProgress}
                 existingCount={0}
                 minFiles={2}
                 maxFiles={5}

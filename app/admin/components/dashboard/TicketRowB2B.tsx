@@ -3,15 +3,16 @@ import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
-import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
-import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
+import {
+  getEffectiveFlaggingLabel,
+  getEffectiveMaxTtrLabel,
+} from '@/app/libs/tickets/effective';
 import { getJenisStyle } from '@/app/libs/tickets/jenis';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
-import TtrCountdownBadge from './TtrCountdownBadge';
-import MaxTtrCell from './MaxTtrCell';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
+import TtrCountdownBadge from './TtrCountdownBadge';
 
 export interface TicketRowProps {
   ticket: {
@@ -39,7 +40,8 @@ export interface TicketRowProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
-    STATUS_UPDATE?: string | null;
+    statusUpdate?: string | null;
+    ticketIdGamas?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
@@ -50,8 +52,6 @@ export interface TicketRowProps {
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
   ttrCountdown?: TtrCountdown | null;
-  selected?: boolean;
-  onSelect?: () => void;
 }
 
 const SLA_STYLES = {
@@ -82,12 +82,10 @@ export default function TicketRow({
   severity = 'normal',
   slaLabel,
   ttrCountdown,
-  selected = false,
-  onSelect,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const isClosed = isTicketClosed(ticket.statusUpdate);
 
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
@@ -97,7 +95,19 @@ export default function TicketRow({
     String(ticket.guaranteeStatus ?? '')
       .trim()
       .toLowerCase() === 'guarantee';
+  const gamasId = String(ticket.ticketIdGamas ?? '').trim();
+  const hasValidGamasId =
+    gamasId !== '' &&
+    !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+      gamasId.toLowerCase(),
+    );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
+
+  // DEBUG: Show raw values in badge area for all rows
+  const rawGamasDebug = ticket.ticketIdGamas;
+  const rawTicketIdGamas = (ticket as any).ticketIdGamas;
+  const rawTICKETIDGAMAS = (ticket as any).TICKET_ID_GAMAS;
+  const rawTicket_id_gamas = (ticket as any).ticket_id_gamas;
 
   const handleAssignClick = () => {
     onAssign(ticket.idTicket ?? '');
@@ -117,20 +127,9 @@ export default function TicketRow({
         'group transition-colors duration-100',
         'border-l-4',
         severityStyles.border,
-        selected ? 'bg-blue-50/60 dark:bg-blue-500/10' : 'hover:bg-surface-2',
+        'hover:bg-surface-2',
       )}
     >
-      {/* Checkbox */}
-      <td className='w-10 px-3 py-3 text-center'>
-        <input
-          type='checkbox'
-          checked={selected}
-          onChange={onSelect}
-          className='rounded border-slate-300 accent-blue-600'
-          onClick={(e) => e.stopPropagation()}
-        />
-      </td>
-
       {/* Rank */}
       <td className='px-3 py-3 text-center'>
         <div className='flex items-center justify-center gap-1.5'>
@@ -175,6 +174,16 @@ export default function TicketRow({
           {isGuarantee && (
             <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/15 dark:text-rose-400'>
               FFG
+            </span>
+          )}
+          {hasValidGamasId && (
+            <span className='rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
+              GAMAS {gamasId}
+            </span>
+          )}
+          {gamasId !== '' && !hasValidGamasId && (
+            <span className='rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-700'>
+              GAMAS?gamasId={gamasId}
             </span>
           )}
         </div>
@@ -233,8 +242,8 @@ export default function TicketRow({
       {/* Max TTR */}
       <td className='px-4 py-3 text-center'>
         {getEffectiveMaxTtrLabel(ticket) ? (
-          <span className='text-xs font-medium whitespace-nowrap text-(--text-primary) tabular-nums'>
-            {getEffectiveMaxTtrLabel(ticket)}
+          <span className='rounded-lg bg-indigo-50 text-xs font-semibold whitespace-nowrap text-indigo-600 tabular-nums dark:bg-indigo-500/15 dark:text-indigo-400'>
+            ⏱ {getEffectiveMaxTtrLabel(ticket)}
           </span>
         ) : (
           <span className='text-xs text-(--text-secondary) italic'>—</span>
@@ -309,14 +318,14 @@ export default function TicketRow({
       </td>
 
       {/* Status */}
-      <td className='px-4 py-3 text-center uppercase'>
+      <td className='px-4 py-3 text-center'>
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            `badge-${getStatusColor(ticket.STATUS_UPDATE || '')}`,
+            `badge-${getStatusColor(ticket.statusUpdate || '')}`,
           )}
         >
-          {ticket.STATUS_UPDATE || '-'}
+          {ticket.statusUpdate || '-'}
         </span>
       </td>
 

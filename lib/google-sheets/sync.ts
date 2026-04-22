@@ -1,12 +1,13 @@
 import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
-import { nowWIB, todayWIB } from './helpers';
-import { ClusterAutoAssignService } from '@/app/libs/services/clusterAutoAssign.service';
+import { nowWIB, nowWIBTimestamp, todayWIB } from './helpers';
 import type { ActorContext } from '@/app/types/ticket';
+import { formatInTimeZone } from 'date-fns-tz';
 
 const RANGE = 'WO_B2B_B2C!A1:HZ10000';
 const BATCH_SIZE = 25;
 const RETRY_MAX = 3;
+const WIB = 'Asia/Jakarta';
 
 // SYSTEM_ACTOR untuk auto-assign oleh sistem (id_user 0 = sistem, bukan user riil)
 const SYSTEM_ACTOR: ActorContext = { id_user: 0, role: 'admin' };
@@ -19,17 +20,35 @@ interface SyncResult {
 
 let isSyncRunning = false;
 
-const WORKFLOW_PROTECTED_STATUSES = new Set([
-  'assigned',
-  'on_progress',
-  'pending',
-  'close',
-  'closed', // legacy value, tetap dilindungi
-]);
+// ── Proteksi KERAS: status ini TIDAK PERNAH direset oleh sync, ganti hari sekalipun ──
+// pending → tetap muncul sesuai teknisi terakhir
+// close/closed → tetap muncul all tiap teknisi
+const HARD_PROTECTED_STATUSES = new Set(['pending', 'close', 'closed']);
 
-function isWorkflowProtected(status: string | null | undefined): boolean {
-  if (!status) return false;
-  return WORKFLOW_PROTECTED_STATUSES.has(status.toLowerCase().trim());
+// ── Proteksi HARI: status ini direset ke null jika sudah ganti hari ──
+// assigned → hilang ganti hari
+// on_progress → hilang ganti hari
+const DAY_PROTECTED_STATUSES = new Set(['assigned', 'on_progress']);
+
+function normalizeStatus(status: string | null | undefined): string {
+  return status?.toLowerCase().trim() ?? '';
+}
+
+function isHardProtected(status: string | null | undefined): boolean {
+  return HARD_PROTECTED_STATUSES.has(normalizeStatus(status));
+}
+
+function isDayProtected(status: string | null | undefined): boolean {
+  return DAY_PROTECTED_STATUSES.has(normalizeStatus(status));
+}
+
+/**
+ * Convert sync_date (MySQL DATE) to WIB date string for consistent comparison.
+ * MySQL DATE stores calendar date without TZ, so convert from UTC Date to WIB string.
+ */
+function syncDateToWibString(syncDate: Date | null): string | null {
+  if (!syncDate) return null;
+  return formatInTimeZone(syncDate, WIB, 'yyyy-MM-dd');
 }
 
 /* ----------------------------- RETRY GOOGLE API ----------------------------- */
@@ -65,63 +84,93 @@ function chunkArray<T>(array: T[], size: number) {
 
 /* ---------------------------- BUILD COLUMN MAP ----------------------------- */
 
+function findColumnIndex(header: string[], names: string[]): number {
+  for (const name of names) {
+    const idx = header.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
 function buildColumnMap(header: string[]) {
-  const find = (name: string) => header.indexOf(name);
-
   return {
-    INCIDENT: find('INCIDENT'),
-    SUMMARY: find('SUMMARY'),
-    REPORTED_DATE: find('REPORTED_DATE'),
-    OWNER_GROUP: find('OWNER_GROUP'),
-    CUSTOMER_SEGMENT: find('CUSTOMER_SEGMENT'),
-    SERVICE_TYPE: find('SERVICE_TYPE'),
-    WORKZONE: find('WORKZONE'),
-    STATUS: find('STATUS'),
-    TICKET_ID_GAMAS: find('TICKET_ID_GAMAS'),
-    CONTACT_PHONE: find('CONTACT_PHONE'),
-    CONTACT_NAME: find('CONTACT_NAME'),
-    BOOKING_DATE: find('BOOKING_DATE'),
-    SOURCE_TICKET: find('SOURCE_TICKET'),
-    CUSTOMER_TYPE: find('CUSTOMER_TYPE'),
-    SERVICE_NO: find('SERVICE_NO'),
-    SYMPTOM: find('SYMPTOM'),
-    DESCRIPTION_ACTUAL_SOLUTION: find('DESCRIPTION_ACTUAL_SOLUTION'),
-    DEVICE_NAME: find('DEVICE_NAME'),
-    RK_INFORMATION: find('ODC_FIX'),
-    JENIS_TIKET: find('JENIS_TIKET2'),
-    JAM_EXPIRED: find('JAM_EXPIRED'),
-    REDAMAN: find('REDAMAN'),
-    MANJA_EXPIRED: find('MANJA_EXPIRED'),
-    ALAMAT: find('ALAMAT'),
-    PENDING_REASON: find('PENDING_REASON'),
-    GUARANTE_STATUS: find('GUARANTE_STATUS'),
-    FLAGGING_MANJA: find('FLAGGING_MANJA'),
-    LAPUL: find('LAPUL'),
-    GAUL: find('GAUL'),
-    ONU_RX: find('ONU_RX'),
-    STATUS_UPDATE: find('STATUS_UPDATE'),
-    STATUS_MANJA: find('STATUS_MANJA'),
+    INCIDENT: findColumnIndex(header, ['INCIDENT']),
+    SUMMARY: findColumnIndex(header, ['SUMMARY']),
+    REPORTED_DATE: findColumnIndex(header, ['REPORTED_DATE']),
+    OWNER_GROUP: findColumnIndex(header, ['OWNER_GROUP']),
+    CUSTOMER_SEGMENT: findColumnIndex(header, ['CUSTOMER_SEGMENT']),
+    SERVICE_TYPE: findColumnIndex(header, ['SERVICE_TYPE']),
+    WORKZONE: findColumnIndex(header, ['WORKZONE']),
+    STATUS: findColumnIndex(header, ['STATUS']),
+    TICKET_ID_GAMAS: findColumnIndex(header, ['TICKET_ID_GAMAS']),
+    CONTACT_PHONE: findColumnIndex(header, ['CONTACT_PHONE']),
+    CONTACT_NAME: findColumnIndex(header, ['CONTACT_NAME']),
+    BOOKING_DATE: findColumnIndex(header, ['BOOKING_DATE']),
+    SOURCE_TICKET: findColumnIndex(header, ['SOURCE_TICKET']),
+    CUSTOMER_TYPE: findColumnIndex(header, ['CUSTOMER_TYPE']),
+    SERVICE_NO: findColumnIndex(header, [
+      'SERVICE_NO',
+      'Service_No',
+      'service_no',
+      'SERVICE_ID',
+    ]),
+    SYMPTOM: findColumnIndex(header, ['SYMPTOM']),
+    DESCRIPTION_ACTUAL_SOLUTION: findColumnIndex(header, [
+      'DESCRIPTION_ACTUAL_SOLUTION',
+    ]),
+    DEVICE_NAME: findColumnIndex(header, ['DEVICE_NAME', 'PERANGKAT']),
+    RK_INFORMATION: findColumnIndex(header, ['ODC_FIX']),
+    JENIS_TIKET: findColumnIndex(header, ['JENIS_TIKET2']),
+    JAM_EXPIRED: findColumnIndex(header, ['JAM_EXPIRED']),
+    REDAMAN: findColumnIndex(header, ['REDAMAN']),
+    MANJA_EXPIRED: findColumnIndex(header, ['MANJA_EXPIRED']),
+    ALAMAT: findColumnIndex(header, ['ALAMAT']),
+    PENDING_REASON: findColumnIndex(header, ['PENDING_REASON']),
+    GUARANTE_STATUS: findColumnIndex(header, ['GUARANTE_STATUS']),
+    FLAGGING_MANJA: findColumnIndex(header, ['FLAGGING_MANJA']),
+    LAPUL: findColumnIndex(header, ['LAPUL']),
+    GAUL: findColumnIndex(header, ['GAUL']),
+    ONU_RX: findColumnIndex(header, ['ONU_RX']),
+    STATUS_UPDATE: findColumnIndex(header, ['STATUS_UPDATE']),
+    STATUS_MANJA: findColumnIndex(header, ['STATUS_MANJA']),
 
-    JAM_EXPIRED_12_JAM_GOLD: find('Jam_Expired_12_Jam_Gold'),
-    STATUS_TTR_12_GOLD: find('STATUS_TTR_12_Gold'),
-    JAM_EXPIRED_3_JAM_DIAMOND: find('Jam_Expired_3_Jam_Diamond'),
-    STATUS_TTR_3_DIAMOND: find('STATUS_TTR_3_Diamond'),
-    JAM_EXPIRED_24_JAM_REGULER: find('Jam_Expired_24_Jam_Reguler'),
-    STATUS_TTR_24_REGULER: find('STATUS_TTR_24_Reguler'),
-    JAM_EXPIRED_6_JAM_PLATINUM: find('Jam_Expired_6_Jam_Platinum'),
-    STATUS_TTR_6_PLATINUM: find('STATUS_TTR_6_Platinum'),
+    // TTR fields
+    JAM_EXPIRED_12_JAM_GOLD: findColumnIndex(header, [
+      'Jam_Expired_12_Jam_Gold',
+    ]),
+    STATUS_TTR_12_GOLD: findColumnIndex(header, [
+      'STATUS_TTR_12_Gold',
+      'STATUS_TTR',
+    ]),
+    JAM_EXPIRED_3_JAM_DIAMOND: findColumnIndex(header, [
+      'Jam_Expired_3_Jam_Diamond',
+    ]),
+    STATUS_TTR_3_DIAMOND: findColumnIndex(header, ['STATUS_TTR_3_Diamond']),
+    JAM_EXPIRED_24_JAM_REGULER: findColumnIndex(header, [
+      'Jam_Expired_24_Jam_Reguler',
+    ]),
+    STATUS_TTR_24_REGULER: findColumnIndex(header, ['STATUS_TTR_24_Reguler']),
+    JAM_EXPIRED_6_JAM_PLATINUM: findColumnIndex(header, [
+      'Jam_Expired_6_Jam_Platinum',
+    ]),
+    STATUS_TTR_6_PLATINUM: findColumnIndex(header, ['STATUS_TTR_6_Platinum']),
 
-    TTR_K1_DATIN_1_5_JAM: find('TTR_K1_DATIN_1,5_JAM'),
-    TTR_K1_REPAIR_K2_DATIN_3_6_JAM: find('TTR_K1_REPAIR_DAN_K2_DATIN_3.6_JAM'),
-    TTR_K3_DATIN_7_2_JAM: find('TTR_K3_DATIN_7.2_JAM'),
-    TTR_INDIBIZ_4_JAM: find('TTR_INDIBIZ_4_JAM'),
-    TTR_INDIBIZ_24_JAM: find('TTR_INDIBIZ_24_JAM'),
-    TTR_INDIHOME_RESELLER_6_JAM: find('TTR_INDIHOME_RESELLER_6_JAM'),
-    TTR_INDIHOME_RESELLER_36_JAM: find('TTR_INDIHOME_RESELLER_36_JAM'),
-    TTR_WIFI_24_JAM: find('TTR_WIFI_24_JAM'),
-
-    rca: find('rca'),
-    sub_rca: find('sub_rca'),
+    TTR_K1_DATIN_1_5_JAM: findColumnIndex(header, ['TTR_K1_DATIN_1,5_JAM']),
+    TTR_K1_REPAIR_K2_DATIN_3_6_JAM: findColumnIndex(header, [
+      'TTR_K1_REPAIR_DAN_K2_DATIN_3.6_JAM',
+      'TTR_K1_REPAIR_..._3.6_JAM',
+      'TTR_K1_REPAIR_K2_DATIN_3_6_JAM',
+    ]),
+    TTR_K3_DATIN_7_2_JAM: findColumnIndex(header, ['TTR_K3_DATIN_7.2_JAM']),
+    TTR_INDIBIZ_4_JAM: findColumnIndex(header, ['TTR_INDIBIZ_4_JAM']),
+    TTR_INDIBIZ_24_JAM: findColumnIndex(header, ['TTR_INDIBIZ_24_JAM']),
+    TTR_INDIHOME_RESELLER_6_JAM: findColumnIndex(header, [
+      'TTR_INDIHOME_RESELLER_6_JAM',
+    ]),
+    TTR_INDIHOME_RESELLER_36_JAM: findColumnIndex(header, [
+      'TTR_INDIHOME_RESELLER_36_JAM',
+    ]),
+    TTR_WIFI_24_JAM: findColumnIndex(header, ['TTR_WIFI_24_JAM']),
   };
 }
 
@@ -215,6 +264,25 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     const header = rows[0];
     const col = buildColumnMap(header);
 
+    // Today's date string in WIB — used for sync_date and day-reset comparison
+    const todayWibStr = todayWIB();
+    // Unique batch ID for this sync run
+    const batchId = `sync-${todayWibStr}-${Date.now()}`;
+    // Timestamp for synced_at field
+    const syncedAtWIB = nowWIBTimestamp();
+
+    console.log('[SYNC] Column indices - CORE:', {
+      INCIDENT: col.INCIDENT,
+      TICKET_ID_GAMAS: col.TICKET_ID_GAMAS,
+      SERVICE_NO: col.SERVICE_NO,
+      ALAMAT: col.ALAMAT,
+      STATUS: col.STATUS,
+      STATUS_UPDATE: col.STATUS_UPDATE,
+      SYMPTOM: col.SYMPTOM,
+      CONTACT_NAME: col.CONTACT_NAME,
+      CONTACT_PHONE: col.CONTACT_PHONE,
+    });
+
     const mappedRows: any[] = [];
 
     for (let i = 1; i < rows.length; i++) {
@@ -223,55 +291,137 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       mappedRows.push(mapped);
     }
 
+    if (mappedRows.length > 0) {
+      const firstRow = mappedRows[0];
+      console.log('[SYNC] Sample mapped row (first ticket):', {
+        INCIDENT: firstRow[0],
+        SERVICE_NO:
+          col.SERVICE_NO !== -1 ? firstRow[col.SERVICE_NO] : 'NOT_FOUND',
+        ALAMAT: col.ALAMAT !== -1 ? firstRow[col.ALAMAT] : 'NOT_FOUND',
+        TICKET_ID_GAMAS:
+          col.TICKET_ID_GAMAS !== -1
+            ? firstRow[col.TICKET_ID_GAMAS]
+            : 'NOT_FOUND',
+        STATUS: firstRow[7],
+        SYMPTOM: col.SYMPTOM !== -1 ? firstRow[col.SYMPTOM] : 'NOT_FOUND',
+        CONTACT_PHONE:
+          col.CONTACT_PHONE !== -1 ? firstRow[col.CONTACT_PHONE] : 'NOT_FOUND',
+        CONTACT_NAME:
+          col.CONTACT_NAME !== -1 ? firstRow[col.CONTACT_NAME] : 'NOT_FOUND',
+        ROW_LENGTH: firstRow.length,
+      });
+    }
+
     /* ------------------- CHECK EXISTING INCIDENTS ------------------- */
 
     const incidentList = mappedRows.map((r) => r[0]);
 
-    const existing = await prisma.ticket.findMany({
+    // Pre-fetch teknisi_user_id + STATUS_UPDATE + sync_date for all existing tickets
+    // This resolves race conditions with concurrent auto-assign
+    const techAssignments = await prisma.ticket.findMany({
+      where: { INCIDENT: { in: incidentList } },
       select: {
         INCIDENT: true,
-        STATUS_UPDATE: true, // ← fetch current DB status untuk proteksi
-      },
-      where: {
-        INCIDENT: { in: incidentList },
+        teknisi_user_id: true,
+        STATUS_UPDATE: true,
+        sync_date: true,
       },
     });
 
-    // Map: INCIDENT → STATUS_UPDATE saat ini di DB
-    const existingMap = new Map<string, string | null>(
-      existing.map((r: { INCIDENT: string; STATUS_UPDATE: string | null }) => [
+    // Map: INCIDENT → { status, syncDate, teknisiUserId }
+    // syncDate stored as YYYY-MM-DD string for accurate comparison
+    const existingMap = new Map<
+      string,
+      {
+        status: string | null;
+        syncDate: string | null;
+        teknisiUserId: number | null;
+      }
+    >(
+      techAssignments.map((r) => [
         r.INCIDENT,
-        r.STATUS_UPDATE,
+        {
+          status: r.STATUS_UPDATE,
+          syncDate: r.sync_date ? r.sync_date.toISOString().slice(0, 10) : null,
+          teknisiUserId: r.teknisi_user_id,
+        },
       ]),
     );
 
-    /* -------------------------- PREPARE FINAL DATA -------------------------- */
-
-    const newRows: any[] = []; // INSERT baru
-    const safeRows: any[] = []; // UPDATE aman (status belum di-workflow)
-    const protectedRows: any[] = []; // UPDATE dengan STATUS_UPDATE dikunci
-
-    const syncDate = todayWIB();
-    const batchId = `SYNC_${syncDate}_${Date.now()}`;
+    // Three category buckets for batch INSERT
+    const newRows: any[] = []; // brand-new tickets (not in DB)
+    const safeRows: any[] = []; // tickets with open/null status → safe to update
+    const protectedRows: any[] = []; // tickets with protected status → update but protect STATUS_UPDATE
 
     for (const row of mappedRows) {
       const incident = row[0];
-      const sheetStatusUpdate = row[29]; // nilai STATUS_UPDATE dari Google Sheet
-      const dbStatusUpdate = existingMap.get(incident); // nilai saat ini di DB
+      const sheetStatusUpdate = row[29]; // STATUS_UPDATE from Google Sheet
+      const dbEntry = existingMap.get(incident); // { status, syncDate, teknisiUserId }
+
+      // ── MAIN LOGIC: STATUS_UPDATE protection ──────────────────────────
+      // If teknisi is already assigned, STATUS_UPDATE is NEVER overwritten.
+      // This is the final safeguard against race conditions with auto-assign/manual assign.
+      const hasAssignedTeknisi = dbEntry?.teknisiUserId != null;
 
       if (!existingMap.has(incident)) {
-        // ── INSERT baru: ticket belum ada di DB ────────────────────────────
-        // Gunakan nilai dari sheet apa adanya (normalkan ke null jika kosong)
-        row[29] = sheetStatusUpdate?.trim() || null;
+        // ── INSERT: ticket not yet in DB ────────────────────────────────
+        // New ticket → STATUS_UPDATE stays null (auto-assign will set it)
+        row[29] = null;
         result.inserted++;
-        newRows.push([...row, syncDate, batchId]);
-      } else if (isWorkflowProtected(dbStatusUpdate)) {
+        newRows.push([...row, todayWibStr, batchId]);
+      } else if (hasAssignedTeknisi) {
+        // ── PROTECT: teknisi already assigned → keep existing STATUS_UPDATE ──
+        // Always use current DB status, ignore whatever the sheet sends
+        console.log(
+          `[SYNC] Ticket ${incident}: assigned to #${dbEntry!.teknisiUserId}, ` +
+            `protecting STATUS_UPDATE=${dbEntry!.status}`,
+        );
+        row[29] = dbEntry!.status || null;
         result.updated++;
-        protectedRows.push([...row, syncDate, batchId]);
+        protectedRows.push([...row, todayWibStr, batchId]);
+      } else if (isHardProtected(dbEntry?.status)) {
+        // ── HARD PROTECT: pending / close / closed → never reset ──────────
+        console.log(
+          `[SYNC] Ticket ${incident}: hard-protected status="${dbEntry!.status}"`,
+        );
+        result.updated++;
+        protectedRows.push([...row, todayWibStr, batchId]);
+      } else if (isDayProtected(dbEntry?.status)) {
+        // ── DAY PROTECT: assigned / on_progress → reset if different day ──
+        const isSameDay = dbEntry!.syncDate === todayWibStr;
+        if (isSameDay) {
+          // Same day → keep existing status (still valid today)
+          console.log(
+            `[SYNC] Ticket ${incident}: day-protected "${dbEntry!.status}" ` +
+              `same day (${dbEntry!.syncDate}), keeping`,
+          );
+          result.updated++;
+          protectedRows.push([...row, todayWibStr, batchId]);
+        } else {
+          // Different day → reset STATUS_UPDATE to null (ticket disappears from list)
+          console.log(
+            `[SYNC] Ticket ${incident}: day-protected "${dbEntry!.status}" ` +
+              `expired (was ${dbEntry!.syncDate}, today ${todayWibStr}), resetting to null`,
+          );
+          row[29] = null;
+          result.updated++;
+          safeRows.push([...row, todayWibStr, batchId]);
+        }
       } else {
-        row[29] = sheetStatusUpdate?.trim() || null;
+        // ── SAFE: null / open / unknown → accept from sheet if not 'open'
+        const trimmedSheetStatus = sheetStatusUpdate?.trim()?.toLowerCase();
+        if (
+          trimmedSheetStatus &&
+          trimmedSheetStatus !== 'open' &&
+          trimmedSheetStatus !== 'null' &&
+          trimmedSheetStatus !== ''
+        ) {
+          row[29] = sheetStatusUpdate?.trim() || null;
+        } else {
+          row[29] = dbEntry?.status || null;
+        }
         result.updated++;
-        safeRows.push([...row, syncDate, batchId]);
+        safeRows.push([...row, todayWibStr, batchId]);
       }
     }
 
@@ -315,27 +465,75 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
         ON DUPLICATE KEY UPDATE
         SUMMARY       = VALUES(SUMMARY),
-        STATUS        = VALUES(STATUS),
-        WORKZONE      = VALUES(WORKZONE),
+        REPORTED_DATE = VALUES(REPORTED_DATE),
         OWNER_GROUP   = VALUES(OWNER_GROUP),
-        STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        CUSTOMER_SEGMENT = VALUES(CUSTOMER_SEGMENT),
+        SERVICE_TYPE = VALUES(SERVICE_TYPE),
+        WORKZONE      = VALUES(WORKZONE),
+        STATUS       = VALUES(STATUS),
+        TICKET_ID_GAMAS = VALUES(TICKET_ID_GAMAS),
+        CONTACT_PHONE = VALUES(CONTACT_PHONE),
+        CONTACT_NAME  = VALUES(CONTACT_NAME),
+        BOOKING_DATE = VALUES(BOOKING_DATE),
+        SOURCE_TICKET = VALUES(SOURCE_TICKET),
+        CUSTOMER_TYPE = VALUES(CUSTOMER_TYPE),
+        SERVICE_NO   = VALUES(SERVICE_NO),
+        SYMPTOM       = VALUES(SYMPTOM),
+        DESCRIPTION_ACTUAL_SOLUTION = VALUES(DESCRIPTION_ACTUAL_SOLUTION),
+        DEVICE_NAME  = VALUES(DEVICE_NAME),
+        JENIS_TIKET  = VALUES(JENIS_TIKET),
+        JAM_EXPIRED  = VALUES(JAM_EXPIRED),
+        REDAMAN      = VALUES(REDAMAN),
+        MANJA_EXPIRED = VALUES(MANJA_EXPIRED),
+        ALAMAT       = VALUES(ALAMAT),
+        PENDING_REASON = VALUES(PENDING_REASON),
+        GUARANTE_STATUS = VALUES(GUARANTE_STATUS),
+        FLAGGING_MANJA = VALUES(FLAGGING_MANJA),
+        LAPUL        = VALUES(LAPUL),
+        GAUL         = VALUES(GAUL),
+        ONU_RX       = VALUES(ONU_RX),
+        -- ✅ STATUS_UPDATE DILINDUNGI: tidak pernah di-overwrite dari sheet
+        -- Ini safeguard utama untuk mencegah race condition dengan auto-assign / manual assign
+        -- App workflow yang bertanggung jawab penuh atas STATUS_UPDATE
+        -- STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        STATUS_MANJA = VALUES(STATUS_MANJA),
+        JAM_EXPIRED_12_JAM_GOLD = VALUES(JAM_EXPIRED_12_JAM_GOLD),
+        STATUS_TTR_12_GOLD = VALUES(STATUS_TTR_12_GOLD),
+        JAM_EXPIRED_3_JAM_DIAMOND = VALUES(JAM_EXPIRED_3_JAM_DIAMOND),
+        STATUS_TTR_3_DIAMOND = VALUES(STATUS_TTR_3_DIAMOND),
+        JAM_EXPIRED_24_JAM_REGULER = VALUES(JAM_EXPIRED_24_JAM_REGULER),
+        STATUS_TTR_24_REGULER = VALUES(STATUS_TTR_24_REGULER),
+        JAM_EXPIRED_6_JAM_PLATINUM = VALUES(JAM_EXPIRED_6_JAM_PLATINUM),
+        STATUS_TTR_6_PLATINUM = VALUES(STATUS_TTR_6_PLATINUM),
+        TTR_K1_DATIN_1_5_JAM = VALUES(TTR_K1_DATIN_1_5_JAM),
+        TTR_K1_REPAIR_K2_DATIN_3_6_JAM = VALUES(TTR_K1_REPAIR_K2_DATIN_3_6_JAM),
+        TTR_K3_DATIN_7_2_JAM = VALUES(TTR_K3_DATIN_7_2_JAM),
+        TTR_INDIBIZ_4_JAM = VALUES(TTR_INDIBIZ_4_JAM),
+        TTR_INDIBIZ_24_JAM = VALUES(TTR_INDIBIZ_24_JAM),
+        TTR_INDIHOME_RESELLER_6_JAM = VALUES(TTR_INDIHOME_RESELLER_6_JAM),
+        TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
+        TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
+        RK_INFORMATION = VALUES(RK_INFORMATION),
+        rca = VALUES(rca),
+        sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
-        synced_at     = NOW()
+        synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values);
+        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
         await new Promise((r) => setTimeout(r, 50));
       }
     }
 
     /* -------------------- TRIGGER AUTO-ASSIGN FOR NEW TICKETS -------------------- */
 
-    // Trigger auto-assign untuk tiket baru yang belum di-assign
+    // Trigger auto-assign for newly inserted tickets that have no assigned teknisi
+    // Runs as background task — does not block sync completion
     if (newRows.length > 0) {
       const insertedIncidents = newRows.map((r) => r[0]);
 
-      // Find newly inserted tickets that are unassigned
+      // Re-query to find unassigned new tickets (auto-assign may have already run)
       const newTickets = await prisma.ticket.findMany({
         where: {
           INCIDENT: { in: insertedIncidents },
@@ -346,15 +544,17 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       });
 
       if (newTickets.length > 0) {
-        // Trigger di background (tidak block sync process) — fire-and-forget
         void (async () => {
           try {
-            const batchResult = await ClusterAutoAssignService.runBatch(
+            // Only assign tickets that match active cluster ODC values
+            const { ClusterAutoAssignServiceV2 } =
+              await import('@/app/libs/services/clusterAutoAssign.service');
+            const batchResult = await ClusterAutoAssignServiceV2.runBatchV2(
               undefined,
               SYSTEM_ACTOR.id_user,
             );
             console.log(
-              `[AUTO-ASSIGN] ${batchResult.assigned}/${batchResult.total} tiket berhasil di-assign otomatis`,
+              `[AUTO-ASSIGN] ${batchResult.assigned}/${batchResult.total} new tickets auto-assigned`,
             );
           } catch (err) {
             console.error('[AUTO-ASSIGN] Error during batch assign:', err);
@@ -365,7 +565,8 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
     /* -------------------- UPDATE SAFE (status masih open/null) -------------------- */
 
-    // UPDATE normal: STATUS_UPDATE boleh di-overwrite dari sheet
+    // UPDATE normal: STATUS_UPDATE TIDAK di-update dari sheet
+    // Ini mencegah sheet menimpa status yang sudah diset oleh app workflow
     if (safeRows.length > 0) {
       const batches = chunkArray(safeRows, BATCH_SIZE);
 
@@ -403,16 +604,61 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
         ON DUPLICATE KEY UPDATE
         SUMMARY       = VALUES(SUMMARY),
-        STATUS        = VALUES(STATUS),
-        WORKZONE      = VALUES(WORKZONE),
+        REPORTED_DATE = VALUES(REPORTED_DATE),
         OWNER_GROUP   = VALUES(OWNER_GROUP),
-        STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        CUSTOMER_SEGMENT = VALUES(CUSTOMER_SEGMENT),
+        SERVICE_TYPE = VALUES(SERVICE_TYPE),
+        WORKZONE      = VALUES(WORKZONE),
+        STATUS       = VALUES(STATUS),
+        TICKET_ID_GAMAS = VALUES(TICKET_ID_GAMAS),
+        CONTACT_PHONE = VALUES(CONTACT_PHONE),
+        CONTACT_NAME  = VALUES(CONTACT_NAME),
+        BOOKING_DATE = VALUES(BOOKING_DATE),
+        SOURCE_TICKET = VALUES(SOURCE_TICKET),
+        CUSTOMER_TYPE = VALUES(CUSTOMER_TYPE),
+        SERVICE_NO   = VALUES(SERVICE_NO),
+        SYMPTOM       = VALUES(SYMPTOM),
+        DESCRIPTION_ACTUAL_SOLUTION = VALUES(DESCRIPTION_ACTUAL_SOLUTION),
+        DEVICE_NAME  = VALUES(DEVICE_NAME),
+        JENIS_TIKET  = VALUES(JENIS_TIKET),
+        JAM_EXPIRED  = VALUES(JAM_EXPIRED),
+        REDAMAN      = VALUES(REDAMAN),
+        MANJA_EXPIRED = VALUES(MANJA_EXPIRED),
+        ALAMAT       = VALUES(ALAMAT),
+        PENDING_REASON = VALUES(PENDING_REASON),
+        GUARANTE_STATUS = VALUES(GUARANTE_STATUS),
+        FLAGGING_MANJA = VALUES(FLAGGING_MANJA),
+        LAPUL        = VALUES(LAPUL),
+        GAUL         = VALUES(GAUL),
+        ONU_RX       = VALUES(ONU_RX),
+        -- ✅ STATUS_UPDATE TIDAK di-update: biarkan apa adanya (app workflow yang pegang)
+        -- STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        STATUS_MANJA = VALUES(STATUS_MANJA),
+        JAM_EXPIRED_12_JAM_GOLD = VALUES(JAM_EXPIRED_12_JAM_GOLD),
+        STATUS_TTR_12_GOLD = VALUES(STATUS_TTR_12_GOLD),
+        JAM_EXPIRED_3_JAM_DIAMOND = VALUES(JAM_EXPIRED_3_JAM_DIAMOND),
+        STATUS_TTR_3_DIAMOND = VALUES(STATUS_TTR_3_DIAMOND),
+        JAM_EXPIRED_24_JAM_REGULER = VALUES(JAM_EXPIRED_24_JAM_REGULER),
+        STATUS_TTR_24_REGULER = VALUES(STATUS_TTR_24_REGULER),
+        JAM_EXPIRED_6_JAM_PLATINUM = VALUES(JAM_EXPIRED_6_JAM_PLATINUM),
+        STATUS_TTR_6_PLATINUM = VALUES(STATUS_TTR_6_PLATINUM),
+        TTR_K1_DATIN_1_5_JAM = VALUES(TTR_K1_DATIN_1_5_JAM),
+        TTR_K1_REPAIR_K2_DATIN_3_6_JAM = VALUES(TTR_K1_REPAIR_K2_DATIN_3_6_JAM),
+        TTR_K3_DATIN_7_2_JAM = VALUES(TTR_K3_DATIN_7_2_JAM),
+        TTR_INDIBIZ_4_JAM = VALUES(TTR_INDIBIZ_4_JAM),
+        TTR_INDIBIZ_24_JAM = VALUES(TTR_INDIBIZ_24_JAM),
+        TTR_INDIHOME_RESELLER_6_JAM = VALUES(TTR_INDIHOME_RESELLER_6_JAM),
+        TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
+        TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
+        RK_INFORMATION = VALUES(RK_INFORMATION),
+        rca = VALUES(rca),
+        sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
-        synced_at     = NOW()
+        synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values);
+        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
         await new Promise((r) => setTimeout(r, 50));
       }
     }
@@ -457,17 +703,62 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
         ON DUPLICATE KEY UPDATE
         SUMMARY       = VALUES(SUMMARY),
-        STATUS        = VALUES(STATUS),
-        WORKZONE      = VALUES(WORKZONE),
+        REPORTED_DATE = VALUES(REPORTED_DATE),
         OWNER_GROUP   = VALUES(OWNER_GROUP),
+        CUSTOMER_SEGMENT = VALUES(CUSTOMER_SEGMENT),
+        SERVICE_TYPE = VALUES(SERVICE_TYPE),
+        WORKZONE      = VALUES(WORKZONE),
+        STATUS       = VALUES(STATUS),
+        TICKET_ID_GAMAS = VALUES(TICKET_ID_GAMAS),
+        CONTACT_PHONE = VALUES(CONTACT_PHONE),
+        CONTACT_NAME  = VALUES(CONTACT_NAME),
+        BOOKING_DATE = VALUES(BOOKING_DATE),
+        SOURCE_TICKET = VALUES(SOURCE_TICKET),
+        CUSTOMER_TYPE = VALUES(CUSTOMER_TYPE),
+        SERVICE_NO   = VALUES(SERVICE_NO),
+        SYMPTOM       = VALUES(SYMPTOM),
+        DESCRIPTION_ACTUAL_SOLUTION = VALUES(DESCRIPTION_ACTUAL_SOLUTION),
+        DEVICE_NAME  = VALUES(DEVICE_NAME),
+        JENIS_TIKET  = VALUES(JENIS_TIKET),
+        JAM_EXPIRED  = VALUES(JAM_EXPIRED),
+        REDAMAN      = VALUES(REDAMAN),
+        MANJA_EXPIRED = VALUES(MANJA_EXPIRED),
+        ALAMAT       = VALUES(ALAMAT),
+        -- ✅ PENDING_REASON tidak disentuh: teknisi mungkin sudah mengisi ini
+        -- PENDING_REASON = VALUES(PENDING_REASON),
+        GUARANTE_STATUS = VALUES(GUARANTE_STATUS),
+        FLAGGING_MANJA = VALUES(FLAGGING_MANJA),
+        LAPUL        = VALUES(LAPUL),
+        GAUL         = VALUES(GAUL),
+        ONU_RX       = VALUES(ONU_RX),
         -- ✅ STATUS_UPDATE tidak disentuh: workflow app yang pegang kendali
         -- STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        STATUS_MANJA = VALUES(STATUS_MANJA),
+        JAM_EXPIRED_12_JAM_GOLD = VALUES(JAM_EXPIRED_12_JAM_GOLD),
+        STATUS_TTR_12_GOLD = VALUES(STATUS_TTR_12_GOLD),
+        JAM_EXPIRED_3_JAM_DIAMOND = VALUES(JAM_EXPIRED_3_JAM_DIAMOND),
+        STATUS_TTR_3_DIAMOND = VALUES(STATUS_TTR_3_DIAMOND),
+        JAM_EXPIRED_24_JAM_REGULER = VALUES(JAM_EXPIRED_24_JAM_REGULER),
+        STATUS_TTR_24_REGULER = VALUES(STATUS_TTR_24_REGULER),
+        JAM_EXPIRED_6_JAM_PLATINUM = VALUES(JAM_EXPIRED_6_JAM_PLATINUM),
+        STATUS_TTR_6_PLATINUM = VALUES(STATUS_TTR_6_PLATINUM),
+        TTR_K1_DATIN_1_5_JAM = VALUES(TTR_K1_DATIN_1_5_JAM),
+        TTR_K1_REPAIR_K2_DATIN_3_6_JAM = VALUES(TTR_K1_REPAIR_K2_DATIN_3_6_JAM),
+        TTR_K3_DATIN_7_2_JAM = VALUES(TTR_K3_DATIN_7_2_JAM),
+        TTR_INDIBIZ_4_JAM = VALUES(TTR_INDIBIZ_4_JAM),
+        TTR_INDIBIZ_24_JAM = VALUES(TTR_INDIBIZ_24_JAM),
+        TTR_INDIHOME_RESELLER_6_JAM = VALUES(TTR_INDIHOME_RESELLER_6_JAM),
+        TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
+        TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
+        RK_INFORMATION = VALUES(RK_INFORMATION),
+        rca = VALUES(rca),
+        sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
-        synced_at     = NOW()
+        synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values);
+        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
         await new Promise((r) => setTimeout(r, 50));
       }
     }

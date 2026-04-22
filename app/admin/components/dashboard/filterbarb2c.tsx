@@ -11,7 +11,7 @@ type StatusUpdate =
   | 'on_progress'
   | 'pending'
   | 'close';
-type FlaggingManja = 'all' | 'P1' | 'P+';
+type FlaggingManja = 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS';
 
 interface FilterBarB2CProps {
   ticketType?: TicketType;
@@ -106,6 +106,18 @@ const FLAGGING_OPTIONS = [
     label: 'P+',
     dot: 'bg-pink-400',
     activeClass: 'bg-pink-400/15 border-pink-400/40 text-pink-400',
+  },
+  {
+    key: 'FFG',
+    label: 'FFG',
+    dot: 'bg-rose-400',
+    activeClass: 'bg-rose-400/15 border-rose-400/40 text-rose-400',
+  },
+  {
+    key: 'GAMAS',
+    label: 'GAMAS',
+    dot: 'bg-sky-400',
+    activeClass: 'bg-sky-400/15 border-sky-400/40 text-sky-400',
   },
   {
     key: 'all',

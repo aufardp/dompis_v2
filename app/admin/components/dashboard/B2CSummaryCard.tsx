@@ -9,6 +9,7 @@ interface B2CSummaryCardProps {
   sqmCount: number;
   unspecCount: number;
   ffgCount: number;
+  gamasCount: number;
   p1Count: number;
   pPlusCount: number;
   isDailyScope?: boolean; // NEW: indicates daily operational scope
@@ -59,6 +60,7 @@ export default function B2CSummaryCard({
   sqmCount,
   unspecCount,
   ffgCount,
+  gamasCount,
   p1Count,
   pPlusCount,
   isDailyScope = false,
@@ -67,10 +69,11 @@ export default function B2CSummaryCard({
   const regulerPct = total > 0 ? ((regulerCount / total) * 100).toFixed(0) : 0;
   const sqmPct = total > 0 ? ((sqmCount / total) * 100).toFixed(0) : 0;
   const unspecPct = total > 0 ? ((unspecCount / total) * 100).toFixed(0) : 0;
+  const gamasPct = total > 0 ? ((gamasCount / total) * 100).toFixed(0) : 0;
 
   return (
     <div
-      className='relative overflow-hidden rounded-2xl p-5 md:p-6'
+      className='relative overflow-hidden rounded-2xl p-4 md:p-6'
       style={{
         background:
           'linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #312e81 100%)',
@@ -98,12 +101,14 @@ export default function B2CSummaryCard({
                 className='group relative flex items-center justify-center'
                 title='Daily Operational Only: Tickets synced today or with pending reason'
               >
-                <Info className='h-3.5 w-3.5 text-blue-300/70 cursor-help' />
-                <div className='absolute left-1/2 top-full z-50 hidden w-64 -translate-x-1/2 rounded-lg border border-blue-200 bg-blue-900 px-3 py-2 text-[10px] text-blue-100 shadow-xl group-hover:block'>
-                  <p className='font-semibold mb-0.5'>Daily Operational Scope</p>
+                <Info className='h-3.5 w-3.5 cursor-help text-blue-300/70' />
+                <div className='absolute top-full left-1/2 z-50 hidden w-64 -translate-x-1/2 rounded-lg border border-blue-200 bg-blue-900 px-3 py-2 text-[10px] text-blue-100 shadow-xl group-hover:block'>
+                  <p className='mb-0.5 font-semibold'>
+                    Daily Operational Scope
+                  </p>
                   <p className='text-blue-200/80'>
-                    Angka ini hanya mencakup tiket operasional hari ini dan tiket pending. 
-                    Bukan total keseluruhan database.
+                    Angka ini hanya mencakup tiket operasional hari ini dan
+                    tiket pending. Bukan total keseluruhan database.
                   </p>
                 </div>
               </div>
@@ -221,13 +226,23 @@ export default function B2CSummaryCard({
             </p>
             <p className='text-[10px] text-amber-300/60'>⚡ P+</p>
           </div>
+          <div className='text-center'>
+            <p
+              className='text-2xl font-black'
+              style={{
+                color: gamasCount > 0 ? '#38bdf8' : 'rgba(56,189,248,0.4)',
+              }}
+            >
+              {gamasCount}
+            </p>
+            <p className='text-[10px] text-sky-300/60'>GAMAS</p>
+          </div>
         </div>
 
-        {/* Resolution ring — pushed to right */}
-        {/* <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
+        <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
           <p className='text-[10px] text-blue-300/70'>Resolution Rate</p>
           <ResolutionRing pct={pctClosed} />
-        </div> */}
+        </div>
       </div>
     </div>
   );

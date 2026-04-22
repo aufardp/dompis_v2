@@ -55,3 +55,4 @@ dompis-*.json
 .idea/
 .DS_Store
 .qwen
+.blackboxcli/

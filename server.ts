@@ -21,6 +21,9 @@ console.log('[boot] 5. Loading tech events dispatch...');
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
 import cron, { ScheduledTask } from 'node-cron';
 
+console.log('[boot] 6. Loading auto-assign service...');
+import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssign.service';
+
 console.log('[boot] All modules loaded successfully.');
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -34,6 +37,8 @@ const handle = app.getRequestHandler();
 let syncTask: ScheduledTask | null = null;
 let pushTask: ScheduledTask | null = null;
 let techEventsTask: ScheduledTask | null = null;
+let autoAssignTask: ScheduledTask | null = null;
+let isAutoAssignRunning = false;
 
 /**
  * DB LOCK (SAFE)
@@ -134,7 +139,33 @@ async function startServer() {
 
     techEventsTask = cron.schedule('*/30 * * * * *', runTechEvents);
 
-    console.log('[CRON] Scheduled: sync(3m), push(10m), tech-events(30s)');
+    // Continuous auto-assign: every 1 minute, independent of sync
+    // Assigns any unassigned tickets that have RK_INFORMATION matching active clusters
+    autoAssignTask = cron.schedule('*/1 * * * *', async () => {
+      if (isAutoAssignRunning) return;
+      isAutoAssignRunning = true;
+
+      console.log('[CRON] Running auto-assign...');
+      await withDbLock('auto_assign_lock', async () => {
+        try {
+          const result = await withTimeout(
+            ClusterAutoAssignServiceV2.runBatchV2(undefined, 0),
+            60 * 1000,
+          );
+          if (result.assigned > 0) {
+            console.log(
+              `[CRON] Auto-assign: ${result.assigned}/${result.total} tickets assigned`,
+            );
+          }
+        } catch (error) {
+          console.error('[CRON] Auto-assign error:', error);
+        }
+      });
+
+      isAutoAssignRunning = false;
+    });
+
+    console.log('[CRON] Scheduled: sync(3m), push(10m), tech-events(30s), auto-assign(1m)');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }
@@ -161,6 +192,7 @@ async function startServer() {
     syncTask?.stop();
     pushTask?.stop();
     techEventsTask?.stop();
+    autoAssignTask?.stop();
     console.log('[Server] Cron stopped');
 
     // Stop HTTP server

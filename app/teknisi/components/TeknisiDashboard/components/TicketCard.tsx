@@ -249,9 +249,16 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
               <p className='mb-0.5 text-[10px] font-bold tracking-wide text-slate-400 dark:text-slate-500 uppercase'>
                 No. Service
               </p>
-              <p className='text-xs font-semibold text-slate-800 dark:text-slate-100 sm:text-sm'>
-                {ticket.serviceNo || '-'}
-              </p>
+              <div className='inline-flex flex-wrap items-center justify-end gap-1'>
+                <p className='text-xs font-semibold text-slate-800 dark:text-slate-100 sm:text-sm'>
+                  {ticket.serviceNo || '-'}
+                </p>
+                {ticket.ticketIdGamas && (
+                  <span className='rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
+                    GAMAS +{ticket.ticketIdGamas}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

@@ -47,6 +47,7 @@ services:
     container_name: dompis_app
     build: .
     restart: unless-stopped
+    user: '0'
     env_file:
       - .env
     ports:
@@ -56,8 +57,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    # volumes:
-    #   - ./public/uploads:/app/public/uploads
+    volumes:
+      - /root/dompis_v2/public/uploads/evidence:/app/public/uploads/evidence
     networks:
       - dompis-network
     extra_hosts:

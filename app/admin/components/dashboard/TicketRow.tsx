@@ -19,6 +19,7 @@ export interface TicketRowProps {
     idTicket?: number;
     ticket?: string;
     serviceNo?: string;
+    ticketIdGamas?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
     alamat?: string | null;
@@ -51,8 +52,8 @@ export interface TicketRowProps {
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
   ttrCountdown?: TtrCountdown | null;
-  selected?: boolean;
-  onSelect?: () => void;
+  selected?: boolean; // unused
+  onSelect?: () => void; // unused
 }
 
 const SLA_STYLES = {
@@ -98,6 +99,12 @@ export default function TicketRow({
     String(ticket.guaranteeStatus ?? '')
       .trim()
       .toLowerCase() === 'guarantee';
+  const gamasId = String(ticket.ticketIdGamas ?? '').trim();
+  const hasValidGamasId =
+    gamasId !== '' &&
+    !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+      gamasId.toLowerCase(),
+    );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
 
   const handleAssignClick = () => {
@@ -115,22 +122,12 @@ export default function TicketRow({
   return (
     <tr
       className={clsx(
-        'group transition-colors duration-100',
-        'border-l-4',
+        'group transition-colors duration-100 hover:bg-(--surface-2)',
+        'border-l-4 px-3 py-2.5',
         severityStyles.border,
-        selected ? 'bg-blue-50/60 dark:bg-blue-500/10' : 'hover:bg-surface-2',
       )}
     >
       {/* Checkbox */}
-      <td className='w-10 px-3 py-3 text-center'>
-        <input
-          type='checkbox'
-          checked={selected}
-          onChange={onSelect}
-          className='rounded border-slate-300 accent-blue-600'
-          onClick={(e) => e.stopPropagation()}
-        />
-      </td>
 
       {/* Rank */}
       <td className='px-3 py-3 text-center'>
@@ -169,13 +166,18 @@ export default function TicketRow({
 
       {/* Service No */}
       <td className='px-4 py-3 text-center'>
-        <div className='inline-flex items-center justify-center gap-2'>
+        <div className='inline-flex flex-wrap items-center justify-center gap-1'>
           <span className='font-mono text-xs text-(--text-primary)'>
             {ticket.serviceNo ?? '-'}
           </span>
           {isGuarantee && (
             <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/15 dark:text-rose-400'>
               FFG
+            </span>
+          )}
+          {hasValidGamasId && (
+            <span className='rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
+              GAMAS {gamasId}
             </span>
           )}
         </div>

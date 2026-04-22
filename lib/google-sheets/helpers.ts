@@ -1,6 +1,14 @@
-import { formatInTimeZone } from 'date-fns-tz';
+import { format, formatInTimeZone, toZonedTime } from 'date-fns-tz';
 
 const WIB = 'Asia/Jakarta';
+
+export function nowWIBDate(): Date {
+  return toZonedTime(new Date(), WIB);
+}
+
+export function nowWIBTimestamp(): string {
+  return format(toZonedTime(new Date(), WIB), 'yyyy-MM-dd HH:mm:ss');
+}
 
 export function nowWIB(): string {
   return new Date().toLocaleString('id-ID', {

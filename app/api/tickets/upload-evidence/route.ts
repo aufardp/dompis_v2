@@ -1,11 +1,5 @@
 export const runtime = 'nodejs';
-
-export const config = {
-  api: {
-    bodyParser: false,
-    responseLimit: false,
-  },
-};
+export const maxDuration = 30; // Allow 30s for upload processing
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
@@ -28,11 +22,10 @@ type ActivityType =
   | 'evidence_deleted';
 
 // Sinkronkan dengan compressed file size (bukan raw dari kamera)
-// Multi-pass compression: pass1: 1920px/0.82, pass2: 1280px/0.70, pass3: 960px/0.60
-// Target per pass: ≤ 3MB → client validate ≤ 4MB (buffer aman)
+// Multi-pass compression: pass1: 1280px/0.75, pass2: 800px/0.60, pass3: 640px/0.50, pass4: 480px/0.40
+// Target per file: ~500KB (hemat storage VPS)
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB per file (after compress, konsisten dengan client)
-const MAX_TOTAL_SIZE = 20 * 1024 * 1024; // 20MB total payload (5 foto × 4MB)
-const MAX_FILES = 5;
+const MAX_FILES = 1; // Sequential upload - 1 foto per request
 
 export async function POST(req: NextRequest) {
   try {
@@ -78,23 +71,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validasi jumlah file
+    // Validasi jumlah file - sequential upload, 1 foto per request
     if (files.length > MAX_FILES) {
       return NextResponse.json(
-        { success: false, message: `Maksimal ${MAX_FILES} foto per upload.` },
+        { success: false, message: 'Kirim 1 foto per request.' },
         { status: 400 },
-      );
-    }
-
-    // Validasi total ukuran semua file (safety net server-side)
-    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    if (totalSize > MAX_TOTAL_SIZE) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Total ukuran foto (${(totalSize / 1024 / 1024).toFixed(1)} MB) melebihi batas. Maksimal 20 MB total.`,
-        },
-        { status: 413 },
       );
     }
 

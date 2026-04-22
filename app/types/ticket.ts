@@ -72,6 +72,8 @@ export interface Ticket {
   contactName: string;
   contactPhone: string;
 
+  ticketIdGamas?: string | null;
+
   deviceName?: string;
   symptom?: string;
   workzone?: string;
