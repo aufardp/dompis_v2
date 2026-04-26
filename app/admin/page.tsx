@@ -1007,7 +1007,7 @@ export default function TicketPage() {
                 defaultOpen: true,
                 children: (
                   <div className='flex flex-col gap-4 space-y-3 md:space-y-4'>
-                    <B2BSection data={b2bStats} />,
+                    <B2BSection data={b2bStats} />
                     <FilterBarB2B
                       ticketType={b2bTicketTypeFilter}
                       statusUpdate={b2bHasilVisitFilter}

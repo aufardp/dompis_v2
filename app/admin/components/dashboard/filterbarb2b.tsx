@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X } from 'lucide-react';
 
@@ -152,6 +152,44 @@ export function FilterBarB2B({
   const flagging = flaggingProp ?? 'all';
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollStart = useRef(0);
+  const [showFadeLeft, setShowFadeLeft] = useState(false);
+  const [showFadeRight, setShowFadeRight] = useState(true);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowFadeLeft(el.scrollLeft > 4);
+    setShowFadeRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    startX.current = e.pageX - (scrollRef.current?.offsetLeft ?? 0);
+    scrollStart.current = scrollRef.current?.scrollLeft ?? 0;
+    if (scrollRef.current) scrollRef.current.style.cursor = 'grabbing';
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging.current || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - (scrollRef.current.offsetLeft ?? 0);
+    const walk = (x - startX.current) * 1.2;
+    scrollRef.current.scrollLeft = scrollStart.current - walk;
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false;
+    if (scrollRef.current) scrollRef.current.style.cursor = 'grab';
+  }, []);
+
+  useEffect(() => {
+    handleScroll();
+  }, [handleScroll]);
+
   const activeCount =
     (ticketType !== 'all' ? 1 : 0) +
     (statusUpdate !== 'all' ? 1 : 0) +
@@ -188,117 +226,144 @@ export function FilterBarB2B({
         )}
       </div>
 
-      <div
-        className={cn(
-          'flex-col gap-0 lg:flex-row lg:items-stretch',
-          showMobileFilters ? 'flex' : 'hidden lg:flex',
-          'bg-surface overflow-hidden rounded-xl border border-(--border) shadow-sm',
-        )}
-      >
-        <div className='flex items-center gap-2 border-b border-(--border) px-4 py-2.5 lg:border-r lg:border-b-0'>
-          <span className='w-8 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
-            Jenis
-          </span>
-          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+      <div className={cn('hidden lg:block', showMobileFilters && 'block')}>
+        <div className='relative'>
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-y-0 left-0 z-10 w-12 rounded-l-full',
+              'bg-gradient-to-r from-(--surface) to-transparent',
+              'transition-opacity duration-200',
+              showFadeLeft ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-y-0 right-0 z-10 w-12 rounded-r-full',
+              'bg-gradient-to-l from-(--surface) to-transparent',
+              'transition-opacity duration-200',
+              showFadeRight ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            className={cn(
+              'flex items-center gap-1 overflow-x-auto rounded-full bg-(--surface)',
+              'border border-(--border) p-1',
+              'cursor-grab select-none [&::-webkit-scrollbar]:hidden',
+              'scrollbar-none',
+            )}
+            style={{ scrollbarWidth: 'none' }}
+          >
+            <span className='shrink-0 pr-1 pl-2 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+              Jenis
+            </span>
+
             {B2B_TYPE_OPTIONS.map(({ key, label, dot, activeClass }) => (
               <button
                 key={key}
-                onClick={() => {
-                  onTypeChange?.(key);
-                }}
+                onClick={() => onTypeChange?.(key)}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   ticketType === key
                     ? activeClass
-                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
+                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                 )}
               >
                 <span
                   className={cn(
-                    'h-1.5 w-1.5 rounded-full',
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
                     ticketType === key ? dot : 'bg-current opacity-30',
                   )}
                 />
                 {label}
               </button>
             ))}
-          </div>
-        </div>
 
-        <div className='flex flex-1 items-center gap-2 px-4 py-2.5'>
-          <span className='w-12 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
-            Status
-          </span>
-          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+            <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
+
+            <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+              Status
+            </span>
+
             {STATUS_OPTIONS.map(({ key, label, dot, activeClass }) => (
               <button
                 key={key}
-                onClick={() => {
-                  onStatusChange?.(key);
-                }}
+                onClick={() => onStatusChange?.(key)}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   statusUpdate === key
                     ? activeClass
-                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
+                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                 )}
               >
                 <span
                   className={cn(
-                    'h-1.5 w-1.5 rounded-full',
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
                     statusUpdate === key ? dot : 'bg-current opacity-30',
                   )}
                 />
                 {label}
               </button>
             ))}
-          </div>
-        </div>
 
-        <div className='flex items-center gap-2 border-t border-(--border) px-4 py-2.5 lg:border-t-0 lg:border-l'>
-          <span className='w-14 shrink-0 text-[9px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
-            Flagging
-          </span>
-          <div className='scrollbar-hide flex gap-1.5 overflow-x-auto'>
+            <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
+
+            <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+              Flag
+            </span>
+
             {FLAGGING_OPTIONS.map(({ key, label, dot, activeClass }) => (
               <button
                 key={key}
-                onClick={() => {
-                  onFlaggingChange?.(key as FlaggingManja);
-                }}
+                onClick={() => onFlaggingChange?.(key as FlaggingManja)}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap transition-all duration-150',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   flagging === key
                     ? activeClass
-                    : 'hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)',
+                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                 )}
               >
                 <span
                   className={cn(
-                    'h-1.5 w-1.5 rounded-full',
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
                     flagging === key ? dot : 'bg-current opacity-30',
                   )}
                 />
                 {label}
               </button>
             ))}
-          </div>
-        </div>
 
-        {activeCount > 0 && (
-          <div className='hidden items-center border-l border-(--border) px-3 lg:flex'>
+            <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
+
             <button
               onClick={resetAll}
-              className='flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-400 transition hover:bg-red-400/10'
+              className={cn(
+                'mr-1 flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
+                'border-red-400/30 text-red-400/60 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400',
+                activeCount === 0 && 'opacity-40',
+              )}
             >
-              <X size={12} />
+              <X size={10} />
               Reset
-              <span className='rounded-full bg-red-400/20 px-1.5 py-0.5 text-[9px] font-bold'>
-                {activeCount}
-              </span>
+              {activeCount > 0 && (
+                <span className='rounded-full bg-red-400/20 px-1.5 py-px text-[9px] font-bold text-red-300'>
+                  {activeCount}
+                </span>
+              )}
             </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -2091,3 +2091,344 @@
 {"timestamp":"2026-04-22T22:36:50.408Z","level":"INFO","action":"ticket_skipped","ticketId":1551,"incident":"INC37923882","reason":"no_teknisi_available_cluster_KALIANAK 2"}
 {"timestamp":"2026-04-22T22:36:50.408Z","level":"INFO","action":"ticket_skipped","ticketId":13326389,"incident":"INC47670919","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
 {"timestamp":"2026-04-22T22:36:50.409Z","level":"INFO","action":"batch_complete","total":339,"assigned":0,"skipped":0,"failed":0,"duration_ms":436}
+{"timestamp":"2026-04-22T23:03:22.777Z","level":"INFO","action":"batch_start","total_tickets":339}
+{"timestamp":"2026-04-22T23:03:22.885Z","level":"INFO","action":"ticket_skipped","ticketId":17820418,"incident":"INC48064579","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.885Z","level":"INFO","action":"ticket_skipped","ticketId":18101273,"incident":"INC48083950","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.886Z","level":"INFO","action":"ticket_skipped","ticketId":18101282,"incident":"INC48083213","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.886Z","level":"INFO","action":"ticket_skipped","ticketId":1839,"incident":"INC46882718","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.886Z","level":"INFO","action":"ticket_skipped","ticketId":16634244,"incident":"INC48028796","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.887Z","level":"INFO","action":"ticket_skipped","ticketId":1845,"incident":"INC46775653","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.887Z","level":"INFO","action":"ticket_skipped","ticketId":10346665,"incident":"INC47575091","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.887Z","level":"INFO","action":"ticket_skipped","ticketId":19346837,"incident":"INC48194678","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.887Z","level":"INFO","action":"ticket_skipped","ticketId":19346840,"incident":"INC48193955","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.888Z","level":"INFO","action":"ticket_skipped","ticketId":322674,"incident":"INC47234371","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.888Z","level":"INFO","action":"ticket_skipped","ticketId":19179183,"incident":"INC48131471","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.888Z","level":"INFO","action":"ticket_skipped","ticketId":1836,"incident":"INC46927833","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.889Z","level":"INFO","action":"ticket_skipped","ticketId":1819,"incident":"INC47095450","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.889Z","level":"INFO","action":"ticket_skipped","ticketId":1834,"incident":"INC46957476","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.889Z","level":"INFO","action":"ticket_skipped","ticketId":901825,"incident":"INC47261478","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.889Z","level":"INFO","action":"ticket_skipped","ticketId":14627790,"incident":"INC47878276","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.890Z","level":"INFO","action":"ticket_skipped","ticketId":1929,"incident":"INC45905816","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.891Z","level":"INFO","action":"ticket_skipped","ticketId":3114361,"incident":"INC47370144","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.892Z","level":"INFO","action":"ticket_skipped","ticketId":19346847,"incident":"INC48202049","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.892Z","level":"INFO","action":"ticket_skipped","ticketId":19347272,"incident":"INC48165751","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.893Z","level":"INFO","action":"ticket_skipped","ticketId":5887111,"incident":"INC47445007","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.893Z","level":"INFO","action":"ticket_skipped","ticketId":19347297,"incident":"INC48162865","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.894Z","level":"INFO","action":"ticket_skipped","ticketId":14728522,"incident":"INC47949611","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.895Z","level":"INFO","action":"ticket_skipped","ticketId":19179186,"incident":"INC48130836","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.895Z","level":"INFO","action":"ticket_skipped","ticketId":1841,"incident":"INC46845341","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.896Z","level":"INFO","action":"ticket_skipped","ticketId":14627788,"incident":"INC47883587","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.896Z","level":"INFO","action":"ticket_skipped","ticketId":12589140,"incident":"INC47647302","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.896Z","level":"INFO","action":"ticket_skipped","ticketId":3420363,"incident":"INC47386142","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.896Z","level":"INFO","action":"ticket_skipped","ticketId":1926,"incident":"INC45992377","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.897Z","level":"INFO","action":"ticket_skipped","ticketId":19375406,"incident":"INC48464938","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.897Z","level":"INFO","action":"ticket_skipped","ticketId":19374146,"incident":"INC48452080","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.897Z","level":"INFO","action":"ticket_skipped","ticketId":19374773,"incident":"INC48455704","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.897Z","level":"INFO","action":"ticket_skipped","ticketId":19375227,"incident":"INC48468933","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.898Z","level":"INFO","action":"ticket_skipped","ticketId":19372991,"incident":"INC48449118","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.898Z","level":"INFO","action":"ticket_skipped","ticketId":19374726,"incident":"INC48453099","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.898Z","level":"INFO","action":"ticket_skipped","ticketId":19372988,"incident":"INC48449195","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.899Z","level":"INFO","action":"ticket_skipped","ticketId":19374833,"incident":"INC48459056","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.899Z","level":"INFO","action":"ticket_skipped","ticketId":19374835,"incident":"INC48459233","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.899Z","level":"INFO","action":"ticket_skipped","ticketId":19374836,"incident":"INC48459232","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.900Z","level":"INFO","action":"ticket_skipped","ticketId":19374838,"incident":"INC48459038","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.900Z","level":"INFO","action":"ticket_skipped","ticketId":19374981,"incident":"INC48461922","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.900Z","level":"INFO","action":"ticket_skipped","ticketId":19374982,"incident":"INC48461917","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.900Z","level":"INFO","action":"ticket_skipped","ticketId":19374984,"incident":"INC48461597","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.901Z","level":"INFO","action":"ticket_skipped","ticketId":19374985,"incident":"INC48461596","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.901Z","level":"INFO","action":"ticket_skipped","ticketId":19374813,"incident":"INC48459758","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.901Z","level":"INFO","action":"ticket_skipped","ticketId":19374897,"incident":"INC48461716","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.902Z","level":"INFO","action":"ticket_skipped","ticketId":19374508,"incident":"INC48363040","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.902Z","level":"INFO","action":"ticket_skipped","ticketId":19375260,"incident":"INC48447850","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.903Z","level":"INFO","action":"ticket_skipped","ticketId":19374944,"incident":"INC48463179","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.903Z","level":"INFO","action":"ticket_skipped","ticketId":19375433,"incident":"INC48467671","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.904Z","level":"INFO","action":"ticket_skipped","ticketId":19382312,"incident":"INC48482147","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.904Z","level":"INFO","action":"ticket_skipped","ticketId":19374505,"incident":"INC48363121","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.904Z","level":"INFO","action":"ticket_skipped","ticketId":19375307,"incident":"INC48363048","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.905Z","level":"INFO","action":"ticket_skipped","ticketId":19375006,"incident":"INC48464431","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.905Z","level":"INFO","action":"ticket_skipped","ticketId":19382313,"incident":"INC48483102","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.905Z","level":"INFO","action":"ticket_skipped","ticketId":19374247,"incident":"INC48447636","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.906Z","level":"INFO","action":"ticket_skipped","ticketId":19375387,"incident":"INC48462225","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.906Z","level":"INFO","action":"ticket_skipped","ticketId":19379043,"incident":"INC48473726","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.906Z","level":"INFO","action":"ticket_skipped","ticketId":19375439,"incident":"INC48466695","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.906Z","level":"INFO","action":"ticket_skipped","ticketId":19374977,"incident":"INC48462074","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.907Z","level":"INFO","action":"ticket_skipped","ticketId":19346820,"incident":"INC48184284","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.907Z","level":"INFO","action":"ticket_skipped","ticketId":19375308,"incident":"INC48336629","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.907Z","level":"INFO","action":"ticket_skipped","ticketId":19373030,"incident":"INC48443853","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.908Z","level":"INFO","action":"ticket_skipped","ticketId":19374416,"incident":"INC48407407","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.908Z","level":"INFO","action":"ticket_skipped","ticketId":19375067,"incident":"INC48467253","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.908Z","level":"INFO","action":"ticket_skipped","ticketId":19375240,"incident":"INC48470414","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.909Z","level":"INFO","action":"ticket_skipped","ticketId":19375296,"incident":"INC48397157","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.910Z","level":"INFO","action":"ticket_skipped","ticketId":19374963,"incident":"INC48462509","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.910Z","level":"INFO","action":"ticket_skipped","ticketId":19374751,"incident":"INC48454178","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.910Z","level":"INFO","action":"ticket_skipped","ticketId":19374649,"incident":"INC48255098","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.910Z","level":"INFO","action":"ticket_skipped","ticketId":19374722,"incident":"INC48453560","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.911Z","level":"INFO","action":"ticket_skipped","ticketId":19382111,"incident":"INC48477393","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.911Z","level":"INFO","action":"ticket_skipped","ticketId":19382137,"incident":"INC48477205","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.911Z","level":"INFO","action":"ticket_skipped","ticketId":19346833,"incident":"INC48196026","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.911Z","level":"INFO","action":"ticket_skipped","ticketId":19375250,"incident":"INC48469939","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.912Z","level":"INFO","action":"ticket_skipped","ticketId":19375318,"incident":"INC48264882","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.912Z","level":"INFO","action":"ticket_skipped","ticketId":19375366,"incident":"INC48455805","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.912Z","level":"INFO","action":"ticket_skipped","ticketId":19375396,"incident":"INC48466056","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.913Z","level":"INFO","action":"ticket_skipped","ticketId":19379003,"incident":"INC48474568","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.913Z","level":"INFO","action":"ticket_skipped","ticketId":19375304,"incident":"INC48366628","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.913Z","level":"INFO","action":"ticket_skipped","ticketId":19372986,"incident":"INC48449250","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.913Z","level":"INFO","action":"ticket_skipped","ticketId":19375361,"incident":"INC48456889","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.914Z","level":"INFO","action":"ticket_skipped","ticketId":19372982,"incident":"INC48449730","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.914Z","level":"INFO","action":"ticket_skipped","ticketId":19374777,"incident":"INC48455455","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.914Z","level":"INFO","action":"ticket_skipped","ticketId":19373021,"incident":"INC48445213","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.915Z","level":"INFO","action":"ticket_skipped","ticketId":19374961,"incident":"INC48462545","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.915Z","level":"INFO","action":"ticket_skipped","ticketId":19375046,"incident":"INC48466333","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.915Z","level":"INFO","action":"ticket_skipped","ticketId":19382301,"incident":"INC48482435","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.915Z","level":"INFO","action":"ticket_skipped","ticketId":19375373,"incident":"INC48454244","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.915Z","level":"INFO","action":"ticket_skipped","ticketId":19382298,"incident":"INC48482539","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.916Z","level":"INFO","action":"ticket_skipped","ticketId":19375395,"incident":"INC48466197","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.916Z","level":"INFO","action":"ticket_skipped","ticketId":19374990,"incident":"INC48464397","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.916Z","level":"INFO","action":"ticket_skipped","ticketId":19374260,"incident":"INC48446785","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.917Z","level":"INFO","action":"ticket_skipped","ticketId":19375338,"incident":"INC48451929","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.917Z","level":"INFO","action":"ticket_skipped","ticketId":19374872,"incident":"INC48458529","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.917Z","level":"INFO","action":"ticket_skipped","ticketId":19374873,"incident":"INC48458631","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.917Z","level":"INFO","action":"ticket_skipped","ticketId":19382455,"incident":"INC48486073","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.918Z","level":"INFO","action":"ticket_skipped","ticketId":19374776,"incident":"INC48455470","reason":"no_teknisi_available_cluster_RKT 2"}
+{"timestamp":"2026-04-22T23:03:22.918Z","level":"INFO","action":"ticket_skipped","ticketId":19374810,"incident":"INC48460064","reason":"no_teknisi_available_cluster_RKT 2"}
+{"timestamp":"2026-04-22T23:03:22.918Z","level":"INFO","action":"ticket_skipped","ticketId":19374939,"incident":"INC48463416","reason":"no_teknisi_available_cluster_RKT 2"}
+{"timestamp":"2026-04-22T23:03:22.918Z","level":"INFO","action":"ticket_skipped","ticketId":19375005,"incident":"INC48464445","reason":"no_teknisi_available_cluster_RKT 2"}
+{"timestamp":"2026-04-22T23:03:22.919Z","level":"INFO","action":"ticket_skipped","ticketId":19373024,"incident":"INC48444811","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.919Z","level":"INFO","action":"ticket_skipped","ticketId":19375283,"incident":"INC48430219","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.919Z","level":"INFO","action":"ticket_skipped","ticketId":19375394,"incident":"INC48464772","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.920Z","level":"INFO","action":"ticket_skipped","ticketId":19374945,"incident":"INC48463133","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.920Z","level":"INFO","action":"ticket_skipped","ticketId":19375347,"incident":"INC48456840","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.921Z","level":"INFO","action":"ticket_skipped","ticketId":19373065,"incident":"INC48428386","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.921Z","level":"INFO","action":"ticket_skipped","ticketId":19375383,"incident":"INC48463418","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.922Z","level":"INFO","action":"ticket_skipped","ticketId":19375301,"incident":"INC48381769","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.922Z","level":"INFO","action":"ticket_skipped","ticketId":19373014,"incident":"INC48447122","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.923Z","level":"INFO","action":"ticket_skipped","ticketId":19374518,"incident":"INC48362138","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.923Z","level":"INFO","action":"ticket_skipped","ticketId":19374957,"incident":"INC48462939","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.924Z","level":"INFO","action":"ticket_skipped","ticketId":19375368,"incident":"INC48455504","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.925Z","level":"INFO","action":"ticket_skipped","ticketId":19382144,"incident":"INC48476932","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.926Z","level":"INFO","action":"ticket_skipped","ticketId":19382432,"incident":"INC48477870","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.926Z","level":"INFO","action":"ticket_skipped","ticketId":19374437,"incident":"INC48404688","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.927Z","level":"INFO","action":"ticket_skipped","ticketId":19374950,"incident":"INC48462806","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.929Z","level":"INFO","action":"ticket_skipped","ticketId":19375288,"incident":"INC48421981","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.930Z","level":"INFO","action":"ticket_skipped","ticketId":19375360,"incident":"INC48457574","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.930Z","level":"INFO","action":"ticket_skipped","ticketId":19375409,"incident":"INC48469123","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.931Z","level":"INFO","action":"ticket_skipped","ticketId":19374499,"incident":"INC48364760","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.932Z","level":"INFO","action":"ticket_skipped","ticketId":19347279,"incident":"INC48164655","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.933Z","level":"INFO","action":"ticket_skipped","ticketId":14543833,"incident":"INC47728761","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.934Z","level":"INFO","action":"ticket_skipped","ticketId":14627360,"incident":"INC47732178","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.935Z","level":"INFO","action":"ticket_skipped","ticketId":14450268,"incident":"INC47724497","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.936Z","level":"INFO","action":"ticket_skipped","ticketId":14627362,"incident":"INC47732034","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.937Z","level":"INFO","action":"ticket_skipped","ticketId":14627321,"incident":"INC47760749","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.938Z","level":"INFO","action":"ticket_skipped","ticketId":761,"incident":"INC46913950","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.939Z","level":"INFO","action":"ticket_skipped","ticketId":14627305,"incident":"INC47769441","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.939Z","level":"INFO","action":"ticket_skipped","ticketId":14627306,"incident":"INC47769630","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.940Z","level":"INFO","action":"ticket_skipped","ticketId":14627307,"incident":"INC47769435","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.940Z","level":"INFO","action":"ticket_skipped","ticketId":740,"incident":"INC46947176","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.941Z","level":"INFO","action":"ticket_skipped","ticketId":14627257,"incident":"INC47809786","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.942Z","level":"INFO","action":"ticket_skipped","ticketId":704,"incident":"INC47006915","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.943Z","level":"INFO","action":"ticket_skipped","ticketId":690,"incident":"INC47018904","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.944Z","level":"INFO","action":"ticket_skipped","ticketId":14627150,"incident":"INC47859052","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.945Z","level":"INFO","action":"ticket_skipped","ticketId":14627175,"incident":"INC47843855","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.946Z","level":"INFO","action":"ticket_skipped","ticketId":641,"incident":"INC47044671","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.947Z","level":"INFO","action":"ticket_skipped","ticketId":14627053,"incident":"INC47899087","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.948Z","level":"INFO","action":"ticket_skipped","ticketId":1280,"incident":"INC46073415","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.949Z","level":"INFO","action":"ticket_skipped","ticketId":610,"incident":"INC47071050","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.950Z","level":"INFO","action":"ticket_skipped","ticketId":618,"incident":"INC47070199","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.951Z","level":"INFO","action":"ticket_skipped","ticketId":14626919,"incident":"INC47911822","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.951Z","level":"INFO","action":"ticket_skipped","ticketId":14626943,"incident":"INC47911240","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.952Z","level":"INFO","action":"ticket_skipped","ticketId":555,"incident":"INC47098843","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.952Z","level":"INFO","action":"ticket_skipped","ticketId":519,"incident":"INC47130297","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.953Z","level":"INFO","action":"ticket_skipped","ticketId":505,"incident":"INC47131788","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.954Z","level":"INFO","action":"ticket_skipped","ticketId":15822383,"incident":"INC47994871","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.955Z","level":"INFO","action":"ticket_skipped","ticketId":15822375,"incident":"INC47994991","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.956Z","level":"INFO","action":"ticket_skipped","ticketId":15924390,"incident":"INC47996706","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.956Z","level":"INFO","action":"ticket_skipped","ticketId":16070950,"incident":"INC47997653","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.957Z","level":"INFO","action":"ticket_skipped","ticketId":16070952,"incident":"INC47997648","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.958Z","level":"INFO","action":"ticket_skipped","ticketId":16070935,"incident":"INC47998332","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.959Z","level":"INFO","action":"ticket_skipped","ticketId":16470168,"incident":"INC48019611","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.960Z","level":"INFO","action":"ticket_skipped","ticketId":1230,"incident":"INC46188266","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.961Z","level":"INFO","action":"ticket_skipped","ticketId":410,"incident":"INC47166396","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.961Z","level":"INFO","action":"ticket_skipped","ticketId":17047872,"incident":"INC48033691","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.961Z","level":"INFO","action":"ticket_skipped","ticketId":1191,"incident":"INC46260116","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.962Z","level":"INFO","action":"ticket_skipped","ticketId":1192,"incident":"INC46260272","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.962Z","level":"INFO","action":"ticket_skipped","ticketId":153829,"incident":"INC47229092","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.963Z","level":"INFO","action":"ticket_skipped","ticketId":17678601,"incident":"INC48062138","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.963Z","level":"INFO","action":"ticket_skipped","ticketId":18026249,"incident":"INC48081460","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.964Z","level":"INFO","action":"ticket_skipped","ticketId":17678538,"incident":"INC48063399","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.964Z","level":"INFO","action":"ticket_skipped","ticketId":18583164,"incident":"INC48101294","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.965Z","level":"INFO","action":"ticket_skipped","ticketId":18901014,"incident":"INC48124004","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.966Z","level":"INFO","action":"ticket_skipped","ticketId":18705025,"incident":"INC48112805","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.966Z","level":"INFO","action":"ticket_skipped","ticketId":18174408,"incident":"INC48086800","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.967Z","level":"INFO","action":"ticket_skipped","ticketId":18425019,"incident":"INC48090472","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.967Z","level":"INFO","action":"ticket_skipped","ticketId":18866261,"incident":"INC48122809","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.968Z","level":"INFO","action":"ticket_skipped","ticketId":18552099,"incident":"INC48096884","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.968Z","level":"INFO","action":"ticket_skipped","ticketId":19295871,"incident":"INC48132164","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.968Z","level":"INFO","action":"ticket_skipped","ticketId":19295856,"incident":"INC48132531","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.969Z","level":"INFO","action":"ticket_skipped","ticketId":19295961,"incident":"INC48127350","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.969Z","level":"INFO","action":"ticket_skipped","ticketId":19295963,"incident":"INC48127324","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.969Z","level":"INFO","action":"ticket_skipped","ticketId":19295971,"incident":"INC48127283","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.969Z","level":"INFO","action":"ticket_skipped","ticketId":19295966,"incident":"INC48127179","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.970Z","level":"INFO","action":"ticket_skipped","ticketId":19295962,"incident":"INC48127210","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.970Z","level":"INFO","action":"ticket_skipped","ticketId":19347309,"incident":"INC48156111","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.970Z","level":"INFO","action":"ticket_skipped","ticketId":19295924,"incident":"INC48129856","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.971Z","level":"INFO","action":"ticket_skipped","ticketId":19333322,"incident":"INC48136633","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.971Z","level":"INFO","action":"ticket_skipped","ticketId":19333323,"incident":"INC48136415","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:22.971Z","level":"INFO","action":"ticket_skipped","ticketId":19295939,"incident":"INC48129262","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.972Z","level":"INFO","action":"ticket_skipped","ticketId":19295942,"incident":"INC48128969","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.972Z","level":"INFO","action":"ticket_skipped","ticketId":19295813,"incident":"INC48133682","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.972Z","level":"INFO","action":"ticket_skipped","ticketId":19295921,"incident":"INC48130358","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.972Z","level":"INFO","action":"ticket_skipped","ticketId":19295943,"incident":"INC48128926","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.973Z","level":"INFO","action":"ticket_skipped","ticketId":19347313,"incident":"INC48154163","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.973Z","level":"INFO","action":"ticket_skipped","ticketId":19295960,"incident":"INC48127447","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.973Z","level":"INFO","action":"ticket_skipped","ticketId":19320091,"incident":"INC48135005","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.974Z","level":"INFO","action":"ticket_skipped","ticketId":19333335,"incident":"INC48136124","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.974Z","level":"INFO","action":"ticket_skipped","ticketId":19329520,"incident":"INC48135915","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.975Z","level":"INFO","action":"ticket_skipped","ticketId":1419,"incident":"INC45126461","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.975Z","level":"INFO","action":"ticket_skipped","ticketId":1439844,"incident":"INC47287771","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.976Z","level":"INFO","action":"ticket_skipped","ticketId":19347218,"incident":"INC48183067","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.976Z","level":"INFO","action":"ticket_skipped","ticketId":1545,"incident":"INC41265977","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.977Z","level":"INFO","action":"ticket_skipped","ticketId":1118,"incident":"INC46393745","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.977Z","level":"INFO","action":"ticket_skipped","ticketId":2073200,"incident":"INC47310529","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.977Z","level":"INFO","action":"ticket_skipped","ticketId":19346996,"incident":"INC48205572","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.978Z","level":"INFO","action":"ticket_skipped","ticketId":19347083,"incident":"INC48201697","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.978Z","level":"INFO","action":"ticket_skipped","ticketId":19349005,"incident":"INC48218975","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.979Z","level":"INFO","action":"ticket_skipped","ticketId":19348915,"incident":"INC48217249","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.979Z","level":"INFO","action":"ticket_skipped","ticketId":19349388,"incident":"INC48226426","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.979Z","level":"INFO","action":"ticket_skipped","ticketId":19349390,"incident":"INC48226409","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.980Z","level":"INFO","action":"ticket_skipped","ticketId":19349548,"incident":"INC48228233","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.980Z","level":"INFO","action":"ticket_skipped","ticketId":19349617,"incident":"INC48229286","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.981Z","level":"INFO","action":"ticket_skipped","ticketId":19347049,"incident":"INC48202646","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.981Z","level":"INFO","action":"ticket_skipped","ticketId":19349615,"incident":"INC48229593","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.981Z","level":"INFO","action":"ticket_skipped","ticketId":19347089,"incident":"INC48201661","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.982Z","level":"INFO","action":"ticket_skipped","ticketId":19347044,"incident":"INC48202850","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.982Z","level":"INFO","action":"ticket_skipped","ticketId":19348823,"incident":"INC48212326","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.982Z","level":"INFO","action":"ticket_skipped","ticketId":19348848,"incident":"INC48212687","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.983Z","level":"INFO","action":"ticket_skipped","ticketId":19349553,"incident":"INC48227785","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.983Z","level":"INFO","action":"ticket_skipped","ticketId":19349629,"incident":"INC48229034","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.984Z","level":"INFO","action":"ticket_skipped","ticketId":19354497,"incident":"INC48230000","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.984Z","level":"INFO","action":"ticket_skipped","ticketId":19354537,"incident":"INC48231301","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.985Z","level":"INFO","action":"ticket_skipped","ticketId":19354532,"incident":"INC48231151","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.985Z","level":"INFO","action":"ticket_skipped","ticketId":19354529,"incident":"INC48231156","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.985Z","level":"INFO","action":"ticket_skipped","ticketId":19354528,"incident":"INC48231415","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.986Z","level":"INFO","action":"ticket_skipped","ticketId":19354517,"incident":"INC48231627","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.986Z","level":"INFO","action":"ticket_skipped","ticketId":19354512,"incident":"INC48231604","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.986Z","level":"INFO","action":"ticket_skipped","ticketId":19360458,"incident":"INC48231854","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.986Z","level":"INFO","action":"ticket_skipped","ticketId":19360445,"incident":"INC48232052","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.987Z","level":"INFO","action":"ticket_skipped","ticketId":19360416,"incident":"INC48232624","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.987Z","level":"INFO","action":"ticket_skipped","ticketId":19360473,"incident":"INC48232916","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.988Z","level":"INFO","action":"ticket_skipped","ticketId":19360506,"incident":"INC48233552","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.988Z","level":"INFO","action":"ticket_skipped","ticketId":19363545,"incident":"INC48233963","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.988Z","level":"INFO","action":"ticket_skipped","ticketId":19363537,"incident":"INC48234084","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:22.989Z","level":"INFO","action":"ticket_skipped","ticketId":19363530,"incident":"INC48233768","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.989Z","level":"INFO","action":"ticket_skipped","ticketId":19363526,"incident":"INC48234325","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.990Z","level":"INFO","action":"ticket_skipped","ticketId":19366659,"incident":"INC48234938","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.990Z","level":"INFO","action":"ticket_skipped","ticketId":19369810,"incident":"INC48235559","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:22.990Z","level":"INFO","action":"ticket_skipped","ticketId":19373966,"incident":"INC48283472","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.991Z","level":"INFO","action":"ticket_skipped","ticketId":19374080,"incident":"INC48281371","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.992Z","level":"INFO","action":"ticket_skipped","ticketId":19374708,"incident":"INC48236244","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:22.992Z","level":"INFO","action":"ticket_skipped","ticketId":19374660,"incident":"INC48240030","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.992Z","level":"INFO","action":"ticket_skipped","ticketId":19374647,"incident":"INC48255416","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.993Z","level":"INFO","action":"ticket_skipped","ticketId":19374682,"incident":"INC48236706","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.993Z","level":"INFO","action":"ticket_skipped","ticketId":19349765,"incident":"INC48223163","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.993Z","level":"INFO","action":"ticket_skipped","ticketId":19351617,"incident":"INC48228974","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:22.994Z","level":"INFO","action":"ticket_skipped","ticketId":19349670,"incident":"INC48212953","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.994Z","level":"INFO","action":"ticket_skipped","ticketId":19373652,"incident":"INC48289105","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.995Z","level":"INFO","action":"ticket_skipped","ticketId":19373663,"incident":"INC48289085","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.995Z","level":"INFO","action":"ticket_skipped","ticketId":19373615,"incident":"INC48289195","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.995Z","level":"INFO","action":"ticket_skipped","ticketId":19373619,"incident":"INC48288988","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.996Z","level":"INFO","action":"ticket_skipped","ticketId":19373679,"incident":"INC48289051","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.996Z","level":"INFO","action":"ticket_skipped","ticketId":19373601,"incident":"INC48289424","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.997Z","level":"INFO","action":"ticket_skipped","ticketId":19373623,"incident":"INC48288981","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:22.997Z","level":"INFO","action":"ticket_skipped","ticketId":19373459,"incident":"INC48290743","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.997Z","level":"INFO","action":"ticket_skipped","ticketId":19373478,"incident":"INC48290715","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.998Z","level":"INFO","action":"ticket_skipped","ticketId":19373499,"incident":"INC48290534","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.998Z","level":"INFO","action":"ticket_skipped","ticketId":19373512,"incident":"INC48290673","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.999Z","level":"INFO","action":"ticket_skipped","ticketId":19373538,"incident":"INC48290636","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.999Z","level":"INFO","action":"ticket_skipped","ticketId":19373482,"incident":"INC48290713","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:22.999Z","level":"INFO","action":"ticket_skipped","ticketId":19373492,"incident":"INC48290544","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.000Z","level":"INFO","action":"ticket_skipped","ticketId":19373445,"incident":"INC48290775","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.000Z","level":"INFO","action":"ticket_skipped","ticketId":19373542,"incident":"INC48290631","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.000Z","level":"INFO","action":"ticket_skipped","ticketId":19373515,"incident":"INC48290506","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.001Z","level":"INFO","action":"ticket_skipped","ticketId":19373546,"incident":"INC48290447","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.001Z","level":"INFO","action":"ticket_skipped","ticketId":19373550,"incident":"INC48290016","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.001Z","level":"INFO","action":"ticket_skipped","ticketId":19373449,"incident":"INC48290973","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.002Z","level":"INFO","action":"ticket_skipped","ticketId":19373532,"incident":"INC48290478","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.002Z","level":"INFO","action":"ticket_skipped","ticketId":19374624,"incident":"INC48307901","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.002Z","level":"INFO","action":"ticket_skipped","ticketId":19373567,"incident":"INC48290357","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.002Z","level":"INFO","action":"ticket_skipped","ticketId":19373570,"incident":"INC48290346","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.003Z","level":"INFO","action":"ticket_skipped","ticketId":19373486,"incident":"INC48290706","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.003Z","level":"INFO","action":"ticket_skipped","ticketId":19373468,"incident":"INC48290728","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.003Z","level":"INFO","action":"ticket_skipped","ticketId":19373473,"incident":"INC48290911","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.004Z","level":"INFO","action":"ticket_skipped","ticketId":19373529,"incident":"INC48290484","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.004Z","level":"INFO","action":"ticket_skipped","ticketId":19373481,"incident":"INC48290714","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.004Z","level":"INFO","action":"ticket_skipped","ticketId":19373543,"incident":"INC48290453","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.004Z","level":"INFO","action":"ticket_skipped","ticketId":19373501,"incident":"INC48290523","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.005Z","level":"INFO","action":"ticket_skipped","ticketId":19374606,"incident":"INC48322261","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.005Z","level":"INFO","action":"ticket_skipped","ticketId":19374621,"incident":"INC48309760","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.005Z","level":"INFO","action":"ticket_skipped","ticketId":19373454,"incident":"INC48290752","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.005Z","level":"INFO","action":"ticket_skipped","ticketId":19373466,"incident":"INC48290733","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.006Z","level":"INFO","action":"ticket_skipped","ticketId":19373471,"incident":"INC48290917","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.006Z","level":"INFO","action":"ticket_skipped","ticketId":19373488,"incident":"INC48290831","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.006Z","level":"INFO","action":"ticket_skipped","ticketId":19373443,"incident":"INC48290777","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.006Z","level":"INFO","action":"ticket_skipped","ticketId":19373463,"incident":"INC48290932","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.007Z","level":"INFO","action":"ticket_skipped","ticketId":19373457,"incident":"INC48290747","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.007Z","level":"INFO","action":"ticket_skipped","ticketId":19373461,"incident":"INC48290740","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.007Z","level":"INFO","action":"ticket_skipped","ticketId":19374595,"incident":"INC48330338","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.008Z","level":"INFO","action":"ticket_skipped","ticketId":19373477,"incident":"INC48290906","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.008Z","level":"INFO","action":"ticket_skipped","ticketId":19373523,"incident":"INC48290654","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.009Z","level":"INFO","action":"ticket_skipped","ticketId":19374612,"incident":"INC48318072","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.009Z","level":"INFO","action":"ticket_skipped","ticketId":19373521,"incident":"INC48290494","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.010Z","level":"INFO","action":"ticket_skipped","ticketId":19373505,"incident":"INC48290682","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.010Z","level":"INFO","action":"ticket_skipped","ticketId":1051,"incident":"INC46493186","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.011Z","level":"INFO","action":"ticket_skipped","ticketId":1058,"incident":"INC46483379","reason":"no_teknisi_available_cluster_KALIANAK 1"}
+{"timestamp":"2026-04-22T23:03:23.011Z","level":"INFO","action":"ticket_skipped","ticketId":19374521,"incident":"INC48361454","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.012Z","level":"INFO","action":"ticket_skipped","ticketId":19374528,"incident":"INC48352968","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.012Z","level":"INFO","action":"ticket_skipped","ticketId":19374539,"incident":"INC48342981","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.013Z","level":"INFO","action":"ticket_skipped","ticketId":19374545,"incident":"INC48336873","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.013Z","level":"INFO","action":"ticket_skipped","ticketId":19374566,"incident":"INC48335517","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.014Z","level":"INFO","action":"ticket_skipped","ticketId":19374570,"incident":"INC48335633","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.014Z","level":"INFO","action":"ticket_skipped","ticketId":19374562,"incident":"INC48335826","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.015Z","level":"INFO","action":"ticket_skipped","ticketId":19374575,"incident":"INC48335448","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.015Z","level":"INFO","action":"ticket_skipped","ticketId":19374474,"incident":"INC48383165","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:23.016Z","level":"INFO","action":"ticket_skipped","ticketId":19374478,"incident":"INC48381567","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.016Z","level":"INFO","action":"ticket_skipped","ticketId":19374506,"incident":"INC48363067","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.016Z","level":"INFO","action":"ticket_skipped","ticketId":940,"incident":"INC46555938","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.017Z","level":"INFO","action":"ticket_skipped","ticketId":19374421,"incident":"INC48407361","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:23.017Z","level":"INFO","action":"ticket_skipped","ticketId":19374417,"incident":"INC48407403","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.017Z","level":"INFO","action":"ticket_skipped","ticketId":19374315,"incident":"INC48442385","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.017Z","level":"INFO","action":"ticket_skipped","ticketId":19374222,"incident":"INC48448203","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.017Z","level":"INFO","action":"ticket_skipped","ticketId":19374229,"incident":"INC48447863","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.018Z","level":"INFO","action":"ticket_skipped","ticketId":19374234,"incident":"INC48447690","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.018Z","level":"INFO","action":"ticket_skipped","ticketId":19374238,"incident":"INC48447823","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.018Z","level":"INFO","action":"ticket_skipped","ticketId":19374153,"incident":"INC48451449","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.019Z","level":"INFO","action":"ticket_skipped","ticketId":19374205,"incident":"INC48449488","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.019Z","level":"INFO","action":"ticket_skipped","ticketId":19374261,"incident":"INC48446896","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.019Z","level":"INFO","action":"ticket_skipped","ticketId":19374263,"incident":"INC48446885","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.019Z","level":"INFO","action":"ticket_skipped","ticketId":19374197,"incident":"INC48449809","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.019Z","level":"INFO","action":"ticket_skipped","ticketId":19374187,"incident":"INC48450113","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.020Z","level":"INFO","action":"ticket_skipped","ticketId":19375033,"incident":"INC48465355","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.020Z","level":"INFO","action":"ticket_skipped","ticketId":19375047,"incident":"INC48466331","reason":"no_teknisi_available_cluster_RKT 2"}
+{"timestamp":"2026-04-22T23:03:23.020Z","level":"INFO","action":"ticket_skipped","ticketId":19374994,"incident":"INC48464767","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.020Z","level":"INFO","action":"ticket_skipped","ticketId":19375244,"incident":"INC48470259","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.021Z","level":"INFO","action":"ticket_skipped","ticketId":19375235,"incident":"INC48470894","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.021Z","level":"INFO","action":"ticket_skipped","ticketId":19382249,"incident":"INC48479595","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.021Z","level":"INFO","action":"ticket_skipped","ticketId":19382273,"incident":"INC48481515","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.021Z","level":"INFO","action":"ticket_skipped","ticketId":19382291,"incident":"INC48481803","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.022Z","level":"INFO","action":"ticket_skipped","ticketId":19382288,"incident":"INC48482027","reason":"no_teknisi_available_cluster_KALIANAK 3"}
+{"timestamp":"2026-04-22T23:03:23.022Z","level":"INFO","action":"ticket_skipped","ticketId":19382341,"incident":"INC48483399","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.022Z","level":"INFO","action":"ticket_skipped","ticketId":19382334,"incident":"INC48483497","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.023Z","level":"INFO","action":"ticket_skipped","ticketId":19382361,"incident":"INC48484330","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.023Z","level":"INFO","action":"ticket_skipped","ticketId":19382353,"incident":"INC48483991","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.023Z","level":"INFO","action":"ticket_skipped","ticketId":19382389,"incident":"INC48484795","reason":"no_teknisi_available_cluster_KARANGPILANG"}
+{"timestamp":"2026-04-22T23:03:23.024Z","level":"INFO","action":"ticket_skipped","ticketId":19382376,"incident":"INC48485286","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.024Z","level":"INFO","action":"ticket_skipped","ticketId":19382423,"incident":"INC48485452","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.024Z","level":"INFO","action":"ticket_skipped","ticketId":19382413,"incident":"INC48485621","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:23.025Z","level":"INFO","action":"ticket_skipped","ticketId":8482554,"incident":"INC47501590","reason":"no_teknisi_available_cluster_KALIANAK 4"}
+{"timestamp":"2026-04-22T23:03:23.025Z","level":"INFO","action":"ticket_skipped","ticketId":1559,"incident":"INC37531193","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.026Z","level":"INFO","action":"ticket_skipped","ticketId":9401783,"incident":"INC47536374","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.026Z","level":"INFO","action":"ticket_skipped","ticketId":10258606,"incident":"INC47566575","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.026Z","level":"INFO","action":"ticket_skipped","ticketId":11235109,"incident":"INC47607237","reason":"no_teknisi_available_cluster_MERGOYOSO 1"}
+{"timestamp":"2026-04-22T23:03:23.026Z","level":"INFO","action":"ticket_skipped","ticketId":11717194,"incident":"INC47610923","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.026Z","level":"INFO","action":"ticket_skipped","ticketId":1551,"incident":"INC37923882","reason":"no_teknisi_available_cluster_KALIANAK 2"}
+{"timestamp":"2026-04-22T23:03:23.027Z","level":"INFO","action":"ticket_skipped","ticketId":13326389,"incident":"INC47670919","reason":"no_teknisi_available_cluster_MERGOYOSO 3"}
+{"timestamp":"2026-04-22T23:03:23.027Z","level":"INFO","action":"batch_complete","total":339,"assigned":0,"skipped":0,"failed":0,"duration_ms":863}
