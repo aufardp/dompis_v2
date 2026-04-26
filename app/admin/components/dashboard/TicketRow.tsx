@@ -88,10 +88,7 @@ export default function TicketRow({
   onSelect,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
-
   const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
-
-  const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -106,6 +103,12 @@ export default function TicketRow({
       gamasId.toLowerCase(),
     );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
+
+  // Perbaikan Max TTR Label: Memisahkan Tanggal dan Jam
+  const maxTtrFullLabel = getEffectiveMaxTtrLabel(ticket);
+  const [maxTtrDate, maxTtrTime] = maxTtrFullLabel
+    ? maxTtrFullLabel.split(', ')
+    : [null, null];
 
   const handleAssignClick = () => {
     onAssign(ticket.idTicket ?? '');
@@ -127,8 +130,6 @@ export default function TicketRow({
         severityStyles.border,
       )}
     >
-      {/* Checkbox */}
-
       {/* Rank */}
       <td className='px-3 py-3 text-center'>
         <div className='flex items-center justify-center gap-1.5'>
@@ -206,16 +207,21 @@ export default function TicketRow({
 
       {/* Booking Date */}
       <td className='px-4 py-3 text-center'>
-        <div className='inline-flex flex-wrap items-center justify-center gap-2'>
+        <div className='inline-flex flex-col items-center justify-center'>
           <span className='text-xs text-(--text-secondary)'>
             {ticket.bookingDate
-              ? formatDateTimeFullWIB(ticket.bookingDate)
+              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[0]
               : '-'}
+          </span>
+          <span className='text-[10px] text-(--text-secondary) opacity-80'>
+            {ticket.bookingDate
+              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[1]
+              : ''}
           </span>
           {flagLabel && (
             <span
               className={clsx(
-                'rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
+                'mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
                 flagLabel === 'P1'
                   ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
                   : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
@@ -233,12 +239,17 @@ export default function TicketRow({
         <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
       </td>
 
-      {/* Max TTR */}
+      {/* Max TTR - FIXED RAPIH */}
       <td className='px-4 py-3 text-center'>
-        {getEffectiveMaxTtrLabel(ticket) ? (
-          <span className='text-xs font-medium whitespace-nowrap text-(--text-primary) tabular-nums'>
-            {getEffectiveMaxTtrLabel(ticket)}
-          </span>
+        {maxTtrFullLabel ? (
+          <div className='flex flex-col items-center leading-tight'>
+            <span className='text-xs font-semibold text-(--text-primary)'>
+              {maxTtrDate}
+            </span>
+            <span className='text-[10px] text-(--text-secondary) tabular-nums'>
+              {maxTtrTime}
+            </span>
+          </div>
         ) : (
           <span className='text-xs text-(--text-secondary) italic'>—</span>
         )}
@@ -276,7 +287,7 @@ export default function TicketRow({
           <span
             className={clsx(
               'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-              getJenisStyle(ticket.jenisTiket), // ← CHANGED: use centralized utility
+              getJenisStyle(ticket.jenisTiket),
             )}
           >
             {ticket.jenisTiket}
@@ -300,7 +311,10 @@ export default function TicketRow({
             <div className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-indigo-600 text-[10px] font-bold text-white'>
               {techInitial}
             </div>
-            <span className='text-xs text-(--text-primary)'>
+            <span
+              className='max-w-20 truncate text-xs text-(--text-primary)'
+              title={ticket.technicianName}
+            >
               {ticket.technicianName}
             </span>
           </div>
@@ -323,7 +337,7 @@ export default function TicketRow({
         </span>
       </td>
 
-      {/* ── Merged Action: Detail + Assign ── */}
+      {/* Action Button */}
       <td className='px-3 py-3 text-center'>
         <TicketActionButtons
           hasAssignee={!!ticket.teknisiUserId}

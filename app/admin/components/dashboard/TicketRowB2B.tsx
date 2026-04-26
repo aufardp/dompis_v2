@@ -71,7 +71,7 @@ const SLA_STYLES = {
   },
 };
 
-export default function TicketRow({
+export default function TicketRowB2B({
   ticket,
   onAssign,
   onDetail,
@@ -84,10 +84,7 @@ export default function TicketRow({
   ttrCountdown,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
-
   const isClosed = isTicketClosed(ticket.statusUpdate);
-
-  const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -103,11 +100,11 @@ export default function TicketRow({
     );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
 
-  // DEBUG: Show raw values in badge area for all rows
-  const rawGamasDebug = ticket.ticketIdGamas;
-  const rawTicketIdGamas = (ticket as any).ticketIdGamas;
-  const rawTICKETIDGAMAS = (ticket as any).TICKET_ID_GAMAS;
-  const rawTicket_id_gamas = (ticket as any).ticket_id_gamas;
+  // Helper untuk memproses label Max TTR agar rapi (Stacked)
+  const maxTtrFullLabel = getEffectiveMaxTtrLabel(ticket);
+  const [maxTtrDate, maxTtrTime] = maxTtrFullLabel
+    ? maxTtrFullLabel.split(', ')
+    : [null, null];
 
   const handleAssignClick = () => {
     onAssign(ticket.idTicket ?? '');
@@ -124,10 +121,9 @@ export default function TicketRow({
   return (
     <tr
       className={clsx(
-        'group transition-colors duration-100',
-        'border-l-4',
+        'group border-l-4 transition-colors duration-100',
         severityStyles.border,
-        'hover:bg-surface-2',
+        'hover:bg-(--surface-2)',
       )}
     >
       {/* Rank */}
@@ -167,7 +163,7 @@ export default function TicketRow({
 
       {/* Service No */}
       <td className='px-4 py-3 text-center'>
-        <div className='inline-flex items-center justify-center gap-2'>
+        <div className='inline-flex flex-wrap items-center justify-center gap-1'>
           <span className='font-mono text-xs text-(--text-primary)'>
             {ticket.serviceNo ?? '-'}
           </span>
@@ -179,11 +175,6 @@ export default function TicketRow({
           {hasValidGamasId && (
             <span className='rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
               GAMAS {gamasId}
-            </span>
-          )}
-          {gamasId !== '' && !hasValidGamasId && (
-            <span className='rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-700'>
-              GAMAS?gamasId={gamasId}
             </span>
           )}
         </div>
@@ -210,23 +201,27 @@ export default function TicketRow({
         )}
       </td>
 
-      {/* Booking Date */}
+      {/* Booking Date - RAPIH (Stacked) */}
       <td className='px-4 py-3 text-center'>
-        <div className='inline-flex flex-wrap items-center justify-center gap-2'>
+        <div className='flex flex-col items-center justify-center leading-tight'>
           <span className='text-xs text-(--text-secondary)'>
             {ticket.bookingDate
-              ? formatDateTimeFullWIB(ticket.bookingDate)
+              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[0]
               : '-'}
+          </span>
+          <span className='text-[10px] text-(--text-secondary) opacity-80'>
+            {ticket.bookingDate
+              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[1]
+              : ''}
           </span>
           {flagLabel && (
             <span
               className={clsx(
-                'rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
+                'mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
                 flagLabel === 'P1'
                   ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
                   : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
               )}
-              title='Flagging Manja'
             >
               {flagLabel}
             </span>
@@ -239,12 +234,17 @@ export default function TicketRow({
         <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
       </td>
 
-      {/* Max TTR */}
+      {/* Max TTR - RAPIH (Stacked) */}
       <td className='px-4 py-3 text-center'>
-        {getEffectiveMaxTtrLabel(ticket) ? (
-          <span className='rounded-lg bg-indigo-50 text-xs font-semibold whitespace-nowrap text-indigo-600 tabular-nums dark:bg-indigo-500/15 dark:text-indigo-400'>
-            ⏱ {getEffectiveMaxTtrLabel(ticket)}
-          </span>
+        {maxTtrFullLabel ? (
+          <div className='flex flex-col items-center leading-tight'>
+            <span className='text-xs font-semibold text-(--text-primary)'>
+              {maxTtrDate}
+            </span>
+            <span className='text-[10px] text-(--text-secondary) tabular-nums'>
+              {maxTtrTime}
+            </span>
+          </div>
         ) : (
           <span className='text-xs text-(--text-secondary) italic'>—</span>
         )}
@@ -282,7 +282,7 @@ export default function TicketRow({
           <span
             className={clsx(
               'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-              getJenisStyle(ticket.jenisTiket), // ← CHANGED: use centralized utility
+              getJenisStyle(ticket.jenisTiket),
             )}
           >
             {ticket.jenisTiket}
@@ -306,7 +306,10 @@ export default function TicketRow({
             <div className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-blue-500 to-indigo-600 text-[10px] font-bold text-white'>
               {techInitial}
             </div>
-            <span className='text-xs text-(--text-primary)'>
+            <span
+              className='max-w-20 truncate text-xs text-(--text-primary)'
+              title={ticket.technicianName}
+            >
               {ticket.technicianName}
             </span>
           </div>
@@ -322,37 +325,25 @@ export default function TicketRow({
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            `badge-${getStatusColor(ticket.statusUpdate || '')}`,
+            getStatusColor(ticket.statusUpdate ?? ''),
           )}
         >
           {ticket.statusUpdate || '-'}
         </span>
       </td>
 
-      {/* ── Merged Action: Detail + Assign ── */}
+      {/* Action Buttons */}
       <td className='px-3 py-3 text-center'>
-        {isClosed ? (
-          /* Closed: only Detail button */
+        <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
           <button
             onClick={handleDetailClick}
             title='Lihat Detail'
-            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
+            className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
           >
             <Eye size={13} />
           </button>
-        ) : (
-          /* Active: split button — Detail | Assign/Reassign */
-          <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
-            {/* Detail half */}
-            <button
-              onClick={handleDetailClick}
-              title='Lihat Detail'
-              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
-            >
-              <Eye size={13} />
-            </button>
 
-            {/* Assign / Reassign half */}
+          {!isClosed && (
             <button
               onClick={handleAssignClick}
               title={
@@ -366,17 +357,13 @@ export default function TicketRow({
               )}
             >
               {ticket.teknisiUserId ? (
-                <>
-                  <RefreshCw size={12} />
-                </>
+                <RefreshCw size={12} />
               ) : (
-                <>
-                  <UserPlus size={12} />
-                </>
+                <UserPlus size={12} />
               )}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </td>
     </tr>
   );
