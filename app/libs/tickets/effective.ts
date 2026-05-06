@@ -89,6 +89,13 @@ export function getEffectiveMaxTtrDate(ticket: any): Date | null {
   const reported = parseWIBDateInput(ticket?.reportedDate);
   if (!reported) return null;
 
+  // Check bookingDate first → bookingDate + 3 hours
+  const bookingDate = parseWIBDateInput(ticket?.bookingDate);
+  if (bookingDate) {
+    const deadline = addHours(bookingDate, 3);
+    return deadline.getTime() > bookingDate.getTime() ? deadline : null;
+  }
+
   const guarantee = normalizeGuarantee(ticket?.guaranteeStatus);
   const rawFlag = normalizeFlagging(ticket?.flaggingManja);
   const hasPriorityFlag = rawFlag === 'P1' || rawFlag === 'P+';
@@ -125,4 +132,8 @@ export function getEffectiveMaxTtrLabel(ticket: any): string | null {
 export function getEffectiveTtrMs(ticket: any): number | null {
   const d = getEffectiveMaxTtrDate(ticket);
   return d ? d.getTime() : null;
+}
+
+export function isBookingBased(ticket: any): boolean {
+  return Boolean(parseWIBDateInput(ticket?.bookingDate));
 }

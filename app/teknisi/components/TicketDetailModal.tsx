@@ -21,6 +21,7 @@ import InfoField, { formatPhone } from './detail-modal/InfoField';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
 import EvidenceGallery from './detail-modal/EvidenceGallery';
 import AddressEditor from './detail-modal/AddressEditor';
+import DeviceEditor from './detail-modal/DeviceEditor';
 import { getMaxTtrInfo } from './TeknisiDashboard/utils/ttr';
 
 interface Props {
@@ -119,6 +120,23 @@ export default function TicketDetailModal({
   })();
 
   const isDetailPerbaikanEmpty = detailPerbaikan.trim().length < 10;
+
+  // Device Name validation - wajib terisi untuk close
+  const DEVICE_EMPTY_VALUES = [
+    'tidak ada',
+    'tidak tersedia',
+    '-',
+    'n/a',
+    'none',
+    '.',
+    'null',
+    'undefined',
+  ];
+
+  const isDeviceNameEmpty = (() => {
+    const v = String(ticket.deviceName ?? '').trim().toLowerCase();
+    return v.length === 0 || DEVICE_EMPTY_VALUES.includes(v);
+  })();
 
   useEffect(() => {
     if (!ticket.idTicket) return;
@@ -391,6 +409,11 @@ export default function TicketDetailModal({
       return;
     }
 
+    if (isDeviceNameEmpty) {
+      setError('Device Name wajib diisi sebelum menutup tiket.');
+      return;
+    }
+
     if (isRcaIncomplete) {
       setError('RCA dan Sub RCA wajib diisi sebelum menutup tiket.');
       return;
@@ -447,6 +470,7 @@ export default function TicketDetailModal({
     }
   }, [
     isAlamatEmpty,
+    isDeviceNameEmpty,
     isRcaIncomplete,
     isDetailPerbaikanEmpty,
     uploadEvidence,
@@ -663,7 +687,25 @@ export default function TicketDetailModal({
                   />
 
                   <InfoField label='Jenis Layanan' value={ticket.serviceType} />
-                  <InfoField label='Device' value={ticket.deviceName} />
+
+                  {/* Device Name - with DeviceEditor */}
+                  <div className='border-t border-slate-100 pt-2 dark:border-slate-800'>
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
+                      Device Name (Pastikan Valid)
+                      {isOnProgress && isDeviceNameEmpty && (
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                          ⚠ WAJIB
+                        </span>
+                      )}
+                    </p>
+                    <DeviceEditor
+                      ticketId={ticket.idTicket}
+                      initialDevice={ticket.deviceName}
+                      canEdit={canUpdateAlamat}
+                      onError={(err) => setError(err)}
+                      onDeviceSaved={() => setError(null)}
+                    />
+                  </div>
                   <InfoField label='Workzone' value={ticket.workzone} />
 
                   {/* Symptom — only show if available */}
@@ -855,6 +897,7 @@ export default function TicketDetailModal({
           isRcaIncomplete={isRcaIncomplete}
           isEvidenceIncomplete={isEvidenceIncomplete}
           isAlamatEmpty={isAlamatEmpty}
+          isDeviceNameEmpty={isDeviceNameEmpty}
           isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
           photoCount={photoCount}
           photoRequired={photoRequired}

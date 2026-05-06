@@ -1,6 +1,30 @@
 // In-memory set of active SSE controllers
 const activeConnections = new Set<ReadableStreamDefaultController>();
 
+export type SyncEventType = 'start' | 'complete' | 'error';
+
+export interface SyncEventData {
+  inserted?: number;
+  updated?: number;
+  error?: string;
+}
+
+/**
+ * Broadcast sync event to all connected clients.
+ * Types: 'start', 'complete', 'error'
+ */
+export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
+  const message = `data: ${JSON.stringify({ type: 'sync', syncType: type, ...data, ts: Date.now() })}\n\n`;
+  const encoder = new TextEncoder();
+  for (const controller of activeConnections) {
+    try {
+      controller.enqueue(encoder.encode(message));
+    } catch {
+      activeConnections.delete(controller);
+    }
+  }
+}
+
 /**
  * Broadcast invalidation signal to all connected admin browsers.
  * Called from mutasi routes (assign, close, pickup, update).

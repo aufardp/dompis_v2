@@ -16,6 +16,7 @@ import { closeRedis } from '@/lib/redis';
 console.log('[boot] 4. Loading Google Sheets sync/push...');
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
+import { broadcastSyncEvent } from '@/app/libs/sseBroadcast';
 
 console.log('[boot] 5. Loading tech events dispatch...');
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
@@ -94,12 +95,18 @@ async function startServer() {
     // 1 menit
     syncTask = cron.schedule('*/1 * * * *', async () => {
       console.log('[CRON] Running sync...');
+      broadcastSyncEvent('start');
       await withDbLock('sync_lock', async () => {
         try {
           const result = await withTimeout(syncSpreadsheet(), 3 * 60 * 1000);
-          console.log('[CRON] Sync result:', result);
+          console.log('[CRON] Sync done:', result.inserted, 'inserted,', result.updated, 'updated');
+          broadcastSyncEvent('complete', {
+            inserted: result.inserted,
+            updated: result.updated,
+          });
         } catch (error) {
-          console.error('[CRON] Sync error:', error);
+          console.error('[CRON] Sync failed:', error);
+          broadcastSyncEvent('error', { error: String(error) });
         }
       });
     });

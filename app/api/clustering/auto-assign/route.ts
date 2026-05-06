@@ -58,27 +58,25 @@ export async function POST(req: Request) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
 
-    const body = await req.json();
-    const saId = body.sa_id !== undefined ? Number(body.sa_id) : undefined;
+    const userSAs = await prisma.user_sa.findMany({
+      where: { user_id: user.id_user },
+      select: { sa_id: true },
+    });
 
-    if (saId) {
-      const userSa = await prisma.user_sa.findFirst({
-        where: {
-          user_id: user.id_user,
-          sa_id: saId,
+    if (userSAs.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Anda tidak memiliki workzone yang di-assign. Hubungi admin.',
         },
-      });
-
-      if (!userSa) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Unauthorized - Access denied',
-          },
-          { status: 403 },
-        );
-      }
+        { status: 400 },
+      );
     }
+
+    const saIds = userSAs
+      .map((usa) => usa.sa_id)
+      .filter((id): id is number => id !== null);
+    console.log('[AUTO-ASSIGN API] User workzones:', saIds);
 
     ClusterAutoAssignServiceV2.setProgressCallback((data) => {
       if (data.type === 'completed') {
@@ -111,7 +109,7 @@ export async function POST(req: Request) {
       });
 
       const result = await ClusterAutoAssignServiceV2.runBatchV2(
-        saId,
+        saIds,
         user.id_user,
       );
 
@@ -125,7 +123,7 @@ export async function POST(req: Request) {
     }
 
     const result = await ClusterAutoAssignServiceV2.runBatchV2(
-      saId,
+      saIds,
       user.id_user,
     );
 

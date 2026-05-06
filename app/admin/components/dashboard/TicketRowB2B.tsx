@@ -235,15 +235,25 @@ export default function TicketRowB2B({
       </td>
 
       {/* Max TTR - RAPIH (Stacked) */}
-      <td className='px-4 py-3 text-center'>
+      <td className='px-4 py-3 text-center align-middle'>
         {maxTtrFullLabel ? (
-          <div className='flex flex-col items-center leading-tight'>
+          <div className='flex flex-col items-center gap-1 leading-none'>
+            {/* Tanggal Utama */}
             <span className='text-xs font-semibold text-(--text-primary)'>
               {maxTtrDate}
             </span>
+            
+            {/* Jam dengan font angka tetap (tabular) */}
             <span className='text-[10px] text-(--text-secondary) tabular-nums'>
               {maxTtrTime}
             </span>
+
+            {/* Label Booking yang telah dirapikan menjadi Badge */}
+            {ticket.bookingDate && (
+              <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 ring-1 ring-inset ring-blue-500/20'>
+                Booking
+              </span>
+            )}
           </div>
         ) : (
           <span className='text-xs text-(--text-secondary) italic'>—</span>
@@ -269,7 +279,12 @@ export default function TicketRowB2B({
               )}
             >
               <span className={clsx('h-1.5 w-1.5 rounded-full', sla.dot)} />
-              {slaLabel}
+              {isClosed ? 'DONE' : slaLabel}
+            </span>
+          )}
+          {!sla && isClosed && (
+            <span className='rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold text-gray-500 dark:bg-gray-500/15 dark:text-gray-400'>
+              STOPPED
             </span>
           )}
           <TtrCountdownBadge ticket={ticket} />
