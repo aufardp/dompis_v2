@@ -1,60 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
-function parseDate(dateStr: string): Date | null {
-  if (!dateStr) return null;
-
-  // Try parsing DD/MM/YYYY HH:mm format
-  const ddMmYyyyMatch = dateStr.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/,
-  );
-  if (ddMmYyyyMatch) {
-    const [, day, month, year, hour, minute] = ddMmYyyyMatch;
-    return new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-      parseInt(hour),
-      parseInt(minute),
-    );
-  }
-
-  // Try standard Date parsing
-  const date = new Date(dateStr);
-  if (!isNaN(date.getTime())) {
-    return date;
-  }
-
-  return null;
-}
-
-type OpenDiamondTicketApi = {
+type AlertDiamondTicketApi = {
   idTicket?: number;
   id_ticket?: number;
-  ticket?: string;
+  incident?: string;
   INCIDENT?: string;
-  summary?: string;
-  SUMMARY?: string;
-  reportedDate?: string | null;
+  ticketId?: string;
+  customerType?: string;
+  CUSTOMER_TYPE?: string;
+  status?: string;
+  STATUS_UPDATE?: string;
+  reportedAt?: string | Date | null;
   REPORTED_DATE?: string | null;
+  workzone?: string | null;
+  WORKZONE?: string | null;
   contactName?: string | null;
   CONTACT_NAME?: string | null;
   serviceNo?: string | null;
   SERVICE_NO?: string | null;
-  ctype?: string | null;
-  CUSTOMER_TYPE?: string | null;
-  customerType?: string | null;
-  hasilVisit?: string | null;
-  HASIL_VISIT?: string | null;
-  status?: string | null;
-  STATUS_UPDATE?: string | null;
+  technicianName?: string | null;
   teknisiUserId?: number | null;
   teknisi_user_id?: number | null;
-  workzone?: string | null;
-  WORKZONE?: string | null;
-  users?: {
-    nama?: string;
-  } | null;
+  syncDate?: string | null;
 };
 
 export type OpenDiamondTicket = {
@@ -74,7 +42,7 @@ export function useOpenDiamondTickets(
   workzoneId?: string,
   opts?: { dept?: string; ticketType?: string },
 ) {
-  const [rows, setRows] = useState<OpenDiamondTicketApi[]>([]);
+  const [rows, setRows] = useState<AlertDiamondTicketApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,21 +56,21 @@ export function useOpenDiamondTickets(
       if (opts?.ticketType && opts.ticketType !== 'all') {
         params.set('ticketType', opts.ticketType);
       }
-      // Don't filter by statusUpdate on the API — filter client-side instead
-      // to avoid issues with sync_date and closed tickets leaking through
-      params.set('ctype', 'HVC_DIAMOND');
-      params.set('limit', '100'); // Get more tickets
+      params.set('limit', '100');
 
       console.log(
-        '🔍 Fetching Diamond tickets with params:',
+        '🔍 Fetching Alert Diamond tickets from /api/tickets/alert/diamond',
         params.toString(),
       );
 
-      const res = await fetchWithAuth(`/api/tickets/daily?${params.toString()}`);
+      // Use the new alert-specific API that filters by today's sync_date only
+      const res = await fetchWithAuth(
+        `/api/tickets/alert/diamond?${params.toString()}`,
+      );
       if (!res) return;
 
       const json = await res.json();
-      console.log('📦 Diamond API response:', json);
+      console.log('📦 Alert Diamond API response:', json);
 
       if (!json?.success) {
         setError(json?.message || 'Failed to load open Diamond tickets');
@@ -110,18 +78,13 @@ export function useOpenDiamondTickets(
         return;
       }
 
-      // Extract tickets from paginated response
-      // API returns: { success: true, data: { data: [...], total, page, limit } }
       const apiData = json.data;
-      const ticketsData = Array.isArray(apiData)
-        ? apiData
-        : apiData?.data || [];
+      const ticketsData = Array.isArray(apiData) ? apiData : [];
+      console.log('🎫 Alert Diamond tickets found:', ticketsData.length);
 
-      console.log('🎫 Diamond tickets found:', ticketsData.length);
-      console.log('🎫 Sample ticket:', ticketsData[0]);
-      setRows(ticketsData as OpenDiamondTicketApi[]);
+      setRows(ticketsData as AlertDiamondTicketApi[]);
     } catch (e: any) {
-      console.error('❌ Diamond fetch error:', e);
+      console.error('❌ Alert Diamond fetch error:', e);
       setError(e?.message || 'Failed to load open Diamond tickets');
       setRows([]);
     } finally {
@@ -135,60 +98,42 @@ export function useOpenDiamondTickets(
 
   const tickets = useMemo(() => {
     const mapped: OpenDiamondTicket[] = [];
+
     for (const t of rows) {
       const idTicket = t.idTicket || t.id_ticket || 0;
-      const ticketId = String(t.ticket || t.INCIDENT || '').trim();
-      const customerType = String(
-        t.ctype || t.CUSTOMER_TYPE || t.customerType || 'HVC_DIAMOND',
-      );
+      const ticketId = String(t.incident || t.INCIDENT || t.ticketId || '').trim();
 
-      // Handle reportedDate with format "DD/MM/YYYY HH:mm"
+      // Handle reportedDate
       let reportedAt = new Date();
-      const rawDate = t.reportedDate || t.REPORTED_DATE;
+      const rawDate = t.reportedAt || t.REPORTED_DATE;
       if (rawDate) {
-        const parsed = parseDate(rawDate);
-        if (parsed && !isNaN(parsed.getTime())) {
-          reportedAt = parsed;
+        if (rawDate instanceof Date) {
+          reportedAt = rawDate;
+        } else {
+          const parsed = new Date(rawDate);
+          if (!isNaN(parsed.getTime())) {
+            reportedAt = parsed;
+          }
         }
       }
 
-      const status = String(t.hasilVisit || t.STATUS_UPDATE || t.status || 'OPEN')
+      const status = String(t.status || t.STATUS_UPDATE || 'OPEN')
         .trim()
         .toLowerCase();
-
-      // Skip tickets that are already closed — only show open/active tickets
+      // Skip tickets that are already closed
       if (status === 'close' || status === 'closed') continue;
-
-      // Extract customer name and service number from summary/SUMMARY if not available directly
-      let contactName = t.contactName || t.CONTACT_NAME || '';
-      let serviceNo = t.serviceNo || t.SERVICE_NO || '';
-      const summary = t.summary || t.SUMMARY || '';
-
-      if (!contactName && summary) {
-        const nameMatch = summary.match(/Nama Pelanggan\s*[-_]\s*([^_\n]+)/i);
-        if (nameMatch) {
-          contactName = nameMatch[1].trim();
-        }
-      }
-
-      if (!serviceNo && summary) {
-        const serviceMatch = summary.match(/(\d{9,})/);
-        if (serviceMatch) {
-          serviceNo = serviceMatch[1];
-        }
-      }
 
       mapped.push({
         idTicket,
         ticketId: ticketId || `TICKET_${idTicket}`,
-        customerType,
-        status: String(t.hasilVisit || t.STATUS_UPDATE || t.status || 'OPEN'),
+        customerType: String(t.customerType || t.CUSTOMER_TYPE || 'HVC_DIAMOND'),
+        status: String(t.status || t.STATUS_UPDATE || 'OPEN'),
         reportedAt,
-        technicianName: t.users?.nama || null,
+        technicianName: t.technicianName || null,
         teknisiUserId: t.teknisiUserId || t.teknisi_user_id || null,
         workzone: t.workzone || t.WORKZONE || null,
-        contactName: contactName || null,
-        serviceNo: serviceNo || null,
+        contactName: t.contactName || t.CONTACT_NAME || null,
+        serviceNo: t.serviceNo || t.SERVICE_NO || null,
       });
     }
 

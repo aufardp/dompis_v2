@@ -1,16 +1,12 @@
 import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB, nowWIBTimestamp, todayWIB } from './helpers';
-import type { ActorContext } from '@/app/types/ticket';
 import { formatInTimeZone } from 'date-fns-tz';
 
 const RANGE = 'WO_B2B_B2C!A1:HZ10000';
 const BATCH_SIZE = 25;
 const RETRY_MAX = 3;
 const WIB = 'Asia/Jakarta';
-
-// SYSTEM_ACTOR untuk auto-assign oleh sistem (id_user 0 = sistem, bukan user riil)
-const SYSTEM_ACTOR: ActorContext = { id_user: 0, role: 'admin' };
 
 interface SyncResult {
   inserted: number;
@@ -523,43 +519,6 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
         await new Promise((r) => setTimeout(r, 50));
-      }
-    }
-
-    /* -------------------- TRIGGER AUTO-ASSIGN FOR NEW TICKETS -------------------- */
-
-    // Trigger auto-assign for newly inserted tickets that have no assigned teknisi
-    // Runs as background task — does not block sync completion
-    if (newRows.length > 0) {
-      const insertedIncidents = newRows.map((r) => r[0]);
-
-      // Re-query to find unassigned new tickets (auto-assign may have already run)
-      const newTickets = await prisma.ticket.findMany({
-        where: {
-          INCIDENT: { in: insertedIncidents },
-          teknisi_user_id: null,
-          RK_INFORMATION: { not: null },
-        },
-        select: { id_ticket: true },
-      });
-
-      if (newTickets.length > 0) {
-        void (async () => {
-          try {
-            // Only assign tickets that match active cluster ODC values
-            const { ClusterAutoAssignServiceV2 } =
-              await import('@/app/libs/services/clusterAutoAssign.service');
-            const batchResult = await ClusterAutoAssignServiceV2.runBatchV2(
-              undefined,
-              SYSTEM_ACTOR.id_user,
-            );
-            console.log(
-              `[AUTO-ASSIGN] ${batchResult.assigned}/${batchResult.total} new tickets auto-assigned`,
-            );
-          } catch (err) {
-            console.error('[AUTO-ASSIGN] Error during batch assign:', err);
-          }
-        })();
       }
     }
 

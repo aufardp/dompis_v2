@@ -4,11 +4,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   trailingSlash: false,
   typescript: {
-    // skip typescript saat build
     ignoreBuildErrors: false,
   },
   eslint: {
-    // skip eslint saat build
     ignoreDuringBuilds: false,
   },
   images: {
@@ -23,22 +21,22 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Naikkan batas body size untuk API routes (App Router) - Next.js 15
-  // Juga untuk serverActions
-  serverActions: {
-    bodySizeLimit: '25mb',
-  },
+  // --- PERBAIKAN DI SINI ---
   experimental: {
+    serverActions: {
+      bodySizeLimit: '25mb',
+    },
     optimizePackageImports: [
       '@heroicons/react',
       '@tanstack/react-query',
       'lucide-react',
     ],
   },
+  // -------------------------
   async headers() {
     const allowedOrigins = [
       process.env.NEXT_PUBLIC_URL || 'http://localhost:3000',
-      'https://dompis.yourdomain.com', // ganti dengan production domain
+      'https://dompis.telkomakses-area3.id', // Sesuai dengan .env Anda
     ].filter(Boolean);
 
     return [
