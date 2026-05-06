@@ -144,9 +144,9 @@ async function startServer() {
       }
     };
 
-    techEventsTask = cron.schedule('*/30 * * * * *', runTechEvents);
+    techEventsTask = cron.schedule('*/2 * * * *', runTechEvents);
 
-    // 5 menit
+    // 5 menit - auto-assign dengan rotasi workzone
     autoAssignTask = cron.schedule('*/5 * * * *', async () => {
       if (isAutoAssignRunning) return;
       isAutoAssignRunning = true;
@@ -154,14 +154,31 @@ async function startServer() {
       console.log('[CRON] Running auto-assign...');
       await withDbLock('auto_assign_lock', async () => {
         try {
-          const result = await withTimeout(
-            ClusterAutoAssignServiceV2.runBatchV2(undefined, 0),
-            60 * 1000,
-          );
-          if (result.assigned > 0) {
-            console.log(
-              `[CRON] Auto-assign: ${result.assigned}/${result.total} tickets assigned`,
+          // Dynamic workzone rotation - ambil semua SA dan rotasi berdasarkan waktu
+          const allSAs = await prisma.service_area.findMany({
+            select: { id_sa: true },
+          });
+
+          if (allSAs.length > 0) {
+            const saIds = allSAs.map(s => s.id_sa);
+            // Rotasi: setiap 5 menit, proses workzone berbeda
+            const currentIdx = Math.floor(Date.now() / (5 * 60 * 1000)) % saIds.length;
+            const currentSA = [saIds[currentIdx]];
+
+            console.log(`[CRON] Auto-assign: processing SA ${currentSA[0]} (${currentIdx + 1}/${saIds.length})`);
+
+            const result = await withTimeout(
+              ClusterAutoAssignServiceV2.runBatchV2(currentSA, 0),
+              60 * 1000,
             );
+
+            if (result.assigned > 0) {
+              console.log(
+                `[CRON] Auto-assign: ${result.assigned}/${result.total} tickets assigned for SA ${currentSA[0]}`,
+              );
+            }
+          } else {
+            console.log('[CRON] Auto-assign: no service areas found');
           }
         } catch (error) {
           console.error('[CRON] Auto-assign error:', error);
@@ -171,7 +188,7 @@ async function startServer() {
       isAutoAssignRunning = false;
     });
 
-    console.log('[CRON] Scheduled: sync(1m), push(10m), tech-events(30s), auto-assign(5m)');
+    console.log('[CRON] Scheduled: sync(1m), push(10m), tech-events(2m), auto-assign(5m) with SA rotation');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }
