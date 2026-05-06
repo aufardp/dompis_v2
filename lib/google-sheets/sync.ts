@@ -3,7 +3,8 @@ import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB, nowWIBTimestamp, todayWIB } from './helpers';
 import { formatInTimeZone } from 'date-fns-tz';
 
-const RANGE = 'WO_B2B_B2C!A1:HZ10000';
+const MAX_ROWS = parseInt(process.env.SYNC_MAX_ROWS || '20000', 10);
+const RANGE = `WO_B2B_B2C!A1:HZ${MAX_ROWS}`;
 const BATCH_SIZE = 25;
 const RETRY_MAX = 3;
 const WIB = 'Asia/Jakarta';
