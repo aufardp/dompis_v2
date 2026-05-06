@@ -10,6 +10,8 @@ interface JenisCounts {
   ffgCount: number;
   p1Count: number;
   pPlusCount: number;
+  regulerCount: number;
+  sqmCount: number;
 }
 
 interface B2BData {
@@ -18,7 +20,7 @@ interface B2BData {
   datin: JenisCounts;
   reseller: JenisCounts;
   wifiId: JenisCounts;
-  summary: JenisCounts;
+  summary: JenisCounts & { regulerCount: number; sqmCount: number };
 }
 
 interface B2BSectionProps {
@@ -36,8 +38,8 @@ export default function B2BSection({ data }: B2BSectionProps) {
         open={data.summary.open}
         assigned={data.summary.assigned}
         close={data.summary.close}
-        regulerCount={0}
-        sqmCount={0}
+        regulerCount={data.summary.regulerCount}
+        sqmCount={data.summary.sqmCount}
         ffgCount={data.summary.ffgCount}
         gamasCount={data.summary.gamasCount}
         p1Count={data.summary.p1Count}

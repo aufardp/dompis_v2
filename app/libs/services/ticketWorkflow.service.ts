@@ -1328,7 +1328,7 @@ export class TicketWorkflowService {
     const hasWorkflowStatus = workflow?.status !== undefined;
 
     // Validate patch keys against role permissions up-front
-    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution', 'alamat'] as const;
+    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution', 'alamat', 'deviceName'] as const;
     const ADMIN_PATCH_KEYS = [
       'summary',
       'ownerGroup',

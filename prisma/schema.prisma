@@ -65,7 +65,7 @@ model ticket {
   JAM_EXPIRED                 String?                     @db.VarChar(255)
   REDAMAN                     String?                     @db.VarChar(255)
   MANJA_EXPIRED               String?                     @db.VarChar(255)
-  ALAMAT                      String?                     @db.VarChar(255)
+  ALAMAT                      String?                     @db.VarChar(1000)
   PENDING_REASON              String?                     @db.VarChar(255)
   GUARANTE_STATUS             String?                     @db.VarChar(50)
   FLAGGING_MANJA              String?                     @db.VarChar(50)

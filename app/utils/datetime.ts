@@ -147,10 +147,48 @@ export function parseWIBDateString(dateStr: string): Date | null {
   }
 }
 
+/**
+ * Determines if ticket age should continue counting.
+ * Age calculation stops when ticket is closed (has valid closedAt).
+ * Prioritizes closedAt; falls back to hasilVisit === 'CLOSE' for legacy data.
+ */
+export function isTicketAgeStopped(
+  hasilVisit?: string | null,
+  closedAt?: string | null,
+): boolean {
+  if (closedAt) {
+    const closedDate = new Date(closedAt);
+    if (!isNaN(closedDate.getTime())) return true;
+  }
+  return hasilVisit?.toUpperCase() === 'CLOSE';
+}
+
+/**
+ * Gets the end date for age calculation.
+ * Returns the closedAt date if ticket is closed, otherwise null (use current date).
+ */
+export function getTicketAgeEndDate(
+  hasilVisit?: string | null,
+  closedAt?: string | null,
+): Date | null {
+  if (isTicketAgeStopped(hasilVisit, closedAt)) {
+    const closedDate = new Date(closedAt ?? '');
+    if (!isNaN(closedDate.getTime())) return closedDate;
+    return new Date();
+  }
+  return null;
+}
+
+export interface CalculateTicketAgeOptions {
+  /** Show '⏸' suffix when ticket is stopped (closed) */
+  showStoppedIndicator?: boolean;
+}
+
 export function calculateTicketAge(
   reportedDate: string | null | undefined,
   hasilVisit?: string | null,
   closedAt?: string | null,
+  options?: CalculateTicketAgeOptions,
 ): string {
   if (!reportedDate) return '-';
 
@@ -158,15 +196,8 @@ export function calculateTicketAge(
     const start = parseDateInput(reportedDate);
     if (!start) return '-';
 
-    let end: Date;
-    if (hasilVisit === 'CLOSE' && closedAt) {
-      end = new Date(closedAt);
-      if (isNaN(end.getTime())) {
-        end = new Date();
-      }
-    } else {
-      end = new Date();
-    }
+    const endDate = getTicketAgeEndDate(hasilVisit, closedAt);
+    const end = endDate ?? new Date();
 
     const totalMinutes = differenceInMinutes(end, start);
     if (totalMinutes < 0) return '0m';
@@ -180,7 +211,11 @@ export function calculateTicketAge(
     if (hours > 0 || days > 0) parts.push(`${hours}h`);
     parts.push(`${minutes}m`);
 
-    return parts.join(' ');
+    const result = parts.join(' ');
+    if (endDate !== null && options?.showStoppedIndicator) {
+      return result + ' ⏸';
+    }
+    return result;
   } catch {
     return '-';
   }
@@ -212,15 +247,8 @@ export function getTicketAgeColor(
     const start = parseDateInput(reportedDate);
     if (!start) return 'gray';
 
-    let end: Date;
-    if (hasilVisit === 'CLOSE' && closedAt) {
-      end = new Date(closedAt);
-      if (isNaN(end.getTime())) {
-        end = new Date();
-      }
-    } else {
-      end = new Date();
-    }
+    const endDate = getTicketAgeEndDate(hasilVisit, closedAt);
+    const end = endDate ?? new Date();
 
     const totalHours = differenceInHours(end, start);
     if (totalHours < 0) return 'gray';

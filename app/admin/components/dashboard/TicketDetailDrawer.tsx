@@ -135,7 +135,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-blue-50',
     dot: 'bg-blue-500',
     border: 'border-blue-200',
-    icon: '📂',
+    // icon: '📂',
   },
   ASSIGNED: {
     label: 'Assigned',
@@ -143,7 +143,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-indigo-50',
     dot: 'bg-indigo-500',
     border: 'border-indigo-200',
-    icon: '👤',
+    // icon: '👤',
   },
   ON_PROGRESS: {
     label: 'On Progress',
@@ -151,7 +151,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-amber-50',
     dot: 'bg-amber-500',
     border: 'border-amber-200',
-    icon: '⚙️',
+    // icon: '⚙️',
   },
   IN_PROGRESS: {
     label: 'On Progress',
@@ -159,7 +159,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-amber-50',
     dot: 'bg-amber-500',
     border: 'border-amber-200',
-    icon: '⚙️',
+    // icon: '⚙️',
   },
   PENDING: {
     label: 'Pending',
@@ -167,7 +167,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-purple-50',
     dot: 'bg-purple-500',
     border: 'border-purple-200',
-    icon: '⏸',
+    // icon: '⏸',
   },
   CANCELLED: {
     label: 'Cancelled',
@@ -175,7 +175,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-red-50',
     dot: 'bg-red-500',
     border: 'border-red-200',
-    icon: '❌',
+    // icon: '❌',
   },
   CLOSE: {
     label: 'Closed',
@@ -183,7 +183,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-green-50',
     dot: 'bg-green-500',
     border: 'border-green-200',
-    icon: '✅',
+    // icon: '✅',
   },
   CLOSED: {
     label: 'Closed',
@@ -191,7 +191,7 @@ const STATUS_CONFIG: Record<
     bg: 'bg-green-50',
     dot: 'bg-green-500',
     border: 'border-green-200',
-    icon: '✅',
+    // icon: '✅',
   },
 };
 
@@ -301,7 +301,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <button
       type='button'
       onClick={onCopy}
-      className='inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50'
+      className='inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
       title={label}
       aria-label={label}
     >
@@ -343,14 +343,14 @@ function Field({ label, value, mono, fullWidth, highlight }: FieldProps) {
   const displayValue = value ?? '—';
   return (
     <div className={clsx(fullWidth ? 'col-span-2' : '')}>
-      <p className='mb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase'>
+      <p className='mb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
         {label}
       </p>
       <p
         className={clsx(
           'text-[13.5px] wrap-break-word',
           mono && 'font-mono',
-          highlight ? 'font-semibold text-slate-900' : 'text-slate-700',
+          highlight ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300',
         )}
       >
         {displayValue}
@@ -377,19 +377,19 @@ function Section({
   return (
     <div
       className={clsx(
-        'mb-5 rounded-xl border bg-white p-4',
+        'mb-5 rounded-xl border bg-gray p-4  border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm',
         variant === 'highlighted'
-          ? 'border-slate-300 shadow-md'
-          : 'border-slate-200 shadow-sm',
+          ? 'border-slate-300 dark:border-slate-600 shadow-md'
+          : 'border-slate-200 dark:border-slate-700 shadow-sm',
         fullWidth ? '' : 'grid grid-cols-2 gap-x-4 gap-y-3',
       )}
     >
       <div
         className={clsx(fullWidth ? 'grid grid-cols-2 gap-x-4' : 'col-span-2')}
       >
-        <div className='col-span-2 mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
+        <div className='col-span-2 mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-slate-700'>
           <span className='text-slate-500'>{icon}</span>
-          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
+          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase dark:text-slate-300'>
             {title}
           </h3>
         </div>
@@ -425,17 +425,17 @@ function TTRCard({ label, value }: TTRCardProps) {
   const urgency = getTTRUrgency(value);
 
   const styles = {
-    overdue: 'border-red-300 bg-gradient-to-br from-red-50 to-red-100',
-    warning: 'border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100',
-    safe: 'border-green-300 bg-gradient-to-br from-green-50 to-green-100',
-    unknown: 'border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100',
+    overdue: 'border-red-300 dark:border-red-500/40 bg-gradient-to-br from-red-50 dark:from-red-500/15 to-red-100 dark:to-red-500/10',
+    warning: 'border-amber-300 dark:border-amber-500/40 bg-gradient-to-br from-amber-50 dark:from-amber-500/15 to-amber-100 dark:to-amber-500/10',
+    safe: 'border-green-300 dark:border-green-500/40 bg-gradient-to-br from-green-50 dark:from-green-500/15 to-green-100 dark:to-green-500/10',
+    unknown: 'border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 dark:from-slate-800 to-slate-100 dark:to-slate-700',
   };
 
   const textStyles = {
-    overdue: 'text-red-700',
-    warning: 'text-amber-700',
-    safe: 'text-green-700',
-    unknown: 'text-slate-500',
+    overdue: 'text-red-700 dark:text-red-400',
+    warning: 'text-amber-700 dark:text-amber-400',
+    safe: 'text-green-700 dark:text-green-400',
+    unknown: 'text-slate-500 dark:text-slate-400',
   };
 
   return (
@@ -728,9 +728,9 @@ export default function TicketDetailDrawer({
     )
       .toLowerCase()
       .trim();
-    const isClosed = statusRaw.includes('close');
-
-    if (!isClosed) {
+    const shouldFetchEvidence =
+      statusRaw.includes('close') || statusRaw.includes('pending');
+    if (!shouldFetchEvidence) {
       setEvidence([]);
       setEvidenceLoading(false);
       return;
@@ -807,7 +807,7 @@ export default function TicketDetailDrawer({
     >
       <div
         className={clsx(
-          'flex h-full w-full max-w-130 transform flex-col bg-white shadow-2xl transition-transform duration-300 ease-out',
+          'flex h-full w-full max-w-130 transform flex-col bg-white dark:bg-slate-900 shadow-2xl transition-transform duration-300 ease-out',
           isVisible ? 'translate-x-0' : 'translate-x-full',
         )}
         style={{ transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
@@ -815,10 +815,10 @@ export default function TicketDetailDrawer({
       >
         {ticket ? (
           <>
-            <div className='sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4 shadow-sm'>
+            <div className='sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm'>
               <div className='mb-3 flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
-                  <span className='font-mono text-base font-bold text-slate-900'>
+                  <span className='font-mono text-base font-bold text-slate-900 dark:text-white'>
                     {ticket.ticket}
                   </span>
                   <div className='flex shrink-0 items-center gap-2'>
@@ -837,7 +837,7 @@ export default function TicketDetailDrawer({
 
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div className='min-w-0'>
-                  <p className='truncate text-sm font-medium text-slate-700'>
+                  <p className='truncate text-sm font-medium text-slate-500 '>
                     {ticket.contactName || '—'}
                   </p>
                   <p className='mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500'>
@@ -878,7 +878,7 @@ export default function TicketDetailDrawer({
                 </div>
               )}
 
-              <div className='mt-3 flex border-b border-slate-200'>
+              <div className='mt-3 flex border-b border-slate-200 dark:border-slate-700'>
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
@@ -886,42 +886,42 @@ export default function TicketDetailDrawer({
                     className={clsx(
                       'relative px-4 py-2.5 text-xs font-medium transition-colors',
                       activeTab === tab.key
-                        ? 'font-semibold text-slate-900'
-                        : 'text-slate-500 hover:text-slate-700',
+                        ? 'font-semibold text-slate-900 dark:text-white'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
                     )}
                   >
                     {tab.label}
                     {activeTab === tab.key && (
-                      <span className='absolute right-0 bottom-0 left-0 h-0.5 bg-slate-900' />
+                      <span className='absolute right-0 bottom-0 left-0 h-0.5 bg-slate-900 dark:bg-white' />
                     )}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className='flex-1 overflow-y-auto bg-slate-50 px-5 py-4'>
+            <div className='flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 px-5 py-4'>
               {activeTab === 'umum' && (
                 <>
                   <div
                     className={clsx(
-                      'mb-5 rounded-xl border-2 bg-linear-to-br from-white p-5 shadow-md',
+                      'mb-5 rounded-xl border-2 bg-linear-to-br p-5 shadow-md',
                       ttrUrgency === 'overdue'
-                        ? 'border-red-300 from-red-50 to-red-100'
+                        ? 'border-red-300 dark:border-red-500/40 from-red-50 dark:from-red-500/15 to-red-100 dark:to-red-500/10'
                         : ttrUrgency === 'warning'
-                          ? 'border-amber-300 from-amber-50 to-amber-100'
-                          : 'border-slate-200 from-slate-50 to-slate-100',
+                          ? 'border-amber-300 dark:border-amber-500/40 from-amber-50 dark:from-amber-500/15 to-amber-100 dark:to-amber-500/10'
+                          : 'border-slate-200 dark:border-slate-700 from-slate-50 dark:from-slate-800 to-slate-100 dark:to-slate-700',
                     )}
                   >
                     <div className='flex items-start justify-between gap-4'>
                       <div>
-                        <p className='text-[10px] font-bold tracking-wider text-slate-400 uppercase'>
+                        <p className='text-[10px] font-bold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
                           SLA / TTR
                         </p>
                         <p
                           className={clsx(
                             'mt-1.5 text-base font-bold',
                             ttrUrgency === 'overdue'
-                              ? 'text-red-700'
+                              ? 'text-red-500'
                               : ttrUrgency === 'warning'
                                 ? 'text-amber-700'
                                 : 'text-slate-700',
@@ -939,7 +939,7 @@ export default function TicketDetailDrawer({
                         <p className='text-[10px] font-bold tracking-wider text-slate-400 uppercase'>
                           Reported
                         </p>
-                        <p className='mt-1.5 text-sm font-bold text-slate-700'>
+                        <p className='mt-1.5 text-sm font-bold text-slate-700 dark:text-slate-200'>
                           {formatShortDistance(ticket.reportedDate)}
                         </p>
                         <p className='mt-1 text-xs text-slate-500'>
@@ -949,11 +949,11 @@ export default function TicketDetailDrawer({
                     </div>
                   </div>
 
-                  <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
-                    <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 uppercase'>
+                  <div className='mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm'>
+                    <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
                       Summary
                     </p>
-                    <p className='text-sm leading-relaxed text-slate-700'>
+                    <p className='text-sm leading-relaxed text-slate-700 dark:text-slate-300'>
                       {ticket.summary}
                     </p>
                   </div>
@@ -1016,7 +1016,7 @@ export default function TicketDetailDrawer({
                       <div className='col-span-2 mt-1 flex flex-wrap gap-2'>
                         <a
                           href={`tel:${ticket.contactPhone}`}
-                          className='inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50'
+                          className='inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                         >
                           <Phone size={14} />
                           Call
@@ -1099,15 +1099,23 @@ export default function TicketDetailDrawer({
                     const isClosed = statusRaw.includes('close');
                     if (!isClosed) return null;
 
+                    const isPending =
+                      statusRaw.includes('pending') &&
+                      !statusRaw.includes('close');
                     return (
-                      <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
-                        <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2'>
+                      <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+                        <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-slate-700'>
                           <span className='text-slate-500'>📷</span>
-                          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase'>
+                          <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase dark:text-slate-300'>
                             Evidence Foto
                           </h3>
+                          {isPending && (
+                            <span className='ml-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-600 dark:bg-purple-500/20 dark:text-purple-400'>
+                              Pending
+                            </span>
+                          )}
                           {evidence.length > 0 && (
-                            <span className='ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500'>
+                            <span className='ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-slate-700 dark:text-slate-400'>
                               {evidence.length} foto
                             </span>
                           )}
@@ -1180,30 +1188,30 @@ export default function TicketDetailDrawer({
 
               {activeTab === 'sla' && (
                 <>
-                  <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4'>
+                  <div className='mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4'>
                     <div className='flex items-start justify-between gap-3'>
                       <div>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase'>
+                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
                           SLA / TTR
                         </p>
-                        <p className='mt-1 text-sm font-semibold text-slate-700'>
+                        <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
                           {ttrLabel}
                         </p>
-                        <p className='mt-0.5 text-xs text-slate-500'>
+                        <p className='mt-0.5 text-xs text-slate-500 dark:text-slate-400'>
                           Deadline:{' '}
                           {ttrDeadline ? formatDateTime(ttrDeadline) : '—'}
                         </p>
                       </div>
                       <div className='text-right'>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase'>
+                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
                           Closed
                         </p>
-                        <p className='mt-1 text-sm font-semibold text-slate-700'>
+                        <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
                           {ticket.closedAt
                             ? formatShortDistance(ticket.closedAt)
                             : '—'}
                         </p>
-                        <p className='mt-0.5 text-xs text-slate-500'>
+                        <p className='mt-0.5 text-xs text-slate-500 dark:text-slate-400'>
                           {formatDateTime(ticket.closedAt)}
                         </p>
                       </div>
@@ -1211,9 +1219,9 @@ export default function TicketDetailDrawer({
                   </div>
 
                   <div className='mb-5'>
-                    <div className='mb-3 flex items-center gap-2 border-b border-slate-200 pb-2'>
+                    <div className='mb-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2'>
                       <Clock size={14} className='text-slate-400' />
-                      <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase'>
+                      <h3 className='text-xs font-semibold tracking-wider text-slate-600 dark:text-slate-400 uppercase'>
                         Max TTR per Segmen
                       </h3>
                     </div>
@@ -1258,11 +1266,11 @@ export default function TicketDetailDrawer({
               )}
             </div>
 
-            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-linear-to-t from-white to-slate-50 px-5 py-4 shadow-lg'>
+            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 dark:border-slate-800 bg-linear-to-t dark:from-slate-900 dark:to-slate-950 from-white to-slate-50 px-5 py-4 shadow-lg'>
               {onEdit && (
                 <button
                   onClick={() => onEdit(ticket)}
-                  className='flex-1 rounded-xl border-2 border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98]'
+                  className='flex-1 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 transition-all hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.98]'
                 >
                   ✏️ Edit Tiket
                 </button>
@@ -1270,7 +1278,7 @@ export default function TicketDetailDrawer({
               {onUpdateStatus && (
                 <button
                   onClick={() => onUpdateStatus(ticket)}
-                  className='flex-1 rounded-xl bg-linear-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
+                  className='flex-1 rounded-xl bg-linear-to-r dark:from-slate-700 dark:to-slate-600 from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
                 >
                   🔄 Update Status
                 </button>
@@ -1279,17 +1287,17 @@ export default function TicketDetailDrawer({
           </>
         ) : error ? (
           <div className='flex flex-1 items-center justify-center px-6'>
-            <div className='w-full max-w-sm rounded-xl border border-red-200 bg-red-50 p-4 text-center'>
-              <p className='text-sm font-semibold text-red-700'>
+            <div className='w-full max-w-sm rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4 text-center'>
+              <p className='text-sm font-semibold text-red-700 dark:text-red-400'>
                 Failed to load ticket
               </p>
-              <p className='mt-1 text-xs text-red-700/80'>{error}</p>
+              <p className='mt-1 text-xs text-red-700/80 dark:text-red-400/80'>{error}</p>
               <div className='mt-4 flex items-center justify-center gap-2'>
                 {onRetry && (
                   <button
                     type='button'
                     onClick={onRetry}
-                    className='rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800'
+                    className='rounded-lg bg-slate-900 dark:bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-slate-600'
                   >
                     Retry
                   </button>
@@ -1297,7 +1305,7 @@ export default function TicketDetailDrawer({
                 <button
                   type='button'
                   onClick={handleClose}
-                  className='rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50'
+                  className='rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                 >
                   Close
                 </button>

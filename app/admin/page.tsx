@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import clsx from 'clsx';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
@@ -9,7 +10,6 @@ import { useDailyTickets } from '@/app/hooks/useDailyTickets';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
 import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
-import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { TicketCtype, Ticket } from '@/app/types/ticket';
 import {
@@ -31,6 +31,7 @@ import TicketTableB2B from './components/dashboard/TicketTableB2B';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
 import { RefreshCw } from 'lucide-react';
+import SearchToast from './components/dashboard/SearchToast';
 
 interface TicketData {
   idTicket: number;
@@ -57,6 +58,8 @@ interface JenisCounts {
   ffgCount: number;
   p1Count: number;
   pPlusCount: number;
+  regulerCount: number;
+  sqmCount: number;
 }
 
 interface B2BData {
@@ -85,6 +88,16 @@ export default function TicketPage() {
     null,
   );
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
+
+  // Search toast state
+  const [searchToast, setSearchToast] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
+
+  // Auto-scroll refs
+  const b2cSectionRef = useRef<HTMLDivElement>(null);
+  const b2bSectionRef = useRef<HTMLDivElement>(null);
 
   const pendingRefreshRef = useRef(false);
 
@@ -127,7 +140,7 @@ export default function TicketPage() {
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
 
-  const { lastSyncLabel } = useSyncStatus();
+  const { lastSyncLabel, nextSyncLabel, isSyncOverdue, isInProgress, syncError, triggerSync } = useSyncStatus();
 
   const { tickets: expiredTickets, refresh: refreshExpired } =
     useExpiredTickets(workzoneFilter || undefined, {
@@ -154,6 +167,8 @@ export default function TicketPage() {
   );
 
   // SSE-based real-time updates (primary mechanism)
+  const [syncStatus, setSyncStatus] = useState<{ inProgress: boolean; lastResult?: string }>({ inProgress: false });
+
   useTicketEvents({
     onInvalidate: useCallback(() => {
       if (showNewTicketModal || assignModalTicket) {
@@ -163,21 +178,55 @@ export default function TicketPage() {
       refresh();
       refreshExpired();
     }, [showNewTicketModal, assignModalTicket, refresh, refreshExpired]),
+    onSyncStart: useCallback(() => {
+      setSyncStatus({ inProgress: true });
+    }, []),
+    onSyncComplete: useCallback((data: { inserted?: number; updated?: number }) => {
+      setSyncStatus({ inProgress: false, lastResult: `+${data.inserted || 0} ~${data.updated || 0}` });
+      setTimeout(() => setSyncStatus(s => ({ ...s, lastResult: undefined })), 5000);
+    }, []),
+    onSyncError: useCallback((error: string) => {
+      setSyncStatus({ inProgress: false, lastResult: `Error: ${error}` });
+    }, []),
     enabled: true,
     debounceMs: 300,
   });
 
-  // Polling as fallback (reduced frequency since SSE handles real-time)
-  useAutoRefresh({
-    intervalMs: 180_000, // 3 menit — SSE menangani real-time, polling hanya safety net
-    refreshers: [refresh, refreshExpired, refreshDiamond],
-    pauseWhen: [showNewTicketModal, Boolean(assignModalTicket)],
-  });
+  // Smart visibility revalidation — refresh once when tab becomes visible after > 5 min idle
+  const lastActiveRef = useRef<number>(Date.now());
+  const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const idleMs = Date.now() - lastActiveRef.current;
+        if (idleMs > STALE_THRESHOLD_MS) {
+          refresh();
+          refreshExpired();
+        }
+      } else {
+        lastActiveRef.current = Date.now();
+      }
+    };
+
+    const handleOnline = () => {
+      refresh();
+      refreshExpired();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [refresh, refreshExpired]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // DAILY OPERATIONAL SUMMARY — computed from daily tickets (NOT stats API)
-  // This ensures summary and table are ALWAYS in sync (same data scope)
+  // SEARCH TOAST + AUTO-SCROLL — uses b2cTicketTableData / b2bTicketTableData
   // ═══════════════════════════════════════════════════════════════════════
+  // Search toast + auto-scroll (depends on b2cTicketTableData and b2bTicketTableData)
 
   // Filter B2C tickets from daily dataset - USE SAME LOGIC AS TABLE
   const b2cDailyTickets = useMemo(
@@ -648,6 +697,18 @@ export default function TicketPage() {
         datin.pPlusCount +
         reseller.pPlusCount +
         wifiId.pPlusCount,
+      regulerCount:
+        sqmCcan.regulerCount +
+        indibiz.regulerCount +
+        datin.regulerCount +
+        reseller.regulerCount +
+        wifiId.regulerCount,
+      sqmCount:
+        sqmCcan.sqmCount +
+        indibiz.sqmCount +
+        datin.sqmCount +
+        reseller.sqmCount +
+        wifiId.sqmCount,
     },
   };
 
@@ -908,6 +969,44 @@ export default function TicketPage() {
   const b2cTableSummary = deriveSummary(b2cTicketTableData);
   const b2bTableSummary = deriveSummary(b2bTicketTableData);
 
+  // Search toast + auto-scroll
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchToast(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const b2cCount = b2cTicketTableData.length;
+      const b2bCount = b2bTicketTableData.length;
+      const totalFound = b2cCount + b2bCount;
+
+      if (totalFound === 0) {
+        setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+        return;
+      }
+
+      setSearchToast({
+        message: `${totalFound} tiket ditemukan`,
+        type: 'success',
+      });
+
+      if (b2cCount > 0) {
+        b2cSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      } else if (b2bCount > 0) {
+        b2bSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, b2cTicketTableData.length, b2bTicketTableData.length]);
+
   return (
     <>
       <AdminLayout
@@ -923,9 +1022,39 @@ export default function TicketPage() {
                   Semangat pagi pagi pagi ...
                 </div>
                 {lastSyncLabel && (
-                  <div className='flex items-center gap-1 text-xs text-(--text-muted)'>
-                    <RefreshCw size={11} />
-                    {lastSyncLabel}
+                  <div className='flex items-center gap-2'>
+                    <div className={clsx(
+                      'flex items-center gap-1.5 text-xs',
+                      isSyncOverdue ? 'text-amber-400' : 'text-(--text-muted)',
+                    )}>
+                      <RefreshCw size={11} className={clsx(isSyncOverdue && 'animate-spin', isInProgress && 'animate-spin', syncStatus.inProgress && 'animate-spin text-blue-500')} />
+                      <span>{lastSyncLabel}</span>
+                      {nextSyncLabel && (
+                        <span className='opacity-60'>· {nextSyncLabel}</span>
+                      )}
+                    </div>
+                    {syncStatus.inProgress && (
+                      <span className='text-[10px] font-medium text-blue-600 dark:text-blue-400'>
+                        Syncing...
+                      </span>
+                    )}
+                    {syncStatus.lastResult && !syncStatus.inProgress && (
+                      <span className='text-[10px] font-medium text-green-600 dark:text-green-400'>
+                        {syncStatus.lastResult}
+                      </span>
+                    )}
+                    <button
+                      onClick={triggerSync}
+                      disabled={isInProgress || syncStatus.inProgress}
+                      className={clsx(
+                        'rounded-lg px-2 py-1 text-[10px] font-semibold transition-all',
+                        isInProgress || syncStatus.inProgress
+                          ? 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-700'
+                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:hover:bg-amber-500/30'
+                      )}
+                    >
+                      {isInProgress || syncStatus.inProgress ? 'Syncing...' : 'Sync Now'}
+                    </button>
                   </div>
                 )}
               </div>
@@ -1006,7 +1135,7 @@ export default function TicketPage() {
                 title: 'B2B Cards',
                 defaultOpen: true,
                 children: (
-                  <div className='flex flex-col gap-4 space-y-3 md:space-y-4'>
+                  <div ref={b2bSectionRef} className='flex flex-col gap-4 space-y-3 md:space-y-4'>
                     <B2BSection data={b2bStats} />
                     <FilterBarB2B
                       ticketType={b2bTicketTypeFilter}
@@ -1043,7 +1172,7 @@ export default function TicketPage() {
                 title: 'B2C Cards',
                 defaultOpen: true,
                 children: (
-                  <div className='flex flex-col gap-4 space-y-3 md:space-y-4'>
+                  <div ref={b2cSectionRef} className='flex flex-col gap-4 space-y-3 md:space-y-4'>
                     <B2CSection
                       data={b2cStats}
                       activeType={ctypeFilter}
@@ -1119,6 +1248,12 @@ export default function TicketPage() {
           }}
         />
       )}
+
+      <SearchToast
+        message={searchToast?.message ?? null}
+        type={searchToast?.type ?? 'idle'}
+        onDismiss={() => setSearchToast(null)}
+      />
     </>
   );
 }

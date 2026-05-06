@@ -79,36 +79,63 @@ export async function GET(req: Request) {
       orderBy: { nama: 'asc' },
     });
 
-    // 5. Filter yang sudah absen hari ini (PRESENT dan LATE keduanya valid)
-    // WAJIB gunakan AttendanceService untuk date string WIB yang benar
-    const today = dateParam ?? AttendanceService.getTodayDateString();
+    // 5. Filter yang sudah absen - gunakan tanggal dari parameter atau default ke hari ini
+    // Format: YYYY-MM-DD (sesuai dengan format di database)
+    const targetDate = dateParam 
+      ? dateParam 
+      : new Date().toISOString().split('T')[0];
+    
     const presentIds = await prisma.technician_attendance.findMany({
       where: {
         technician_id: { in: teknisiUsers.map((t: { id_user: number }) => t.id_user) },
-        date: today,
+        date: targetDate,
       },
       select: { technician_id: true },
     });
+    
     const presentSet = new Set(presentIds.map((p: { technician_id: number }) => p.technician_id));
-
     const teknisiHadir = teknisiUsers.filter((t: { id_user: number; nama: string | null; nik: string | null }) => presentSet.has(t.id_user));
 
-    // 6. Hitung workload aktif masing-masing
-    const workloads = await prisma.ticket.groupBy({
-      by: ['teknisi_user_id'],
+    // 6. Ambil nama workzone dari SA untuk filter tickets
+    const serviceArea = await prisma.service_area.findUnique({
+      where: { id_sa: cluster.sa_id },
+      select: { nama_sa: true },
+    });
+    const workzoneName = serviceArea?.nama_sa || '';
+
+    // 7. Hitung workload aktif - HANYA ticket yang di-assign hari ini & sesuai workzone
+    const targetDateStart = new Date(targetDate + 'T00:00:00.000Z');
+    const targetDateEnd = new Date(targetDate + 'T23:59:59.999Z');
+    
+    const workloads = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: teknisiHadir.map((t: { id_user: number }) => t.id_user) },
+        WORKZONE: workzoneName,
         STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
+        ticketTracking: {
+          assigned_at: {
+            gte: targetDateStart,
+            lt: targetDateEnd,
+          },
+        },
       },
-      _count: { id_ticket: true },
+      select: {
+        teknisi_user_id: true,
+        id_ticket: true,
+      },
     });
-    const loadMap = new Map(
-      workloads.map((w: { teknisi_user_id: number | null; _count: { id_ticket: number } }) => [w.teknisi_user_id!, w._count.id_ticket]),
-    );
+    
+    // Count tickets per teknisi
+    const loadMap = new Map<number, number>();
+    for (const t of workloads) {
+      if (t.teknisi_user_id !== null) {
+        loadMap.set(t.teknisi_user_id, (loadMap.get(t.teknisi_user_id) || 0) + 1);
+      }
+    }
 
     // 7. Ambil teknisi yang sudah di-plot ke cluster ini hari ini
     const existingPlot = await prisma.cluster_assignment.findMany({
-      where: { cluster_id: clusterId, assigned_date: today, is_active: true },
+      where: { cluster_id: clusterId, assigned_date: targetDate, is_active: true },
       select: { teknisi_id: true },
     });
     const plottedIds = new Set(existingPlot.map((p: { teknisi_id: number }) => p.teknisi_id));

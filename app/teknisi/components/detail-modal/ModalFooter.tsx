@@ -85,14 +85,16 @@ function RequirementBar({
   isRcaIncomplete,
   isEvidenceIncomplete,
   isAlamatEmpty,
+  isDeviceNameEmpty,
   isDetailPerbaikanEmpty,
 }: any) {
   const photoOk = !isEvidenceIncomplete && photoCount >= photoRequired;
   const rcaOk = !isRcaIncomplete;
   const alamatOk = !isAlamatEmpty;
+  const deviceOk = !isDeviceNameEmpty;
   const detailOk = !isDetailPerbaikanEmpty;
 
-  if (photoOk && rcaOk && alamatOk && detailOk) return null;
+  if (photoOk && rcaOk && alamatOk && deviceOk && detailOk) return null;
 
   const Badge = ({ ok, label }: { ok: boolean; label: string }) => (
     <span
@@ -113,6 +115,7 @@ function RequirementBar({
       </span>
       <div className='flex flex-wrap justify-end gap-1.5'>
         <Badge ok={alamatOk} label='Alamat' />
+        <Badge ok={deviceOk} label='Device' />
         <Badge ok={rcaOk} label='RCA' />
         <Badge ok={detailOk} label='Detail' />
         <Badge ok={photoOk} label={`Foto ${photoCount}/${photoRequired}`} />
@@ -130,6 +133,7 @@ function CombinedActionButtons({
   onUpdate,
   onClose,
   isAlamatEmpty,
+  isDeviceNameEmpty,
   isDetailPerbaikanEmpty,
   isEvidenceIncomplete,
   photoCount,
@@ -140,6 +144,7 @@ function CombinedActionButtons({
   // Logic untuk content tombol Close saat disabled
   const getCloseContent = () => {
     if (isAlamatEmpty) return { icon: '📍', main: 'Isi Alamat' };
+    if (isDeviceNameEmpty) return { icon: '📱', main: 'Isi Device' };
     if (isDetailPerbaikanEmpty) return { icon: '📝', main: 'Isi Detail' };
     if (isEvidenceIncomplete)
       return { icon: '📷', main: `Foto ${photoCount}/${photoRequired}` };
@@ -199,6 +204,7 @@ interface ModalFooterProps {
   isRcaIncomplete: boolean;
   isEvidenceIncomplete: boolean;
   isAlamatEmpty: boolean;
+  isDeviceNameEmpty: boolean;
   isDetailPerbaikanEmpty: boolean;
   photoCount: number;
   photoRequired?: number;
@@ -217,6 +223,7 @@ export default function ModalFooter({
   isRcaIncomplete,
   isEvidenceIncomplete,
   isAlamatEmpty,
+  isDeviceNameEmpty,
   isDetailPerbaikanEmpty,
   photoCount,
   photoRequired = 2,
@@ -231,6 +238,7 @@ export default function ModalFooter({
     !isRcaIncomplete &&
     !isEvidenceIncomplete &&
     !isAlamatEmpty &&
+    !isDeviceNameEmpty &&
     !isDetailPerbaikanEmpty &&
     !anyLoading;
 
@@ -246,6 +254,7 @@ export default function ModalFooter({
             photoRequired={photoRequired}
             isRcaIncomplete={isRcaIncomplete}
             isAlamatEmpty={isAlamatEmpty}
+            isDeviceNameEmpty={isDeviceNameEmpty}
             isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
             isEvidenceIncomplete={isEvidenceIncomplete}
           />
@@ -256,6 +265,7 @@ export default function ModalFooter({
             onUpdate={onUpdateClick}
             onClose={onClose}
             isAlamatEmpty={isAlamatEmpty}
+            isDeviceNameEmpty={isDeviceNameEmpty}
             isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
             isEvidenceIncomplete={isEvidenceIncomplete}
             photoCount={photoCount}
