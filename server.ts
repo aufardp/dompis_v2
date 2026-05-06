@@ -91,8 +91,8 @@ async function startServer() {
   const cronEnabled = process.env.CRON_ENABLED === 'true';
 
   if (cronEnabled) {
-    // 3 menit
-    syncTask = cron.schedule('*/3 * * * *', async () => {
+    // 1 menit
+    syncTask = cron.schedule('*/1 * * * *', async () => {
       console.log('[CRON] Running sync...');
       await withDbLock('sync_lock', async () => {
         try {
@@ -139,9 +139,8 @@ async function startServer() {
 
     techEventsTask = cron.schedule('*/30 * * * * *', runTechEvents);
 
-    // Continuous auto-assign: every 1 minute, independent of sync
-    // Assigns any unassigned tickets that have RK_INFORMATION matching active clusters
-    autoAssignTask = cron.schedule('*/1 * * * *', async () => {
+    // 5 menit
+    autoAssignTask = cron.schedule('*/5 * * * *', async () => {
       if (isAutoAssignRunning) return;
       isAutoAssignRunning = true;
 
@@ -165,7 +164,7 @@ async function startServer() {
       isAutoAssignRunning = false;
     });
 
-    console.log('[CRON] Scheduled: sync(3m), push(10m), tech-events(30s), auto-assign(1m)');
+    console.log('[CRON] Scheduled: sync(1m), push(10m), tech-events(30s), auto-assign(5m)');
   } else {
     console.log('[CRON] Disabled (set CRON_ENABLED=true)');
   }

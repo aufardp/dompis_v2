@@ -40,7 +40,7 @@ export interface TicketRowProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
-    statusUpdate?: string | null;
+    STATUS_UPDATE?: string | null;
     ticketIdGamas?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
@@ -84,7 +84,7 @@ export default function TicketRowB2B({
   ttrCountdown,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
-  const isClosed = isTicketClosed(ticket.statusUpdate);
+  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -321,14 +321,14 @@ export default function TicketRowB2B({
       </td>
 
       {/* Status */}
-      <td className='px-4 py-3 text-center'>
+      <td className='px-4 py-3 text-center uppercase'>
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            getStatusColor(ticket.statusUpdate ?? ''),
+            getStatusColor(ticket.STATUS_UPDATE ?? ''),
           )}
         >
-          {ticket.statusUpdate || '-'}
+          {ticket.STATUS_UPDATE || '-'}
         </span>
       </td>
 

@@ -116,18 +116,26 @@ export default function CustomerTypeCard({
         'hover:-translate-y-0.5',
         'bg-white dark:bg-slate-800/70',
         'shadow-sm hover:shadow-md dark:shadow-none',
-        !active && 'border border-slate-200 dark:border-slate-700/60',
       ]
         .filter(Boolean)
         .join(' ')}
       style={{
-        borderTopColor: `${accentColor}`,
+        borderTopWidth: '2px',
+        borderTopColor: accentColor,
         ...(active
           ? {
-              border: `2px solid ${accentColor}`,
+              borderRightWidth: '2px',
+              borderBottomWidth: '2px',
+              borderLeftWidth: '2px',
+              borderColor: accentColor,
               boxShadow: `0 4px 20px ${accentColor}28`,
             }
-          : {}),
+          : {
+              borderRightWidth: '1px',
+              borderBottomWidth: '1px',
+              borderLeftWidth: '1px',
+              borderColor: 'rgb(203 213 225)',
+            }),
       }}
     >
       {/* Header */}
