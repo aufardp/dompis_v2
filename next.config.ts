@@ -21,7 +21,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // --- PERBAIKAN DI SINI ---
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
@@ -32,14 +31,24 @@ const nextConfig: NextConfig = {
       'lucide-react',
     ],
   },
-  // -------------------------
+  compress: false,
   async headers() {
     const allowedOrigins = [
       process.env.NEXT_PUBLIC_URL || 'http://localhost:3000',
-      'https://dompis.telkomakses-area3.id', // Sesuai dengan .env Anda
+      'https://dompis.telkomakses-area3.id',
     ].filter(Boolean);
 
     return [
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+        ],
+      },
       {
         source: '/api/:path*',
         headers: [
@@ -64,9 +73,16 @@ const nextConfig: NextConfig = {
           { key: 'Vary', value: 'Origin' },
         ],
       },
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
     ];
   },
-  compress: true,
 };
 
 export default nextConfig;
