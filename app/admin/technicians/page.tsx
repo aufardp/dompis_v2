@@ -904,7 +904,7 @@ export default function TechnicianMonitoringPage() {
                   {/* Filter bar compact */}
                   <div className='flex flex-wrap items-center gap-2'>
                     {/* Search */}
-                    <div className='relative min-w-[160px] flex-1 max-w-xs'>
+                    <div className='relative min-w-40 flex-1 max-w-xs'>
                       <Search className='absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400' />
                       <input
                         type='text'

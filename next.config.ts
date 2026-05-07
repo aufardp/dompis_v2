@@ -3,6 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   trailingSlash: false,
+  // Output standalone untuk better container support
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -21,7 +23,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // --- PERBAIKAN DI SINI ---
+  // --- PERBAIKAN CHUNK LOAD ERROR ---
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
@@ -36,10 +38,24 @@ const nextConfig: NextConfig = {
   async headers() {
     const allowedOrigins = [
       process.env.NEXT_PUBLIC_URL || 'http://localhost:3000',
-      'https://dompis.telkomakses-area3.id', // Sesuai dengan .env Anda
+      'https://dompis.telkomakses-area3.id',
     ].filter(Boolean);
 
     return [
+      // Static files - prevent stale cache issues
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
+      {
+        source: '/_next/data/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=300, must-revalidate' },
+        ],
+      },
+      // API headers
       {
         source: '/api/:path*',
         headers: [
