@@ -1,5 +1,29 @@
+// ==========================================
+// Middleware - Node.js Runtime (Fixed for Next.js 15)
+// ==========================================
+
+// Force to Node.js runtime to avoid Edge Runtime restrictions
+export const runtime = 'nodejs';
+
 import { NextResponse, NextRequest } from 'next/server';
-import { normalizeRoleKey } from './app/libs/roles';
+
+// --- INLINE ROLE NORMALIZATION (no external import) ---
+function normalizeRoleKey(role: string): string {
+  const key = String(role || '').trim().toLowerCase();
+  if (key === 'superadmin' || key === 'super_admin' || key === 'super-admin') {
+    return 'superadmin';
+  }
+  if (key === 'admin') {
+    return 'admin';
+  }
+  if (key === 'helpdesk') {
+    return 'helpdesk';
+  }
+  if (key === 'teknisi' || key === 'technician') {
+    return 'teknisi';
+  }
+  return '';
+}
 
 // --- CONFIG ---
 const ROLE_HOME: Record<string, string> = {
@@ -45,20 +69,15 @@ export async function middleware(req: NextRequest) {
   let payload: any;
   try {
     const parts = token.split('.');
-    if (parts.length < 2) throw new Error('Invalid JWT format');
+    if (parts.length < 2) {
+      throw new Error('Invalid JWT format');
+    }
 
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
 
     const decoded = atob(padded);
-    const json = decodeURIComponent(
-      decoded
-        .split('')
-        .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
-        .join(''),
-    );
-
-    payload = JSON.parse(json);
+    payload = JSON.parse(decoded);
   } catch {
     const res = safeRedirect(req, '/login');
     res.cookies.delete('token');
@@ -76,13 +95,14 @@ export async function middleware(req: NextRequest) {
 
   // 5. ROLE GUARD
   const userRole = normalizeRoleKey(String(payload?.role ?? ''));
+  const roleHome = ROLE_HOME[userRole] ?? '/login';
 
   if (
     pathname.startsWith('/admin') &&
     userRole !== 'admin' &&
     userRole !== 'superadmin'
   ) {
-    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+    return safeRedirect(req, roleHome);
   }
 
   if (
@@ -90,15 +110,15 @@ export async function middleware(req: NextRequest) {
     userRole !== 'helpdesk' &&
     userRole !== 'superadmin'
   ) {
-    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+    return safeRedirect(req, roleHome);
   }
 
   if (pathname.startsWith('/superadmin') && userRole !== 'superadmin') {
-    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+    return safeRedirect(req, roleHome);
   }
 
   if (pathname.startsWith('/teknisi') && userRole !== 'teknisi') {
-    return safeRedirect(req, ROLE_HOME[userRole] ?? '/login');
+    return safeRedirect(req, roleHome);
   }
 
   return NextResponse.next();
