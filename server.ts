@@ -42,16 +42,17 @@ let autoAssignTask: ScheduledTask | null = null;
 let isAutoAssignRunning = false;
 
 /**
- * DB LOCK (SAFE)
+ * DB LOCK (SAFE) - improved timeout
  */
 async function withDbLock(lockName: string, fn: () => Promise<void>) {
   try {
+    // Wait up to 10 seconds for lock (previously 0 = immediate skip)
     const result: any = await prisma.$queryRaw`
-      SELECT GET_LOCK(${lockName}, 0) as locked
+      SELECT GET_LOCK(${lockName}, 10) as locked
     `;
 
     if (!result?.[0]?.locked) {
-      console.log(`[CRON] ${lockName} skipped (already running)`);
+      console.log(`[CRON] ${lockName} skipped (already running or timeout)`);
       return;
     }
 
@@ -96,32 +97,42 @@ async function startServer() {
     syncTask = cron.schedule('*/1 * * * *', async () => {
       console.log('[CRON] Running sync...');
       broadcastSyncEvent('start');
-      await withDbLock('sync_lock', async () => {
-        try {
-          const result = await withTimeout(syncSpreadsheet(), 3 * 60 * 1000);
-          console.log('[CRON] Sync done:', result.inserted, 'inserted,', result.updated, 'updated');
-          broadcastSyncEvent('complete', {
-            inserted: result.inserted,
-            updated: result.updated,
-          });
-        } catch (error) {
-          console.error('[CRON] Sync failed:', error);
-          broadcastSyncEvent('error', { error: String(error) });
-        }
-      });
+      
+      try {
+        await withDbLock('sync_lock', async () => {
+          try {
+            const result = await withTimeout(syncSpreadsheet(), 3 * 60 * 1000);
+            console.log('[CRON] Sync done:', result.inserted, 'inserted,', result.updated, 'updated');
+            broadcastSyncEvent('complete', {
+              inserted: result.inserted,
+              updated: result.updated,
+            });
+          } catch (error) {
+            console.error('[CRON] Sync inner error:', error);
+            broadcastSyncEvent('error', { error: String(error) });
+          }
+        });
+      } catch (error) {
+        console.error('[CRON] Sync lock error:', error);
+      }
     });
 
     // 10 menit
     pushTask = cron.schedule('*/10 * * * *', async () => {
       console.log('[CRON] Running push...');
-      await withDbLock('push_lock', async () => {
-        try {
-          const result = await withTimeout(pushSpreadsheet(), 5 * 60 * 1000);
-          console.log('[CRON] Push result:', result);
-        } catch (error) {
-          console.error('[CRON] Push error:', error);
-        }
-      });
+      
+      try {
+        await withDbLock('push_lock', async () => {
+          try {
+            const result = await withTimeout(pushSpreadsheet(), 5 * 60 * 1000);
+            console.log('[CRON] Push result:', result);
+          } catch (error) {
+            console.error('[CRON] Push inner error:', error);
+          }
+        });
+      } catch (error) {
+        console.error('[CRON] Push lock error:', error);
+      }
     });
 
     let isRunning = false;
@@ -148,44 +159,57 @@ async function startServer() {
 
     // 5 menit - auto-assign dengan rotasi workzone
     autoAssignTask = cron.schedule('*/5 * * * *', async () => {
-      if (isAutoAssignRunning) return;
+      if (isAutoAssignRunning) {
+        console.log('[CRON] Auto-assign skipped - already running');
+        return;
+      }
+
       isAutoAssignRunning = true;
-
       console.log('[CRON] Running auto-assign...');
-      await withDbLock('auto_assign_lock', async () => {
-        try {
-          // Dynamic workzone rotation - ambil semua SA dan rotasi berdasarkan waktu
-          const allSAs = await prisma.service_area.findMany({
-            select: { id_sa: true },
-          });
 
-          if (allSAs.length > 0) {
-            const saIds = allSAs.map(s => s.id_sa);
-            // Rotasi: setiap 5 menit, proses workzone berbeda
-            const currentIdx = Math.floor(Date.now() / (5 * 60 * 1000)) % saIds.length;
-            const currentSA = [saIds[currentIdx]];
+      try {
+        await withDbLock('auto_assign_lock', async () => {
+          try {
+            // Dynamic workzone rotation - ambil semua SA dan rotasi berdasarkan waktu
+            const allSAs = await prisma.service_area.findMany({
+              select: { id_sa: true },
+            });
 
-            console.log(`[CRON] Auto-assign: processing SA ${currentSA[0]} (${currentIdx + 1}/${saIds.length})`);
+            if (allSAs.length > 0) {
+              const saIds = allSAs.map(s => s.id_sa);
+              // Rotasi: setiap 5 menit, proses workzone berbeda
+              const currentIdx = Math.floor(Date.now() / (5 * 60 * 1000)) % saIds.length;
+              const currentSA = [saIds[currentIdx]];
 
-            const result = await withTimeout(
-              ClusterAutoAssignServiceV2.runBatchV2(currentSA, 0),
-              60 * 1000,
-            );
+              console.log(`[CRON] Auto-assign: processing SA ${currentSA[0]} (${currentIdx + 1}/${saIds.length})`);
 
-            if (result.assigned > 0) {
-              console.log(
-                `[CRON] Auto-assign: ${result.assigned}/${result.total} tickets assigned for SA ${currentSA[0]}`,
+              const result = await withTimeout(
+                ClusterAutoAssignServiceV2.runBatchV2(currentSA, 0),
+                60 * 1000,
               );
-            }
-          } else {
-            console.log('[CRON] Auto-assign: no service areas found');
-          }
-        } catch (error) {
-          console.error('[CRON] Auto-assign error:', error);
-        }
-      });
 
-      isAutoAssignRunning = false;
+              if (result.assigned > 0) {
+                console.log(
+                  `[CRON] Auto-assign: ${result.assigned}/${result.total} tickets assigned for SA ${currentSA[0]}`,
+                );
+              } else {
+                console.log(
+                  `[CRON] Auto-assign: 0/${result.total} tickets assigned for SA ${currentSA[0]}`,
+                );
+              }
+            } else {
+              console.log('[CRON] Auto-assign: no service areas found');
+            }
+          } catch (error) {
+            console.error('[CRON] Auto-assign inner error:', error);
+          }
+        });
+      } catch (error) {
+        console.error('[CRON] Auto-assign error:', error);
+      } finally {
+        isAutoAssignRunning = false;
+        console.log('[CRON] Auto-assign finished, flag reset');
+      }
     });
 
     console.log('[CRON] Scheduled: sync(1m), push(10m), tech-events(2m), auto-assign(5m) with SA rotation');
