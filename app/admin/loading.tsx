@@ -2,7 +2,7 @@ export default function Loading() {
   return (
     <div className='bg-bg flex min-h-screen'>
       {/* Sidebar Skeleton */}
-      <aside className='bg-surface fixed inset-y-0 left-0 flex w-[220px] flex-col border-r border-white/[0.07] p-4'>
+      <aside className='bg-surface fixed inset-y-0 left-0 flex w-55 flex-col border-r border-white/[0.07] p-4'>
         {/* Logo */}
         <div className='mb-8'>
           <div className='bg-surface-2 h-7 w-20 animate-shimmer rounded' />
@@ -24,7 +24,7 @@ export default function Loading() {
       </aside>
 
       {/* Main Content */}
-      <main className='ml-[220px] flex min-h-screen flex-1 flex-col'>
+      <main className='ml-55 flex min-h-screen flex-1 flex-col'>
         {/* Topbar Skeleton */}
         <div className='bg-bg/80 flex h-16 items-center justify-between border-b border-white/[0.07] px-6'>
           <div className='bg-surface-2 h-9 w-64 animate-shimmer rounded-lg' />

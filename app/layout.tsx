@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import Providers from './providers';
 import type { Viewport } from 'next';
+import ChunkErrorHandler from './components/ChunkErrorHandler';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang='id'>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <ChunkErrorHandler />
         <Providers>{children}</Providers>
       </body>
     </html>
