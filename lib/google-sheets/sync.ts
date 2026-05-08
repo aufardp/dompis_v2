@@ -2,6 +2,7 @@ import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB, nowWIBTimestamp, todayWIB } from './helpers';
 import { formatInTimeZone } from 'date-fns-tz';
+import { sheetsQueue, sleep } from '@/lib/worker-queue';
 
 const MAX_ROWS = parseInt(process.env.SYNC_MAX_ROWS || '20000', 10);
 const RANGE = `WO_B2B_B2C!A1:HZ${MAX_ROWS}`;
@@ -50,21 +51,27 @@ function syncDateToWibString(syncDate: Date | null): string | null {
 
 /* ----------------------------- RETRY GOOGLE API ----------------------------- */
 
-async function fetchSheet(sheets: any, spreadsheetId: string) {
-  let attempt = 0;
+async function fetchSheet(sheets: any, spreadsheetId: string, signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error('Sync cancelled');
 
-  while (attempt < RETRY_MAX) {
-    try {
-      return await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: RANGE,
-      });
-    } catch (err) {
-      attempt++;
-      if (attempt >= RETRY_MAX) throw err;
-      await new Promise((r) => setTimeout(r, attempt * 1000));
+  return sheetsQueue.enqueue('sync:fetchSheet', async () => {
+    if (signal?.aborted) throw new Error('Sync cancelled');
+
+    let attempt = 0;
+    while (attempt < RETRY_MAX) {
+      if (signal?.aborted) throw new Error('Sync cancelled');
+      try {
+        return await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: RANGE,
+        });
+      } catch (err) {
+        attempt++;
+        if (attempt >= RETRY_MAX) throw err;
+        await sleep(attempt * 1000);
+      }
     }
-  }
+  });
 }
 
 /* ------------------------------ ARRAY CHUNKING ------------------------------ */
@@ -236,7 +243,7 @@ function mapRow(row: string[], col: any) {
 
 /* ------------------------------- SYNC -------------------------------- */
 
-export async function syncSpreadsheet(): Promise<SyncResult> {
+export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult> {
   const result: SyncResult = {
     inserted: 0,
     updated: 0,
@@ -244,6 +251,11 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
   };
 
   if (isSyncRunning) return result;
+
+  if (signal?.aborted) {
+    console.log('[SYNC] Cancelled before start');
+    return result;
+  }
 
   isSyncRunning = true;
 
@@ -253,7 +265,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
 
-    const response = await fetchSheet(sheets, spreadsheetId);
+    const response = await fetchSheet(sheets, spreadsheetId, signal);
     const rows = response.data.values || [];
 
     if (rows.length <= 1) return result;
@@ -519,7 +531,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await new Promise((r) => setTimeout(r, 50));
+        await sleep(50);
       }
     }
 
@@ -531,6 +543,10 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       const batches = chunkArray(safeRows, BATCH_SIZE);
 
       for (const batch of batches) {
+        if (signal?.aborted) {
+          console.log('[SYNC] Cancelled during safe update');
+          break;
+        }
         const columnCount = batch[0].length;
         const placeholders = batch
           .map(() => `(${Array(columnCount).fill('?').join(',')})`)
@@ -619,7 +635,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await new Promise((r) => setTimeout(r, 50));
+        await sleep(50);
       }
     }
 
@@ -630,6 +646,10 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
       const batches = chunkArray(protectedRows, BATCH_SIZE);
 
       for (const batch of batches) {
+        if (signal?.aborted) {
+          console.log('[SYNC] Cancelled during protected update');
+          break;
+        }
         const columnCount = batch[0].length;
         const placeholders = batch
           .map(() => `(${Array(columnCount).fill('?').join(',')})`)
@@ -719,7 +739,7 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await new Promise((r) => setTimeout(r, 50));
+        await sleep(50);
       }
     }
 
@@ -728,8 +748,12 @@ export async function syncSpreadsheet(): Promise<SyncResult> {
         ` (safe: ${safeRows.length}, protected: ${protectedRows.length})`,
     );
   } catch (err: any) {
-    result.errors.push(err.message);
-    console.error(err);
+    if (err.message === 'Sync cancelled') {
+      console.log('[SYNC] Gracefully cancelled');
+    } else {
+      result.errors.push(err.message);
+      console.error(err);
+    }
   } finally {
     isSyncRunning = false;
   }
