@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDateWIB, getSlaHours } from '@/app/utils/datetime';
 import { CustomerType } from '@/app/types/ticket';
+import { useMounted } from '@/app/hooks/useMounted';
 
 interface ExpiredTicket {
   idTicket: number;
@@ -21,6 +22,7 @@ interface TicketAgeAlarmProps {
 export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
   const [expiredTickets, setExpiredTickets] = useState<ExpiredTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const mounted = useMounted();
 
   useEffect(() => {
     async function loadExpiredTickets() {
@@ -47,6 +49,7 @@ export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
 
   const getHoursOverdue = (ticket: ExpiredTicket) => {
     if (!ticket.reportedDate) return 0;
+    if (!mounted) return 0;
     const slaHours = getSlaHours(ticket.customerType);
     const reported = new Date(ticket.reportedDate);
     const now = new Date();

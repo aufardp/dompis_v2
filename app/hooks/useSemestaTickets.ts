@@ -39,6 +39,7 @@ export function useSemestaTickets(
       const params = new URLSearchParams({
         page: String(page),
         limit: '50',
+        _t: String(Date.now()),
       });
 
       if (search) {

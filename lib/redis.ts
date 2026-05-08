@@ -6,14 +6,13 @@
  * - Fail-fast: jika Redis tidak available, cache miss (degraded gracefully)
  * - Tidak block aplikasi: semua cache operation sudah wrapped isRedisReady()
  *
- * Config Redis Docker (docker-compose.yml):
- *   maxmemory: 64mb, policy: allkeys-lru
- *   Port: 6380 (host) → 6379 (container)
+ * Config Redis:
+ *   Port: 6379 (production VPS)
  */
 
 import Redis from 'ioredis';
 
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6380';
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
 // ── Singleton holder ──────────────────────────────────────────────────────────
 let instance: Redis | null = null;

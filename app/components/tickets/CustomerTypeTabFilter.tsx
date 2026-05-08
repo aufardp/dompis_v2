@@ -1,6 +1,6 @@
 'use client';
 
-import { TicketCtype, CustomerType } from '@/app/types/ticket';
+import { TicketCtype } from '@/app/types/ticket';
 
 interface CustomerTypeTabFilterProps {
   activeType: TicketCtype | 'all';
@@ -44,9 +44,9 @@ export default function CustomerTypeTabFilter({
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab.key !== 'all' && tab.key !== 'REGULER' && (
+              {tab.key !== 'all' && (
                 <span className='text-xs sm:text-sm'>
-                  {CustomerType[tab.key as TicketCtype]?.icon}
+                  {tab.key}
                 </span>
               )}
               <span className='xs:inline hidden'>{tab.label}</span>

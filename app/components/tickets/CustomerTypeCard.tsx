@@ -25,6 +25,9 @@ export default function CustomerTypeCard({
   onClick,
 }: CustomerTypeCardProps) {
   const config = CustomerType[ctype];
+  if (!config) {
+    return null;
+  }
   const activeClasses = isActive
     ? `ring-2 ${config.color.replace('text-', 'ring-')}`
     : 'hover:shadow-md';

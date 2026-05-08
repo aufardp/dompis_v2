@@ -1,4 +1,6 @@
-// In-memory set of active SSE controllers
+import { redis } from '@/lib/redis';
+
+let subClient: ReturnType<typeof redis.duplicate> | null = null;
 const activeConnections = new Set<ReadableStreamDefaultController>();
 
 export type SyncEventType = 'start' | 'complete' | 'error';
@@ -9,51 +11,75 @@ export interface SyncEventData {
   error?: string;
 }
 
-/**
- * Broadcast sync event to all connected clients.
- * Types: 'start', 'complete', 'error'
- */
+export async function initSSERedis() {
+  if (subClient) return;
+
+  try {
+    subClient = redis.duplicate();
+    await subClient.connect();
+
+    await subClient.subscribe('sse:sync', (message) => {
+      const enc = new TextEncoder();
+      for (const ctrl of activeConnections) {
+        try {
+          ctrl.enqueue(enc.encode(`data: ${message}\n\n`));
+        } catch {
+          activeConnections.delete(ctrl);
+        }
+      }
+    });
+
+    await subClient.subscribe('sse:tickets', (message) => {
+      const enc = new TextEncoder();
+      for (const ctrl of activeConnections) {
+        try {
+          ctrl.enqueue(enc.encode(`data: ${message}\n\n`));
+        } catch {
+          activeConnections.delete(ctrl);
+        }
+      }
+    });
+
+    console.log('[SSE-Redis] Subscriber connected');
+  } catch (err) {
+    console.error('[SSE-Redis] Failed to init subscriber:', err);
+  }
+}
+
 export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
-  const message = `data: ${JSON.stringify({ type: 'sync', syncType: type, ...data, ts: Date.now() })}\n\n`;
-  const encoder = new TextEncoder();
-  for (const controller of activeConnections) {
+  const message = JSON.stringify({ type: 'sync', syncType: type, ...data, ts: Date.now() });
+  for (const ctrl of activeConnections) {
     try {
-      controller.enqueue(encoder.encode(message));
+      ctrl.enqueue(new TextEncoder().encode(`data: ${message}\n\n`));
     } catch {
-      activeConnections.delete(controller);
+      activeConnections.delete(ctrl);
     }
   }
 }
 
-/**
- * Broadcast invalidation signal to all connected admin browsers.
- * Called from mutasi routes (assign, close, pickup, update).
- */
 export function broadcastTicketInvalidate(reason?: string) {
-  const message = `data: ${JSON.stringify({ type: 'invalidate', reason: reason ?? 'mutation', ts: Date.now() })}\n\n`;
-  const encoder = new TextEncoder();
-  for (const controller of activeConnections) {
+  const message = JSON.stringify({ type: 'invalidate', reason: reason ?? 'mutation', ts: Date.now() });
+  for (const ctrl of activeConnections) {
     try {
-      controller.enqueue(encoder.encode(message));
+      ctrl.enqueue(new TextEncoder().encode(`data: ${message}\n\n`));
     } catch {
-      // Connection closed — will be cleaned up on abort
-      activeConnections.delete(controller);
+      activeConnections.delete(ctrl);
     }
   }
 }
 
-/**
- * Register an active SSE controller.
- * Called by SSE endpoint when a new connection is established.
- */
 export function registerSSEConnection(controller: ReadableStreamDefaultController) {
   activeConnections.add(controller);
 }
 
-/**
- * Unregister an active SSE controller.
- * Called by SSE endpoint when a connection is closed.
- */
 export function unregisterSSEConnection(controller: ReadableStreamDefaultController) {
   activeConnections.delete(controller);
+}
+
+export async function closeSSERedis() {
+  if (subClient) {
+    await subClient.quit().catch(() => {});
+    subClient = null;
+    console.log('[SSE-Redis] Subscriber disconnected');
+  }
 }

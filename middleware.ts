@@ -7,6 +7,40 @@ export const runtime = 'nodejs';
 
 import { NextResponse, NextRequest } from 'next/server';
 
+// --- JWT VERIFICATION (Web Crypto API - Node.js compatible) ---
+async function verifyJWT(token: string, secret: string): Promise<any> {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Invalid JWT format');
+  }
+
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  );
+
+  const data = enc.encode(`${headerB64}.${payloadB64}`);
+  const sig = Uint8Array.from(
+    atob(sigB64.replace(/-/g, '+').replace(/_/g, '/')),
+    (c: string) => c.charCodeAt(0),
+  );
+
+  const valid = await crypto.subtle.verify('HMAC', key, sig, data);
+  if (!valid) {
+    throw new Error('Invalid JWT signature');
+  }
+
+  const base64 = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+  return JSON.parse(atob(padded));
+}
+
 // --- INLINE ROLE NORMALIZATION (no external import) ---
 function normalizeRoleKey(role: string): string {
   const key = String(role || '').trim().toLowerCase();
@@ -65,20 +99,16 @@ export async function middleware(req: NextRequest) {
     return safeRedirect(req, '/login');
   }
 
-  // 3. DECODE PAYLOAD (Edge-runtime safe; no Node crypto)
+  // 3. VERIFY AND DECODE PAYLOAD
   let payload: any;
   try {
-    const parts = token.split('.');
-    if (parts.length < 2) {
-      throw new Error('Invalid JWT format');
+    const jwtSecret = process.env.JWT_ACCESS_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_ACCESS_SECRET not set');
     }
-
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-
-    const decoded = atob(padded);
-    payload = JSON.parse(decoded);
-  } catch {
+    payload = await verifyJWT(token, jwtSecret);
+  } catch (err) {
+    console.error('JWT verification failed:', err instanceof Error ? err.message : 'Unknown error');
     const res = safeRedirect(req, '/login');
     res.cookies.delete('token');
     res.cookies.delete('refreshToken');

@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import TicketRowSemesta from './TicketRowSemesta';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
+import TicketDetailDrawer from './TicketDetailDrawer';
 import {
   ChevronDown,
   ChevronUp,
@@ -12,10 +13,10 @@ import {
   User,
   Clock3,
   Phone,
+  Eye,
 } from 'lucide-react';
 import {
   calculateAgeInHours,
-  sortByPriority,
   getTicketSeverity,
   formatAge,
 } from '@/app/libs/tickets/sort';
@@ -24,7 +25,6 @@ import Badge from '../../../components/ui/badge/Badge';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import {
   getStatusColor,
-  getMaxTtr,
   getTicketAge,
   getTicketAgeColorClass,
 } from '../../../components/tickets/helpers';
@@ -49,32 +49,7 @@ export type SortField =
 export type SortOrder = 'asc' | 'desc';
 
 export interface AdminTicketTableSemestaProps {
-  tickets?: Array<{
-    idTicket?: number;
-    ticket?: string;
-    serviceNo?: string;
-    contactName?: string | null;
-    contactPhone?: string | null;
-    alamat?: string | null;
-    bookingDate?: string | null;
-    ctype?: TicketCtype;
-    customerType?: string;
-    summary?: string;
-    jenisTiket?: string;
-    workzone?: string;
-    technicianName?: string | null;
-    teknisiUserId?: number | null;
-    hasilVisit?: string | null;
-    closedAt?: string | null;
-    reportedDate?: string | null;
-    status?: string;
-    maxTtrReguler?: string | null;
-    maxTtrGold?: string | null;
-    maxTtrPlatinum?: string | null;
-    maxTtrDiamond?: string | null;
-    flaggingManja?: string | null;
-    guaranteeStatus?: string | null;
-  }>;
+  tickets?: TicketRow[];
   loading?: boolean;
   pagination?: {
     currentPage: number;
@@ -85,10 +60,73 @@ export interface AdminTicketTableSemestaProps {
   };
 }
 
+export interface TicketRow {
+  idTicket?: number;
+  ticket?: string;
+  serviceNo?: string;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  alamat?: string | null;
+  bookingDate?: string | null;
+  ctype?: TicketCtype;
+  customerType?: string;
+  summary?: string;
+  jenisTiket?: string;
+  workzone?: string;
+  technicianName?: string | null;
+  teknisiUserId?: number | null;
+  hasilVisit?: string | null;
+  closedAt?: string | null;
+  reportedDate?: string | null;
+  status?: string;
+  STATUS_UPDATE?: string | null;
+  maxTtrReguler?: string | null;
+  maxTtrGold?: string | null;
+  maxTtrPlatinum?: string | null;
+  maxTtrDiamond?: string | null;
+  flaggingManja?: string | null;
+  guaranteeStatus?: string | null;
+}
+
 interface SortConfig {
   field: SortField;
   order: SortOrder;
 }
+
+type DrawerTicket = {
+  idTicket: number;
+  ticket: string;
+  summary: string;
+  reportedDate: string;
+  serviceNo: string;
+  contactName: string;
+  contactPhone: string;
+  alamat?: string | null;
+  bookingDate?: string;
+  ctype?: TicketCtype;
+  customerType?: string;
+  customerSegment?: string;
+  workzone?: string;
+  status: string;
+  hasilVisit?: 'OPEN' | 'ASSIGNED' | 'ON_PROGRESS' | 'PENDING' | 'ESCALATED' | 'CANCELLED' | 'CLOSE' | null;
+  STATUS_UPDATE?: string | null;
+  jenisTiket?: string;
+  maxTtrReguler?: string | null;
+  maxTtrGold?: string | null;
+  maxTtrPlatinum?: string | null;
+  maxTtrDiamond?: string | null;
+  pendingReason?: string | null;
+  rca?: string | null;
+  subRca?: string | null;
+  teknisiUserId?: number | null;
+  technicianName?: string | null;
+  closedAt?: string | null;
+  ownerGroup?: string;
+  deviceName?: string;
+  symptom?: string;
+  serviceType?: string;
+  sourceTicket?: string;
+} | null;
 
 const SortIcon = ({
   field,
@@ -153,6 +191,8 @@ export default function TicketTableSemesta({
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
   const [visibleCols, setVisibleCols] =
     useState<Record<ColKey, boolean>>(DEFAULT_COLS);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTicket, setDrawerTicket] = useState<DrawerTicket>(null);
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -165,9 +205,62 @@ export default function TicketTableSemesta({
     setExpandedTicketId((prev) => (prev === ticketId ? null : ticketId));
   }, []);
 
+  type TicketItem = TicketRow;
+
+const handleOpenDrawer = useCallback((ticket: TicketItem) => {
+    if (!ticket || !ticket.idTicket) return;
+    setDrawerTicket({
+      idTicket: ticket.idTicket,
+      ticket: ticket.ticket ?? '',
+      summary: ticket.summary ?? '',
+      reportedDate: ticket.reportedDate ?? '',
+      serviceNo: ticket.serviceNo ?? '',
+      contactName: ticket.contactName ?? '',
+      contactPhone: ticket.contactPhone ?? '',
+      alamat: ticket.alamat ?? null,
+      bookingDate: ticket.bookingDate ?? undefined,
+      ctype: ticket.ctype,
+      customerType: ticket.customerType ?? '',
+      workzone: ticket.workzone ?? '',
+      status: ticket.STATUS_UPDATE ?? ticket.status ?? '',
+      hasilVisit: (ticket.hasilVisit ?? null) as Exclude<DrawerTicket, null>['hasilVisit'],
+      STATUS_UPDATE: ticket.STATUS_UPDATE ?? null,
+      jenisTiket: ticket.jenisTiket ?? '',
+      maxTtrReguler: ticket.maxTtrReguler ?? null,
+      maxTtrGold: ticket.maxTtrGold ?? null,
+      maxTtrPlatinum: ticket.maxTtrPlatinum ?? null,
+      maxTtrDiamond: ticket.maxTtrDiamond ?? null,
+      technicianName: ticket.technicianName ?? null,
+      teknisiUserId: ticket.teknisiUserId ?? null,
+      closedAt: ticket.closedAt ?? null,
+    });
+    setDrawerOpen(true);
+  }, []);
+
+  const currentPage = pagination?.currentPage ?? 1;
+  const pageSize = pagination?.limit ?? 50;
+
+  const pageTickets = tickets;
+
+  const renderSortableHeader = (label: string, field: SortField) => (
+    <th
+      className='hover:bg-surface-2 cursor-pointer px-3 py-3 text-center transition-colors'
+      onClick={() => handleSort(field)}
+    >
+      <div className='flex items-center justify-center gap-1'>
+        <span>{label}</span>
+        <SortIcon
+          field={field}
+          currentField={sortConfig.field}
+          order={sortConfig.order}
+        />
+      </div>
+    </th>
+  );
+
   const sortedTickets = useMemo(() => {
-    if (!tickets.length) return tickets;
-    return [...tickets].sort((a, b) => {
+    if (!pageTickets.length) return pageTickets;
+    return [...pageTickets].sort((a, b) => {
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
@@ -187,37 +280,13 @@ export default function TicketTableSemesta({
       if (aVal > bVal) return sortConfig.order === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [tickets, sortConfig]);
+  }, [pageTickets, sortConfig]);
 
-  const currentPage = pagination?.currentPage ?? 1;
-  const pageSize = pagination?.limit ?? 50;
-  const pageOffset = (currentPage - 1) * pageSize;
-  const pageTickets = pagination
-    ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
-    : sortedTickets;
-
-  // Calculate global row number offset for pagination
-  const rowOffset = pageOffset;
-
-  const renderSortableHeader = (label: string, field: SortField) => (
-    <th
-      className='hover:bg-surface-2 cursor-pointer px-3 py-3 text-center transition-colors'
-      onClick={() => handleSort(field)}
-    >
-      <div className='flex items-center justify-center gap-1'>
-        <span>{label}</span>
-        <SortIcon
-          field={field}
-          currentField={sortConfig.field}
-          order={sortConfig.order}
-        />
-      </div>
-    </th>
-  );
+  const rowOffset = 0;
 
   return (
     <div className='space-y-3'>
-      {/* Mobile */}
+{/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
         {loading ? (
           <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
@@ -226,115 +295,124 @@ export default function TicketTableSemesta({
             No tickets found
           </p>
         ) : (
-          pageTickets.map((ticket) => {
-            return (
-              <div
-                key={ticket.idTicket ?? ticket.ticket}
-                className='group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4'
-              >
-                <div className='flex items-start justify-between gap-2 sm:gap-3'>
-                  <div className='min-w-0 flex-1'>
-                    <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
-                      <p className='truncate text-sm font-semibold text-slate-900'>
-                        {ticket.ticket || '-'}
-                      </p>
-                      <span className='text-xs text-slate-500'>
-                        {ticket.reportedDate
-                          ? formatDate(ticket.reportedDate)
-                          : '-'}
-                      </span>
-                    </div>
-                    <p className='mt-1 truncate text-sm text-slate-700'>
-                      {ticket.summary || '-'}
-                    </p>
-                  </div>
+          <>
+            {sortedTickets.map((ticket) => {
+              return (
+                <div
+                  key={ticket.idTicket ?? ticket.ticket}
+                  className='group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 sm:p-4'
+                >
+                        <div className='flex items-start justify-between gap-2 sm:gap-3'>
+                          <div className='min-w-0 flex-1'>
+                            <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
+                              <p className='truncate text-sm font-semibold text-slate-900 dark:text-white'>
+                                {ticket.ticket || '-'}
+                              </p>
+                              <span className='text-xs text-slate-500'>
+                                {ticket.reportedDate
+                                  ? formatDate(ticket.reportedDate)
+                                  : '-'}
+                              </span>
+                            </div>
+                            <p className='mt-1 truncate text-sm text-slate-700 dark:text-slate-300'>
+                              {ticket.summary || '-'}
+                            </p>
+                          </div>
 
-                  <div className='flex shrink-0 flex-col items-end gap-1'>
-                    <Badge
-                      size='sm'
-                      color={getStatusColor(ticket.hasilVisit || '')}
-                    >
-                      {ticket.hasilVisit || '-'}
-                    </Badge>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
-                    >
-                      {getTicketAge(ticket)}
-                    </span>
-                  </div>
-                </div>
+                          <div className='flex shrink-0 flex-col items-end gap-1'>
+                            <Badge
+                              size='sm'
+                              color={getStatusColor(ticket.hasilVisit || '')}
+                            >
+                              {ticket.hasilVisit || '-'}
+                            </Badge>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
+                            >
+                              {getTicketAge(ticket)}
+                            </span>
+                          </div>
+                        </div>
 
-                <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 sm:grid-cols-2'>
-                  <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
-                    <Hash className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
-                    <div className='min-w-0'>
-                      <p className='text-[11px] text-slate-500'>Service</p>
-                      <p className='truncate font-semibold'>
-                        {ticket.serviceNo || '-'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
-                    <MapPin className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
-                    <div className='min-w-0'>
-                      <p className='text-[11px] text-slate-500'>Workzone</p>
-                      <p className='truncate font-semibold'>
-                        {ticket.workzone || '-'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
-                    <User className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
-                    <div className='min-w-0'>
-                      <p className='text-[11px] text-slate-500'>Type</p>
-                      <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
-                    </div>
-                  </div>
-                  <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'>
-                    <Clock3 className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
-                    <div className='min-w-0'>
-                      <p className='text-[11px] text-slate-500'>Max TTR</p>
-                      <MaxTtrCell ticket={ticket} />
-                    </div>
-                  </div>
-                </div>
+                        <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 dark:text-slate-300 sm:grid-cols-2'>
+                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
+                            <Hash className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                            <div className='min-w-0'>
+                              <p className='text-[11px] text-slate-500'>Service</p>
+                              <p className='truncate font-semibold'>
+                                {ticket.serviceNo || '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
+                            <MapPin className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                            <div className='min-w-0'>
+                              <p className='text-[11px] text-slate-500'>Workzone</p>
+                              <p className='truncate font-semibold'>
+                                {ticket.workzone || '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
+                            <User className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                            <div className='min-w-0'>
+                              <p className='text-[11px] text-slate-500'>Type</p>
+                              <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
+                            </div>
+                          </div>
+                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
+                            <Clock3 className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                            <div className='min-w-0'>
+                              <p className='text-[11px] text-slate-500'>Max TTR</p>
+                              <MaxTtrCell ticket={ticket} />
+                            </div>
+                          </div>
+                        </div>
 
-                <div className='mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
-                  <div className='min-w-0'>
-                    <p className='text-[11px] text-slate-500'>Customer</p>
-                    <p className='truncate text-sm font-semibold text-slate-900'>
-                      {ticket.contactName || '-'}
-                    </p>
-                  </div>
-                  <div className='min-w-0 text-right sm:shrink-0'>
-                    <p className='text-[11px] text-slate-500'>Phone</p>
-                    <p className='inline-flex items-center gap-1 text-sm font-medium text-slate-700'>
-                      <Phone className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
-                      <span className='tabular-nums'>
-                        {ticket.contactPhone || '-'}
-                      </span>
-                    </p>
-                  </div>
-                </div>
+                        <div className='mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800/50'>
+                          <div className='min-w-0'>
+                            <p className='text-[11px] text-slate-500'>Customer</p>
+                            <p className='truncate text-sm font-semibold text-slate-900 dark:text-white'>
+                              {ticket.contactName || '-'}
+                            </p>
+                          </div>
+                          <div className='min-w-0 text-right sm:shrink-0'>
+                            <p className='text-[11px] text-slate-500'>Phone</p>
+                            <p className='inline-flex items-center gap-1 text-sm font-medium text-slate-700 dark:text-slate-300'>
+                              <Phone className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                              <span className='tabular-nums'>
+                                {ticket.contactPhone || '-'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
 
-                <div className='mt-3 flex items-center justify-between gap-3'>
-                  <div className='min-w-0 flex-1'>
-                    <p className='text-[11px] text-slate-500'>Technician</p>
-                    <p className='truncate text-sm font-medium text-slate-800'>
-                      {ticket.technicianName || (
-                        <span className='text-slate-400 italic'>
-                          Unassigned
-                        </span>
-                      )}
-                    </p>
-                    <p className='mt-0.5 text-xs text-slate-500'>
-                      Jenis tiket: {ticket.jenisTiket || '-'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })
+                        <div className='mt-3 flex items-center justify-between gap-3'>
+                          <div className='min-w-0 flex-1'>
+                            <p className='text-[11px] text-slate-500'>Technician</p>
+                            <p className='truncate text-sm font-medium text-slate-800 dark:text-slate-200'>
+                              {ticket.technicianName || (
+                                <span className='text-slate-400 italic'>
+                                  Unassigned
+                                </span>
+                              )}
+                            </p>
+                            <p className='mt-0.5 text-xs text-slate-500'>
+                              Jenis tiket: {ticket.jenisTiket || '-'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleOpenDrawer(ticket)}
+                            className='flex shrink-0 items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
+                          >
+                            <Eye size={13} />
+                            Detail
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
         )}
       </div>
 
@@ -396,7 +474,7 @@ export default function TicketTableSemesta({
                     message='Tidak ada tiket ditemukan'
                   />
                 ) : (
-                  pageTickets.map((ticket, idx) => {
+                  sortedTickets.map((ticket, idx) => {
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
                     const ttrCountdown = computeTtrCountdown(ticket);
@@ -420,14 +498,20 @@ export default function TicketTableSemesta({
                       ticket.hasilVisit,
                       ticket.closedAt,
                     );
-                    const globalIndex = rowOffset + idx + 1;
+                    const globalIndex = idx + 1;
 
                     return (
                       <TicketRowSemesta
                         key={ticketId}
                         ticket={ticket}
                         isExpanded={isExpanded}
-                        onToggleExpand={() => toggleExpand(ticketId as number)}
+                        onToggleExpand={() => {
+                          if (ticket.idTicket) {
+                            handleOpenDrawer(ticket);
+                          } else {
+                            toggleExpand(ticketId as number);
+                          }
+                        }}
                         rowNumber={globalIndex}
                         ticketAge={ageFormatted}
                         severity={severity}
@@ -488,6 +572,15 @@ export default function TicketTableSemesta({
           </span>
         ))}
       </div>
+
+      {/* TicketDetailDrawer */}
+      <TicketDetailDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        ticket={drawerTicket}
+        loading={false}
+        error={null}
+      />
     </div>
   );
 }

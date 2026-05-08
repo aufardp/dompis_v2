@@ -8,7 +8,7 @@ interface B2CData {
     open: number;
     assigned: number;
     close: number;
-    regulerCount: number;
+    customerCount: number;
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
@@ -21,7 +21,7 @@ interface B2CData {
     open: number;
     assigned: number;
     close: number;
-    regulerCount: number;
+    customerCount: number;
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
@@ -34,7 +34,7 @@ interface B2CData {
     open: number;
     assigned: number;
     close: number;
-    regulerCount: number;
+    customerCount: number;
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
@@ -47,7 +47,7 @@ interface B2CData {
     open: number;
     assigned: number;
     close: number;
-    regulerCount: number;
+    customerCount: number;
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
@@ -60,7 +60,7 @@ interface B2CData {
     open: number;
     assigned: number;
     close: number;
-    regulerCount: number;
+    customerCount: number;
     sqmCount: number;
     unspecCount: number;
     ffgCount: number;
@@ -105,7 +105,7 @@ const tierCards: {
   {
     key: 'REGULER',
     icon: '👤',
-    name: 'Reguler',
+    name: 'Customer',
     dataKey: 'reguler',
     accentColor: '#10b981',
   },
@@ -202,7 +202,7 @@ export default function B2CSection({
         open={data.summary.open}
         assigned={data.summary.assigned}
         close={data.summary.close}
-        regulerCount={data.summary.regulerCount}
+        customerCount={data.summary.customerCount}
         sqmCount={data.summary.sqmCount}
         unspecCount={data.summary.unspecCount}
         ffgCount={data.summary.ffgCount}
@@ -225,7 +225,7 @@ export default function B2CSection({
               open={d.open}
               assigned={d.assigned}
               close={d.close}
-              regulerCount={d.regulerCount}
+              customerCount={d.customerCount}
               sqmCount={d.sqmCount}
               unspecCount={d.unspecCount}
               ffgCount={d.ffgCount}

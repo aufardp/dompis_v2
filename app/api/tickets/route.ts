@@ -18,9 +18,14 @@ function buildTicketCacheKey(
   role: string,
   userId: number,
   isMonitoring: boolean = false,
-): string {
+): string | null {
   const filterParams = new URLSearchParams(params);
-  filterParams.delete('_t');  // Exclude timestamp param to prevent cache bypass
+  
+  // Skip cache if _t param is present (cache bypass for fresh data)
+  if (filterParams.has('_t')) {
+    return null;
+  }
+  
   filterParams.sort();
   return `tickets:${isMonitoring ? 'monitoring' : role}:${userId}:${filterParams.toString()}`;
 }
@@ -62,14 +67,17 @@ export async function GET(request: Request) {
 
     const cacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);
 
-    const cached = await getCache(cacheKey);
+    // Skip cache if bypass param (_t) is present
+    if (cacheKey) {
+      const cached = await getCache(cacheKey);
 
-    if (cached) {
-      return NextResponse.json({
-        success: true,
-        data: cached,
-        cached: true,
-      });
+      if (cached) {
+        return NextResponse.json({
+          success: true,
+          data: cached,
+          cached: true,
+        });
+      }
     }
 
     const result = await TicketService.getTickets(
@@ -78,7 +86,10 @@ export async function GET(request: Request) {
       filters,
     );
 
-    await setCache(cacheKey, result, TICKETS_CACHE_TTL);
+    // Only cache if cache key is valid (no bypass)
+    if (cacheKey) {
+      await setCache(cacheKey, result, TICKETS_CACHE_TTL);
+    }
 
     return NextResponse.json({
       success: true,

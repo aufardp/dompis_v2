@@ -59,9 +59,49 @@ export async function GET(req: NextRequest) {
       (w) => w && w.trim(),
     );
 
-    // Fetch all technicians
+    // Get admin's service areas to filter teknisi
+    const adminSaRows = await prisma.user_sa.findMany({
+      where: { user_id: user.id_user },
+      select: { sa_id: true },
+    });
+    const adminSaIds = adminSaRows
+      .map((r: { sa_id: number | null }) => r.sa_id)
+      .filter((v: number | null): v is number => v != null);
+
+    // Get teknisi IDs based on admin's service areas
+    let teknisiIds: number[] = [];
+    if (adminSaIds.length > 0) {
+      const techSa = await prisma.user_sa.findMany({
+        where: { sa_id: { in: adminSaIds } },
+        select: { user_id: true },
+      });
+      teknisiIds = [
+        ...new Set(
+          techSa
+            .map((r: { user_id: number | null }) => r.user_id)
+            .filter((v: number | null): v is number => v != null),
+        ),
+      ];
+    } else {
+      // Superadmin gets all teknisi
+      const allTech = await prisma.users.findMany({
+        where: { roles: { is: { key: 'teknisi' } } },
+        select: { id_user: true },
+      });
+      teknisiIds = allTech.map((t: { id_user: number }) => t.id_user);
+    }
+
+    if (teknisiIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'Tidak ada teknisi dalam workzone Anda',
+      });
+    }
+
+    // Fetch only filtered teknisi
     const teknisiList = await prisma.users.findMany({
-      where: { roles: { is: { key: 'teknisi' } } },
+      where: { id_user: { in: teknisiIds } },
       select: { id_user: true, nama: true, nik: true },
       orderBy: { nama: 'asc' },
     });

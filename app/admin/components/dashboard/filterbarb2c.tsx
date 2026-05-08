@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X } from 'lucide-react';
 
-type TicketType = 'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec';
+type TicketType = 'all' | 'customer' | 'sqm' | 'hvc' | 'unspec';
 type StatusUpdate =
   | 'all'
   | 'open'
@@ -24,7 +24,7 @@ interface FilterBarB2CProps {
 
 const B2C_TYPE_OPTIONS = [
   {
-    key: 'reguler',
+    key: 'customer',
     label: 'Reg',
     dot: 'bg-emerald-400',
     activeClass: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
@@ -214,17 +214,12 @@ export function FilterBarB2C({
         )}
       </div>
 
-      <div
-        className={cn(
-          'hidden lg:block',
-          showMobileFilters && 'block',
-        )}
-      >
+      <div className={cn('hidden lg:block', showMobileFilters && 'block')}>
         <div className='relative'>
           <div
             className={cn(
               'pointer-events-none absolute inset-y-0 left-0 z-10 w-12 rounded-l-full',
-              'bg-gradient-to-r from-(--surface) to-transparent',
+              'bg-linear-to-r from-(--surface) to-transparent',
               'transition-opacity duration-200',
               showFadeLeft ? 'opacity-100' : 'opacity-0',
             )}
@@ -233,7 +228,7 @@ export function FilterBarB2C({
           <div
             className={cn(
               'pointer-events-none absolute inset-y-0 right-0 z-10 w-12 rounded-r-full',
-              'bg-gradient-to-l from-(--surface) to-transparent',
+              'bg-linear-to-l from-(--surface) to-transparent',
               'transition-opacity duration-200',
               showFadeRight ? 'opacity-100' : 'opacity-0',
             )}
@@ -247,14 +242,14 @@ export function FilterBarB2C({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             className={cn(
-              'bg-(--surface) flex items-center gap-1 overflow-x-auto rounded-full',
+              'flex items-center gap-1 overflow-x-auto rounded-full bg-(--surface)',
               'border border-(--border) p-1',
-              'select-none cursor-grab [&::-webkit-scrollbar]:hidden',
+              'cursor-grab select-none [&::-webkit-scrollbar]:hidden',
               'scrollbar-none',
             )}
             style={{ scrollbarWidth: 'none' }}
           >
-            <span className='shrink-0 pl-2 pr-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+            <span className='shrink-0 pr-1 pl-2 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Jenis
             </span>
 
@@ -263,7 +258,7 @@ export function FilterBarB2C({
                 key={key}
                 onClick={() => onTypeChange?.(key)}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
                   'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   ticketType === key
                     ? activeClass
@@ -282,7 +277,7 @@ export function FilterBarB2C({
 
             <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
 
-            <span className='shrink-0 pl-1 pr-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+            <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Status
             </span>
 
@@ -291,7 +286,7 @@ export function FilterBarB2C({
                 key={key}
                 onClick={() => onStatusChange?.(key)}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
                   'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   statusUpdate === key
                     ? activeClass
@@ -310,7 +305,7 @@ export function FilterBarB2C({
 
             <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
 
-            <span className='shrink-0 pl-1 pr-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+            <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Flag
             </span>
 
@@ -319,7 +314,7 @@ export function FilterBarB2C({
                 key={key}
                 onClick={() => onFlaggingChange?.(key as FlaggingManja)}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
                   'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                   flagging === key
                     ? activeClass
@@ -341,7 +336,7 @@ export function FilterBarB2C({
             <button
               onClick={resetAll}
               className={cn(
-                'mr-1 flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-[3px]',
+                'mr-1 flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
                 'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
                 'border-red-400/30 text-red-400/60 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-400',
                 activeCount === 0 && 'opacity-40',
