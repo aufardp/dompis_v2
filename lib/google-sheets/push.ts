@@ -2,6 +2,7 @@ import prisma from '@/app/libs/prisma';
 import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 import { formatInTimeZone } from 'date-fns-tz';
+import { sheetsQueue, sleep } from '@/lib/worker-queue';
 
 const SHEET_NAME = 'Dummy_Dompis';
 const START_ROW = 6;
@@ -20,18 +21,23 @@ function hashRow(data: any[]): string {
   return data.map((v) => (v?.toString()?.trim() ?? '')).join('|');
 }
 
-async function retryGoogle<T>(fn: () => Promise<T>): Promise<T> {
-  let attempt = 0;
-  while (attempt < RETRY_MAX) {
-    try {
-      return await fn();
-    } catch (err) {
-      attempt++;
-      if (attempt >= RETRY_MAX) throw err;
-      await new Promise((r) => setTimeout(r, attempt * 2000));
+async function sheetsApiCall<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return sheetsQueue.enqueue(label, async () => {
+    let attempt = 0;
+    while (attempt < RETRY_MAX) {
+      try {
+        return await fn();
+      } catch (err) {
+        attempt++;
+        if (attempt >= RETRY_MAX) throw err;
+        await sleep(attempt * 2000);
+      }
     }
-  }
-  throw new Error('Max retries exceeded');
+    throw new Error('Max retries exceeded');
+  });
 }
 
 function formatDateWIB(date: Date | null | undefined): string {
@@ -43,10 +49,16 @@ function formatDateWIB(date: Date | null | undefined): string {
 // MAIN PUSH FUNCTION
 // ──────────────────────────────────────────────────────────────────────────────
 
-export async function pushSpreadsheet() {
+export async function pushSpreadsheet(signal?: AbortSignal) {
   if (isPushRunning) {
     return { success: false, message: 'Process already running' };
   }
+
+  if (signal?.aborted) {
+    console.log('[PUSH] Cancelled before start');
+    return { success: false, message: 'Cancelled' };
+  }
+
   isPushRunning = true;
 
   try {
@@ -60,7 +72,9 @@ export async function pushSpreadsheet() {
     //         Bangun map: INCIDENT → nomor baris di sheet
     // ──────────────────────────────────────────────────────────────────────────
 
-    const incidentColRes = await retryGoogle(() =>
+    if (signal?.aborted) throw new Error('Push cancelled');
+
+    const incidentColRes = await sheetsApiCall('push:readIncidentCol', () =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
         range: `'${SHEET_NAME}'!B${START_ROW}:B${MAX_READ_ROW}`,
@@ -91,7 +105,9 @@ export async function pushSpreadsheet() {
     //         Ini untuk avoid update jika data sama
     // ──────────────────────────────────────────────────────────────────────────
 
-    const currentVAHRes = await retryGoogle(() =>
+    if (signal?.aborted) throw new Error('Push cancelled');
+
+    const currentVAHRes = await sheetsApiCall('push:readCurrentVAH', () =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
         range: `'${SHEET_NAME}'!B${START_ROW}:AH${MAX_READ_ROW}`,
@@ -230,9 +246,14 @@ export async function pushSpreadsheet() {
     let totalUpdated = 0;
 
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      if (signal?.aborted) {
+        console.log('[PUSH] Cancelled during batchUpdate');
+        break;
+      }
+
       const chunk = updates.slice(i, i + BATCH_SIZE);
 
-      await retryGoogle(() =>
+      await sheetsApiCall(`push:batchUpdate[${i}..${i + chunk.length}]`, () =>
         sheets.spreadsheets.values.batchUpdate({
           spreadsheetId,
           requestBody: {
@@ -244,11 +265,6 @@ export async function pushSpreadsheet() {
 
       totalUpdated += chunk.length;
       console.log(`[PUSH] Progress: ${totalUpdated}/${updates.length}`);
-
-      // Throttle agar tidak kena rate limit Google API
-      if (i + BATCH_SIZE < updates.length) {
-        await new Promise((r) => setTimeout(r, 500));
-      }
     }
 
     console.log(
