@@ -104,7 +104,7 @@ const CTYPE_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { key: 'all', label: 'Semua' },
-  { key: 'reguler', label: 'Reguler' },
+  { key: 'reguler', label: 'Customer' },
   { key: 'sqm', label: 'SQM' },
   { key: 'unspec', label: 'Unspec' },
 ];

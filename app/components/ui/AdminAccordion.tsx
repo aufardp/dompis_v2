@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
+import { useMounted } from '@/app/hooks/useMounted';
 
 export type AdminAccordionItem = {
   id: string;
@@ -38,6 +39,7 @@ export default function AdminAccordion({
   multiple = true,
   className,
 }: AdminAccordionProps) {
+  const mounted = useMounted();
   const idsKey = useMemo(() => items.map((i) => i.id).join('|'), [items]);
   const validIds = useMemo(() => new Set(items.map((i) => i.id)), [idsKey]);
 
@@ -50,17 +52,21 @@ export default function AdminAccordion({
   );
 
   useEffect(() => {
-    if (!storageKey) return;
-    const stored = safeParseStoredIds(window.localStorage.getItem(storageKey));
-    if (!stored) return;
-    const next = stored.filter((id) => validIds.has(id));
-    setOpenIds(new Set(next));
-  }, [idsKey, storageKey, validIds]);
+    if (!mounted || !storageKey) return;
+    try {
+      const stored = safeParseStoredIds(localStorage.getItem(storageKey));
+      if (!stored) return;
+      const next = stored.filter((id) => validIds.has(id));
+      setOpenIds(new Set(next));
+    } catch {}
+  }, [mounted, idsKey, storageKey, validIds]);
 
   useEffect(() => {
-    if (!storageKey) return;
-    window.localStorage.setItem(storageKey, JSON.stringify([...openIds]));
-  }, [openIds, storageKey]);
+    if (!mounted || !storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...openIds]));
+    } catch {}
+  }, [mounted, openIds, storageKey]);
 
   const toggle = (id: string) => {
     setOpenIds((prev) => {

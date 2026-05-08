@@ -138,7 +138,7 @@ export default function TicketStats({
 
   const bySa = useMemo(() => data.byServiceArea || [], [data.byServiceArea]);
   const byCtype = useMemo(
-    () => data.byCustomerType || [],
+    () => (data.byCustomerType || []).filter((r) => CustomerType[r.ctype]),
     [data.byCustomerType],
   );
 

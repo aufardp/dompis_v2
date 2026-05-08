@@ -9,7 +9,7 @@ interface CustomerTypeCardProps {
   ttrLabel?: string;
   active?: boolean;
   onClick?: () => void;
-  regulerCount?: number;
+  customerCount?: number;
   sqmCount?: number;
   unspecCount?: number;
   ffgCount?: number;
@@ -94,7 +94,7 @@ export default function CustomerTypeCard({
   accentColor,
   active = false,
   onClick,
-  regulerCount,
+  customerCount,
   sqmCount,
   unspecCount,
   ffgCount,
@@ -178,13 +178,13 @@ export default function CustomerTypeCard({
       </p>
 
       {/* Pills - Reguler, SQM, Unspec */}
-      {(regulerCount !== undefined ||
+      {(customerCount !== undefined ||
         sqmCount !== undefined ||
         unspecCount !== undefined) && (
         <div className='mb-3 flex flex-wrap gap-2'>
-          {regulerCount !== undefined && (
+          {customerCount !== undefined && (
             <span className='flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-700/60 dark:text-slate-300'>
-              📋 Reguler: {regulerCount}
+              📋 Customer: {customerCount}
             </span>
           )}
           {sqmCount !== undefined && (
@@ -236,18 +236,18 @@ export default function CustomerTypeCard({
       )}
 
       {/* Mini bars */}
-      {(regulerCount !== undefined ||
+      {(customerCount !== undefined ||
         sqmCount !== undefined ||
         unspecCount !== undefined) && (
         <div className='mb-4 space-y-1.5'>
-          {regulerCount !== undefined && (
+          {customerCount !== undefined && (
             <div className='flex items-center gap-2'>
               <span className='w-10 shrink-0 text-right text-[10px] text-slate-400 dark:text-slate-500'>
-                Reguler
+                Customer
               </span>
-              <MiniBar value={regulerCount} max={total} color='#94a3b8' />
+              <MiniBar value={customerCount} max={total} color='#94a3b8' />
               <span className='w-7 shrink-0 text-right text-[10px] font-semibold text-slate-400 dark:text-slate-500'>
-                {total > 0 ? Math.round((regulerCount / total) * 100) : 0}%
+                {total > 0 ? Math.round((customerCount / total) * 100) : 0}%
               </span>
             </div>
           )}

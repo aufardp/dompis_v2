@@ -30,38 +30,35 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    const stored = sessionStorage.getItem('theme') as Theme | null;
-    if (stored) {
-      setTheme(stored);
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark');
-    } else {
-      setTheme('light');
+    try {
+      const stored = localStorage.getItem('theme') as Theme | null;
+      if (stored === 'light' || stored === 'dark') {
+        setTheme(stored);
+      } else if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setTheme('light');
+      }
+    } catch {
+      // SSR or localStorage blocked
     }
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
-
     const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    sessionStorage.setItem('theme', theme);
+    root.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.setItem('theme', theme);
+    } catch {}
   }, [theme, mounted]);
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  const value = mounted
-    ? { theme, toggleTheme, isDark: theme === 'dark' }
-    : defaultContext;
-
   return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+    <ThemeContext.Provider value={{ theme, toggleTheme, isDark: theme === 'dark' }}>
+      {children}
+    </ThemeContext.Provider>
   );
 }
 

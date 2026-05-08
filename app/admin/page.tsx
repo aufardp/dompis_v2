@@ -103,7 +103,7 @@ export default function TicketPage() {
 
   // B2C filter state
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<
-    'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec'
+    'all' | 'customer' | 'sqm' | 'hvc' | 'unspec'
   >('all');
   const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<
     'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
@@ -140,7 +140,14 @@ export default function TicketPage() {
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
 
-  const { lastSyncLabel, nextSyncLabel, isSyncOverdue, isInProgress, syncError, triggerSync } = useSyncStatus();
+  const {
+    lastSyncLabel,
+    nextSyncLabel,
+    isSyncOverdue,
+    isInProgress,
+    syncError,
+    triggerSync,
+  } = useSyncStatus();
 
   const { tickets: expiredTickets, refresh: refreshExpired } =
     useExpiredTickets(workzoneFilter || undefined, {
@@ -167,7 +174,10 @@ export default function TicketPage() {
   );
 
   // SSE-based real-time updates (primary mechanism)
-  const [syncStatus, setSyncStatus] = useState<{ inProgress: boolean; lastResult?: string }>({ inProgress: false });
+  const [syncStatus, setSyncStatus] = useState<{
+    inProgress: boolean;
+    lastResult?: string;
+  }>({ inProgress: false });
 
   useTicketEvents({
     onInvalidate: useCallback(() => {
@@ -181,10 +191,19 @@ export default function TicketPage() {
     onSyncStart: useCallback(() => {
       setSyncStatus({ inProgress: true });
     }, []),
-    onSyncComplete: useCallback((data: { inserted?: number; updated?: number }) => {
-      setSyncStatus({ inProgress: false, lastResult: `+${data.inserted || 0} ~${data.updated || 0}` });
-      setTimeout(() => setSyncStatus(s => ({ ...s, lastResult: undefined })), 5000);
-    }, []),
+    onSyncComplete: useCallback(
+      (data: { inserted?: number; updated?: number }) => {
+        setSyncStatus({
+          inProgress: false,
+          lastResult: `+${data.inserted || 0} ~${data.updated || 0}`,
+        });
+        setTimeout(
+          () => setSyncStatus((s) => ({ ...s, lastResult: undefined })),
+          5000,
+        );
+      },
+      [],
+    ),
     onSyncError: useCallback((error: string) => {
       setSyncStatus({ inProgress: false, lastResult: `Error: ${error}` });
     }, []),
@@ -242,7 +261,7 @@ export default function TicketPage() {
       assigned: number;
       close: number;
       gamasCount: number;
-      regulerCount: number;
+      customerCount: number;
       sqmCount: number;
       unspecCount: number;
       ffgCount: number;
@@ -254,7 +273,7 @@ export default function TicketPage() {
       assigned: 0,
       close: 0,
       gamasCount: 0,
-      regulerCount: 0,
+      customerCount: 0,
       sqmCount: 0,
       unspecCount: 0,
       ffgCount: 0,
@@ -279,7 +298,7 @@ export default function TicketPage() {
       }
 
       // Jenis breakdown
-      if (jenisType === 'reguler') summary.regulerCount++;
+      if (jenisType === 'customer') summary.customerCount++;
       else if (jenisType === 'sqm') summary.sqmCount++;
       else summary.unspecCount++;
 
@@ -320,7 +339,7 @@ export default function TicketPage() {
         assigned: number;
         close: number;
         gamasCount: number;
-        regulerCount: number;
+        customerCount: number;
         sqmCount: number;
         unspecCount: number;
         ffgCount: number;
@@ -336,7 +355,7 @@ export default function TicketPage() {
         assigned: 0,
         close: 0,
         gamasCount: 0,
-        regulerCount: 0,
+        customerCount: 0,
         sqmCount: 0,
         unspecCount: 0,
         ffgCount: 0,
@@ -348,7 +367,7 @@ export default function TicketPage() {
         assigned: number;
         close: number;
         gamasCount: number;
-        regulerCount: number;
+        customerCount: number;
         sqmCount: number;
         unspecCount: number;
         ffgCount: number;
@@ -373,7 +392,7 @@ export default function TicketPage() {
       else if (isAssigned) data.assigned++;
       else data.open++;
 
-      if (jenisType === 'reguler') data.regulerCount++;
+      if (jenisType === 'customer') data.customerCount++;
       else if (jenisType === 'sqm') data.sqmCount++;
       else data.unspecCount++;
 
@@ -539,7 +558,7 @@ export default function TicketPage() {
   };
 
   const handleB2cTicketTypeChange = (
-    type: 'all' | 'reguler' | 'sqm' | 'hvc' | 'unspec',
+    type: 'all' | 'customer' | 'sqm' | 'hvc' | 'unspec',
   ) => {
     setB2cTicketTypeFilter(type);
     setB2cPage(1);
@@ -602,7 +621,7 @@ export default function TicketPage() {
     }).length,
     regulerCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
-      return jt === 'reguler';
+      return jt === 'customer';
     }).length,
     sqmCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
@@ -724,7 +743,7 @@ export default function TicketPage() {
           open: 0,
           assigned: 0,
           close: 0,
-          regulerCount: 0,
+          customerCount: 0,
           sqmCount: 0,
           unspecCount: 0,
           ffgCount: 0,
@@ -1023,11 +1042,22 @@ export default function TicketPage() {
                 </div>
                 {lastSyncLabel && (
                   <div className='flex items-center gap-2'>
-                    <div className={clsx(
-                      'flex items-center gap-1.5 text-xs',
-                      isSyncOverdue ? 'text-amber-400' : 'text-(--text-muted)',
-                    )}>
-                      <RefreshCw size={11} className={clsx(isSyncOverdue && 'animate-spin', isInProgress && 'animate-spin', syncStatus.inProgress && 'animate-spin text-blue-500')} />
+                    <div
+                      className={clsx(
+                        'flex items-center gap-1.5 text-xs',
+                        isSyncOverdue
+                          ? 'text-amber-400'
+                          : 'text-(--text-muted)',
+                      )}
+                    >
+                      <RefreshCw
+                        size={11}
+                        className={clsx(
+                          isSyncOverdue && 'animate-spin',
+                          isInProgress && 'animate-spin',
+                          syncStatus.inProgress && 'animate-spin text-blue-500',
+                        )}
+                      />
                       <span>{lastSyncLabel}</span>
                       {nextSyncLabel && (
                         <span className='opacity-60'>· {nextSyncLabel}</span>
@@ -1050,10 +1080,12 @@ export default function TicketPage() {
                         'rounded-lg px-2 py-1 text-[10px] font-semibold transition-all',
                         isInProgress || syncStatus.inProgress
                           ? 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-700'
-                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:hover:bg-amber-500/30'
+                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:hover:bg-amber-500/30',
                       )}
                     >
-                      {isInProgress || syncStatus.inProgress ? 'Syncing...' : 'Sync Now'}
+                      {isInProgress || syncStatus.inProgress
+                        ? 'Syncing...'
+                        : 'Sync Now'}
                     </button>
                   </div>
                 )}
@@ -1135,7 +1167,10 @@ export default function TicketPage() {
                 title: 'B2B Cards',
                 defaultOpen: true,
                 children: (
-                  <div ref={b2bSectionRef} className='flex flex-col gap-4 space-y-3 md:space-y-4'>
+                  <div
+                    ref={b2bSectionRef}
+                    className='flex flex-col gap-4 space-y-3 md:space-y-4'
+                  >
                     <B2BSection data={b2bStats} />
                     <FilterBarB2B
                       ticketType={b2bTicketTypeFilter}
@@ -1172,7 +1207,10 @@ export default function TicketPage() {
                 title: 'B2C Cards',
                 defaultOpen: true,
                 children: (
-                  <div ref={b2cSectionRef} className='flex flex-col gap-4 space-y-3 md:space-y-4'>
+                  <div
+                    ref={b2cSectionRef}
+                    className='flex flex-col gap-4 space-y-3 md:space-y-4'
+                  >
                     <B2CSection
                       data={b2cStats}
                       activeType={ctypeFilter}

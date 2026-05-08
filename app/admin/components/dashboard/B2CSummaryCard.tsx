@@ -5,7 +5,7 @@ interface B2CSummaryCardProps {
   open: number;
   assigned: number;
   close: number;
-  regulerCount: number;
+  customerCount: number;
   sqmCount: number;
   unspecCount: number;
   ffgCount: number;
@@ -56,7 +56,7 @@ export default function B2CSummaryCard({
   open,
   assigned,
   close,
-  regulerCount,
+  customerCount,
   sqmCount,
   unspecCount,
   ffgCount,
@@ -66,7 +66,7 @@ export default function B2CSummaryCard({
   isDailyScope = false,
 }: B2CSummaryCardProps) {
   const pctClosed = total > 0 ? (close / total) * 100 : 0;
-  const regulerPct = total > 0 ? ((regulerCount / total) * 100).toFixed(0) : 0;
+  const regulerPct = total > 0 ? ((customerCount / total) * 100).toFixed(0) : 0;
   const sqmPct = total > 0 ? ((sqmCount / total) * 100).toFixed(0) : 0;
   const unspecPct = total > 0 ? ((unspecCount / total) * 100).toFixed(0) : 0;
   const gamasPct = total > 0 ? ((gamasCount / total) * 100).toFixed(0) : 0;
@@ -128,9 +128,9 @@ export default function B2CSummaryCard({
         {/* Reguler + SQM + Unspec breakdown */}
         <div className='flex gap-8'>
           <div>
-            <p className='mb-1 text-[10px] text-blue-300'>📋 Reguler</p>
+            <p className='mb-1 text-[10px] text-blue-300'>📋 Customer</p>
             <p className='text-2xl font-bold text-white'>
-              {regulerCount.toLocaleString()}
+              {customerCount.toLocaleString()}
             </p>
             <p className='text-[10px] text-blue-300/60'>
               {regulerPct}% of total

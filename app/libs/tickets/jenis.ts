@@ -10,7 +10,7 @@
  */
 
 export const JENIS_KEYS = [
-  'reguler',
+  'customer',
   'sqm',
   'sqm-ccan',
   'hvc',
@@ -21,22 +21,31 @@ export const JENIS_KEYS = [
   'wifi-id',
 ] as const;
 
-export type JenisKey = typeof JENIS_KEYS[number];
+export type JenisKey = (typeof JENIS_KEYS)[number];
 
 // ← ADDED: B2C jenis types (for TicketTable)
-export const B2C_JENIS_KEYS: readonly JenisKey[] =
-  ['sqm', 'reguler', 'hvc', 'unspec'];
+export const B2C_JENIS_KEYS: readonly JenisKey[] = [
+  'sqm',
+  'customer',
+  'hvc',
+  'unspec',
+];
 
 // ← ADDED: B2B jenis types (for TicketTableB2B)
-export const B2B_JENIS_KEYS: readonly JenisKey[] =
-  ['sqm-ccan', 'indibiz', 'datin', 'reseller', 'wifi-id'];
+export const B2B_JENIS_KEYS: readonly JenisKey[] = [
+  'sqm-ccan',
+  'indibiz',
+  'datin',
+  'reseller',
+  'wifi-id',
+];
 
 /**
  * Comprehensive alias map for jenis ticket normalization.
  * Handles all known variants from Google Sheets sync.
- * 
+ *
  * Format: canonical_key -> [all known variants in lowercase]
- * 
+ *
  * Variants handled:
  * - Case variations (already lowercased before matching)
  * - Separator variations (-, _, space all normalized to -)
@@ -44,74 +53,81 @@ export const B2B_JENIS_KEYS: readonly JenisKey[] =
  * - Extended variants (truncated to match base key)
  */
 export const JENIS_ALIAS_MAP: Record<JenisKey, string[]> = {
-  reguler: [
-    'reguler',
-    'regular',      // Common typo
-    'reular',       // Typo
-    'reg',          // Short form
-    'reguler',      // Typo
+  customer: [
+    'customer',
+    'Customer', // Common typo
+    'customerr', // Typo
+    'cust', // Short form
+    'custoner', // Typo
+    'reguler', // Legacy DB value
+    'REGULER', // Legacy DB value uppercase
+    'regular', // Common typo
   ],
   sqm: [
     'sqm',
-    'sqm',          // Base form
+    'sqm', // Base form
   ],
   'sqm-ccan': [
     'sqm-ccan',
-    'sqm_ccan',     // Underscore variant
-    'sqm ccan',     // Space variant
-    'sqmccan',      // No separator
-    'ccan',         // Short form
+    'sqm_ccan', // Underscore variant
+    'sqm ccan', // Space variant
+    'sqmccan', // No separator
+    'ccan', // Short form
   ],
   hvc: [
     'hvc',
-    'hvc',          // Base form
+    'hvc', // Base form
   ],
   unspec: [
     'unspec',
-    'unspecified',  // Full form
-    'unspec',       // Base form
+    'unspecified', // Full form
+    'unspec', // Base form
   ],
   indibiz: [
     'indibiz',
-    'indi_biz',     // Underscore variant
-    'indi biz',     // Space variant
-    'indibiz pro',  // Extended variant
-    'pro',          // Short form
+    'indi_biz', // Underscore variant
+    'indi biz', // Space variant
+    'indibiz pro', // Extended variant
+    'pro', // Short form
   ],
   datin: [
     'datin',
     'datin_enterprise', // Extended variant
     'datin enterprise', // Space variant
-    'enterprise',   // Short form
+    'enterprise', // Short form
   ],
   reseller: [
     'reseller',
-    'reseller',     // Base form
+    'reseller', // Base form
   ],
   'wifi-id': [
     'wifi-id',
-    'wifi_id',      // Underscore variant
-    'wifi id',      // Space variant
-    'wifiid',       // No separator
-    'wifi',         // Short form
+    'wifi_id', // Underscore variant
+    'wifi id', // Space variant
+    'wifiid', // No separator
+    'wifi', // Short form
   ],
 };
 
 export const JENIS_STYLES: Record<JenisKey, string> = {
-  reguler: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+  customer:
+    'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
   sqm: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
-  'sqm-ccan': 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400',
+  'sqm-ccan':
+    'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400',
   hvc: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
-  unspec: 'bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400',
+  unspec:
+    'bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400',
   indibiz: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
   datin: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400',
-  reseller: 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
+  reseller:
+    'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
   'wifi-id': 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400',
 };
 
 // ← ADDED: Display labels for each jenis type
 export const JENIS_LABELS: Record<JenisKey, string> = {
-  reguler: 'Reguler',
+  customer: 'Customer',
   sqm: 'SQM',
   'sqm-ccan': 'SQM-CCAN',
   hvc: 'HVC',
@@ -124,7 +140,7 @@ export const JENIS_LABELS: Record<JenisKey, string> = {
 
 /**
  * Converts any raw DB jenis string to a canonical JenisKey.
- * 
+ *
  * Normalization strategy:
  * 1. Trim whitespace
  * 2. Convert to lowercase
@@ -133,10 +149,10 @@ export const JENIS_LABELS: Record<JenisKey, string> = {
  * 5. Match against comprehensive alias map
  * 6. Try prefix matching for extended variants
  * 7. Return '' if no match found (caller should use fallback)
- * 
+ *
  * @param raw - Raw string from database
  * @returns Canonical JenisKey or '' if no match
- * 
+ *
  * @example
  * normalizeJenis('SQM-CCAN')      // 'sqm-ccan'
  * normalizeJenis('sqm_ccan')      // 'sqm-ccan'
@@ -152,8 +168,8 @@ export function normalizeJenis(raw: string | null | undefined): JenisKey | '' {
   const normalized = raw
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ' ')        // Normalize multiple spaces to single
-    .replace(/[\s_]/g, '-');     // Convert spaces and underscores to dashes
+    .replace(/\s+/g, ' ') // Normalize multiple spaces to single
+    .replace(/[\s_]/g, '-'); // Convert spaces and underscores to dashes
 
   // Step 5: Exact match against alias map
   for (const [key, aliases] of Object.entries(JENIS_ALIAS_MAP)) {
@@ -176,7 +192,7 @@ export function normalizeJenis(raw: string | null | undefined): JenisKey | '' {
   // Step 7: Try matching just the first word for compound terms
   const firstWord = normalized.split('-')[0];
   for (const [key, aliases] of Object.entries(JENIS_ALIAS_MAP)) {
-    if (aliases.some(alias => alias.replace(/[\s_]/g, '-') === firstWord)) {
+    if (aliases.some((alias) => alias.replace(/[\s_]/g, '-') === firstWord)) {
       return key as JenisKey;
     }
   }
@@ -214,35 +230,35 @@ export function getJenisStyle(raw: string | null | undefined): string {
 // ← ADDED: Returns true if the normalized jenis is a B2C type
 // Null/empty/unknown defaults to B2C (safe default - prevents orphan tickets)
 export function isB2CJenis(raw: string | null | undefined): boolean {
-  if (!raw || !raw.trim()) return true;          // null/empty → B2C unspec
+  if (!raw || !raw.trim()) return true; // null/empty → B2C unspec
   const normalized = normalizeJenis(raw);
-  if (!normalized) return true;                  // unknown value → B2C unspec
+  if (!normalized) return true; // unknown value → B2C unspec
   return (B2C_JENIS_KEYS as string[]).includes(normalized);
 }
 
 // ← ADDED: Returns true if the normalized jenis is a B2B type
 // Null/empty/unknown returns false (not B2B)
 export function isB2BJenis(raw: string | null | undefined): boolean {
-  if (!raw || !raw.trim()) return false;         // null/empty → bukan B2B
+  if (!raw || !raw.trim()) return false; // null/empty → bukan B2B
   const normalized = normalizeJenis(raw);
-  if (!normalized) return false;                 // unknown → bukan B2B
+  if (!normalized) return false; // unknown → bukan B2B
   return (B2B_JENIS_KEYS as string[]).includes(normalized);
 }
 
 /**
  * Multi-layer ticket classification strategy.
- * 
+ *
  * Uses waterfall approach with multiple fallbacks:
  * Layer 1: jenisTiket (primary)
  * Layer 2: customerSegment (fallback)
  * Layer 3: customerType (secondary fallback)
  * Layer 4: Default to B2C (safe default for consumer tickets)
- * 
+ *
  * This ensures ALL tickets are classified - no orphan tickets.
- * 
+ *
  * @param ticket - Ticket object with jenisTiket, customerSegment, customerType
  * @returns 'b2c' | 'b2b' | 'unknown' (unknown should never happen with defaults)
- * 
+ *
  * @example
  * classifyTicket({ jenisTiket: 'SQM-CCAN' })           // 'b2b'
  * classifyTicket({ customerSegment: 'B2B' })           // 'b2b'
@@ -256,7 +272,7 @@ export function classifyTicket(ticket: {
 }): 'b2c' | 'b2b' {
   // Layer 1: Try jenisTiket first (most specific)
   const normalizedJenis = normalizeJenis(ticket.jenisTiket);
-  
+
   if (normalizedJenis) {
     if ((B2B_JENIS_KEYS as string[]).includes(normalizedJenis)) {
       return 'b2b';

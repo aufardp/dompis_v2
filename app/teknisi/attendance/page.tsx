@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useMounted } from '@/app/hooks/useMounted';
 
 interface UserInfo {
   id_user: number;
@@ -23,7 +24,7 @@ export default function AttendancePage() {
   const router = useRouter();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkInResult, setCheckInResult] = useState<{
     success: boolean;
@@ -80,12 +81,15 @@ export default function AttendancePage() {
     fetchUserAndStatus();
   }, [fetchUserAndStatus]);
 
+  const mounted = useMounted();
+
   useEffect(() => {
+    if (!mounted) return;
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [mounted]);
 
   useEffect(() => {
     if (checkInResult?.success && countdown > 0) {
@@ -144,11 +148,13 @@ export default function AttendancePage() {
     router.push('/login');
   };
 
-  const formatDateIndo = (date: Date) => {
+  const formatDateIndo = (date: Date | null) => {
+    if (!date) return '...';
     return format(date, 'EEEE, d MMMM yyyy', { locale: id });
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date | null) => {
+    if (!date) return '-- : -- : --';
     return format(date, 'HH : mm : ss');
   };
 

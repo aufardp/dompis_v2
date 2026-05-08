@@ -126,6 +126,7 @@ function matchTeknisi(
 
 // ─── localStorage persistent mapping ────────────────────────────────
 function saveMapping(entries: UniqueTeknisi[]) {
+  if (typeof window === 'undefined') return;
   const existing = loadMapping();
   const updated = { ...existing };
   for (const entry of entries) {
@@ -141,6 +142,7 @@ function saveMapping(entries: UniqueTeknisi[]) {
 }
 
 function loadMapping(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
   } catch {
@@ -149,6 +151,7 @@ function loadMapping(): Record<string, number> {
 }
 
 function clearMapping() {
+  if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEY);
 }
 

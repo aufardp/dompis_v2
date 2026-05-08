@@ -1,0 +1,43 @@
+module.exports = {
+  apps: [
+    {
+      name: 'web',
+      script: 'tsx',
+      args: 'server.ts',
+      instances: 1,
+      max_memory_restart: '1G',
+      node_args: '--max-old-space-size=1024',
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+      },
+      autorestart: true,
+      watch: false,
+      kill_timeout: 10000,
+      health_check_grace_period: 3000,
+      error_file: '/var/log/dompis/web-error.log',
+      out_file: '/var/log/dompis/web-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      merge_logs: true,
+    },
+    {
+      name: 'cron-worker',
+      script: 'tsx',
+      args: '--require tsconfig-paths/register worker.ts',
+      instances: 1,
+      max_memory_restart: '512M',
+      node_args: '--max-old-space-size=512',
+      env_production: {
+        NODE_ENV: 'production',
+        CRON_ENABLED: 'true',
+      },
+      autorestart: true,
+      watch: false,
+      kill_timeout: 5000,
+      error_file: '/var/log/dompis/cron-worker-error.log',
+      out_file: '/var/log/dompis/cron-worker-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      merge_logs: true,
+    },
+  ],
+};
