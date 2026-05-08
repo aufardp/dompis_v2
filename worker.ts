@@ -40,32 +40,52 @@ const taskState = {
   },
 };
 
+function isDeadlockError(err: unknown): boolean {
+  const meta = (err as { meta?: { code?: string | number } } | undefined)?.meta;
+  return meta?.code === 3058 || meta?.code === '3058';
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function withTaskLock(
   lockName: string,
   timeoutSeconds: number,
   fn: () => Promise<void>,
 ): Promise<void> {
-  let locked = false;
-  try {
-    const result: any = await prisma.$queryRaw`
-      SELECT GET_LOCK(${lockName}, ${timeoutSeconds}) as locked
-    `;
-    locked = result?.[0]?.locked === 1;
+  const maxRetries = 3;
 
-    if (!locked) {
-      console.log(`[CRON] ${lockName}: skipped (lock held by another process)`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let currentLocked = false;
+    try {
+      const result: unknown = await prisma.$queryRaw`
+        SELECT GET_LOCK(${lockName}, ${timeoutSeconds}) as locked
+      `;
+      const rows = result as Array<{ locked: number | boolean }>;
+      currentLocked = rows?.[0]?.locked === 1 || rows?.[0]?.locked === true;
+
+      if (!currentLocked) {
+        console.log(`[CRON] ${lockName}: skipped (lock held by another process)`);
+        return;
+      }
+
+      await fn();
       return;
-    }
-
-    await fn();
-  } catch (error) {
-    console.error(`[CRON] ${lockName}: error`, error);
-    throw error;
-  } finally {
-    if (locked) {
-      await prisma.$queryRaw`SELECT RELEASE_LOCK(${lockName})`.catch((e) =>
-        console.error(`[CRON] ${lockName}: failed to release lock`, e),
-      );
+    } catch (err) {
+      if (isDeadlockError(err) && attempt < maxRetries) {
+        console.log(`[CRON] ${lockName}: deadlock detected (attempt ${attempt + 1}), retrying in ${5000 * (attempt + 1)}ms...`);
+        await sleep(5000 * (attempt + 1));
+        continue;
+      }
+      console.error(`[CRON] ${lockName}: error`, err);
+      throw err;
+    } finally {
+      if (currentLocked) {
+        await prisma.$queryRaw`SELECT RELEASE_LOCK(${lockName})`.catch((e) =>
+          console.error(`[CRON] ${lockName}: failed to release lock`, e),
+        );
+      }
     }
   }
 }
@@ -287,6 +307,20 @@ async function runAutoAssign(): Promise<void> {
   }
 }
 
+function toWIB(date: Date | null): string {
+  if (!date) return 'never';
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
 function logWorkerHealth(): void {
   console.log('[WORKER] Health Report:', {
     sheetsQueue: {
@@ -296,24 +330,24 @@ function logWorkerHealth(): void {
     tasks: {
       sync: {
         running: taskState.sync.running,
-        lastRunAt: taskState.sync.lastRunAt?.toISOString() ?? 'never',
+        lastRunAt: toWIB(taskState.sync.lastRunAt),
         consecutiveErrors: taskState.sync.consecutiveErrors,
         lastError: taskState.sync.lastError,
       },
       push: {
         running: taskState.push.running,
-        lastRunAt: taskState.push.lastRunAt?.toISOString() ?? 'never',
+        lastRunAt: toWIB(taskState.push.lastRunAt),
         consecutiveErrors: taskState.push.consecutiveErrors,
         lastError: taskState.push.lastError,
       },
       techEvents: {
         running: taskState.techEvents.running,
-        lastRunAt: taskState.techEvents.lastRunAt?.toISOString() ?? 'never',
+        lastRunAt: toWIB(taskState.techEvents.lastRunAt),
         consecutiveErrors: taskState.techEvents.consecutiveErrors,
       },
       autoAssign: {
         running: taskState.autoAssign.running,
-        lastRunAt: taskState.autoAssign.lastRunAt?.toISOString() ?? 'never',
+        lastRunAt: toWIB(taskState.autoAssign.lastRunAt),
         consecutiveErrors: taskState.autoAssign.consecutiveErrors,
       },
     },
@@ -344,7 +378,7 @@ async function startWorker() {
     cron.schedule('*/10 * * * *', () => void runPush()),
     cron.schedule('*/2 * * * *', () => void runTechEvents()),
     cron.schedule('*/5 * * * *', () => void runAutoAssign()),
-    cron.schedule('*/5 * * * *', () => logWorkerHealth()),
+    cron.schedule('*/15 * * * *', () => logWorkerHealth()),
   ];
 
   console.log(
