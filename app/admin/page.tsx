@@ -101,27 +101,15 @@ export default function TicketPage() {
 
   const pendingRefreshRef = useRef(false);
 
-  // B2C filter state
-  const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<
-    'all' | 'customer' | 'sqm' | 'hvc' | 'unspec'
-  >('all');
-  const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<
-    'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
-  >('all');
-  const [b2cFlaggingFilter, setB2cFlaggingFilter] = useState<
-    'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS'
-  >('all');
+  // B2C filter state (multi-select)
+  const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<string[]>([]);
+  const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<string[]>([]);
+  const [b2cFlaggingFilter, setB2cFlaggingFilter] = useState<string[]>([]);
 
-  // B2B filter state
-  const [b2bTicketTypeFilter, setB2bTicketTypeFilter] = useState<
-    'all' | 'sqm-ccan' | 'indibiz' | 'datin' | 'reseller' | 'wifi-id'
-  >('all');
-  const [b2bHasilVisitFilter, setB2bHasilVisitFilter] = useState<
-    'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
-  >('all');
-  const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<
-    'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS'
-  >('all');
+  // B2B filter state (multi-select)
+  const [b2bTicketTypeFilter, setB2bTicketTypeFilter] = useState<string[]>([]);
+  const [b2bHasilVisitFilter, setB2bHasilVisitFilter] = useState<string[]>([]);
+  const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<string[]>([]);
 
   // Separate pagination state for B2C and B2B tables
   const [b2cPage, setB2cPage] = useState(1);
@@ -297,8 +285,8 @@ export default function TicketPage() {
         summary.open++;
       }
 
-      // Jenis breakdown
-      if (jenisType === 'customer') summary.customerCount++;
+      // Jenis breakdown (customer = reguler + hvc, sqm, unspec)
+      if (jenisType === 'reguler' || jenisType === 'hvc') summary.customerCount++;
       else if (jenisType === 'sqm') summary.sqmCount++;
       else summary.unspecCount++;
 
@@ -383,10 +371,11 @@ export default function TicketPage() {
     ]);
 
     for (const t of b2cDailyTickets) {
-      const rawType = (t.ctype || t.customerType || '')
-        .toUpperCase()
-        .trim()
-        .replace(/\s+/g, '_');
+      const rawCtype = (t.ctype || t.customerType || '') as string;
+      const normalized = rawCtype.trim().toLowerCase();
+      const rawType = (['reguler', 'hvc_gold', 'hvc_platinum', 'hvc_diamond'].includes(normalized)
+        ? normalized.toUpperCase().replace(/_/g, '_')
+        : '') || 'UNCLASSIFIED';
       const type = KNOWN_CTYPES.has(rawType) ? rawType : 'UNCLASSIFIED';
 
       if (!typeMap.has(type)) typeMap.set(type, initType());
@@ -404,7 +393,7 @@ export default function TicketPage() {
       else if (isAssigned) data.assigned++;
       else data.open++;
 
-      if (jenisType === 'customer') data.customerCount++;
+      if (jenisType === 'reguler' || jenisType === 'hvc') data.customerCount++;
       else if (jenisType === 'sqm') data.sqmCount++;
       else data.unspecCount++;
 
@@ -569,45 +558,33 @@ export default function TicketPage() {
     setDeptFilter(dept);
   };
 
-  const handleB2cTicketTypeChange = (
-    type: 'all' | 'customer' | 'sqm' | 'hvc' | 'unspec',
-  ) => {
-    setB2cTicketTypeFilter(type);
+  const handleB2cTicketTypeChange = (types: string[]) => {
+    setB2cTicketTypeFilter(types);
     setB2cPage(1);
   };
 
-  const handleB2cHasilVisitChange = (
-    status: 'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close',
-  ) => {
-    setB2cHasilVisitFilter(status);
+  const handleB2cHasilVisitChange = (statuses: string[]) => {
+    setB2cHasilVisitFilter(statuses);
     setB2cPage(1);
   };
 
-  const handleB2cFlaggingChange = (
-    flagging: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS',
-  ) => {
-    setB2cFlaggingFilter(flagging);
+  const handleB2cFlaggingChange = (flags: string[]) => {
+    setB2cFlaggingFilter(flags);
     setB2cPage(1);
   };
 
-  const handleB2bTicketTypeChange = (
-    type: 'all' | 'sqm-ccan' | 'indibiz' | 'datin' | 'reseller' | 'wifi-id',
-  ) => {
-    setB2bTicketTypeFilter(type);
+  const handleB2bTicketTypeChange = (types: string[]) => {
+    setB2bTicketTypeFilter(types);
     setB2bPage(1);
   };
 
-  const handleB2bHasilVisitChange = (
-    status: 'all' | 'open' | 'assigned' | 'on_progress' | 'pending' | 'close',
-  ) => {
-    setB2bHasilVisitFilter(status);
+  const handleB2bHasilVisitChange = (statuses: string[]) => {
+    setB2bHasilVisitFilter(statuses);
     setB2bPage(1);
   };
 
-  const handleB2bFlaggingChange = (
-    flagging: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS',
-  ) => {
-    setB2bFlaggingFilter(flagging);
+  const handleB2bFlaggingChange = (flags: string[]) => {
+    setB2bFlaggingFilter(flags);
     setB2bPage(1);
   };
 
@@ -633,7 +610,7 @@ export default function TicketPage() {
     }).length,
     regulerCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
-      return jt === 'customer';
+      return jt === 'reguler';
     }).length,
     sqmCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
@@ -896,87 +873,77 @@ export default function TicketPage() {
       return ct === ctypeFilter;
     })
     .filter((t) => {
-      if (b2cTicketTypeFilter === 'all') return true;
+      if (b2cTicketTypeFilter.length === 0) return true;
       const normalized = normalizeJenis(t.jenisTiket);
-      return normalized === b2cTicketTypeFilter;
+      return b2cTicketTypeFilter.includes(normalized);
     })
     .filter((t) => {
-      if (b2cHasilVisitFilter === 'all') return true;
-      if (b2cHasilVisitFilter === 'close')
-        return isTicketClosed(t.STATUS_UPDATE);
+      if (b2cHasilVisitFilter.length === 0) return true;
+      if (b2cHasilVisitFilter.includes('close') && isTicketClosed(t.STATUS_UPDATE)) {
+        return true;
+      }
       const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return status === b2cHasilVisitFilter;
+      return b2cHasilVisitFilter.some(f => {
+        if (f === 'close') return false;
+        return status === f;
+      });
     })
     .filter((t) => {
-      if (b2cFlaggingFilter === 'all') return true;
-      if (b2cFlaggingFilter === 'FFG') {
-        return (
-          String(t.guaranteeStatus ?? '')
-            .trim()
-            .toLowerCase() === 'guarantee'
-        );
-      }
-
-      if (b2cFlaggingFilter === 'GAMAS') {
-        const candidates = [
-          t.ticketIdGamas,
-          (t as any).ticket_id_gamas,
-          (t as any).TICKET_ID_GAMAS,
-        ];
-        const raw = candidates.find((v) => v !== null && v !== undefined);
-        const normalized = String(raw ?? '').trim();
-        return (
-          normalized &&
-          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
-            normalized.toLowerCase(),
-          )
-        );
-      }
-
-      return t.flaggingManja === b2cFlaggingFilter;
+      if (b2cFlaggingFilter.length === 0) return true;
+      return b2cFlaggingFilter.some(f => {
+        if (f === 'FFG') {
+          return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+        }
+        if (f === 'GAMAS') {
+          const candidates = [
+            t.ticketIdGamas,
+            (t as any).ticket_id_gamas,
+            (t as any).TICKET_ID_GAMAS,
+          ];
+          const raw = candidates.find((v) => v !== null && v !== undefined);
+          const normalized = String(raw ?? '').trim();
+          return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+        }
+        return t.flaggingManja === f;
+      });
     });
 
   const b2bTicketTableData = ticketTableData
     .filter((t) => isB2BJenis(t.jenisTiket))
     .filter((t) => {
-      if (b2bTicketTypeFilter === 'all') return true;
+      if (b2bTicketTypeFilter.length === 0) return true;
       const normalized = normalizeJenis(t.jenisTiket);
-      return normalized === b2bTicketTypeFilter;
+      return b2bTicketTypeFilter.includes(normalized);
     })
     .filter((t) => {
-      if (b2bHasilVisitFilter === 'all') return true;
-      if (b2bHasilVisitFilter === 'close')
-        return isTicketClosed(t.STATUS_UPDATE);
+      if (b2bHasilVisitFilter.length === 0) return true;
+      if (b2bHasilVisitFilter.includes('close') && isTicketClosed(t.STATUS_UPDATE)) {
+        return true;
+      }
       const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return status === b2bHasilVisitFilter;
+      return b2bHasilVisitFilter.some(f => {
+        if (f === 'close') return false;
+        return status === f;
+      });
     })
     .filter((t) => {
-      if (b2bFlaggingFilter === 'all') return true;
-      if (b2bFlaggingFilter === 'FFG') {
-        return (
-          String(t.guaranteeStatus ?? '')
-            .trim()
-            .toLowerCase() === 'guarantee'
-        );
-      }
-
-      if (b2bFlaggingFilter === 'GAMAS') {
-        const candidates = [
-          t.ticketIdGamas,
-          (t as any).ticket_id_gamas,
-          (t as any).TICKET_ID_GAMAS,
-        ];
-        const raw = candidates.find((v) => v !== null && v !== undefined);
-        const normalized = String(raw ?? '').trim();
-        return (
-          normalized &&
-          !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
-            normalized.toLowerCase(),
-          )
-        );
-      }
-
-      return t.flaggingManja === b2bFlaggingFilter;
+      if (b2bFlaggingFilter.length === 0) return true;
+      return b2bFlaggingFilter.some(f => {
+        if (f === 'FFG') {
+          return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+        }
+        if (f === 'GAMAS') {
+          const candidates = [
+            t.ticketIdGamas,
+            (t as any).ticket_id_gamas,
+            (t as any).TICKET_ID_GAMAS,
+          ];
+          const raw = candidates.find((v) => v !== null && v !== undefined);
+          const normalized = String(raw ?? '').trim();
+          return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+        }
+        return t.flaggingManja === f;
+      });
     });
 
   // ← ADDED: Helper to derive summary from ticket array

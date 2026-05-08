@@ -254,7 +254,7 @@ export class ClusterService {
   }
 
   /**
-   * Soft delete cluster — set is_active=false, bukan DELETE
+   * Hard delete cluster + all related areas, nodes, assignments
    */
   static async delete(clusterId: number): Promise<void> {
     const cluster = await prisma.cluster.findUnique({
@@ -265,10 +265,12 @@ export class ClusterService {
       throw new ApiError(404, 'Cluster tidak ditemukan');
     }
 
-    await prisma.cluster.update({
-      where: { id: clusterId },
-      data: { is_active: false },
-    });
+    await prisma.$transaction([
+      prisma.cluster_node.deleteMany({ where: { cluster_id: clusterId } }),
+      prisma.cluster_area.deleteMany({ where: { cluster_id: clusterId } }),
+      prisma.cluster_assignment.deleteMany({ where: { cluster_id: clusterId } }),
+      prisma.cluster.delete({ where: { id: clusterId } }),
+    ]);
   }
 
   // ───────────────────────────────────────────────────────────────────────────

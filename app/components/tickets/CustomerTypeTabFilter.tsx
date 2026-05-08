@@ -5,13 +5,7 @@ import { TicketCtype } from '@/app/types/ticket';
 interface CustomerTypeTabFilterProps {
   activeType: TicketCtype | 'all';
   onChange: (type: TicketCtype | 'all') => void;
-  counts?: {
-    all: number;
-    REGULER: number;
-    HVC_GOLD: number;
-    HVC_PLATINUM: number;
-    HVC_DIAMOND: number;
-  };
+  counts?: Record<string, number | undefined>;
 }
 
 const tabs: Array<{ key: TicketCtype | 'all'; label: string }> = [

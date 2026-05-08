@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterDetail } from '@/app/hooks/useClusterDetail';
@@ -24,6 +24,19 @@ export default function ClusterDetailPage() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [importRunning, setImportRunning] = useState(false);
+
+  // File upload state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importMode, setImportMode] = useState<'text' | 'file'>('text');
+
+  // Import preview state
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importPreviewData, setImportPreviewData] = useState<{
+    rows: Array<{ odc_value: string; area_name: string }>;
+    total: number;
+  } | null>(null);
+  const [importParseError, setImportParseError] = useState<string | null>(null);
 
   const handleAddNode = useCallback(async () => {
     if (!newNodeValue.trim()) {
@@ -117,6 +130,94 @@ export default function ClusterDetailPage() {
       setImportRunning(false);
     }
   }, [clusterId, bulkImportText, refresh]);
+
+  // Handle file upload — parse server-side, show preview
+  const handleFileUpload = useCallback(async () => {
+    if (!selectedFile) {
+      setMessage({ type: 'error', text: 'Pilih file terlebih dahulu' });
+      return;
+    }
+
+    setImportRunning(true);
+    setImportParseError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const res = await fetch(`/api/clustering/${clusterId}/nodes/bulk/parse-file`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+
+      if (!json.success) {
+        setImportParseError(json.message);
+        return;
+      }
+
+      setImportPreviewData({ rows: json.data.rows, total: json.data.total });
+      setShowImportPreview(true);
+    } catch {
+      setImportParseError('Gagal membaca file');
+    } finally {
+      setImportRunning(false);
+    }
+  }, [clusterId, selectedFile]);
+
+  // Confirm import from preview
+  const handleConfirmImport = useCallback(async () => {
+    if (!importPreviewData) return;
+
+    setImportRunning(true);
+
+    try {
+      const res = await fetch(`/api/clustering/${clusterId}/nodes/bulk`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ odc_values: importPreviewData.rows }),
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+
+      if (json.success) {
+        setMessage({
+          type: 'success',
+          text: `Import selesai: ${json.data.inserted} inserted, ${json.data.skipped} skipped`,
+        });
+        setShowImportPreview(false);
+        setImportPreviewData(null);
+        setSelectedFile(null);
+        setShowBulkImport(false);
+        setImportMode('text');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        refresh();
+      } else {
+        setMessage({ type: 'error', text: json.message });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Gagal import ODC' });
+    } finally {
+      setImportRunning(false);
+    }
+  }, [clusterId, importPreviewData, refresh]);
+
+  // Download template CSV
+  const handleDownloadTemplate = useCallback(() => {
+    const template = 'odc_value,area_name\nODC-TDS-FEP,Jakarta Pusat\nODC-KLN-FKY,Jakarta Selatan\nODC-BDG-001,Bandung';
+    const blob = new Blob(['\ufeff' + template], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'template_import_odc.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, []);
 
   const handleDeleteNode = useCallback(
     async (nodeId: number) => {
@@ -384,36 +485,140 @@ export default function ClusterDetailPage() {
 
             {showBulkImport && (
               <div className='border-b border-(--border) p-4 md:p-5'>
-                <div>
-                  <label className='mb-1 block text-xs font-medium text-(--text-secondary)'>
-                    List ODC (satu per baris atau CSV)
-                  </label>
-                  <textarea
-                    value={bulkImportText}
-                    onChange={(e) => setBulkImportText(e.target.value)}
-                    placeholder='ODC-TDS-FEP,ROMOKALISARI&#10;ODC-KLN-FKY,TAMBAK OSOWILANGUN&#10;ODC-KLN-FBC'
-                    rows={5}
-                    className='w-full rounded-lg border border-(--border) bg-surface-2 px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:border-blue-500 focus:outline-none'
-                  />
-                  <div className='mt-2 flex gap-2'>
-                    <button
-                      onClick={handleBulkImport}
-                      disabled={importRunning}
-                      className='rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600 disabled:opacity-50'
-                    >
-                      {importRunning ? 'Importing...' : 'Import'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowBulkImport(false);
-                        setBulkImportText('');
-                      }}
-                      className='rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-white/10'
-                    >
-                      Batal
-                    </button>
-                  </div>
+                {/* Tab options */}
+                <div className='mb-4 flex gap-1 border-b border-(--border) pb-2'>
+                  <button
+                    type='button'
+                    onClick={() => setImportMode('text')}
+                    className={`rounded-t-lg px-3 py-1.5 text-xs font-medium ${
+                      importMode === 'text'
+                        ? 'bg-blue-500 text-white'
+                        : 'text-(--text-secondary) hover:text-(--text-primary)'
+                    }`}
+                  >
+                    Copy/Paste Teks
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setImportMode('file')}
+                    className={`rounded-t-lg px-3 py-1.5 text-xs font-medium ${
+                      importMode === 'file'
+                        ? 'bg-blue-500 text-white'
+                        : 'text-(--text-secondary) hover:text-(--text-primary)'
+                    }`}
+                  >
+                    Upload File
+                  </button>
                 </div>
+
+                {importMode === 'text' ? (
+                  <>
+                    <label className='mb-1 block text-xs font-medium text-(--text-secondary)'>
+                      List ODC (satu per baris atau CSV)
+                    </label>
+                    <textarea
+                      value={bulkImportText}
+                      onChange={(e) => setBulkImportText(e.target.value)}
+                      placeholder='ODC-TDS-FEP,ROMOKALISARI&#10;ODC-KLN-FKY,TAMBAK OSOWILANGUN&#10;ODC-KLN-FBC'
+                      rows={5}
+                      className='w-full rounded-lg border border-(--border) bg-surface-2 px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:border-blue-500 focus:outline-none'
+                    />
+                    <div className='mt-2 flex gap-2'>
+                      <button
+                        onClick={handleBulkImport}
+                        disabled={importRunning}
+                        className='rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600 disabled:opacity-50'
+                      >
+                        {importRunning ? 'Importing...' : 'Import'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowBulkImport(false);
+                          setBulkImportText('');
+                          setImportMode('text');
+                        }}
+                        className='rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-white/10'
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className='mb-4 rounded-lg border-2 border-dashed border-(--border) p-4 text-center'>
+                      <input
+                        ref={fileInputRef}
+                        type='file'
+                        accept='.csv,.xlsx,.xls,.txt'
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (file.size > 50 * 1024 * 1024) {
+                              setMessage({ type: 'error', text: 'File terlalu besar (maks 50MB)' });
+                              return;
+                            }
+                            setSelectedFile(file);
+                          }
+                        }}
+                        className='hidden'
+                        id='file-upload'
+                      />
+                      <label
+                        htmlFor='file-upload'
+                        className='flex cursor-pointer flex-col items-center gap-2'
+                      >
+                        <div className='text-3xl'>📁</div>
+                        <div className='text-sm text-(--text-secondary)'>
+                          {selectedFile ? (
+                            <span className='font-medium text-green-500'>
+                              ✓ {selectedFile.name}
+                            </span>
+                          ) : (
+                            'Klik untuk pilih file'
+                          )}
+                        </div>
+                        <div className='text-xs text-(--text-muted)'>
+                          Format: .csv, .xlsx, .xls, .txt (maks 50MB)
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className='mb-4 flex items-center gap-2 rounded-lg bg-blue-500/10 px-3 py-2'>
+                      <span className='text-sm'>📋</span>
+                      <span className='text-xs text-blue-600 dark:text-blue-400'>
+                        Template: odc_value,area_name (kolom A: ODC, kolom B: Area)
+                      </span>
+                      <button
+                        type='button'
+                        onClick={handleDownloadTemplate}
+                        className='ml-auto text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400'
+                      >
+                        ↓ Download Template
+                      </button>
+                    </div>
+
+                    <div className='flex gap-2'>
+                      <button
+                        onClick={handleFileUpload}
+                        disabled={importRunning || !selectedFile}
+                        className='rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50'
+                      >
+                        {importRunning ? 'Memproses...' : 'Pratinjau'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowBulkImport(false);
+                          setSelectedFile(null);
+                          setImportMode('text');
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className='rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-white/10'
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -562,6 +767,126 @@ export default function ClusterDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Import Preview Modal */}
+          {showImportPreview && importPreviewData && (
+            <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+              <div className='bg-surface w-full max-w-2xl rounded-2xl border border-(--border) shadow-xl'>
+                <div className='flex items-center justify-between border-b border-(--border) px-5 py-4'>
+                  <div>
+                    <h3 className='font-syne text-base font-bold text-(--text-primary)'>
+                      Pratinjau Import ODC
+                    </h3>
+                    <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                      {importPreviewData.total} data ditemukan
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowImportPreview(false);
+                      setImportPreviewData(null);
+                    }}
+                    className='rounded-lg p-1.5 text-(--text-secondary) hover:bg-(--surface-2)'
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className='max-h-[60vh] overflow-y-auto'>
+                  <table className='w-full'>
+                    <thead className='sticky top-0 bg-surface-2'>
+                      <tr>
+                        <th className='px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase'>
+                          No.
+                        </th>
+                        <th className='px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase'>
+                          ODC Value
+                        </th>
+                        <th className='px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase'>
+                          Area
+                        </th>
+                        <th className='px-4 py-2.5 text-left text-xs font-semibold text-(--text-muted) uppercase'>
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreviewData.rows.map((row, idx) => {
+                        const areaFound = areas.some(
+                          (a) => a.nama_area.toLowerCase() === row.area_name.toLowerCase(),
+                        );
+                        return (
+                          <tr
+                            key={idx}
+                            className='border-b border-(--border) last:border-0'
+                          >
+                            <td className='px-4 py-2.5 text-xs text-(--text-secondary)'>
+                              {idx + 1}
+                            </td>
+                            <td className='px-4 py-2.5 text-sm font-medium text-(--text-primary)'>
+                              {row.odc_value}
+                            </td>
+                            <td className='px-4 py-2.5 text-sm text-(--text-secondary)'>
+                              {row.area_name || <span className='italic text-(--text-muted)'>—</span>}
+                            </td>
+                            <td className='px-4 py-2.5'>
+                              {row.area_name ? (
+                                areaFound ? (
+                                  <span className='rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400'>
+                                    ✓ Area ada
+                                  </span>
+                                ) : (
+                                  <span className='rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'>
+                                    ⚡ Area baru
+                                  </span>
+                                )
+                              ) : (
+                                <span className='rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400'>
+                                  Tanpa area
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {importPreviewData.total > importPreviewData.rows.length && (
+                    <p className='py-2 text-center text-xs text-(--text-muted)'>
+                      + {importPreviewData.total - importPreviewData.rows.length} data lainnya...
+                    </p>
+                  )}
+                </div>
+
+                <div className='flex items-center justify-end gap-2 border-t border-(--border) px-5 py-4'>
+                  <button
+                    onClick={() => {
+                      setShowImportPreview(false);
+                      setImportPreviewData(null);
+                    }}
+                    className='rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-white/10 dark:bg-white/5'
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleConfirmImport}
+                    disabled={importRunning}
+                    className='rounded-lg bg-green-500 px-5 py-2 text-sm font-medium text-white hover:bg-green-600 disabled:opacity-50'
+                  >
+                    {importRunning ? 'Mengimport...' : `Import ${importPreviewData.total} ODC`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {importParseError && (
+            <div className='fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-red-200/50 bg-red-500 px-4 py-3 text-sm font-medium text-white shadow-lg'>
+              <span>⚠️</span>
+              <span>{importParseError}</span>
+              <button onClick={() => setImportParseError(null)} className='ml-1 hover:opacity-80'>✕</button>
+            </div>
+          )}
         </div>
       </div>
     </AdminLayout>

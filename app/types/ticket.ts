@@ -1,4 +1,9 @@
 import { StatusUpdateValue } from '@/app/libs/ticket-utils';
+import {
+  CUSTOMER_TYPES,
+  CustomerTypeConfig,
+  CustomerTypeKey,
+} from '@/app/config/customer-types';
 
 export type TicketVisitStatus =
   | 'OPEN'
@@ -20,41 +25,14 @@ export type TicketType =
   | 'reseller'
   | 'wifi-id';
 
-export type TicketCtype =
-  | 'REGULER'
-  | 'HVC_GOLD'
-  | 'HVC_PLATINUM'
-  | 'HVC_DIAMOND';
+export type TicketCtype = CustomerTypeKey;
 
-export const CustomerType = {
-  REGULER: {
-    label: 'Customer',
-    icon: '👤',
-    color: 'text-slate-600 dark:text-slate-300',
-    bg: 'bg-slate-100 dark:bg-slate-500/15',
-  },
-  HVC_GOLD: {
-    label: 'HVC Gold',
-    icon: '🥇',
-    color: 'text-amber-600 dark:text-amber-300',
-    bg: 'bg-amber-50 dark:bg-amber-500/15',
-  },
-  HVC_PLATINUM: {
-    label: 'HVC Platinum',
-    icon: '💎',
-    color: 'text-indigo-600 dark:text-indigo-300',
-    bg: 'bg-indigo-50 dark:bg-indigo-500/15',
-  },
-  HVC_DIAMOND: {
-    label: 'HVC Diamond',
-    icon: '💠',
-    color: 'text-sky-600 dark:text-sky-300',
-    bg: 'bg-sky-50 dark:bg-sky-500/15',
-  },
-} as const satisfies Record<
-  TicketCtype,
-  { label: string; icon: string; color: string; bg: string }
->;
+export const CustomerType: Record<string, CustomerTypeConfig> = Object.fromEntries(
+  CUSTOMER_TYPES.map((ct) => [ct.key, ct])
+);
+
+export type { CustomerTypeConfig };
+export { CUSTOMER_TYPES };
 
 export interface Ticket {
   idTicket: number;

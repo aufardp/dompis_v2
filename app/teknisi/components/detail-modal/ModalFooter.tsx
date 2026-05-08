@@ -212,6 +212,7 @@ interface ModalFooterProps {
   onPickup: () => void;
   onResume: () => void;
   onClose: () => void;
+  onAddMember: () => void;
 }
 
 export default function ModalFooter({
@@ -231,6 +232,7 @@ export default function ModalFooter({
   onPickup,
   onResume,
   onClose,
+  onAddMember,
 }: ModalFooterProps) {
   const isLoading = (type: string) => actionLoading === type;
   const anyLoading = actionLoading !== null;
@@ -249,6 +251,16 @@ export default function ModalFooter({
     >
       {isOnProgress && (
         <>
+          {/* Add Member button */}
+          <button
+            onClick={onAddMember}
+            disabled={actionLoading !== null}
+            className='flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 text-xs font-bold text-blue-600 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
+          >
+            <span>👥</span>
+            Undang Teman
+          </button>
+
           <RequirementBar
             photoCount={photoCount}
             photoRequired={photoRequired}

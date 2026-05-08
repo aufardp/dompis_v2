@@ -33,6 +33,7 @@ export async function GET(req: Request) {
     const allClusters = await prisma.cluster.findMany({
       where: {
         sa_id: { in: saIds },
+        is_active: true,
       },
       include: {
         areas: {

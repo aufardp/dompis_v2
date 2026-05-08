@@ -4,6 +4,32 @@ import {
   getEffectiveTtrMs,
 } from '@/app/libs/tickets/effective';
 import { isDifferentWIBDay, parseWIBDateInput } from '@/app/utils/datetime';
+import {
+  getCustomerPriority,
+  getCustomerTypeConfig,
+  normalizeCustomerType,
+  getSlaHours,
+} from '@/app/config/customer-types';
+import {
+  normalizeJenis,
+  B2C_JENIS_KEYS,
+  B2B_JENIS_KEYS,
+  JENIS_TIKET_LIST,
+} from '@/app/config/jenis-tiket';
+import {
+  FLAG_PRIORITY,
+  STATUS_PRIORITY_CONFIG,
+  AGE_SEVERITY_HOURS,
+} from '@/app/config/priority-rules';
+
+export { getCustomerPriority } from '@/app/config/customer-types';
+export { normalizeCustomerType } from '@/app/config/customer-types';
+export { normalizeJenis, B2C_JENIS_KEYS, B2B_JENIS_KEYS } from '@/app/config/jenis-tiket';
+export {
+  FLAG_PRIORITY,
+  STATUS_PRIORITY_CONFIG,
+  AGE_SEVERITY_HOURS,
+} from '@/app/config/priority-rules';
 
 export type TicketSeverity = 'critical' | 'warning' | 'normal';
 
@@ -43,8 +69,8 @@ export function getTicketSeverity(
 ): TicketSeverity {
   const hours = calculateAgeInHours(reportedDate, hasilVisit, closedAt);
 
-  if (hours >= 24) return 'critical';
-  if (hours >= 8) return 'warning';
+  if (hours >= AGE_SEVERITY_HOURS.CRITICAL) return 'critical';
+  if (hours >= AGE_SEVERITY_HOURS.WARNING) return 'warning';
   return 'normal';
 }
 
@@ -119,49 +145,14 @@ export interface TicketBase {
   guaranteeStatus?: string | null;
 }
 
-export const SEGMENT_PRIORITY: Record<string, number> = {
-  hvc_diamond: 4,
-  diamond: 4,
-  hvc_platinum: 3,
-  platinum: 3,
-  hvc_gold: 2,
-  gold: 2,
-  reguler: 1,
-  regular: 1,
-};
-
-// B2C Customer Type Priority (for prioritized sorting)
-export const B2C_CUSTOMER_PRIORITY: Record<string, number> = {
-  HVC_DIAMOND: 4, // Priority #1 - Highest
-  HVC_PLATINUM: 3, // Priority #2
-  HVC_GOLD: 2, // Priority #3
-  REGULER: 1, // Priority #4 - Lowest
-};
-
-export const TICKET_TYPE_PRIORITY: Record<string, number> = {
-  regular: 2,
-  reguler: 2,
-  sqm: 1,
-  unspec: 0,
-};
-
-export const STATUS_PRIORITY: Record<string, number> = {
-  open: 3,
-  assigned: 2,
-  on_progress: 2,
-  in_progress: 2,
-  pending: 1,
-  cancelled: 0,
-  close: -1,
-  closed: -1,
-};
+const TICKET_TYPE_PRIORITY = new Map(
+  JENIS_TIKET_LIST.map((j) => [j.key.toLowerCase(), j.priority])
+);
 
 export function getSegmentPriority(
   customerType: string | null | undefined,
 ): number {
-  if (!customerType) return 0;
-  const normalized = customerType.toLowerCase().replace('hvc_', '');
-  return SEGMENT_PRIORITY[normalized] ?? 0;
+  return getCustomerPriority(customerType);
 }
 
 export function getTicketTypePriority(
@@ -169,7 +160,7 @@ export function getTicketTypePriority(
 ): number {
   if (!jenisTiket) return 0;
   const normalized = jenisTiket.toLowerCase();
-  return TICKET_TYPE_PRIORITY[normalized] ?? 0;
+  return TICKET_TYPE_PRIORITY.get(normalized) ?? 0;
 }
 
 export function getStatusPriority(
@@ -177,7 +168,7 @@ export function getStatusPriority(
 ): number {
   if (!hasilVisit) return 2;
   const normalized = hasilVisit.toLowerCase().replace(/\s+/g, '_');
-  return STATUS_PRIORITY[normalized] ?? 2;
+  return STATUS_PRIORITY_CONFIG[normalized] ?? 2;
 }
 
 export function isDifferentDay(dateStr: string | null | undefined): boolean {
@@ -242,19 +233,13 @@ export function sortByPriority<T extends TicketBase>(tickets: T[]): T[] {
 export function sortByB2CPriority<T extends TicketBase>(tickets: T[]): T[] {
   try {
     return [...tickets].sort((a, b) => {
-      // 1. Customer Type Priority (HVC_DIAMOND > HVC_PLATINUM > HVC_GOLD > REGULER)
-      // Normalize customer type to handle different formats
-      const customerTypeA = normalizeCustomerType(a.customerType || a.ctype);
-      const customerTypeB = normalizeCustomerType(b.customerType || b.ctype);
-
-      const priorityA = B2C_CUSTOMER_PRIORITY[customerTypeA] || 0;
-      const priorityB = B2C_CUSTOMER_PRIORITY[customerTypeB] || 0;
+      const priorityA = getCustomerPriority(a.customerType || a.ctype);
+      const priorityB = getCustomerPriority(b.customerType || b.ctype);
 
       if (priorityB !== priorityA) {
-        return priorityB - priorityA; // Higher priority first
+        return priorityB - priorityA;
       }
 
-      // 2. Ticket Age (older tickets first)
       const ageA = calculateAgeInHours(
         a.reportedDate,
         a.hasilVisit,
@@ -266,26 +251,12 @@ export function sortByB2CPriority<T extends TicketBase>(tickets: T[]): T[] {
         b.closedAt,
       );
 
-      return ageB - ageA; // Older tickets first
+      return ageB - ageA;
     });
   } catch (error) {
     console.error('sortByB2CPriority error:', error);
     return tickets;
   }
-}
-
-function normalizeCustomerType(
-  customerType: string | null | undefined,
-): string {
-  if (!customerType) return '';
-  const normalized = customerType.trim().toUpperCase();
-  // Handle common variations
-  if (normalized.includes('DIAMOND')) return 'HVC_DIAMOND';
-  if (normalized.includes('PLATINUM')) return 'HVC_PLATINUM';
-  if (normalized.includes('GOLD')) return 'HVC_GOLD';
-  if (normalized.includes('REGULER') || normalized.includes('REGULAR'))
-    return 'REGULER';
-  return normalized;
 }
 
 export function computeTicketRanks<T extends TicketBase>(

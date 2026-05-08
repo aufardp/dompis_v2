@@ -3,28 +3,22 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X } from 'lucide-react';
 
-type TicketType = 'all' | 'customer' | 'sqm' | 'hvc' | 'unspec';
-type StatusUpdate =
-  | 'all'
-  | 'open'
-  | 'assigned'
-  | 'on_progress'
-  | 'pending'
-  | 'close';
-type FlaggingManja = 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS';
+type TicketType = 'reguler' | 'sqm' | 'hvc' | 'unspec';
+type StatusUpdate = 'open' | 'assigned' | 'on_progress' | 'pending' | 'close';
+type FlaggingManja = 'P1' | 'P+' | 'FFG' | 'GAMAS';
 
 interface FilterBarB2CProps {
-  ticketType?: TicketType;
-  statusUpdate?: StatusUpdate;
-  flagging?: FlaggingManja;
-  onTypeChange?: (type: TicketType) => void;
-  onStatusChange?: (status: StatusUpdate) => void;
-  onFlaggingChange?: (f: FlaggingManja) => void;
+  ticketType?: string[];
+  statusUpdate?: string[];
+  flagging?: string[];
+  onTypeChange?: (types: string[]) => void;
+  onStatusChange?: (statuses: string[]) => void;
+  onFlaggingChange?: (flags: string[]) => void;
 }
 
 const B2C_TYPE_OPTIONS = [
   {
-    key: 'customer',
+    key: 'reguler',
     label: 'Reg',
     dot: 'bg-emerald-400',
     activeClass: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
@@ -46,12 +40,6 @@ const B2C_TYPE_OPTIONS = [
     label: 'Unspec',
     dot: 'bg-gray-400',
     activeClass: 'bg-gray-400/15 border-gray-400/40 text-gray-400',
-  },
-  {
-    key: 'all',
-    label: 'Semua',
-    dot: 'bg-current',
-    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
   },
 ] as const;
 
@@ -86,12 +74,6 @@ const STATUS_OPTIONS = [
     dot: 'bg-emerald-400',
     activeClass: 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400',
   },
-  {
-    key: 'all',
-    label: 'All Status',
-    dot: 'bg-current',
-    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
-  },
 ] as const;
 
 const FLAGGING_OPTIONS = [
@@ -119,13 +101,14 @@ const FLAGGING_OPTIONS = [
     dot: 'bg-sky-400',
     activeClass: 'bg-sky-400/15 border-sky-400/40 text-sky-400',
   },
-  {
-    key: 'all',
-    label: 'Semua',
-    dot: 'bg-current',
-    activeClass: 'bg-surface-2 border-white/15 text-(--text-primary)',
-  },
 ] as const;
+
+function toggleItem(arr: string[], item: string): string[] {
+  if (arr.includes(item)) {
+    return arr.filter((i) => i !== item);
+  }
+  return [...arr, item];
+}
 
 export function FilterBarB2C({
   ticketType: ticketTypeProp,
@@ -135,9 +118,9 @@ export function FilterBarB2C({
   onStatusChange,
   onFlaggingChange,
 }: FilterBarB2CProps) {
-  const ticketType = ticketTypeProp ?? 'all';
-  const statusUpdate = statusUpdateProp ?? 'all';
-  const flagging = flaggingProp ?? 'all';
+  const ticketType = ticketTypeProp ?? [];
+  const statusUpdate = statusUpdateProp ?? [];
+  const flagging = flaggingProp ?? [];
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -178,15 +161,12 @@ export function FilterBarB2C({
     handleScroll();
   }, [handleScroll]);
 
-  const activeCount =
-    (ticketType !== 'all' ? 1 : 0) +
-    (statusUpdate !== 'all' ? 1 : 0) +
-    (flagging !== 'all' ? 1 : 0);
+  const activeCount = ticketType.length + statusUpdate.length + flagging.length;
 
   function resetAll() {
-    onTypeChange?.('all');
-    onStatusChange?.('all');
-    onFlaggingChange?.('all');
+    onTypeChange?.([]);
+    onStatusChange?.([]);
+    onFlaggingChange?.([]);
   }
 
   return (
@@ -219,7 +199,7 @@ export function FilterBarB2C({
           <div
             className={cn(
               'pointer-events-none absolute inset-y-0 left-0 z-10 w-12 rounded-l-full',
-              'bg-linear-to-r from-(--surface) to-transparent',
+              'bg-gradient-to-r from-(--surface) to-transparent',
               'transition-opacity duration-200',
               showFadeLeft ? 'opacity-100' : 'opacity-0',
             )}
@@ -228,7 +208,7 @@ export function FilterBarB2C({
           <div
             className={cn(
               'pointer-events-none absolute inset-y-0 right-0 z-10 w-12 rounded-r-full',
-              'bg-linear-to-l from-(--surface) to-transparent',
+              'bg-gradient-to-l from-(--surface) to-transparent',
               'transition-opacity duration-200',
               showFadeRight ? 'opacity-100' : 'opacity-0',
             )}
@@ -251,85 +231,109 @@ export function FilterBarB2C({
           >
             <span className='shrink-0 pr-1 pl-2 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Jenis
+              {ticketType.length > 0 && (
+                <span className='ml-1 rounded-full bg-blue-500 px-1.5 py-px text-[9px] font-bold text-white'>
+                  {ticketType.length}
+                </span>
+              )}
             </span>
 
-            {B2C_TYPE_OPTIONS.map(({ key, label, dot, activeClass }) => (
-              <button
-                key={key}
-                onClick={() => onTypeChange?.(key)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
-                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
-                  ticketType === key
-                    ? activeClass
-                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
-                )}
-              >
-                <span
+            {B2C_TYPE_OPTIONS.map(({ key, label, dot, activeClass }) => {
+              const isActive = ticketType.includes(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => onTypeChange?.(toggleItem(ticketType, key))}
                   className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    ticketType === key ? dot : 'bg-current opacity-30',
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
+                    'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
+                    isActive
+                      ? activeClass
+                      : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                   )}
-                />
-                {label}
-              </button>
-            ))}
+                >
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      isActive ? dot : 'bg-current opacity-30',
+                    )}
+                  />
+                  {label}
+                </button>
+              );
+            })}
 
             <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
 
             <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Status
+              {statusUpdate.length > 0 && (
+                <span className='ml-1 rounded-full bg-blue-500 px-1.5 py-px text-[9px] font-bold text-white'>
+                  {statusUpdate.length}
+                </span>
+              )}
             </span>
 
-            {STATUS_OPTIONS.map(({ key, label, dot, activeClass }) => (
-              <button
-                key={key}
-                onClick={() => onStatusChange?.(key)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
-                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
-                  statusUpdate === key
-                    ? activeClass
-                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
-                )}
-              >
-                <span
+            {STATUS_OPTIONS.map(({ key, label, dot, activeClass }) => {
+              const isActive = statusUpdate.includes(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => onStatusChange?.(toggleItem(statusUpdate, key))}
                   className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    statusUpdate === key ? dot : 'bg-current opacity-30',
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
+                    'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
+                    isActive
+                      ? activeClass
+                      : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                   )}
-                />
-                {label}
-              </button>
-            ))}
+                >
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      isActive ? dot : 'bg-current opacity-30',
+                    )}
+                  />
+                  {label}
+                </button>
+              );
+            })}
 
             <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
 
             <span className='shrink-0 pr-1 pl-1 text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
               Flag
+              {flagging.length > 0 && (
+                <span className='ml-1 rounded-full bg-blue-500 px-1.5 py-px text-[9px] font-bold text-white'>
+                  {flagging.length}
+                </span>
+              )}
             </span>
 
-            {FLAGGING_OPTIONS.map(({ key, label, dot, activeClass }) => (
-              <button
-                key={key}
-                onClick={() => onFlaggingChange?.(key as FlaggingManja)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
-                  'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
-                  flagging === key
-                    ? activeClass
-                    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
-                )}
-              >
-                <span
+            {FLAGGING_OPTIONS.map(({ key, label, dot, activeClass }) => {
+              const isActive = flagging.includes(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => onFlaggingChange?.(toggleItem(flagging, key))}
                   className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    flagging === key ? dot : 'bg-current opacity-30',
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.75',
+                    'text-[11px] font-semibold whitespace-nowrap transition-all duration-150',
+                    isActive
+                      ? activeClass
+                      : 'border-transparent text-(--text-secondary) hover:bg-(--surface-2) hover:text-(--text-primary)',
                   )}
-                />
-                {label}
-              </button>
-            ))}
+                >
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      isActive ? dot : 'bg-current opacity-30',
+                    )}
+                  />
+                  {label}
+                </button>
+              );
+            })}
 
             <div className='mx-1 h-4 w-px shrink-0 bg-(--border)' />
 

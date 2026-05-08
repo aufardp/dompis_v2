@@ -22,7 +22,7 @@ import { normalizeJenis, JENIS_KEYS, JenisKey } from '@/app/libs/tickets/jenis';
  */
 export const MANHOUR_VALUES: Record<JenisKey, number> = {
   // B2C
-  customer: 2.0,
+  reguler: 2.0,
   sqm: 2.0,
   hvc: 2.0,
   unspec: 2.0,

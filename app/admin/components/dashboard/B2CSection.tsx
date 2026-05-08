@@ -105,7 +105,7 @@ const tierCards: {
   {
     key: 'REGULER',
     icon: '👤',
-    name: 'Customer',
+    name: 'Reguler',
     dataKey: 'reguler',
     accentColor: '#10b981',
   },

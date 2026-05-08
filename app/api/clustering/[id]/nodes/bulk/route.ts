@@ -10,6 +10,44 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+const ODC_COLUMN_ALIASES = [
+  'odc_value', 'odcvalue', 'odc',
+  'ODC_VALUE', 'ODCValue', 'ODC',
+  'odc value', 'odcvalue',
+];
+
+const AREA_COLUMN_ALIASES = [
+  'area_name', 'areaname', 'area',
+  'nama_area', 'namaarea',
+  'AREA_NAME', 'AREA', 'NAMA_AREA',
+  'Nama Area', 'Nama_Area',
+  'area name',
+];
+
+function findColumn(headers: string[], aliases: string[]): string | null {
+  const lower = headers.map((h) => h.toLowerCase().trim());
+  for (const alias of aliases) {
+    const idx = lower.indexOf(alias.toLowerCase().trim());
+    if (idx !== -1) return headers[idx];
+  }
+  return null;
+}
+
+function extractFields(
+  entry: Record<string, unknown>,
+  headers: string[],
+): { odcValue: string; areaName: string | undefined } {
+  const odcCol = findColumn(headers, ODC_COLUMN_ALIASES);
+  const areaCol = findColumn(headers, AREA_COLUMN_ALIASES);
+
+  const entryStr = entry as Record<string, string>;
+
+  const odcValue = odcCol ? String(entryStr[odcCol] ?? '').trim() : '';
+  const areaName = areaCol ? String(entryStr[areaCol] ?? '').trim() || undefined : undefined;
+
+  return { odcValue, areaName };
+}
+
 export async function POST(req: Request, { params }: RouteParams) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
@@ -17,14 +55,11 @@ export async function POST(req: Request, { params }: RouteParams) {
     const clusterId = Number(id);
 
     const body = await req.json();
-    const { odc_values } = body;
+    let { odc_values } = body;
 
     if (!odc_values || !Array.isArray(odc_values)) {
       return NextResponse.json(
-        {
-          success: false,
-          message: 'odc_values array is required',
-        },
+        { success: false, message: 'odc_values array is required' },
         { status: 400 },
       );
     }
@@ -36,10 +71,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     });
 
     if (!cluster) {
-      return NextResponse.json(
-        { success: false, message: 'Cluster not found' },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: 'Cluster not found' }, { status: 404 });
     }
 
     const userSa = await prisma.user_sa.findFirst({
@@ -53,13 +85,26 @@ export async function POST(req: Request, { params }: RouteParams) {
       );
     }
 
-    // Fetch existing areas for this cluster (for name → id resolution)
     const existingAreas = await prisma.cluster_area.findMany({
       where: { cluster_id: clusterId },
       select: { id: true, nama_area: true },
     });
     const areaNameMap = new Map<string, number>(
       existingAreas.map((a: { nama_area: string; id: number }) => [a.nama_area.toLowerCase(), a.id]),
+    );
+
+    const odcValuesList = odc_values
+      .map((e) => (typeof e === 'string' ? e.split(',')[0].trim() : String(e.odc_value ?? '').trim()))
+      .filter(Boolean);
+
+    const existingNodes = await prisma.cluster_node.findMany({
+      where: { odc_value: { in: odcValuesList } },
+      select: { odc_value: true, cluster_id: true },
+    });
+    const otherClusterOdcs = new Set(
+      existingNodes
+        .filter((n: { cluster_id: number }) => n.cluster_id !== clusterId)
+        .map((n: { odc_value: string }) => n.odc_value),
     );
 
     const result = {
@@ -69,12 +114,10 @@ export async function POST(req: Request, { params }: RouteParams) {
     };
 
     for (const rawEntry of odc_values) {
-      // Support both string (odc_value only) and object { odc_value, area_name }
       let odcValue: string;
       let areaName: string | undefined;
 
       if (typeof rawEntry === 'string') {
-        // Could be "ODC-XXX" or "ODC-XXX,AREA_NAME"
         const parts = rawEntry.split(',');
         odcValue = parts[0].trim();
         areaName = parts[1]?.trim();
@@ -87,31 +130,30 @@ export async function POST(req: Request, { params }: RouteParams) {
 
       if (!odcValue) continue;
 
-      // Resolve area_name to cluster_area_id
+      if (otherClusterOdcs.has(odcValue)) {
+        result.skipped++;
+        result.errors.push({ odc_value: odcValue, reason: `Sudah ada di cluster lain` });
+        continue;
+      }
+
       let cluster_area_id: number | null = null;
       if (areaName) {
         const lowerName = areaName.toLowerCase();
         if (areaNameMap.has(lowerName)) {
           cluster_area_id = areaNameMap.get(lowerName)!;
         } else {
-          // Auto-create area if not found
           try {
             const newArea = await prisma.cluster_area.create({
-              data: {
-                cluster_id: clusterId,
-                nama_area: areaName,
-              },
+              data: { cluster_id: clusterId, nama_area: areaName },
             });
             cluster_area_id = newArea.id;
             areaNameMap.set(lowerName, newArea.id);
           } catch {
-            // If area creation fails, continue without area
             cluster_area_id = null;
           }
         }
       }
 
-      // Upsert node
       try {
         await prisma.cluster_node.upsert({
           where: { odc_value: odcValue },
@@ -122,33 +164,16 @@ export async function POST(req: Request, { params }: RouteParams) {
             sort_order: 0,
           },
           update: {
-            // Update area if ODC already exists
             ...(cluster_area_id !== null && { cluster_area_id }),
           },
         });
-
-        // Check if it was actually inserted or updated
-        const existing = await prisma.cluster_node.findUnique({
-          where: { odc_value: odcValue },
-          select: { created_at: true },
-        });
-
-        // Simple heuristic: if we didn't get an error, count as inserted
-        // (upsert doesn't tell us directly)
         result.inserted++;
-      } catch (err: any) {
-        // Prisma P2002 = unique constraint violation
-        if (err?.code === 'P2002') {
+      } catch (err: unknown) {
+        if ((err as { code?: string })?.code === 'P2002') {
           result.skipped++;
-          result.errors.push({
-            odc_value: odcValue,
-            reason: 'Sudah ada di database',
-          });
+          result.errors.push({ odc_value: odcValue, reason: 'Sudah ada di database' });
         } else {
-          result.errors.push({
-            odc_value: odcValue,
-            reason: err?.message ?? 'Unknown error',
-          });
+          result.errors.push({ odc_value: odcValue, reason: (err as Error)?.message ?? 'Unknown error' });
         }
       }
     }
@@ -156,10 +181,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
     return NextResponse.json(
-      {
-        success: false,
-        message: getErrorMessage(error, 'Failed to import nodes'),
-      },
+      { success: false, message: getErrorMessage(error, 'Failed to import nodes') },
       { status: getErrorStatus(error, 400) },
     );
   }

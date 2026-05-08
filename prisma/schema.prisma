@@ -195,6 +195,14 @@ model users {
   teknisi_assignments cluster_assignment[] @relation("teknisi_assignment")
   assigner_assignments cluster_assignment[] @relation("assigner_assignment")
 
+  // Invite relations
+  created_invites invite_token[] @relation("invite_creator")
+  used_invite    invite_token?  @relation("invite_user")
+
+  // Team relations
+  invited_teams  ticket_team[] @relation("team_invited_by")
+  registered_teams ticket_team[] @relation("team_registered")
+
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
 }
@@ -427,4 +435,44 @@ model cluster_assignment {
   @@index([assigned_date, cluster_id])
   @@index([teknisi_id, assigned_date])
   @@map("cluster_assignment")
+}
+
+model invite_token {
+  id             Int       @id @default(autoincrement())
+  token_hash     String    @unique @db.VarChar(255)
+  role           String    @db.VarChar(50)
+  created_by     Int
+  used_by        Int?      @unique
+  used_at        DateTime? @db.Timestamp(0)
+  expires_at     DateTime  @db.Timestamp(0)
+  created_at     DateTime  @default(now()) @db.Timestamp(0)
+  ticket_id      Int?
+  incident       String?   @db.VarChar(100)
+  teknisi_user_id Int?
+
+  creator users? @relation("invite_creator", fields: [created_by], references: [id_user], onDelete: Cascade)
+  user    users? @relation("invite_user", fields: [used_by], references: [id_user], onDelete: SetNull)
+
+  @@index([expires_at])
+  @@index([ticket_id])
+  @@map("invite_tokens")
+}
+
+// ── Ticket Team (tracking who invited whom for performansi) ───────────────────
+model ticket_team {
+  id                 Int       @id @default(autoincrement())
+  ticket_id          Int
+  incident           String    @db.VarChar(100)
+  invited_by         Int
+  registered_user_id Int?
+  created_at         DateTime  @default(now()) @db.Timestamp(0)
+  registered_at      DateTime? @db.Timestamp(0)
+
+  invited_tech   users? @relation("team_invited_by", fields: [invited_by], references: [id_user], onDelete: Cascade)
+  registered_tech users? @relation("team_registered", fields: [registered_user_id], references: [id_user], onDelete: SetNull)
+
+  @@index([ticket_id])
+  @@index([invited_by])
+  @@index([registered_user_id])
+  @@map("ticket_team")
 }
