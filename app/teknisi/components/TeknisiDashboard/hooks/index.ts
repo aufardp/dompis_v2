@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/hooks/index.ts
 
 export { useTickets } from './useTickets';

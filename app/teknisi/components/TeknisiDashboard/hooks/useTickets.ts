@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/hooks/useTickets.ts
 
 import { useState, useEffect, useCallback, useMemo } from 'react';

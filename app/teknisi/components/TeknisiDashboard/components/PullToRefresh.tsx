@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/components/PullToRefresh.tsx
 
 interface PullToRefreshProps {

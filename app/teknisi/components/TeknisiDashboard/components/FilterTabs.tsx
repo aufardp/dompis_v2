@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/components/FilterTabs.tsx
 
 import { TicketFilter, FILTER_CONFIG } from '../constants/ticket';

@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/components/index.ts
 
 export { default as TicketCard } from './TicketCard';
