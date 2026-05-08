@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/components/StatsCards.tsx
 
 interface StatsCardsProps {

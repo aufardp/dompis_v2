@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/hooks/useTabScroll.ts
 
 import { useState, useRef, useCallback, useEffect } from 'react';

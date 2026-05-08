@@ -28,7 +28,7 @@ export type TicketCtype =
 
 export const CustomerType = {
   REGULER: {
-    label: 'Reguler',
+    label: 'Customer',
     icon: '👤',
     color: 'text-slate-600 dark:text-slate-300',
     bg: 'bg-slate-100 dark:bg-slate-500/15',

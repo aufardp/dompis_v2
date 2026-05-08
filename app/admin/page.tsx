@@ -375,8 +375,20 @@ export default function TicketPage() {
         pPlusCount: number;
       };
 
+    const KNOWN_CTYPES = new Set([
+      'REGULER',
+      'HVC_GOLD',
+      'HVC_PLATINUM',
+      'HVC_DIAMOND',
+    ]);
+
     for (const t of b2cDailyTickets) {
-      const type = (t.ctype || t.customerType || 'Unspec').toUpperCase();
+      const rawType = (t.ctype || t.customerType || '')
+        .toUpperCase()
+        .trim()
+        .replace(/\s+/g, '_');
+      const type = KNOWN_CTYPES.has(rawType) ? rawType : 'UNCLASSIFIED';
+
       if (!typeMap.has(type)) typeMap.set(type, initType());
 
       const data = typeMap.get(type)!;
@@ -474,15 +486,15 @@ export default function TicketPage() {
 
     const total = tickets.length;
     const unassigned = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return !s || s === 'open';
     }).length;
     const assigned = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return s === 'assigned' || s === 'on_progress' || s === 'pending';
     }).length;
     const close = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return s === 'close';
     }).length;
 
@@ -608,15 +620,15 @@ export default function TicketPage() {
   const getCounts = (arr: Ticket[]) => ({
     total: arr.length,
     open: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return !s || s === 'open';
     }).length,
     assigned: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return s === 'assigned' || s === 'on_progress' || s === 'pending';
     }).length,
     close: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return s === 'close';
     }).length,
     regulerCount: arr.filter((t) => {
@@ -806,17 +818,18 @@ export default function TicketPage() {
       name,
       total: arr.length,
       unassigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return !s || s === 'open';
       }).length,
-      open: arr.filter((t) => (t.STATUS_UPDATE ?? '').toLowerCase() === 'open')
-        .length,
+      open: arr.filter(
+        (t) => (t.STATUS_UPDATE ?? '').trim().toLowerCase() === 'open',
+      ).length,
       assigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return s === 'assigned' || s === 'on_progress' || s === 'pending';
       }).length,
       close: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return s === 'close';
       }).length,
     }));
@@ -891,7 +904,7 @@ export default function TicketPage() {
       if (b2cHasilVisitFilter === 'all') return true;
       if (b2cHasilVisitFilter === 'close')
         return isTicketClosed(t.STATUS_UPDATE);
-      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return status === b2cHasilVisitFilter;
     })
     .filter((t) => {
@@ -934,7 +947,7 @@ export default function TicketPage() {
       if (b2bHasilVisitFilter === 'all') return true;
       if (b2bHasilVisitFilter === 'close')
         return isTicketClosed(t.STATUS_UPDATE);
-      const status = (t.STATUS_UPDATE ?? '').toLowerCase();
+      const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
       return status === b2bHasilVisitFilter;
     })
     .filter((t) => {
@@ -971,15 +984,15 @@ export default function TicketPage() {
     return {
       total: arr.length,
       open: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return !s || s === 'open';
       }).length,
       assigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return s === 'assigned' || s === 'on_progress' || s === 'pending';
       }).length,
       close: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').toLowerCase();
+        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
         return s === 'close';
       }).length,
     };

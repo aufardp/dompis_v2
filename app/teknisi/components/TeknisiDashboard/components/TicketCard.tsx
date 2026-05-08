@@ -1,3 +1,5 @@
+'use client';
+
 // app/teknisi/components/TeknisiDashboard/components/TicketCard.tsx
 
 import { Ticket } from '@/app/types/ticket';
