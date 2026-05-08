@@ -1,12 +1,13 @@
 module.exports = {
   apps: [
     {
-      name: 'web',
+      name: 'dompis-server',
       script: 'tsx',
       args: 'server.ts',
       instances: 1,
+      exec_mode: 'fork',
       max_memory_restart: '1G',
-      node_args: '--max-old-space-size=1024',
+      node_args: '--max-old-space-size=4096',
       env_production: {
         NODE_ENV: 'production',
         PORT: 3000,
@@ -21,12 +22,13 @@ module.exports = {
       merge_logs: true,
     },
     {
-      name: 'cron-worker',
+      name: 'dompis-worker',
       script: 'tsx',
-      args: '--require tsconfig-paths/register worker.ts',
+      args: 'worker.ts',
       instances: 1,
+      exec_mode: 'fork',
       max_memory_restart: '512M',
-      node_args: '--max-old-space-size=512',
+      node_args: '--max-old-space-size=1024',
       env_production: {
         NODE_ENV: 'production',
         CRON_ENABLED: 'true',
