@@ -223,17 +223,12 @@ export function calculateTicketAge(
 
 export type TicketAgeColor = 'green' | 'yellow' | 'orange' | 'red' | 'gray';
 
-export const SLA_HOURS: Record<string, number> = {
-  REGULER: 24,
-  HVC_GOLD: 12,
-  HVC_PLATINUM: 6,
-  HVC_DIAMOND: 3,
-};
+import { SLA_HOURS_MAP as _SLA_HOURS_MAP } from '@/app/config/customer-types';
+import { getSlaHours as _getSlaHours, normalizeCustomerType } from '@/app/config/customer-types';
 
-export function getSlaHours(customerType?: string): number {
-  if (!customerType) return 24;
-  return SLA_HOURS[customerType.toUpperCase()] ?? 24;
-}
+export const getSlaHours = _getSlaHours;
+export { SLA_HOURS_MAP } from '@/app/config/customer-types';
+export const SLA_HOURS: Record<string, number> = Object.fromEntries(_SLA_HOURS_MAP);
 
 export function getTicketAgeColor(
   reportedDate: string | null | undefined,

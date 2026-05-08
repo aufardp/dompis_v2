@@ -3,6 +3,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Ticket } from '@/app/types/ticket';
 import TicketDetailModal from './TicketDetailModal';
 import TicketUpdateModal from './TicketUpdateModal';
@@ -165,6 +166,7 @@ function Pagination({
 }
 
 export default function TeknisiDashboard() {
+  const router = useRouter();
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -309,26 +311,38 @@ export default function TeknisiDashboard() {
             </p>
           </div>
 
-          <button
-            type='button'
-            onClick={() => void refresh()}
-            disabled={loading || ptrRefreshing}
-            className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-            title='Refresh'
-          >
-            <span
-              className={
-                loading || ptrRefreshing
-                  ? 'inline-block animate-spin'
-                  : 'inline-block'
-              }
+          <div className='flex items-center gap-2'>
+            <button
+              type='button'
+              onClick={() => router.push('/teknisi/join')}
+              className='flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm hover:bg-blue-100 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
+              title='Scan Invite'
             >
-              ↻
-            </span>
-            <span className='hidden text-sm font-semibold text-slate-700 sm:inline dark:text-slate-200'>
-              Refresh
-            </span>
-          </button>
+              <span>📷</span>
+              <span className='hidden text-sm font-semibold sm:inline'>Scan Invite</span>
+            </button>
+
+            <button
+              type='button'
+              onClick={() => void refresh()}
+              disabled={loading || ptrRefreshing}
+              className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              title='Refresh'
+            >
+              <span
+                className={
+                  loading || ptrRefreshing
+                    ? 'inline-block animate-spin'
+                    : 'inline-block'
+                }
+              >
+                ↻
+              </span>
+              <span className='hidden text-sm font-semibold text-slate-700 sm:inline dark:text-slate-200'>
+                Refresh
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -353,7 +367,7 @@ export default function TeknisiDashboard() {
       {/* Konten bawah — kembali dalam max-w-2xl */}
       <div className='mx-auto max-w-2xl space-y-4'>
         {/* Ticket List */}
-        {loading ? (
+{loading ? (
           <div className='flex items-center justify-center py-16'>
             <div className='h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent' />
           </div>
@@ -377,18 +391,14 @@ export default function TeknisiDashboard() {
             )}
           </div>
         ) : (
-          <>
-            <div className='grid gap-3'>
-              {paginatedTickets.map((ticket) => (
-                <TicketCard
-                  key={ticket.idTicket}
-                  ticket={ticket}
-                  onClick={handleSelectTicket}
-                />
-              ))}
-            </div>
-
-            {/* Pagination */}
+          <div className='grid gap-3'>
+            {paginatedTickets.map((ticket) => (
+              <TicketCard
+                key={ticket.idTicket}
+                ticket={ticket}
+                onClick={handleSelectTicket}
+              />
+            ))}
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -396,7 +406,7 @@ export default function TeknisiDashboard() {
               pageSize={5}
               onPageChange={handlePageChange}
             />
-          </>
+          </div>
         )}
       </div>
 

@@ -11,6 +11,7 @@ import { ActorContext } from '@/app/types/ticket';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AttendanceService } from './attendance.service';
+import { CUSTOMER_TYPES, getSlaHours } from '@/app/config/customer-types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export class TicketService {
     }
 
     if (dept && dept !== 'all') {
-      const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
+      const B2C_CTYPES = CUSTOMER_TYPES.map((ct) => ct.key);
 
       if (dept === 'b2c') {
         where.CUSTOMER_TYPE = { in: B2C_CTYPES };
@@ -328,7 +329,7 @@ export class TicketService {
 
     /* DEPT FILTER */
     if (dept && dept !== 'all') {
-      const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
+      const B2C_CTYPES = CUSTOMER_TYPES.map((ct) => ct.key);
 
       if (dept === 'b2c') {
         andClauses.push({
@@ -633,17 +634,10 @@ export class TicketService {
       orderBy: { REPORTED_DATE: 'asc' },
     });
 
-    const SLA_HOURS: Record<string, number> = {
-      REGULER: 24,
-      HVC_GOLD: 12,
-      HVC_PLATINUM: 6,
-      HVC_DIAMOND: 3,
-    };
-
     const now = new Date();
     const expiredTickets = tickets.filter((ticket: any) => {
       if (!ticket.REPORTED_DATE) return false;
-      const slaHours = SLA_HOURS[ticket.CUSTOMER_TYPE || ''] || 24;
+      const slaHours = getSlaHours(ticket.CUSTOMER_TYPE);
       const reportedDate = new Date(ticket.REPORTED_DATE);
       const hoursElapsed =
         (now.getTime() - reportedDate.getTime()) / (1000 * 60 * 60);

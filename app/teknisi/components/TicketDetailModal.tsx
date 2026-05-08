@@ -17,6 +17,7 @@ import { addHours } from 'date-fns';
 import ModalHeader from './detail-modal/ModalHeader';
 import ModalFooter from './detail-modal/ModalFooter';
 import SectionCard from './detail-modal/SectionCard';
+import AddMemberModal from './AddMemberModal';
 import InfoField, { formatPhone } from './detail-modal/InfoField';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
 import EvidenceGallery from './detail-modal/EvidenceGallery';
@@ -75,6 +76,7 @@ export default function TicketDetailModal({
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
 
   // Status derived values
   const status = useMemo(() => {
@@ -905,8 +907,16 @@ export default function TicketDetailModal({
           onPickup={handlePickup}
           onResume={handleResume}
           onClose={handleCloseTicket}
+          onAddMember={() => setShowAddMember(true)}
         />
       </div>
+
+      <AddMemberModal
+        isOpen={showAddMember}
+        onClose={() => setShowAddMember(false)}
+        ticketId={ticket.idTicket}
+        incident={ticket.ticket}
+      />
 
       <EvidenceSliderModal
         images={evidence.map((e) => ({

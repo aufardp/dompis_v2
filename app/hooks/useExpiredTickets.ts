@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { getSlaHours } from '@/app/utils/datetime';
 
 type ExpiredTicketApiRow = {
   idTicket?: number;
@@ -28,15 +29,8 @@ export type ExpiredTicket = {
   serviceNo?: string | null;
 };
 
-const SLA_HOURS: Record<string, number> = {
-  REGULER: 24,
-  HVC_GOLD: 12,
-  HVC_PLATINUM: 6,
-  HVC_DIAMOND: 3,
-};
-
 function toOverdueHours(customerType: string, reportedAt: Date) {
-  const sla = SLA_HOURS[customerType] ?? 24;
+  const sla = getSlaHours(customerType);
   const diffHours = (Date.now() - reportedAt.getTime()) / (1000 * 60 * 60);
   return Math.max(0, Math.floor(diffHours - sla));
 }

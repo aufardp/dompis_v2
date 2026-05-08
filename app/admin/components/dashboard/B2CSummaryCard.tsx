@@ -128,7 +128,7 @@ export default function B2CSummaryCard({
         {/* Reguler + SQM + Unspec breakdown */}
         <div className='flex gap-8'>
           <div>
-            <p className='mb-1 text-[10px] text-blue-300'>📋 Customer</p>
+            <p className='mb-1 text-[10px] text-blue-300'>📋 Reguler</p>
             <p className='text-2xl font-bold text-white'>
               {customerCount.toLocaleString()}
             </p>

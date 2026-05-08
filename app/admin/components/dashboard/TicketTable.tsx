@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
+import MobilePagination from '../../../components/tables/MobilePagination';
 import TicketRow from './TicketRow';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
@@ -79,7 +80,7 @@ export interface AdminTicketTableProps {
     assigned: number;
     close: number;
   };
-  flaggingFilter?: 'all' | 'P1' | 'P+' | 'FFG' | 'GAMAS';
+  flaggingFilter?: string[];
 }
 
 interface SortConfig {
@@ -152,6 +153,7 @@ export default function TicketTable({
     order: 'asc',
   });
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null);
+  const [mobilePage, setMobilePage] = useState(1);
   const [drawerDetail, setDrawerDetail] = useState<any | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
@@ -225,6 +227,13 @@ export default function TicketTable({
     ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
     : sortedTickets;
 
+  const MOBILE_PAGE_SIZE = 5;
+  const mobileTotalPages = Math.max(1, Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE));
+  const mobilePageTickets = sortedTickets.slice(
+    (mobilePage - 1) * MOBILE_PAGE_SIZE,
+    mobilePage * MOBILE_PAGE_SIZE,
+  );
+
   const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
   const handleAssign = onAssign ?? (() => {});
 
@@ -252,7 +261,7 @@ export default function TicketTable({
       {/* ── Bulk action bar (appears when rows are selected) ── */}
 
       {/* Mobile */}
-      <div className='block space-y-3 lg:hidden'>
+      <div className='block lg:hidden'>
         {loading ? (
           <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
         ) : sortedTickets.length === 0 ? (
@@ -260,13 +269,40 @@ export default function TicketTable({
             No tickets found
           </p>
         ) : (
-          pageTickets.map((ticket) => (
-            <TicketCardMobile
-              key={ticket.idTicket ?? ticket.ticket}
-              ticket={ticket}
-              onAssign={handleAssign}
-            />
-          ))
+          <>
+            <div className='mb-2 flex items-center justify-between px-1'>
+              <p className='text-xs text-(--text-secondary)'>
+                {(mobilePage - 1) * MOBILE_PAGE_SIZE + 1}–
+                {Math.min(mobilePage * MOBILE_PAGE_SIZE, sortedTickets.length)} dari{' '}
+                {sortedTickets.length} tiket
+              </p>
+              {mobileTotalPages > 1 && (
+                <span className='text-xs font-semibold text-(--text-primary)'>
+                  Halaman {mobilePage}/{mobileTotalPages}
+                </span>
+              )}
+            </div>
+            <div className='space-y-3'>
+              {mobilePageTickets.map((ticket) => (
+                <TicketCardMobile
+                  key={ticket.idTicket ?? ticket.ticket}
+                  ticket={ticket}
+                  onAssign={handleAssign}
+                />
+              ))}
+            </div>
+            {mobileTotalPages > 1 && (
+              <div className='mt-3'>
+                <MobilePagination
+                  currentPage={mobilePage}
+                  totalPages={mobileTotalPages}
+                  total={sortedTickets.length}
+                  pageSize={MOBILE_PAGE_SIZE}
+                  onPageChange={setMobilePage}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 

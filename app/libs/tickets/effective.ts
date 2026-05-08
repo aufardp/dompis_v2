@@ -1,9 +1,17 @@
 import {
   formatDateTimeFullWIB,
-  getSlaHours,
   isDifferentWIBDay,
   parseWIBDateInput,
 } from '@/app/utils/datetime';
+import {
+  normalizeCustomerType,
+  getCustomerTypeConfig,
+  getSlaHours,
+} from '@/app/config/customer-types';
+import {
+  BOOKING_DEADLINE_HOURS,
+  GUARANTEE_ESCALATION_HOURS,
+} from '@/app/config/priority-rules';
 
 export type FlaggingLabel = 'P1' | 'P+';
 
@@ -32,35 +40,9 @@ function addHours(date: Date, hours: number): Date {
   return d;
 }
 
-function pickCustomerTypeRaw(ticket: any): string {
-  const raw = String(ticket?.customerType ?? ticket?.ctype ?? '').trim();
-  if (!raw) return '';
-  const upper = raw.toUpperCase().replace(/\s+/g, '_');
-  if (upper.includes('DIAMOND')) return 'HVC_DIAMOND';
-  if (upper.includes('PLATINUM')) return 'HVC_PLATINUM';
-  if (upper.includes('GOLD')) return 'HVC_GOLD';
-  if (upper.includes('REGULER') || upper.includes('REGULAR')) return 'REGULER';
-  return upper;
-}
-
 function pickDbMaxTtrValue(ticket: any): string | null {
-  const ct = pickCustomerTypeRaw(ticket).toLowerCase();
-  if (!ct) {
-    return (
-      ticket?.maxTtrDiamond ||
-      ticket?.maxTtrPlatinum ||
-      ticket?.maxTtrGold ||
-      ticket?.maxTtrReguler ||
-      null
-    );
-  }
-
-  if (ct.includes('diamond')) return ticket?.maxTtrDiamond ?? null;
-  if (ct.includes('platinum')) return ticket?.maxTtrPlatinum ?? null;
-  if (ct.includes('gold')) return ticket?.maxTtrGold ?? null;
-  if (ct.includes('reguler') || ct.includes('regular')) {
-    return ticket?.maxTtrReguler ?? null;
-  }
+  const config = getCustomerTypeConfig(ticket?.customerType ?? ticket?.ctype);
+  if (config) return ticket?.[`maxTtr${config.shortLabel}`] ?? null;
 
   return (
     ticket?.maxTtrDiamond ||
@@ -89,10 +71,9 @@ export function getEffectiveMaxTtrDate(ticket: any): Date | null {
   const reported = parseWIBDateInput(ticket?.reportedDate);
   if (!reported) return null;
 
-  // Check bookingDate first → bookingDate + 3 hours
   const bookingDate = parseWIBDateInput(ticket?.bookingDate);
   if (bookingDate) {
-    const deadline = addHours(bookingDate, 3);
+    const deadline = addHours(bookingDate, BOOKING_DEADLINE_HOURS);
     return deadline.getTime() > bookingDate.getTime() ? deadline : null;
   }
 
@@ -100,9 +81,8 @@ export function getEffectiveMaxTtrDate(ticket: any): Date | null {
   const rawFlag = normalizeFlagging(ticket?.flaggingManja);
   const hasPriorityFlag = rawFlag === 'P1' || rawFlag === 'P+';
 
-  // Guarantee + (P1/P+) -> always 3 hours from reported
   if (guarantee === 'guarantee' && hasPriorityFlag) {
-    const d = addHours(reported, 3);
+    const d = addHours(reported, GUARANTEE_ESCALATION_HOURS);
     return d.getTime() > reported.getTime() ? d : null;
   }
 
@@ -114,7 +94,7 @@ export function getEffectiveMaxTtrDate(ticket: any): Date | null {
   }
 
   // Fallback: reported + SLA hours based on customer type
-  const slaHours = getSlaHours(pickCustomerTypeRaw(ticket));
+  const slaHours = getSlaHours(ticket?.customerType ?? ticket?.ctype);
   const computed = addHours(reported, slaHours);
   return computed.getTime() > reported.getTime() ? computed : null;
 }
