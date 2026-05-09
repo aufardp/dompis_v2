@@ -5,6 +5,7 @@ export type SyncEventType = 'start' | 'complete' | 'error';
 export interface SyncEventData {
   inserted?: number;
   updated?: number;
+  skipped?: number;
   error?: string;
 }
 

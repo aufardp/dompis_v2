@@ -6,7 +6,7 @@ import { sheetsQueue, sleep } from '@/lib/worker-queue';
 
 const MAX_ROWS = parseInt(process.env.SYNC_MAX_ROWS || '20000', 10);
 const RANGE = `WO_B2B_B2C!A1:HZ${MAX_ROWS}`;
-const BATCH_SIZE = 25;
+const BATCH_SIZE = 100;
 const RETRY_MAX = 3;
 const WIB = 'Asia/Jakarta';
 
@@ -378,40 +378,22 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
         row[29] = null;
         result.inserted++;
         newRows.push([...row, todayWibStr, batchId]);
-      } else if (hasAssignedTeknisi) {
+} else if (hasAssignedTeknisi) {
         // ── PROTECT: teknisi already assigned → keep existing STATUS_UPDATE ──
-        // Always use current DB status, ignore whatever the sheet sends
-        console.log(
-          `[SYNC] Ticket ${incident}: assigned to #${dbEntry!.teknisiUserId}, ` +
-            `protecting STATUS_UPDATE=${dbEntry!.status}`,
-        );
         row[29] = dbEntry!.status || null;
         result.updated++;
         protectedRows.push([...row, todayWibStr, batchId]);
       } else if (isHardProtected(dbEntry?.status)) {
         // ── HARD PROTECT: pending / close / closed → never reset ──────────
-        console.log(
-          `[SYNC] Ticket ${incident}: hard-protected status="${dbEntry!.status}"`,
-        );
         result.updated++;
         protectedRows.push([...row, todayWibStr, batchId]);
       } else if (isDayProtected(dbEntry?.status)) {
         // ── DAY PROTECT: assigned / on_progress → reset if different day ──
         const isSameDay = dbEntry!.syncDate === todayWibStr;
-        if (isSameDay) {
-          // Same day → keep existing status (still valid today)
-          console.log(
-            `[SYNC] Ticket ${incident}: day-protected "${dbEntry!.status}" ` +
-              `same day (${dbEntry!.syncDate}), keeping`,
-          );
+if (isSameDay) {
           result.updated++;
           protectedRows.push([...row, todayWibStr, batchId]);
         } else {
-          // Different day → reset STATUS_UPDATE to null (ticket disappears from list)
-          console.log(
-            `[SYNC] Ticket ${incident}: day-protected "${dbEntry!.status}" ` +
-              `expired (was ${dbEntry!.syncDate}, today ${todayWibStr}), resetting to null`,
-          );
           row[29] = null;
           result.updated++;
           safeRows.push([...row, todayWibStr, batchId]);
@@ -531,7 +513,6 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await sleep(50);
       }
     }
 
@@ -635,7 +616,6 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await sleep(50);
       }
     }
 
@@ -739,7 +719,6 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
         `;
 
         await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-        await sleep(50);
       }
     }
 
