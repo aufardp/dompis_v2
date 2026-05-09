@@ -13,6 +13,7 @@ import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
 export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
 const CHUNK_SIZE = 50;
+const isDev = process.env.NODE_ENV !== 'production';
 const MAX_CONCURRENT = 5;
 const MAX_RETRIES = 3;
 
@@ -561,8 +562,10 @@ export class ClusterAutoAssignServiceV2 {
     actorId: number = SYSTEM_ACTOR.id_user,
   ): Promise<BatchAutoAssignResult> {
     const startTime = Date.now();
-    console.log('[AUTO-ASSIGN] ===== START =====');
-    console.log('[AUTO-ASSIGN] saIds:', saIds);
+    if (isDev) {
+      console.log('[AUTO-ASSIGN] ===== START =====');
+      console.log('[AUTO-ASSIGN] saIds:', saIds);
+    }
 
     let workzoneFilter: string[] = [];
     if (saIds && saIds.length > 0) {
@@ -573,7 +576,9 @@ export class ClusterAutoAssignServiceV2 {
       workzoneFilter = serviceAreas
         .map((sa) => sa.nama_sa)
         .filter((nama): nama is string => !!nama);
-      console.log('[AUTO-ASSIGN] Filtering by workzones:', workzoneFilter);
+      if (isDev) {
+        console.log('[AUTO-ASSIGN] Filtering by workzones:', workzoneFilter);
+      }
     }
 
     const activeNodes = await prisma.cluster_node.findMany({
@@ -588,13 +593,13 @@ export class ClusterAutoAssignServiceV2 {
       (n: { odc_value: string }) => n.odc_value,
     );
 
-    console.log('[AUTO-ASSIGN] Active ODC values count:', activeOdcValues.length);
-    if (activeOdcValues.length > 0) {
+    if (isDev) { console.log('[AUTO-ASSIGN] Active ODC values count:', activeOdcValues.length); }
+    if (isDev && activeOdcValues.length > 0) {
       console.log('[AUTO-ASSIGN] Active ODC values sample:', activeOdcValues.slice(0, 5));
     }
 
     if (!activeOdcValues.length) {
-      console.log('[AUTO-ASSIGN] No active ODC values found - returning 0');
+      if (isDev) { console.log('[AUTO-ASSIGN] No active ODC values found - returning 0'); }
       autoAssignLogger.batchStart(0);
       autoAssignLogger.batchComplete(0, 0, 0, 0, 0);
       return { total: 0, assigned: 0, skipped: 0, failed: 0, results: [] };
@@ -628,14 +633,16 @@ export class ClusterAutoAssignServiceV2 {
       orderBy: { JAM_EXPIRED: 'asc' },
     });
 
-    console.log('[AUTO-ASSIGN] Found tickets to process:', allTickets.length);
-    if (allTickets.length > 0) {
-      console.log('[AUTO-ASSIGN] Sample tickets:', allTickets.slice(0, 3).map(t => ({ 
-        id: t.id_ticket, 
-        incident: t.INCIDENT, 
-        rk: t.RK_INFORMATION, 
-        status: t.STATUS_UPDATE 
-      })));
+    if (isDev) {
+      console.log('[AUTO-ASSIGN] Found tickets to process:', allTickets.length);
+      if (allTickets.length > 0) {
+        console.log('[AUTO-ASSIGN] Sample tickets:', allTickets.slice(0, 3).map(t => ({
+          id: t.id_ticket,
+          incident: t.INCIDENT,
+          rk: t.RK_INFORMATION,
+          status: t.STATUS_UPDATE
+        })));
+      }
     }
 
     const total = allTickets.length;
@@ -651,46 +658,50 @@ export class ClusterAutoAssignServiceV2 {
     });
 
     if (total === 0) {
-      console.log('[AUTO-ASSIGN] No tickets found - returning 0');
+      if (isDev) { console.log('[AUTO-ASSIGN] No tickets found - returning 0'); }
       autoAssignLogger.batchComplete(0, 0, 0, 0, Date.now() - startTime);
       return { total: 0, assigned: 0, skipped: 0, failed: 0, results: [] };
     }
 
-    console.log('[AUTO-ASSIGN] Finding clusters by ODC...');
+    if (isDev) { console.log('[AUTO-ASSIGN] Finding clusters by ODC...'); }
     const clusterMap = await this.findClustersByOdc(activeOdcValues);
-    console.log('[AUTO-ASSIGN] Clusters found:', clusterMap.size);
+    if (isDev) { console.log('[AUTO-ASSIGN] Clusters found:', clusterMap.size); }
     
     const clusterIds = Array.from(clusterMap.values()).map((c) => c.id);
-    console.log('[AUTO-ASSIGN] Cluster IDs (unique):', [...new Set(clusterIds)].slice(0, 10));
+    if (isDev) { console.log('[AUTO-ASSIGN] Cluster IDs (unique):', [...new Set(clusterIds)].slice(0, 10)); }
 
     // Debug: Show cluster mapping
-    const clusterIdToName = new Map<number, string>();
-    for (const [rk, cluster] of clusterMap.entries()) {
-      clusterIdToName.set(cluster.id, cluster.nama_cluster);
+    if (isDev) {
+      const clusterIdToName = new Map<number, string>();
+      for (const [rk, cluster] of clusterMap.entries()) {
+        clusterIdToName.set(cluster.id, cluster.nama_cluster);
+      }
+      console.log('[AUTO-ASSIGN] Cluster ID -> Name:', Object.fromEntries(clusterIdToName));
     }
-    console.log('[AUTO-ASSIGN] Cluster ID -> Name:', Object.fromEntries(clusterIdToName));
 
     const today = AttendanceService.getTodayDateString();
-    console.log('[AUTO-ASSIGN] Today date:', today);
+    if (isDev) { console.log('[AUTO-ASSIGN] Today date:', today); }
 
-    console.log('[AUTO-ASSIGN] Getting active teknisi for clusters...');
+    if (isDev) { console.log('[AUTO-ASSIGN] Getting active teknisi for clusters...'); }
     const teknisiMap = await this.getActiveTeknisiForClusters(
       clusterIds,
       today,
     );
-    console.log('[AUTO-ASSIGN] Clusters with teknisi:', teknisiMap.size);
+    if (isDev) { console.log('[AUTO-ASSIGN] Clusters with teknisi:', teknisiMap.size); }
     
-    for (const [clusterId, teknisis] of teknisiMap.entries()) {
-      console.log(`[AUTO-ASSIGN] Cluster ${clusterId} has ${teknisis.length} teknisi:`, teknisis.map(t => t.teknisi_id));
+    if (isDev) {
+      for (const [clusterId, teknisis] of teknisiMap.entries()) {
+        console.log(`[AUTO-ASSIGN] Cluster ${clusterId} has ${teknisis.length} teknisi:`, teknisis.map(t => t.teknisi_id));
+      }
     }
 
     const allTeknisiIds = Array.from(teknisiMap.values())
       .flat()
       .map((t) => t.teknisi_id);
-    console.log('[AUTO-ASSIGN] All teknisi IDs:', allTeknisiIds);
+    if (isDev) { console.log('[AUTO-ASSIGN] All teknisi IDs:', allTeknisiIds); }
     
     const workloadMap = await this.getWorkloadsForTeknisi(allTeknisiIds, today);
-    console.log('[AUTO-ASSIGN] Workload map size:', workloadMap.size);
+    if (isDev) { console.log('[AUTO-ASSIGN] Workload map size:', workloadMap.size); }
 
     const chunks: TicketWithRk[][] = [];
     for (let i = 0; i < allTickets.length; i += CHUNK_SIZE) {
@@ -701,7 +712,7 @@ export class ClusterAutoAssignServiceV2 {
     let totalAssigned = 0;
     let totalFailed = 0;
 
-    console.log('[AUTO-ASSIGN] Starting to process', totalChunks, 'chunks...');
+    if (isDev) { console.log('[AUTO-ASSIGN] Starting to process', totalChunks, 'chunks...'); }
 
     const processWithConcurrency = async () => {
       const results: Array<{ assigned: number; failed: number }> = [];
@@ -748,13 +759,15 @@ export class ClusterAutoAssignServiceV2 {
     broadcastTicketInvalidate('assign');
 
     const duration = Date.now() - startTime;
-    console.log('[AUTO-ASSIGN] ===== RESULT =====');
-    console.log('[AUTO-ASSIGN] Total tickets processed:', total);
-    console.log('[AUTO-ASSIGN] Successfully assigned:', totalAssigned);
-    console.log('[AUTO-ASSIGN] Failed:', totalFailed);
-    console.log('[AUTO-ASSIGN] Skipped:', total - totalAssigned - totalFailed);
-    console.log('[AUTO-ASSIGN] Duration:', duration, 'ms');
-    console.log('[AUTO-ASSIGN] ===== END =====');
+    if (isDev) {
+      console.log('[AUTO-ASSIGN] ===== RESULT =====');
+      console.log('[AUTO-ASSIGN] Total tickets processed:', total);
+      console.log('[AUTO-ASSIGN] Successfully assigned:', totalAssigned);
+      console.log('[AUTO-ASSIGN] Failed:', totalFailed);
+      console.log('[AUTO-ASSIGN] Skipped:', total - totalAssigned - totalFailed);
+      console.log('[AUTO-ASSIGN] Duration:', duration, 'ms');
+      console.log('[AUTO-ASSIGN] ===== END =====');
+    }
 
     autoAssignLogger.batchComplete(
       total,

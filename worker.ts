@@ -10,6 +10,7 @@ import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssig
 import { sheetsQueue } from '@/lib/worker-queue';
 
 const MAX_CONSECUTIVE_ERRORS = 5;
+const AUTO_ASSIGN_SA_BATCH = 10;
 
 const taskState = {
   sync: {
@@ -49,11 +50,13 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+type LockResult = 'acquired' | 'skipped' | 'error';
+
 async function withTaskLock(
   lockName: string,
   timeoutSeconds: number,
   fn: () => Promise<void>,
-): Promise<void> {
+): Promise<LockResult> {
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -67,11 +70,11 @@ async function withTaskLock(
 
       if (!currentLocked) {
         console.log(`[CRON] ${lockName}: skipped (lock held by another process)`);
-        return;
+        return 'skipped';
       }
 
       await fn();
-      return;
+      return 'acquired';
     } catch (err) {
       if (isDeadlockError(err) && attempt < maxRetries) {
         console.log(`[CRON] ${lockName}: deadlock detected (attempt ${attempt + 1}), retrying in ${5000 * (attempt + 1)}ms...`);
@@ -88,10 +91,11 @@ async function withTaskLock(
       }
     }
   }
+  return 'error';
 }
 
 function withCancellableTimeout(ms: number): {
-  signal: AbortSignal;
+  signal: AbortController['signal'];
   cancel: () => void;
 } {
   const controller = new AbortController();
@@ -103,6 +107,19 @@ function withCancellableTimeout(ms: number): {
     signal: controller.signal,
     cancel: () => clearTimeout(timer),
   };
+}
+
+function nowWIB(): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date());
 }
 
 async function runSync(): Promise<void> {
@@ -125,10 +142,11 @@ async function runSync(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(3 * 60 * 1000);
   state.abortController = new AbortController();
 
-  console.log(`[SYNC] Starting (sheetsQueue length: ${sheetsQueue.queueLength})`);
+  console.log(`[SYNC] Starting`);
 
   try {
-    await withTaskLock('sync_lock', 5, async () => {
+    const lockResult = await withTaskLock('sync_lock', 5, async () => {
+      if (signal.aborted) return;
       await publishSyncEvent('start');
 
       const result = await syncSpreadsheet(signal);
@@ -138,8 +156,9 @@ async function runSync(): Promise<void> {
         return;
       }
 
+      const time = nowWIB();
       console.log(
-        `[SYNC] Done — inserted: ${result.inserted}, updated: ${result.updated}`,
+        `[SYNC] ✅ Done | inserted: ${result.inserted} | updated: ${result.updated} | ${time} WIB`,
       );
       await publishSyncEvent('complete', {
         inserted: result.inserted,
@@ -149,9 +168,13 @@ async function runSync(): Promise<void> {
       state.consecutiveErrors = 0;
       state.lastError = null;
     });
+
+    if (lockResult === 'skipped') {
+      state.running = false;
+    }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[SYNC] Failed:', msg);
+    console.error('[SYNC] ❌ Failed:', msg);
     await publishSyncEvent('error', { error: msg }).catch(() => {});
     state.lastError = msg;
     state.consecutiveErrors++;
@@ -179,24 +202,37 @@ async function runPush(): Promise<void> {
   state.running = true;
   const { signal, cancel } = withCancellableTimeout(5 * 60 * 1000);
 
-  console.log(`[PUSH] Starting (sheetsQueue length: ${sheetsQueue.queueLength})`);
+  console.log(`[PUSH] Starting`);
 
   try {
-    await withTaskLock('push_lock', 5, async () => {
+    const lockResult = await withTaskLock('push_lock', 5, async () => {
+      if (signal.aborted) return;
+      await publishSyncEvent('start');
+
       const result = await pushSpreadsheet(signal);
 
       if (signal.aborted) {
-        console.warn('[PUSH] Timed out after 5 minutes');
+        await publishSyncEvent('error', { error: 'Push timed out after 5 minutes' });
         return;
       }
 
-      console.log('[PUSH] Done:', result);
+      const time = nowWIB();
+      console.log(
+        `[PUSH] ✅ Done | updated: ${result.updated ?? 0} | skipped: ${result.skipped ?? 0} | ${time} WIB`,
+      );
+      await publishSyncEvent('complete', { updated: result.updated, skipped: result.skipped });
+
       state.consecutiveErrors = 0;
       state.lastError = null;
     });
+
+    if (lockResult === 'skipped') {
+      state.running = false;
+    }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[PUSH] Failed:', msg);
+    console.error('[PUSH] ❌ Failed:', msg);
+    await publishSyncEvent('error', { error: msg }).catch(() => {});
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -224,18 +260,30 @@ async function runTechEvents(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(2 * 60 * 1000);
 
   try {
-    await withTaskLock('tech_events_lock', 3, async () => {
+    const lockResult = await withTaskLock('tech_events_lock', 3, async () => {
       if (signal.aborted) return;
       const result = await dispatchTechEvents();
+
+      if (!signal.aborted && 'skipped' in result && result.skipped) {
+        return;
+      }
+
       if (!signal.aborted) {
-        console.log('[TECH_EVENTS] Done:', result);
+        const time = nowWIB();
+        console.log(
+          `[TECH_EVENTS] ✅ Done | sent: ${result.success ?? 0} | failed: ${result.failed ?? 0} | ${time} WIB`,
+        );
         state.consecutiveErrors = 0;
         state.lastError = null;
       }
     });
+
+    if (lockResult === 'skipped') {
+      state.running = false;
+    }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[TECH_EVENTS] Failed:', msg);
+    console.error('[TECH_EVENTS] ❌ Failed:', msg);
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -262,7 +310,7 @@ async function runAutoAssign(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(60 * 1000);
 
   try {
-    await withTaskLock('auto_assign_lock', 3, async () => {
+    const lockResult = await withTaskLock('auto_assign_lock', 3, async () => {
       if (signal.aborted) return;
 
       const allSAs = await prisma.service_area.findMany({
@@ -275,29 +323,36 @@ async function runAutoAssign(): Promise<void> {
       }
 
       const saIds = allSAs.map((s) => s.id_sa);
-      const currentIdx =
-        Math.floor(Date.now() / (5 * 60 * 1000)) % saIds.length;
-      const currentSA = [saIds[currentIdx]];
+      const totalSAs = saIds.length;
+      const batchSize = Math.min(AUTO_ASSIGN_SA_BATCH, totalSAs);
 
-      console.log(
-        `[AUTO_ASSIGN] Processing SA ${currentSA[0]} (${currentIdx + 1}/${saIds.length})`,
-      );
+      const currentIdx = Math.floor(Date.now() / (5 * 60 * 1000)) % totalSAs;
+      const batchSAIds: number[] = [];
+      for (let i = 0; i < batchSize; i++) {
+        batchSAIds.push(saIds[(currentIdx + i) % totalSAs]);
+      }
 
       if (signal.aborted) return;
 
-      const result = await ClusterAutoAssignServiceV2.runBatchV2(currentSA, 0);
+      const result = await ClusterAutoAssignServiceV2.runBatchV2(batchSAIds, 0);
 
       if (!signal.aborted) {
+        const time = nowWIB();
+        const skipped = result.total - result.assigned - result.failed;
         console.log(
-          `[AUTO_ASSIGN] Done — ${result.assigned}/${result.total} assigned for SA ${currentSA[0]}`,
+          `[AUTO_ASSIGN] ✅ Done | assigned: ${result.assigned}/${result.total} | skipped: ${skipped} | SA ${currentIdx + 1}–${currentIdx + batchSize}/${totalSAs} | ${time} WIB`,
         );
         state.consecutiveErrors = 0;
         state.lastError = null;
       }
     });
+
+    if (lockResult === 'skipped') {
+      state.running = false;
+    }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[AUTO_ASSIGN] Failed:', msg);
+    console.error('[AUTO_ASSIGN] ❌ Failed:', msg);
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -305,20 +360,6 @@ async function runAutoAssign(): Promise<void> {
     state.running = false;
     state.lastRunAt = new Date();
   }
-}
-
-function toWIB(date: Date | null): string {
-  if (!date) return 'never';
-  return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(date);
 }
 
 function logWorkerHealth(): void {
@@ -330,25 +371,27 @@ function logWorkerHealth(): void {
     tasks: {
       sync: {
         running: taskState.sync.running,
-        lastRunAt: toWIB(taskState.sync.lastRunAt),
+        lastRunAt: taskState.sync.lastRunAt ? nowWIB() : 'never',
         consecutiveErrors: taskState.sync.consecutiveErrors,
         lastError: taskState.sync.lastError,
       },
       push: {
         running: taskState.push.running,
-        lastRunAt: toWIB(taskState.push.lastRunAt),
+        lastRunAt: taskState.push.lastRunAt ? nowWIB() : 'never',
         consecutiveErrors: taskState.push.consecutiveErrors,
         lastError: taskState.push.lastError,
       },
       techEvents: {
         running: taskState.techEvents.running,
-        lastRunAt: toWIB(taskState.techEvents.lastRunAt),
+        lastRunAt: taskState.techEvents.lastRunAt ? nowWIB() : 'never',
         consecutiveErrors: taskState.techEvents.consecutiveErrors,
+        lastError: taskState.techEvents.lastError,
       },
       autoAssign: {
         running: taskState.autoAssign.running,
-        lastRunAt: toWIB(taskState.autoAssign.lastRunAt),
+        lastRunAt: taskState.autoAssign.lastRunAt ? nowWIB() : 'never',
         consecutiveErrors: taskState.autoAssign.consecutiveErrors,
+        lastError: taskState.autoAssign.lastError,
       },
     },
   });
@@ -382,7 +425,7 @@ async function startWorker() {
   ];
 
   console.log(
-    '[CRON] Scheduled: sync(1m) push(10m) tech-events(2m) auto-assign(5m)',
+    '[CRON] Scheduled: sync(1m) push(10m) tech-events(2m) auto-assign(5m, 10 SAs/batch)',
   );
   console.log('[CRON] All tasks run independently via SheetsApiQueue coordination');
 
