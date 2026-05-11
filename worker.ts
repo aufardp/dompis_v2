@@ -8,9 +8,16 @@ import { pushSpreadsheet } from '@/lib/google-sheets/push';
 import { dispatchTechEvents } from '@/app/libs/integrations/dispatchTechEvents';
 import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssign.service';
 import { sheetsQueue } from '@/lib/worker-queue';
+import {
+  acquireLock,
+  releaseLock,
+  getLockStatus,
+  cleanupStaleLock,
+} from '@/lib/distributed-lock';
 
 const MAX_CONSECUTIVE_ERRORS = 5;
 const AUTO_ASSIGN_SA_BATCH = 10;
+const LOCK_TTL_SECONDS = 300;
 
 const taskState = {
   sync: {
@@ -41,57 +48,29 @@ const taskState = {
   },
 };
 
-function isDeadlockError(err: unknown): boolean {
-  const meta = (err as { meta?: { code?: string | number } } | undefined)?.meta;
-  return meta?.code === 3058 || meta?.code === '3058';
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 type LockResult = 'acquired' | 'skipped' | 'error';
 
 async function withTaskLock(
-  lockName: string,
-  timeoutSeconds: number,
+  lockKey: string,
   fn: () => Promise<void>,
 ): Promise<LockResult> {
-  const maxRetries = 3;
+  const lockResult = await acquireLock(lockKey, LOCK_TTL_SECONDS);
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    let currentLocked = false;
-    try {
-      const result: unknown = await prisma.$queryRaw`
-        SELECT GET_LOCK(${lockName}, ${timeoutSeconds}) as locked
-      `;
-      const rows = result as Array<{ locked: number | boolean }>;
-      currentLocked = rows?.[0]?.locked === 1 || rows?.[0]?.locked === true;
-
-      if (!currentLocked) {
-        console.log(`[CRON] ${lockName}: skipped (lock held by another process)`);
-        return 'skipped';
-      }
-
-      await fn();
-      return 'acquired';
-    } catch (err) {
-      if (isDeadlockError(err) && attempt < maxRetries) {
-        console.log(`[CRON] ${lockName}: deadlock detected (attempt ${attempt + 1}), retrying in ${5000 * (attempt + 1)}ms...`);
-        await sleep(5000 * (attempt + 1));
-        continue;
-      }
-      console.error(`[CRON] ${lockName}: error`, err);
-      throw err;
-    } finally {
-      if (currentLocked) {
-        await prisma.$queryRaw`SELECT RELEASE_LOCK(${lockName})`.catch((e) =>
-          console.error(`[CRON] ${lockName}: failed to release lock`, e),
-        );
-      }
-    }
+  if (!lockResult.acquired) {
+    console.log(`[CRON] ${lockKey}: skipped (lock held by another process)`);
+    return 'skipped';
   }
-  return 'error';
+
+  const ownerId = lockResult.ownerId;
+
+  try {
+    await fn();
+    return 'acquired';
+  } finally {
+    await releaseLock(lockKey, ownerId).catch((e) =>
+      console.error(`[CRON] ${lockKey}: failed to release lock`, e),
+    );
+  }
 }
 
 function withCancellableTimeout(ms: number): {
@@ -142,10 +121,10 @@ async function runSync(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(3 * 60 * 1000);
   state.abortController = new AbortController();
 
-  console.log(`[SYNC] Starting`);
+  console.log('[SYNC] Starting');
 
   try {
-    const lockResult = await withTaskLock('sync_lock', 5, async () => {
+    const lockResult = await withTaskLock('sync', async () => {
       if (signal.aborted) return;
       await publishSyncEvent('start');
 
@@ -158,7 +137,7 @@ async function runSync(): Promise<void> {
 
       const time = nowWIB();
       console.log(
-        `[SYNC] ✅ Done | inserted: ${result.inserted} | updated: ${result.updated} | ${time} WIB`,
+        `[SYNC] Done | inserted: ${result.inserted} | updated: ${result.updated} | ${time} WIB`,
       );
       await publishSyncEvent('complete', {
         inserted: result.inserted,
@@ -174,7 +153,7 @@ async function runSync(): Promise<void> {
     }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[SYNC] ❌ Failed:', msg);
+    console.error('[SYNC] Failed:', msg);
     await publishSyncEvent('error', { error: msg }).catch(() => {});
     state.lastError = msg;
     state.consecutiveErrors++;
@@ -202,10 +181,10 @@ async function runPush(): Promise<void> {
   state.running = true;
   const { signal, cancel } = withCancellableTimeout(5 * 60 * 1000);
 
-  console.log(`[PUSH] Starting`);
+  console.log('[PUSH] Starting');
 
   try {
-    const lockResult = await withTaskLock('push_lock', 5, async () => {
+    const lockResult = await withTaskLock('push', async () => {
       if (signal.aborted) return;
       await publishSyncEvent('start');
 
@@ -218,7 +197,7 @@ async function runPush(): Promise<void> {
 
       const time = nowWIB();
       console.log(
-        `[PUSH] ✅ Done | updated: ${result.updated ?? 0} | skipped: ${result.skipped ?? 0} | ${time} WIB`,
+        `[PUSH] Done | updated: ${result.updated ?? 0} | skipped: ${result.skipped ?? 0} | ${time} WIB`,
       );
       await publishSyncEvent('complete', { updated: result.updated, skipped: result.skipped });
 
@@ -231,7 +210,7 @@ async function runPush(): Promise<void> {
     }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[PUSH] ❌ Failed:', msg);
+    console.error('[PUSH] Failed:', msg);
     await publishSyncEvent('error', { error: msg }).catch(() => {});
     state.lastError = msg;
     state.consecutiveErrors++;
@@ -260,7 +239,7 @@ async function runTechEvents(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(2 * 60 * 1000);
 
   try {
-    const lockResult = await withTaskLock('tech_events_lock', 3, async () => {
+    const lockResult = await withTaskLock('tech_events', async () => {
       if (signal.aborted) return;
       const result = await dispatchTechEvents();
 
@@ -271,7 +250,7 @@ async function runTechEvents(): Promise<void> {
       if (!signal.aborted) {
         const time = nowWIB();
         console.log(
-          `[TECH_EVENTS] ✅ Done | sent: ${result.success ?? 0} | failed: ${result.failed ?? 0} | ${time} WIB`,
+          `[TECH_EVENTS] Done | sent: ${result.success ?? 0} | failed: ${result.failed ?? 0} | ${time} WIB`,
         );
         state.consecutiveErrors = 0;
         state.lastError = null;
@@ -283,7 +262,7 @@ async function runTechEvents(): Promise<void> {
     }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[TECH_EVENTS] ❌ Failed:', msg);
+    console.error('[TECH_EVENTS] Failed:', msg);
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -310,7 +289,7 @@ async function runAutoAssign(): Promise<void> {
   const { signal, cancel } = withCancellableTimeout(60 * 1000);
 
   try {
-    const lockResult = await withTaskLock('auto_assign_lock', 3, async () => {
+    const lockResult = await withTaskLock('auto_assign', async () => {
       if (signal.aborted) return;
 
       const allSAs = await prisma.service_area.findMany({
@@ -340,7 +319,7 @@ async function runAutoAssign(): Promise<void> {
         const time = nowWIB();
         const skipped = result.total - result.assigned - result.failed;
         console.log(
-          `[AUTO_ASSIGN] ✅ Done | assigned: ${result.assigned}/${result.total} | skipped: ${skipped} | SA ${currentIdx + 1}–${currentIdx + batchSize}/${totalSAs} | ${time} WIB`,
+          `[AUTO_ASSIGN] Done | assigned: ${result.assigned}/${result.total} | skipped: ${skipped} | SA ${currentIdx + 1}–${currentIdx + batchSize}/${totalSAs} | ${time} WIB`,
         );
         state.consecutiveErrors = 0;
         state.lastError = null;
@@ -352,7 +331,7 @@ async function runAutoAssign(): Promise<void> {
     }
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error('[AUTO_ASSIGN] ❌ Failed:', msg);
+    console.error('[AUTO_ASSIGN] Failed:', msg);
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -362,11 +341,18 @@ async function runAutoAssign(): Promise<void> {
   }
 }
 
-function logWorkerHealth(): void {
+async function logWorkerHealth(): Promise<void> {
+  const syncStatus = await getLockStatus('sync');
+  const pushStatus = await getLockStatus('push');
+  const teStatus = await getLockStatus('tech_events');
+  const aaStatus = await getLockStatus('auto_assign');
+
   console.log('[WORKER] Health Report:', {
-    sheetsQueue: {
-      running: sheetsQueue.isRunning,
-      queueLength: sheetsQueue.queueLength,
+    locks: {
+      sync: { held: syncStatus.held, owner: syncStatus.owner },
+      push: { held: pushStatus.held, owner: pushStatus.owner },
+      techEvents: { held: teStatus.held, owner: teStatus.owner },
+      autoAssign: { held: aaStatus.held, owner: aaStatus.owner },
     },
     tasks: {
       sync: {
@@ -394,6 +380,10 @@ function logWorkerHealth(): void {
         lastError: taskState.autoAssign.lastError,
       },
     },
+    sheetsQueue: {
+      running: sheetsQueue.isRunning,
+      queueLength: sheetsQueue.queueLength,
+    },
   });
 }
 
@@ -409,6 +399,10 @@ async function startWorker() {
     console.error('[worker] DB connection failed, starting anyway:', err);
   }
 
+  for (const lockKey of ['sync', 'push', 'tech_events', 'auto_assign']) {
+    await cleanupStaleLock(lockKey, 60_000).catch(() => {});
+  }
+
   const cronEnabled = process.env.CRON_ENABLED === 'true';
 
   if (!cronEnabled) {
@@ -421,13 +415,12 @@ async function startWorker() {
     cron.schedule('*/10 * * * *', () => void runPush()),
     cron.schedule('*/2 * * * *', () => void runTechEvents()),
     cron.schedule('*/5 * * * *', () => void runAutoAssign()),
-    cron.schedule('*/15 * * * *', () => logWorkerHealth()),
+    cron.schedule('*/15 * * * *', () => void logWorkerHealth()),
   ];
 
   console.log(
     '[CRON] Scheduled: sync(1m) push(10m) tech-events(2m) auto-assign(5m, 10 SAs/batch)',
   );
-  console.log('[CRON] All tasks run independently via SheetsApiQueue coordination');
 
   const shutdown = async (signal: string) => {
     console.log(`[worker] Received ${signal} — shutting down...`);
@@ -435,20 +428,16 @@ async function startWorker() {
     scheduledTasks.forEach((t) => t.stop());
     console.log('[worker] Cron tasks stopped — no new runs will trigger');
 
-    const waitForTasks = async () => {
-      const deadline = Date.now() + 30_000;
-      while (Date.now() < deadline) {
-        const anyRunning = Object.values(taskState).some((s) => s.running);
-        if (!anyRunning) break;
-        const running = Object.entries(taskState)
-          .filter(([, s]) => s.running)
-          .map(([name]) => name);
-        console.log(`[worker] Waiting for tasks to finish: ${running.join(', ')}`);
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    };
-
-    await waitForTasks();
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const anyRunning = Object.values(taskState).some((s) => s.running);
+      if (!anyRunning) break;
+      const running = Object.entries(taskState)
+        .filter(([, s]) => s.running)
+        .map(([name]) => name);
+      console.log(`[worker] Waiting for tasks to finish: ${running.join(', ')}`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
 
     await Promise.allSettled([
       prisma.$disconnect().then(() => console.log('[worker] Prisma disconnected')),

@@ -286,7 +286,8 @@ export default function TicketPage() {
       }
 
       // Jenis breakdown (customer = reguler + hvc, sqm, unspec)
-      if (jenisType === 'reguler' || jenisType === 'hvc') summary.customerCount++;
+      if (jenisType === 'reguler' || jenisType === 'hvc')
+        summary.customerCount++;
       else if (jenisType === 'sqm') summary.sqmCount++;
       else summary.unspecCount++;
 
@@ -373,9 +374,12 @@ export default function TicketPage() {
     for (const t of b2cDailyTickets) {
       const rawCtype = (t.ctype || t.customerType || '') as string;
       const normalized = rawCtype.trim().toLowerCase();
-      const rawType = (['reguler', 'hvc_gold', 'hvc_platinum', 'hvc_diamond'].includes(normalized)
-        ? normalized.toUpperCase().replace(/_/g, '_')
-        : '') || 'UNCLASSIFIED';
+      const rawType =
+        (['reguler', 'hvc_gold', 'hvc_platinum', 'hvc_diamond'].includes(
+          normalized,
+        )
+          ? normalized.toUpperCase().replace(/_/g, '_')
+          : '') || 'UNCLASSIFIED';
       const type = KNOWN_CTYPES.has(rawType) ? rawType : 'UNCLASSIFIED';
 
       if (!typeMap.has(type)) typeMap.set(type, initType());
@@ -879,20 +883,27 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2cHasilVisitFilter.length === 0) return true;
-      if (b2cHasilVisitFilter.includes('close') && isTicketClosed(t.STATUS_UPDATE)) {
+      if (
+        b2cHasilVisitFilter.includes('close') &&
+        isTicketClosed(t.STATUS_UPDATE)
+      ) {
         return true;
       }
       const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return b2cHasilVisitFilter.some(f => {
+      return b2cHasilVisitFilter.some((f) => {
         if (f === 'close') return false;
         return status === f;
       });
     })
     .filter((t) => {
       if (b2cFlaggingFilter.length === 0) return true;
-      return b2cFlaggingFilter.some(f => {
+      return b2cFlaggingFilter.some((f) => {
         if (f === 'FFG') {
-          return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+          return (
+            String(t.guaranteeStatus ?? '')
+              .trim()
+              .toLowerCase() === 'guarantee'
+          );
         }
         if (f === 'GAMAS') {
           const candidates = [
@@ -902,7 +913,12 @@ export default function TicketPage() {
           ];
           const raw = candidates.find((v) => v !== null && v !== undefined);
           const normalized = String(raw ?? '').trim();
-          return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+          return (
+            normalized &&
+            !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+              normalized.toLowerCase(),
+            )
+          );
         }
         return t.flaggingManja === f;
       });
@@ -917,20 +933,27 @@ export default function TicketPage() {
     })
     .filter((t) => {
       if (b2bHasilVisitFilter.length === 0) return true;
-      if (b2bHasilVisitFilter.includes('close') && isTicketClosed(t.STATUS_UPDATE)) {
+      if (
+        b2bHasilVisitFilter.includes('close') &&
+        isTicketClosed(t.STATUS_UPDATE)
+      ) {
         return true;
       }
       const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return b2bHasilVisitFilter.some(f => {
+      return b2bHasilVisitFilter.some((f) => {
         if (f === 'close') return false;
         return status === f;
       });
     })
     .filter((t) => {
       if (b2bFlaggingFilter.length === 0) return true;
-      return b2bFlaggingFilter.some(f => {
+      return b2bFlaggingFilter.some((f) => {
         if (f === 'FFG') {
-          return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+          return (
+            String(t.guaranteeStatus ?? '')
+              .trim()
+              .toLowerCase() === 'guarantee'
+          );
         }
         if (f === 'GAMAS') {
           const candidates = [
@@ -940,7 +963,12 @@ export default function TicketPage() {
           ];
           const raw = candidates.find((v) => v !== null && v !== undefined);
           const normalized = String(raw ?? '').trim();
-          return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+          return (
+            normalized &&
+            !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+              normalized.toLowerCase(),
+            )
+          );
         }
         return t.flaggingManja === f;
       });
@@ -1040,7 +1068,7 @@ export default function TicketPage() {
                       />
                       <span>{lastSyncLabel}</span>
                       {nextSyncLabel && (
-                        <span className='opacity-60'>· {nextSyncLabel}</span>
+                        <span className='opacity-90'>· {nextSyncLabel}</span>
                       )}
                     </div>
                     {syncStatus.inProgress && (
@@ -1166,6 +1194,12 @@ export default function TicketPage() {
                       flaggingFilter={b2bFlaggingFilter}
                       loading={loading}
                       onAssign={handleAssignClick}
+                      downloadFilters={{
+                        dept: 'b2b',
+                        ticketType: b2bTicketTypeFilter,
+                        statusUpdate: b2bHasilVisitFilter,
+                        flagging: b2bFlaggingFilter,
+                      }}
                       pagination={{
                         currentPage: b2bPage,
                         totalPages: Math.max(
@@ -1212,6 +1246,12 @@ export default function TicketPage() {
                       flaggingFilter={b2cFlaggingFilter}
                       loading={loading}
                       onAssign={handleAssignClick}
+                      downloadFilters={{
+                        dept: 'b2c',
+                        ticketType: b2cTicketTypeFilter,
+                        statusUpdate: b2cHasilVisitFilter,
+                        flagging: b2cFlaggingFilter,
+                      }}
                       pagination={{
                         currentPage: b2cPage,
                         totalPages: Math.max(

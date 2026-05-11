@@ -143,7 +143,7 @@ export default function CustomerTypeCard({
       <div className='relative z-10 mb-6 flex items-start justify-between'>
         <div className='flex flex-col gap-1'>
           <span
-            className='text-[10px] font-black tracking-[0.2em] uppercase opacity-60'
+            className='text-[12px] font-black tracking-[0.2em] uppercase opacity-80'
             style={{ color: accentColor }}
           >
             {name}
@@ -235,11 +235,11 @@ export default function CustomerTypeCard({
           </span>
           <span className='flex items-center gap-1.5 text-blue-500'>
             <span className='h-1.5 w-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]' />
-            {assigned}
+            {assigned} Assigned
           </span>
           <span className='flex items-center gap-1.5 text-emerald-500'>
             <span className='h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' />
-            {close}
+            {close} Close
           </span>
         </div>
 

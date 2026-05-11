@@ -35,8 +35,8 @@ export async function postTechEvents(
       headers: {
         'Content-Type': 'application/json',
         'x-source': 'dompis',
-        'x-event-id': body.events[0]?.event_id ?? '',  // idempotency untuk GAS
-        'x-idempotency-key': body.events[0]?.event_id ?? '',  // alias untuk GAS
+        'x-event-id': body.events[0]?.event_id ?? '', // idempotency untuk GAS
+        'x-idempotency-key': body.events[0]?.event_id ?? '', // alias untuk GAS
       },
       body: rawBody,
       signal: controller.signal,

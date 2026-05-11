@@ -15,6 +15,7 @@ export interface TechnicianTicket {
   age: string;
   ageHours: number;
   closedAt?: string | null;
+  jenisTiket?: string;
 }
 
 export interface TechnicianOrderCounts {

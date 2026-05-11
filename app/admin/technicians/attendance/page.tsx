@@ -235,6 +235,12 @@ export default function MonthlyAttendancePage() {
             <p className='text-sm text-gray-500 dark:text-gray-400'>
               Lihat rekap absensi teknisi per bulan
             </p>
+            <Link
+              href='/admin/technicians'
+              className='mt-2 inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400'
+            >
+              ← Kembali ke Monitoring
+            </Link>
           </div>
           <Button
             variant='outline'
@@ -253,7 +259,7 @@ export default function MonthlyAttendancePage() {
           >
             <ChevronLeft size={20} />
           </button>
-          <div className='min-w-[200px] text-center'>
+          <div className='min-w-50 text-center'>
             <span className='text-lg font-semibold text-slate-800 dark:text-slate-100'>
               {MONTHS[month - 1]} {year}
             </span>
