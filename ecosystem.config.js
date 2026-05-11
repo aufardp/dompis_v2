@@ -33,6 +33,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         CRON_ENABLED: 'true',
+        REDIS_PORT: '6379',
       },
       autorestart: true,
       watch: false,
