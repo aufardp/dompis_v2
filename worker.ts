@@ -39,6 +39,7 @@ const taskState = {
     lastRunAt: null as Date | null,
     lastError: null as string | null,
     consecutiveErrors: 0,
+    lastDispatchAt: null as number | null,
   },
   autoAssign: {
     running: false,
@@ -222,11 +223,17 @@ async function runPush(): Promise<void> {
   }
 }
 
+const SKIP_IF_DISPATCHED_WITHIN_MS = 60_000;
+
 async function runTechEvents(): Promise<void> {
   const state = taskState.techEvents;
 
   if (state.running) {
     console.log('[TECH_EVENTS] Skipped — previous run still in progress');
+    return;
+  }
+
+  if (Date.now() - (state.lastDispatchAt ?? 0) < SKIP_IF_DISPATCHED_WITHIN_MS) {
     return;
   }
 
@@ -254,6 +261,7 @@ async function runTechEvents(): Promise<void> {
         );
         state.consecutiveErrors = 0;
         state.lastError = null;
+        state.lastDispatchAt = Date.now();
       }
     });
 
