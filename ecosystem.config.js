@@ -2,13 +2,13 @@ module.exports = {
   apps: [
     {
       name: 'dompis-server',
-      script: 'tsx',
-      args: 'server.ts',
+      script: 'node',
+      args: '.next/standalone/server.js',
+      cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '1G',
-      node_args: '--max-old-space-size=4096',
-      env_production: {
+      env: {
         NODE_ENV: 'production',
         PORT: 3000,
         REDIS_PORT: '6379',
@@ -26,11 +26,12 @@ module.exports = {
       name: 'dompis-worker',
       script: 'tsx',
       args: 'worker.ts',
+      cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '512M',
       node_args: '--max-old-space-size=1024',
-      env_production: {
+      env: {
         NODE_ENV: 'production',
         CRON_ENABLED: 'true',
         REDIS_PORT: '6379',

@@ -15,7 +15,28 @@ export async function initSSERedis() {
   if (subClient) return;
 
   try {
+    if (redis.status === 'connecting') {
+      console.log('[SSE-Redis] Waiting for main Redis to connect...');
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (redis.status !== 'connecting') {
+            resolve();
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
+    }
+
     subClient = redis.duplicate();
+
+    subClient.on('error', (err: Error) => {
+      if ((err as any).code !== 'ECONNREFUSED') {
+        console.error('[SSE-Redis] Subscriber error:', err.message);
+      }
+    });
+
     await subClient.connect();
 
     await subClient.subscribe('sse:sync', (message) => {
