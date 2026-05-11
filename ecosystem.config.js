@@ -7,7 +7,7 @@ module.exports = {
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
-      max_memory_restart: '1G',
+      max_memory_restart: '3G',
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
@@ -15,7 +15,7 @@ module.exports = {
       },
       autorestart: true,
       watch: false,
-      kill_timeout: 10000,
+      kill_timeout: 30000,
       health_check_grace_period: 3000,
       error_file: '/var/log/dompis/web-error.log',
       out_file: '/var/log/dompis/web-out.log',
@@ -29,8 +29,8 @@ module.exports = {
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
-      max_memory_restart: '512M',
-      node_args: '--max-old-space-size=1024',
+      max_memory_restart: '1G',
+      node_args: '--max-old-space-size=1536',
       env: {
         NODE_ENV: 'production',
         CRON_ENABLED: 'true',
