@@ -12,7 +12,12 @@
 
 import Redis from 'ioredis';
 
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const REDIS_URL = (() => {
+  const port = process.env.REDIS_PORT;
+  const host = process.env.REDIS_HOST ?? 'localhost';
+  if (port) return `redis://${host}:${port}`;
+  return process.env.REDIS_URL ?? 'redis://localhost:6379';
+})();
 
 // ── Singleton holder ──────────────────────────────────────────────────────────
 let instance: Redis | null = null;
