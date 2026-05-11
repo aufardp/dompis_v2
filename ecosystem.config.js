@@ -11,6 +11,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 3000,
+        REDIS_PORT: '6379',
       },
       autorestart: true,
       watch: false,
