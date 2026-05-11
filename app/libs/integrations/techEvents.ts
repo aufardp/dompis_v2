@@ -21,22 +21,29 @@ export async function postTechEvents(
   const rawBody = JSON.stringify(body);
   const signature = signPayload(cfg.secret, ts, rawBody);
 
-  // ✅ Gunakan URL object biar aman
   const url = new URL(cfg.url);
   url.searchParams.set('timestamp', ts);
   url.searchParams.set('signature', signature);
 
+  console.log('[TechEvents] Posting webhook:', {
+    url: url.origin + url.pathname,
+    eventCount: body.events.length,
+    secretPrefix: cfg.secret.slice(0, 3) + '***',
+    ts,
+  });
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
-  try {
+try {
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-source': 'dompis',
-        'x-event-id': body.events[0]?.event_id ?? '', // idempotency untuk GAS
-        'x-idempotency-key': body.events[0]?.event_id ?? '', // alias untuk GAS
+        'x-cron-secret': cfg.secret,
+        'x-event-id': body.events[0]?.event_id ?? '',
+        'x-idempotency-key': body.events[0]?.event_id ?? '',
       },
       body: rawBody,
       signal: controller.signal,
@@ -44,13 +51,17 @@ export async function postTechEvents(
 
     const text = await res.text().catch(() => '');
 
-    // GAS Web App kadang return 302 redirect atau 200 dengan body "Success"
-    // Anggap sukses jika status 2xx ATAU 302 ATAU body mengandung "success"
     const isSuccess =
       res.ok ||
       res.status === 302 ||
       text.toLowerCase().includes('"success"') ||
       text.toLowerCase().includes('success');
+
+    console.log('[TechEvents] Webhook response:', {
+      status: res.status,
+      ok: isSuccess,
+      bodyPreview: text.slice(0, 200),
+    });
 
     return {
       ok: isSuccess,
