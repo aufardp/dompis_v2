@@ -7,7 +7,8 @@ import TicketRowB2B from './TicketRowB2B';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
 import TicketDetailDrawer from './TicketDetailDrawer';
-import { ChevronDown, ChevronUp, Columns3, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Columns3, X, Download, Loader2 } from 'lucide-react';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
   computeTicketRanks,
   calculateAgeInHours,
@@ -81,6 +82,12 @@ export interface AdminTicketTableB2BProps {
     close: number;
   };
   flaggingFilter?: string[];
+  downloadFilters?: {
+    dept: 'b2b' | 'b2c';
+    ticketType?: string[];
+    statusUpdate?: string[];
+    flagging?: string[];
+  };
 }
 
 interface SortConfig {
@@ -146,7 +153,8 @@ export default function TicketTableB2B({
   onDetail,
   onBulkAssign,
   pagination,
-  tableSummary, // ← ADDED
+  tableSummary,
+  downloadFilters,
 }: AdminTicketTableB2BProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'priority',
@@ -157,7 +165,52 @@ export default function TicketTableB2B({
   const [drawerDetail, setDrawerDetail] = useState<any | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
-  // Removed selectedIds, visibleCols, showColMenu states
+  const [downloadFormat, setDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    if (!downloadFilters) return;
+    setDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('format', downloadFormat);
+      params.set('dept', downloadFilters.dept);
+
+      for (const t of downloadFilters.ticketType ?? []) {
+        params.append('ticketType', t);
+      }
+      for (const s of downloadFilters.statusUpdate ?? []) {
+        params.append('statusUpdate', s);
+      }
+      for (const f of downloadFilters.flagging ?? []) {
+        params.append('flagging', f);
+      }
+
+      const res = await fetchWithAuth(
+        `/api/tickets/daily/export?${params.toString()}`,
+      );
+      if (!res) {
+        alert('Export gagal: session expired');
+        return;
+      }
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.message ?? 'Export gagal');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Tiket_${downloadFilters.dept.toUpperCase()}_${downloadFormat}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message ?? 'Export gagal');
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloadFilters, downloadFormat]);
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -320,6 +373,30 @@ export default function TicketTableB2B({
             <p className='text-xs text-(--text-secondary)'>
               {pagination?.total ?? sortedTickets.length} tiket
             </p>
+            {downloadFilters && (
+              <div className='flex items-center gap-2'>
+                <select
+                  value={downloadFormat}
+                  onChange={(e) => setDownloadFormat(e.target.value as 'csv' | 'xlsx')}
+                  className='text-xs rounded border border-(--border) bg-surface px-1.5 py-1 text-(--text-secondary)'
+                >
+                  <option value='xlsx'>XLSX</option>
+                  <option value='csv'>CSV</option>
+                </select>
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className='flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
+                >
+                  {downloading ? (
+                    <Loader2 size={14} className='animate-spin' />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  Download
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ← ADDED: Summary bar */}

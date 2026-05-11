@@ -18,7 +18,7 @@ let isPushRunning = false;
 // ──────────────────────────────────────────────────────────────────────────────
 
 function hashRow(data: any[]): string {
-  return data.map((v) => (v?.toString()?.trim() ?? '')).join('|');
+  return data.map((v) => v?.toString()?.trim() ?? '').join('|');
 }
 
 async function sheetsApiCall<T>(

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Copy,
@@ -27,6 +28,8 @@ import {
 } from '@/app/types/ticket';
 import { getEffectiveMaxTtrISO } from '@/app/libs/tickets/effective';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { normalizeCustomerType } from '@/app/config/customer-types';
+import EvidenceGallery from './EvidenceGallery';
 
 type TicketStatusKey =
   | 'OPEN'
@@ -690,6 +693,8 @@ export default function TicketDetailDrawer({
     }>
   >([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   useEffect(() => {
     if (open) setActiveTab('umum');
@@ -797,7 +802,7 @@ export default function TicketDetailDrawer({
     dot: 'bg-slate-500',
   };
 
-  return (
+  const content = (
     <div
       className={clsx(
         'fixed inset-0 z-50 flex justify-end transition-all duration-300 ease-out',
@@ -1026,15 +1031,35 @@ export default function TicketDetailDrawer({
                   </Section>
 
                   <Section icon={<UserCircle size={14} />} title='Segmentasi'>
-                    <Field label='Customer Type' value={ticket.customerType} />
-                    <Field
-                      label='C-Type'
-                      value={
-                        ticket.ctype
-                          ? CustomerType[ticket.ctype]?.label
-                          : undefined
-                      }
-                    />
+                    {ticket.customerType ? (
+                      (() => {
+                        const resolvedCtype = ticket.ctype
+                          ? ticket.ctype
+                          : normalizeCustomerType(ticket.customerType);
+                        const config = resolvedCtype
+                          ? CustomerType[resolvedCtype]
+                          : null;
+                        return (
+                          <div className='col-span-2'>
+                            <div className='mb-1.5 text-[10px] font-medium uppercase text-slate-500 dark:text-slate-400'>
+                              Tipe Pelanggan
+                            </div>
+                            {config ? (
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${config.bg} ${config.color}`}
+                              >
+                                <span>{config.icon}</span>
+                                <span>{config.label}</span>
+                              </span>
+                            ) : (
+                              <span className='inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300'>
+                                {ticket.customerType}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : null}
                     <Field
                       label='Customer Segment'
                       value={ticket.customerSegment}
@@ -1132,15 +1157,17 @@ export default function TicketDetailDrawer({
                           </p>
                         ) : (
                           <div className='grid grid-cols-2 gap-2'>
-                            {evidence.map((e) => {
+                            {evidence.map((e, idx) => {
                               const imageUrl = e.driveUrl ?? e.url;
                               return (
-                                <a
+                                <button
                                   key={e.id}
-                                  href={imageUrl}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  className='group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100'
+                                  type='button'
+                                  onClick={() => {
+                                    setGalleryIndex(idx);
+                                    setGalleryOpen(true);
+                                  }}
+                                  className='group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left'
                                 >
                                   <img
                                     src={imageUrl}
@@ -1159,7 +1186,7 @@ export default function TicketDetailDrawer({
                                       {e.fileName}
                                     </p>
                                   </div>
-                                </a>
+                                </button>
                               );
                             })}
                           </div>
@@ -1167,6 +1194,14 @@ export default function TicketDetailDrawer({
                       </div>
                     );
                   })()}
+
+                  {galleryOpen && (
+                    <EvidenceGallery
+                      items={evidence}
+                      initialIndex={galleryIndex}
+                      onClose={() => setGalleryOpen(false)}
+                    />
+                  )}
 
                   <Section icon={<UserCircle size={14} />} title='Teknisi'>
                     <Field
@@ -1327,4 +1362,7 @@ export default function TicketDetailDrawer({
       </div>
     </div>
   );
+
+  if (typeof window === 'undefined') return null;
+  return createPortal(content, document.body);
 }

@@ -279,26 +279,34 @@ export default function ManHoursPage() {
     <AdminLayout>
       <div className='space-y-6'>
         {/* Header */}
-        <div className='flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
           <div>
             <h1 className='text-xl font-semibold text-gray-800 sm:text-2xl dark:text-gray-100'>
               Produktivitas ManHours Teknisi
             </h1>
             <p className='text-sm text-gray-500 dark:text-gray-400'>
-              Monitoring produktivitas berdasarkan realisasi manhours per
+              Monitoring produktivitas berdasarkan realisation manhours per
               kategori tiket
             </p>
+            <Link
+              href='/admin/technicians'
+              className='mt-2 inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400'
+            >
+              ← Kembali ke Monitoring
+            </Link>
           </div>
-          <div className='flex items-center gap-2'>
+          <div className='flex flex-wrap items-center gap-2'>
             <Link href='/admin/technicians/manhours/import'>
               <Button variant='outline' size='sm'>
-                <Upload size={16} className='mr-2' />
-                Import Excel
+                <Upload size={14} className='mr-1.5' />
+                <span className='hidden sm:inline'>Import Excel</span>
+                <span className='sm:hidden'>Import</span>
               </Button>
             </Link>
             <Button onClick={handleExport} variant='outline' size='sm'>
-              <Download size={16} className='mr-2' />
-              Export CSV
+              <Download size={14} className='mr-1.5' />
+              <span className='hidden sm:inline'>Export CSV</span>
+              <span className='sm:hidden'>Export</span>
             </Button>
           </div>
         </div>
@@ -436,109 +444,220 @@ export default function ManHoursPage() {
         ) : !data?.rows.length ? (
           <EmptyState message='Belum ada data manhours untuk periode yang dipilih' />
         ) : (
-          <div className='overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
-            <table className='min-w-full divide-y divide-slate-200 dark:divide-slate-700'>
-              <thead className='bg-teal-500'>
-                <tr>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
-                    No
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
-                    Nama
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
-                    STO
-                  </th>
-                  {categoryColumns.map((col) => (
-                    <th
-                      key={col.jenis_key}
-                      className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Total Tiket
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    <div className='flex flex-col items-center gap-0.5'>
-                      <span>Produktivitas</span>
-                      <span className='text-[9px] font-normal text-teal-200 normal-case'>
-                        tiket / hari kerja
-                      </span>
-                    </div>
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Target
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Realisasi
-                  </th>
-                  <th className='sticky top-0 px-4 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
-                    Hari Kerja
-                  </th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-slate-200 dark:divide-slate-700'>
-                {data.rows.map((row, idx) => (
-                  <tr
-                    key={row.technician_id}
-                    className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                  >
-                    <td className='px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300'>
-                      {idx + 1}
-                    </td>
-                    <td className='px-4 py-3 text-sm'>
-                      <div className='font-medium text-slate-800 dark:text-slate-100'>
+          <>
+            {/* Desktop Table */}
+            <div className='hidden lg:block'>
+              <div className='overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
+                <div className='min-w-200'>
+                  <table className='w-full divide-y divide-slate-200 dark:divide-slate-700'>
+                    <thead className='bg-teal-500'>
+                      <tr>
+                        <th className='px-3 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
+                          No
+                        </th>
+                        <th className='px-3 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
+                          Nama
+                        </th>
+                        <th className='px-3 py-3 text-left text-xs font-bold tracking-wide text-white uppercase'>
+                          STO
+                        </th>
+                        {categoryColumns.map((col) => (
+                          <th
+                            key={col.jenis_key}
+                            className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'
+                          >
+                            {col.label}
+                          </th>
+                        ))}
+                        <th className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
+                          Total
+                        </th>
+                        <th className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
+                          Produktivitas
+                        </th>
+                        <th className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
+                          Target
+                        </th>
+                        <th className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
+                          Realisasi
+                        </th>
+                        <th className='px-3 py-3 text-center text-xs font-bold tracking-wide text-white uppercase'>
+                          Hari Kerja
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className='divide-y divide-slate-200 dark:divide-slate-700'>
+                      {data.rows.map((row, idx) => (
+                        <tr
+                          key={row.technician_id}
+                          className='hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        >
+                          <td className='px-3 py-3 text-sm font-medium text-slate-700 dark:text-slate-300'>
+                            {idx + 1}
+                          </td>
+                          <td className='px-3 py-3 text-sm'>
+                            <div className='font-medium text-slate-800 dark:text-slate-100'>
+                              {row.nama || 'N/A'}
+                            </div>
+                            {row.nik && (
+                              <div className='text-xs text-slate-500 dark:text-slate-400'>
+                                {row.nik}
+                              </div>
+                            )}
+                          </td>
+                          <td className='px-3 py-3 text-sm text-slate-700 dark:text-slate-300'>
+                            {row.sto}
+                          </td>
+                          {categoryColumns.map((col) => (
+                            <td
+                              key={col.jenis_key}
+                              className='px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300'
+                            >
+                              {row.categories[col.jenis_key] || 0}
+                            </td>
+                          ))}
+                          <td className='px-3 py-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300'>
+                            {row.total_tickets}
+                          </td>
+                          <td className='px-3 py-3 text-center'>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                row.produktivitas >= 20
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400'
+                                  : row.produktivitas >= 10
+                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400'
+                                    : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                              }`}
+                            >
+                              {row.produktivitas.toFixed(2)}
+                            </span>
+                          </td>
+                          <td className='px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
+                            {row.target}
+                          </td>
+                          <td className='px-3 py-3 text-center text-sm font-semibold text-slate-800 dark:text-slate-100'>
+                            {row.realisasi}
+                          </td>
+                          <td className='px-3 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
+                            {row.hari_kerja}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className='space-y-3 lg:hidden'>
+              {data.rows.map((row, idx) => (
+                <div
+                  key={row.technician_id}
+                  className='overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+                >
+                  {/* Header */}
+                  <div className='flex items-start justify-between gap-2 bg-slate-50 px-4 py-3 dark:bg-slate-700/50'>
+                    <div className='min-w-0'>
+                      <p className='font-semibold text-slate-800 dark:text-slate-100'>
                         {row.nama || 'N/A'}
-                      </div>
+                      </p>
                       {row.nik && (
-                        <div className='text-xs text-slate-500 dark:text-slate-400'>
+                        <p className='text-xs text-slate-500 dark:text-slate-400'>
                           {row.nik}
-                        </div>
+                        </p>
                       )}
-                    </td>
-                    <td className='px-4 py-3 text-sm text-slate-700 dark:text-slate-300'>
-                      {row.sto}
-                    </td>
-                    {categoryColumns.map((col) => (
-                      <td
-                        key={col.jenis_key}
-                        className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'
-                      >
-                        {row.categories[col.jenis_key] || 0}
-                      </td>
-                    ))}
-                    <td className='px-4 py-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300'>
-                      {row.total_tickets}
-                    </td>
-                    <td className='px-4 py-3 text-center'>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          row.produktivitas >= 20
-                            ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400'
-                            : row.produktivitas >= 10
-                              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400'
-                              : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                        }`}
-                      >
-                        {row.produktivitas.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
-                      {row.target}
-                    </td>
-                    <td className='px-4 py-3 text-center text-sm font-semibold text-slate-800 dark:text-slate-100'>
-                      {row.realisasi}
-                    </td>
-                    <td className='px-4 py-3 text-center text-sm text-slate-700 dark:text-slate-300'>
-                      {row.hari_kerja} hari
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+                        STO: {row.sto}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        row.produktivitas >= 20
+                          ? 'bg-green-500 text-white'
+                          : row.produktivitas >= 10
+                            ? 'bg-yellow-500 text-white'
+                            : 'bg-red-500 text-white'
+                      }`}
+                    >
+                      {row.produktivitas.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Stats */}
+                  <div className='px-4 py-3'>
+                    <div className='grid grid-cols-2 gap-2'>
+                      <div className='rounded-lg bg-slate-50 p-2 dark:bg-slate-700/50'>
+                        <p className='text-[10px] font-medium text-slate-500 uppercase dark:text-slate-400'>
+                          Total Tiket
+                        </p>
+                        <p className='text-sm font-semibold text-slate-800 dark:text-slate-100'>
+                          {row.total_tickets}
+                        </p>
+                      </div>
+                      <div className='rounded-lg bg-slate-50 p-2 dark:bg-slate-700/50'>
+                        <p className='text-[10px] font-medium text-slate-500 uppercase dark:text-slate-400'>
+                          Hari Kerja
+                        </p>
+                        <p className='text-sm font-semibold text-slate-800 dark:text-slate-100'>
+                          {row.hari_kerja}
+                        </p>
+                      </div>
+                      <div className='rounded-lg bg-slate-50 p-2 dark:bg-slate-700/50'>
+                        <p className='text-[10px] font-medium text-slate-500 uppercase dark:text-slate-400'>
+                          Target
+                        </p>
+                        <p className='text-sm font-semibold text-slate-800 dark:text-slate-100'>
+                          {row.target}
+                        </p>
+                      </div>
+                      <div className='rounded-lg bg-teal-50 p-2 dark:bg-teal-500/10'>
+                        <p className='text-[10px] font-medium text-teal-600 uppercase dark:text-teal-400'>
+                          Realisasi
+                        </p>
+                        <p className='text-sm font-semibold text-teal-700 dark:text-teal-300'>
+                          {row.realisasi}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kategori badges */}
+                  {categoryColumns.length > 0 && (
+                    <div className='border-t border-slate-100 px-4 py-3 dark:border-slate-700'>
+                      <div className='flex flex-wrap gap-1.5'>
+                        {categoryColumns.map((col) => {
+                          const count = row.categories[col.jenis_key] || 0;
+                          const colorMap: Record<string, string> = {
+                            reguler: 'bg-emerald-500 text-white',
+                            sqm: 'bg-blue-500 text-white',
+                            hvc: 'bg-amber-500 text-white',
+                            unspec: 'bg-slate-400 text-white',
+                            'sqm-ccan': 'bg-fuchsia-500 text-white',
+                            indibiz: 'bg-sky-500 text-white',
+                            datin: 'bg-cyan-500 text-white',
+                            reseller: 'bg-purple-500 text-white',
+                            'wifi-id': 'bg-teal-500 text-white',
+                          };
+                          const style =
+                            colorMap[col.jenis_key] ??
+                            'bg-slate-500 text-white';
+                          return (
+                            <span
+                              key={col.jenis_key}
+                              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${style}`}
+                            >
+                              {count}x {col.label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </AdminLayout>

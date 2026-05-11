@@ -21,6 +21,7 @@ import Button from '@/app/components/ui/Button';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import TicketDetailDrawer from '@/app/admin/components/dashboard/TicketDetailDrawer';
 import AllTicketsModal from '@/app/admin/components/technician/AllTicketsModal';
+import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
@@ -82,7 +83,7 @@ const STATUS_CONFIG: Record<
 
 function getTechnicianStatusValue(ticketCount: number): TechnicianStatus {
   if (ticketCount === 0) return 'IDLE';
-  if (ticketCount > 5) return 'OVERLOAD';
+  if (ticketCount > 6) return 'OVERLOAD';
   return 'AKTIF';
 }
 
@@ -179,6 +180,42 @@ function EmptyState({ hasFilters, onReset }: EmptyStateProps) {
   );
 }
 
+function normalizeJenisKey(raw: string | undefined | null): string {
+  if (!raw) return 'reguler';
+  const v = raw.toLowerCase().trim().replace(/[\s_]/g, '-');
+  const valid = [
+    'reguler',
+    'sqm',
+    'hvc',
+    'unspec',
+    'sqm-ccan',
+    'indibiz',
+    'datin',
+    'reseller',
+    'wifi-id',
+  ];
+  return valid.includes(v) ? v : 'reguler';
+}
+
+function getJenisBadge(raw: string | undefined | null): {
+  label: string;
+  style: string;
+} {
+  const key = normalizeJenisKey(raw);
+  const configs: Record<string, { label: string; style: string }> = {
+    reguler: { label: 'Reg', style: 'bg-emerald-500' },
+    sqm: { label: 'SQM', style: 'bg-blue-500' },
+    hvc: { label: 'HVC', style: 'bg-amber-500' },
+    unspec: { label: 'Unspec', style: 'bg-slate-500' },
+    'sqm-ccan': { label: 'SQM-CCAN', style: 'bg-fuchsia-500' },
+    indibiz: { label: 'Indibiz', style: 'bg-sky-500' },
+    datin: { label: 'Datin', style: 'bg-cyan-500' },
+    reseller: { label: 'Reseller', style: 'bg-purple-500' },
+    'wifi-id': { label: 'WiFi-ID', style: 'bg-teal-500' },
+  };
+  return configs[key] ?? configs.reguler;
+}
+
 function TechnicianCard({
   technician,
   onDetail,
@@ -244,6 +281,15 @@ function TechnicianCard({
     closed: technician.total_closed_today || 0,
   };
 
+  const jenisSummary = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const t of technician.assigned_tickets) {
+      const key = normalizeJenisKey(t.jenisTiket);
+      result[key] = (result[key] ?? 0) + 1;
+    }
+    return result;
+  }, [technician.assigned_tickets]);
+
   const borderColor =
     status === 'IDLE'
       ? 'border-l-slate-300'
@@ -274,6 +320,18 @@ function TechnicianCard({
           {initials}
         </div>
         <div className='min-w-0 flex-1'>
+          {technician.cluster_today && technician.cluster_today.length > 0 && (
+            <div className='mb-1.5 flex flex-wrap gap-1'>
+              {technician.cluster_today.map((c) => (
+                <span
+                  key={c}
+                  className='rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
           <div className='flex items-start justify-between gap-3'>
             <div className='min-w-0'>
               <h3 className='truncate font-semibold text-slate-800 dark:text-slate-100'>
@@ -293,24 +351,24 @@ function TechnicianCard({
             </Link>
           </div>
           <span
-            className={`mt-1.5 inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
+            className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
           >
             {status === 'OVERLOAD' && (
-              <span className='mr-1.5 flex h-2 w-2'>
+              <span className='flex h-2 w-2'>
                 <span className='relative inline-flex h-2 w-2 animate-ping rounded-full bg-red-400 opacity-75' />
                 <span className='relative inline-flex h-2 w-2 rounded-full bg-red-500' />
               </span>
             )}
             {statusConfig.label}
           </span>
-          {technician.cluster_today && technician.cluster_today.length > 0 && (
-            <div className='mt-1 flex flex-wrap gap-1'>
-              {technician.cluster_today.map((c) => (
+          {Object.keys(jenisSummary).length > 0 && (
+            <div className='mt-1.5 flex flex-wrap items-center gap-1'>
+              {Object.entries(jenisSummary).map(([key, count]) => (
                 <span
-                  key={c}
-                  className='inline-flex items-center rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400'
+                  key={key}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${getJenisBadge(key).style}`}
                 >
-                  {c}
+                  {count}x {getJenisBadge(key).label}
                 </span>
               ))}
             </div>
@@ -428,6 +486,11 @@ function TechnicianCard({
                       #{idx + 1}
                     </span>
                     <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getJenisBadge(ticket.jenisTiket).style}`}
+                    >
+                      {getJenisBadge(ticket.jenisTiket).label}
+                    </span>
+                    <span
                       className={`text-xs font-medium ${getAgeBgColor(ticket.ageHours)} ${getAgeColor(ticket.ageHours)}`}
                     >
                       {ticket.ageHours >= 24
@@ -485,61 +548,21 @@ function TechnicianCard({
   );
 }
 
-function StatsCard({
-  title,
-  value,
-  color,
-  isActive,
-  onClick,
-}: {
-  title: string;
-  value: number;
-  color: string;
-  isActive?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={`group flex flex-col justify-center rounded-xl border bg-white p-4 transition-all md:p-5 ${
-        onClick ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
-      } ${
-        isActive
-          ? `border-blue-500 ring-2 ring-blue-500/20` // Menggunakan /20 agar ring lebih soft
-          : 'border-slate-200 dark:border-slate-700'
-      } dark:bg-slate-800/50`} // Memberikan sedikit transparansi agar lebih modern
-    >
-      <p className='text-[10px] font-bold tracking-[1.2px] text-slate-500 uppercase transition-colors group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300'>
-        {title}
-      </p>
-      <p
-        className={`mt-2 text-2xl leading-none font-extrabold md:text-3xl ${color}`}
-      >
-        {value}
-      </p>
-    </button>
-  );
-}
-
-export default function TechnicianMonitoringPage() {
+export default function TechniciansPage() {
   const [search, setSearch] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<TechnicianStatus | 'all'>(
     'all',
   );
-  const [selectedSaId, setSelectedSaId] = useState<number | null>(null);
   const [globalTicketFilter, setGlobalTicketFilter] = useState<
     'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
   >('all');
 
-  const { serviceAreas, loading: saLoading } = useUserManagedSAs();
-
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTicket, setDetailTicket] = useState<any>(null);
+  const [detailTicketId, setDetailTicketId] = useState<number | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [detailTicket, setDetailTicket] = useState<any | null>(null);
-  const [detailTicketId, setDetailTicketId] = useState<number | null>(null);
 
   const [allTicketsModal, setAllTicketsModal] = useState<{
     open: boolean;
@@ -562,55 +585,105 @@ export default function TechnicianMonitoringPage() {
     currentTechnicianName: null,
   });
 
-  const filters = useMemo(
-    () => ({
-      search: search || undefined,
-      workzone: workzoneFilter || undefined,
-      status: statusFilter,
-    }),
-    [search, workzoneFilter, statusFilter],
-  );
-
   const {
-    technicians,
+    technicians: allTechnicians,
     summary,
-    userWorkzones,
     loading,
     error,
-    lastUpdated,
     refresh,
-  } = useTechnicianTickets(filters, 0, false, {
-    includeClosedToday: true,
-    closedTodayLimit: 3,
-  });
+  } = useTechnicianTickets(
+    { search: '', workzone: '', status: 'all' },
+    180,
+    false,
+    { includeClosedToday: true, closedTodayLimit: 20 },
+  );
 
-  // Auto refresh technicians list every 180s, pause while ticket detail or reassign modal is open.
-  useAutoRefresh({
-    intervalMs: 180_000,  // 3 menit — SSE menangani real-time, polling hanya safety net
-    refreshers: [refresh],
-    pauseWhen: [detailOpen, reassignModal.open],
-  });
+  const currentSummary = summary ?? {
+    total_active: 0,
+    total_assigned: 0,
+    overload_count: 0,
+    idle_count: 0,
+  };
+
+  const orderStats = useMemo(() => {
+    return allTechnicians.reduce(
+      (acc, tech: Technician) => ({
+        totalAssigned: acc.totalAssigned + (tech.order_counts?.assigned ?? 0),
+        totalOnProgress:
+          acc.totalOnProgress + (tech.order_counts?.on_progress ?? 0),
+        totalPending: acc.totalPending + (tech.order_counts?.pending ?? 0),
+        totalClosedToday: acc.totalClosedToday + (tech.total_closed_today ?? 0),
+      }),
+      {
+        totalAssigned: 0,
+        totalOnProgress: 0,
+        totalPending: 0,
+        totalClosedToday: 0,
+      },
+    );
+  }, [allTechnicians]);
+
+  const technicians = useMemo(() => {
+    let result = allTechnicians;
+
+    if (workzoneFilter) {
+      const saId = Number(workzoneFilter);
+      result = result.filter(
+        (t: Technician) => t.workzone && t.workzone.includes(String(saId)),
+      );
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (t: Technician) =>
+          t.nama?.toLowerCase().includes(q) ||
+          t.workzone?.toLowerCase().includes(q),
+      );
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter((t: Technician) => {
+        const total =
+          (t.order_counts?.assigned ?? 0) +
+          (t.order_counts?.on_progress ?? 0) +
+          (t.order_counts?.pending ?? 0);
+        return getTechnicianStatusValue(total) === statusFilter;
+      });
+    }
+
+    return result;
+  }, [allTechnicians, search, workzoneFilter, statusFilter]);
+
+  const hasFilters = !!(search || workzoneFilter || statusFilter !== 'all');
+
+  const handleResetFilters = useCallback(() => {
+    setSearch('');
+    setWorkzoneFilter('');
+    setStatusFilter('all');
+    setGlobalTicketFilter('all');
+  }, []);
 
   const handleTicketDetail = useCallback(async (ticketId: number) => {
-    setDetailTicketId(ticketId);
     setDetailOpen(true);
+    setDetailTicketId(ticketId);
     setDetailLoading(true);
     setDetailError(null);
     setDetailTicket(null);
-
     try {
       const res = await fetchWithAuth(`/api/tickets/${ticketId}/detail`);
-      if (!res || !res.ok) {
-        const body = res ? await res.json().catch(() => null) : null;
-        throw new Error(body?.message || 'Failed to load ticket detail');
+      if (res?.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setDetailTicket(json.data);
+        } else {
+          setDetailError(json.message ?? 'Gagal memuat detail');
+        }
+      } else {
+        setDetailError('Gagal memuat detail tiket');
       }
-      const json = await res.json();
-      if (!json?.success) {
-        throw new Error(json?.message || 'Failed to load ticket detail');
-      }
-      setDetailTicket(json.data);
-    } catch (e: any) {
-      setDetailError(e?.message || 'Failed to load ticket detail');
+    } catch {
+      setDetailError('Terjadi kesalahan jaringan');
     } finally {
       setDetailLoading(false);
     }
@@ -621,27 +694,27 @@ export default function TechnicianMonitoringPage() {
   }, []);
 
   const handleReassign = useCallback(
-    (ticket: {
+    (data: {
       ticketId: number;
       ticketCode: string;
       workzone: string;
       currentTechnicianId: number;
       currentTechnicianName: string;
     }) => {
-      // Tidak perlu validasi SA — service layer auto-resolve dari ticket.WORKZONE
       setReassignModal({
         open: true,
-        ticketId: ticket.ticketId,
-        ticketCode: ticket.ticketCode,
-        workzone: ticket.workzone,
-        currentTechnicianId: ticket.currentTechnicianId,
-        currentTechnicianName: ticket.currentTechnicianName,
+        ticketId: data.ticketId,
+        ticketCode: data.ticketCode,
+        workzone: data.workzone,
+        currentTechnicianId: data.currentTechnicianId,
+        currentTechnicianName: data.currentTechnicianName,
       });
     },
     [],
   );
 
   const handleReassignSuccess = useCallback(async () => {
+    await new Promise((r) => setTimeout(r, 500));
     setReassignModal({
       open: false,
       ticketId: null,
@@ -653,57 +726,68 @@ export default function TechnicianMonitoringPage() {
     refresh();
   }, [refresh]);
 
-  const orderStats = useMemo(() => {
-    let totalAssigned = 0;
-    let totalOnProgress = 0;
-    let totalPending = 0;
-    let totalClosedToday = 0;
+  const { serviceAreas: workzoneOptions } = useUserManagedSAs();
+  const selectedSaId = workzoneFilter ? Number(workzoneFilter) : null;
 
-    technicians.forEach((tech) => {
-      const counts = tech.order_counts;
-      if (counts) {
-        totalAssigned += counts.assigned;
-        totalOnProgress += counts.on_progress;
-        totalPending += counts.pending;
-      }
-      totalClosedToday += tech.total_closed_today || 0;
-    });
-
-    return { totalAssigned, totalOnProgress, totalPending, totalClosedToday };
-  }, [technicians]);
-
-  const hasFilters = Boolean(
-    search || workzoneFilter || statusFilter !== 'all',
+  const StatsCards = () => (
+    <div className='grid grid-cols-2 gap-4 lg:grid-cols-5'>
+      <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <p className='text-sm font-medium text-slate-500 dark:text-slate-400'>
+          Total Teknisi
+        </p>
+        <p className='mt-1 text-3xl font-bold text-slate-800 dark:text-slate-100'>
+          {currentSummary.total_active + currentSummary.idle_count}
+        </p>
+        <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+          {currentSummary.idle_count} idle
+        </p>
+      </div>
+      <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <p className='text-sm font-medium text-slate-500 dark:text-slate-400'>
+          Menunggu
+        </p>
+        <p className='mt-1 text-3xl font-bold text-blue-600 dark:text-blue-400'>
+          {orderStats.totalAssigned}
+        </p>
+        <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+          assigned
+        </p>
+      </div>
+      <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <p className='text-sm font-medium text-slate-500 dark:text-slate-400'>
+          Pending
+        </p>
+        <p className='mt-1 text-3xl font-bold text-orange-600 dark:text-orange-400'>
+          {orderStats.totalPending}
+        </p>
+        <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+          pending
+        </p>
+      </div>
+      <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <p className='text-sm font-medium text-slate-500 dark:text-slate-400'>
+          Dikerjakan
+        </p>
+        <p className='mt-1 text-3xl font-bold text-amber-600 dark:text-amber-400'>
+          {orderStats.totalOnProgress}
+        </p>
+        <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+          on_progress
+        </p>
+      </div>
+      <div className='rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+        <p className='text-sm font-medium text-slate-500 dark:text-slate-400'>
+          Selesai Hari Ini
+        </p>
+        <p className='mt-1 text-3xl font-bold text-emerald-600 dark:text-emerald-400'>
+          {orderStats.totalClosedToday}
+        </p>
+        <p className='mt-0.5 text-xs text-slate-400 dark:text-slate-500'>
+          closed
+        </p>
+      </div>
+    </div>
   );
-
-  const handleResetFilters = useCallback(() => {
-    setSearch('');
-    setWorkzoneFilter('');
-    setStatusFilter('all');
-    setGlobalTicketFilter('all');
-  }, []);
-
-  const workzoneOptions = useMemo(() => {
-    const uniqueWorkzones = [
-      ...new Set(userWorkzones.filter((wz) => wz && wz.trim() !== '')),
-    ];
-    return uniqueWorkzones.map((wz) => ({ value: wz, label: wz }));
-  }, [userWorkzones]);
-
-  const saOptions = useMemo(() => {
-    if (!serviceAreas.length) return [];
-    return serviceAreas
-      .filter((sa) => sa.id_sa)
-      .map((sa) => ({
-        value: String(sa.id_sa),
-        label: sa.nama_sa || `SA ${sa.id_sa}`,
-      }));
-  }, [serviceAreas]);
-
-  const getTimeAgo = () => {
-    if (!lastUpdated) return '';
-    return formatDistanceToNow(lastUpdated, { addSuffix: true, locale: id });
-  };
 
   return (
     <AdminLayout>
@@ -717,10 +801,10 @@ export default function TechnicianMonitoringPage() {
               Data aktif hari ini —{' '}
               {format(new Date(), 'EEEE, d MMMM yyyy', { locale: id })}
             </p>
-            {userWorkzones.length > 0 && (
+            {workzoneOptions.length > 0 && (
               <p className='flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400'>
                 <MapPin size={14} />
-                Area: {userWorkzones.join(', ')}
+                Area: {workzoneOptions.map((w) => w.nama_sa).filter(Boolean).join(', ')}
               </p>
             )}
             <div className='mt-2 flex items-center gap-3'>
@@ -749,20 +833,13 @@ export default function TechnicianMonitoringPage() {
               </Link>
             </div>
           </div>
-          {lastUpdated && (
-            <div className='flex items-center gap-2 text-sm text-slate-500'>
-              <Clock size={14} />
-              <span>Diperbarui {getTimeAgo()}</span>
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => refresh()}
-                className='ml-1'
-              >
-                <RefreshCw size={14} />
-              </Button>
-            </div>
-          )}
+          <button
+            type='button'
+            onClick={() => refresh()}
+            className='flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'
+          >
+            <RefreshCw size={14} />
+          </button>
         </div>
 
         {error && (
@@ -779,213 +856,114 @@ export default function TechnicianMonitoringPage() {
           </div>
         )}
 
-        <AdminAccordion
-          multiple
-          storageKey='admin:technicians:sections'
-          items={[
-            {
-              id: 'summary',
-              title: 'Summary',
-              defaultOpen: true,
-              children: (
-                <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6'>
-                  {/* Total Teknisi — reset semua filter */}
-                  <StatsCard
-                    title='Total Teknisi'
-                    value={summary.total_active + summary.idle_count}
-                    color='text-blue-600'
-                    isActive={
-                      statusFilter === 'all' &&
-                      !search &&
-                      !workzoneFilter &&
-                      globalTicketFilter === 'all'
-                    }
-                    onClick={handleResetFilters}
-                  />
-
-                  {/* Menunggu — filter tiket assigned di semua card */}
-                  <StatsCard
-                    title='Menunggu'
-                    value={orderStats.totalAssigned}
-                    color='text-blue-500'
-                    isActive={globalTicketFilter === 'assigned'}
-                    onClick={() =>
-                      setGlobalTicketFilter(
-                        globalTicketFilter === 'assigned' ? 'all' : 'assigned',
-                      )
-                    }
-                  />
-
-                  {/* Dikerjakan — filter tiket on_progress */}
-                  <StatsCard
-                    title='Dikerjakan'
-                    value={orderStats.totalOnProgress}
-                    color='text-amber-600'
-                    isActive={globalTicketFilter === 'on_progress'}
-                    onClick={() =>
-                      setGlobalTicketFilter(
-                        globalTicketFilter === 'on_progress'
-                          ? 'all'
-                          : 'on_progress',
-                      )
-                    }
-                  />
-
-                  {/* Pending */}
-                  <StatsCard
-                    title='Pending'
-                    value={orderStats.totalPending}
-                    color='text-orange-600'
-                    isActive={globalTicketFilter === 'pending'}
-                    onClick={() =>
-                      setGlobalTicketFilter(
-                        globalTicketFilter === 'pending' ? 'all' : 'pending',
-                      )
-                    }
-                  />
-
-                  {/* Selesai Hari Ini */}
-                  <StatsCard
-                    title='Selesai Hari Ini'
-                    value={orderStats.totalClosedToday}
-                    color='text-green-600'
-                    isActive={globalTicketFilter === 'closed'}
-                    onClick={() =>
-                      setGlobalTicketFilter(
-                        globalTicketFilter === 'closed' ? 'all' : 'closed',
-                      )
-                    }
-                  />
-
-                  {/* Overload — filter status teknisi (tidak berubah) */}
-                  <StatsCard
-                    title='Overload'
-                    value={summary.overload_count}
-                    color='text-red-600'
-                    isActive={statusFilter === 'OVERLOAD'}
-                    onClick={() =>
-                      setStatusFilter(
-                        statusFilter === 'OVERLOAD' ? 'all' : 'OVERLOAD',
-                      )
-                    }
+      <AdminAccordion
+        items={[
+          {
+            id: 'summary',
+            title: 'Summary',
+            defaultOpen: true,
+            children: (
+              <>
+                <StatsCards />
+                <div className='mt-4'>
+                  <TechnicianSummaryTable
+                    technicians={allTechnicians}
+                    onFilterByTech={(_techId, _filterType) => {}}
                   />
                 </div>
-              ),
-            },
-            {
-              id: 'technicians',
-              title: 'Technicians',
-              defaultOpen: true,
-              right: hasFilters ? `${technicians.length} shown` : undefined,
-              children: (
-                <div className='space-y-4'>
-                  {/* Badge indikator filter aktif */}
-                  {globalTicketFilter !== 'all' && (
-                    <div className='flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'>
-                      <span>
-                        Menampilkan:{' '}
-                        <strong>
-                          {globalTicketFilter === 'assigned' && 'Menunggu'}
-                          {globalTicketFilter === 'on_progress' && 'Dikerjakan'}
-                          {globalTicketFilter === 'pending' && 'Pending'}
-                          {globalTicketFilter === 'closed' && 'Selesai Hari Ini'}
-                        </strong>
-                      </span>
-                      <button
-                        type='button'
-                        onClick={() => setGlobalTicketFilter('all')}
-                        className='ml-auto rounded px-1.5 py-0.5 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20'
-                      >
-                        ✕ Reset
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Filter bar compact */}
-                  <div className='flex flex-wrap items-center gap-2'>
-                    {/* Search */}
-                    <div className='relative min-w-40 flex-1 max-w-xs'>
-                      <Search className='absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400' />
-                      <input
-                        type='text'
-                        placeholder='Cari teknisi...'
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className='h-8 w-full rounded-lg border border-slate-200 bg-white py-1.5 pr-3 pl-8 text-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500'
-                      />
-                    </div>
-
-                    {/* Workzone — compact native select */}
-                    {workzoneOptions.length > 0 && (
-                      <select
-                        value={workzoneFilter}
-                        onChange={(e) => setWorkzoneFilter(e.target.value)}
-                        className={clsx(
-                          'h-8 rounded-lg border px-2.5 text-xs font-medium cursor-pointer outline-none transition',
-                          workzoneFilter
-                            ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/15 dark:text-blue-300'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300',
-                        )}
-                      >
-                        <option value=''>Semua Area</option>
-                        {workzoneOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    {/* Status chips */}
-                    <div className='flex items-center gap-1'>
-                      {(
-                        [
-                          { value: 'all', label: 'Semua', activeClass: 'bg-slate-700 text-white border-slate-700 dark:bg-slate-600 dark:border-slate-600' },
-                          { value: 'AKTIF', label: 'Aktif', activeClass: 'bg-blue-500 text-white border-blue-500' },
-                          { value: 'IDLE', label: 'Idle', activeClass: 'bg-slate-400 text-white border-slate-400' },
-                          { value: 'OVERLOAD', label: 'Overload', activeClass: 'bg-red-500 text-white border-red-500' },
-                        ] as const
-                      ).map(({ value, label, activeClass }) => (
-                        <button
-                          key={value}
-                          type='button'
-                          onClick={() => setStatusFilter(value as TechnicianStatus | 'all')}
-                          className={clsx(
-                            'h-8 rounded-lg border px-2.5 text-xs font-medium transition',
-                            statusFilter === value
-                              ? activeClass
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400',
-                          )}
+              </>
+            ),
+          },
+          {
+            id: 'technicians',
+            title: 'Teknisi',
+            children: (
+              <>
+                {loading ? (
+                  <LoadingSkeleton />
+                ) : technicians.length === 0 ? (
+                  <EmptyState
+                    hasFilters={hasFilters}
+                    onReset={handleResetFilters}
+                  />
+                ) : (
+                  <>
+                    <div className='mb-4 flex flex-wrap items-center gap-2'>
+                      <div className='relative max-w-xs min-w-40 flex-1'>
+                        <Search className='absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400' />
+                        <input
+                          type='text'
+                          placeholder='Cari teknisi...'
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          className='h-8 w-full rounded-lg border border-slate-200 bg-white py-1.5 pr-3 pl-8 text-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500'
+                        />
+                      </div>
+                      {workzoneOptions.length > 0 && (
+                        <select
+                          value={workzoneFilter}
+                          onChange={(e) => setWorkzoneFilter(e.target.value)}
+                          className='h-8 cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
                         >
-                          {label}
+                          <option value=''>Semua Area</option>
+                          {workzoneOptions.map(
+                            (opt: {
+                              id_sa: number;
+                              nama_sa: string | null;
+                            }) => (
+                              <option key={opt.id_sa} value={String(opt.id_sa)}>
+                                {opt.nama_sa ?? `Area ${opt.id_sa}`}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      )}
+                      {(['all', 'AKTIF', 'IDLE', 'OVERLOAD'] as const).map(
+                        (value) => (
+                          <button
+                            key={value}
+                            type='button'
+                            onClick={() => setStatusFilter(value)}
+                            className={clsx(
+                              'h-8 rounded-lg border px-2.5 text-xs font-medium transition',
+                              statusFilter === value
+                                ? value === 'all'
+                                  ? 'border-slate-700 bg-slate-700 text-white dark:border-slate-600 dark:bg-slate-600'
+                                  : value === 'AKTIF'
+                                    ? 'border-blue-500 bg-blue-500 text-white'
+                                    : value === 'IDLE'
+                                      ? 'border-slate-400 bg-slate-400 text-white'
+                                      : 'border-red-500 bg-red-500 text-white'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                            )}
+                          >
+                            {value === 'all'
+                              ? 'Semua'
+                              : value === 'AKTIF'
+                                ? 'Aktif'
+                                : value === 'IDLE'
+                                  ? 'Idle'
+                                  : 'Overload'}
+                          </button>
+                        ),
+                      )}
+                      {hasFilters && (
+                        <button
+                          type='button'
+                          onClick={handleResetFilters}
+                          className='flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-500 transition hover:border-red-200 hover:text-red-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        >
+                          Reset
                         </button>
-                      ))}
+                      )}
                     </div>
 
-                    {/* Reset */}
                     {hasFilters && (
-                      <button
-                        type='button'
-                        onClick={handleResetFilters}
-                        className='flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-500 transition hover:border-red-200 hover:text-red-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                      >
-                        ✕ Reset
-                      </button>
+                      <p className='mb-4 text-sm text-slate-500'>
+                        Menampilkan {technicians.length} teknisi
+                      </p>
                     )}
-                  </div>
 
-                  {hasFilters && (
-                    <p className='text-sm text-slate-500'>
-                      Menampilkan {technicians.length} teknisi
-                    </p>
-                  )}
-
-                  {loading ? (
-                    <LoadingSkeleton />
-                  ) : technicians.length === 0 ? (
-                    <EmptyState
-                      hasFilters={hasFilters}
-                      onReset={handleResetFilters}
-                    />
-                  ) : (
                     <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
                       {technicians.map((technician) => (
                         <TechnicianCard
@@ -998,60 +976,61 @@ export default function TechnicianMonitoringPage() {
                         />
                       ))}
                     </div>
-                  )}
-                </div>
-              ),
-            },
-          ]}
-        />
+                  </>
+                )}
+              </>
+            ),
+          },
+        ]}
+      />
 
-        <TicketDetailDrawer
-          open={detailOpen}
-          onClose={() => {
-            setDetailOpen(false);
-            setDetailError(null);
-            setDetailTicket(null);
-            setDetailTicketId(null);
-          }}
-          ticket={detailTicket}
-          loading={detailLoading}
-          error={detailError}
-          onRetry={
-            detailTicketId != null
-              ? () => handleTicketDetail(detailTicketId)
-              : undefined
-          }
-        />
+      <TicketDetailDrawer
+        open={detailOpen}
+        onClose={() => {
+          setDetailOpen(false);
+          setDetailError(null);
+          setDetailTicket(null);
+          setDetailTicketId(null);
+        }}
+        ticket={detailTicket}
+        loading={detailLoading}
+        error={detailError}
+        onRetry={
+          detailTicketId != null
+            ? () => handleTicketDetail(detailTicketId)
+            : undefined
+        }
+      />
 
-        <AllTicketsModal
-          isOpen={allTicketsModal.open}
-          onClose={() => setAllTicketsModal({ open: false, technician: null })}
-          technician={allTicketsModal.technician}
-          onDetail={handleTicketDetail}
-          onReassign={handleReassign}
-        />
+      <AllTicketsModal
+        isOpen={allTicketsModal.open}
+        onClose={() => setAllTicketsModal({ open: false, technician: null })}
+        technician={allTicketsModal.technician}
+        onDetail={handleTicketDetail}
+        onReassign={handleReassign}
+      />
 
-        <AssignTechnicianModal
-          isOpen={reassignModal.open}
-          onClose={() =>
-            setReassignModal({
-              open: false,
-              ticketId: null,
-              ticketCode: null,
-              workzone: null,
-              currentTechnicianId: null,
-              currentTechnicianName: null,
-            })
-          }
-          ticketId={reassignModal.ticketId ?? ''}
-          ticketCode={reassignModal.ticketCode ?? ''}
-          ticketWorkzone={reassignModal.workzone}
-          currentTechnicianId={reassignModal.currentTechnicianId ?? undefined}
-          currentTechnicianName={reassignModal.currentTechnicianName}
-          onAssign={handleReassignSuccess}
-          forceReassign={true}
-          selectedSaId={selectedSaId ?? undefined}
-        />
+      <AssignTechnicianModal
+        isOpen={reassignModal.open}
+        onClose={() =>
+          setReassignModal({
+            open: false,
+            ticketId: null,
+            ticketCode: null,
+            workzone: null,
+            currentTechnicianId: null,
+            currentTechnicianName: null,
+          })
+        }
+        ticketId={reassignModal.ticketId ?? ''}
+        ticketCode={reassignModal.ticketCode ?? ''}
+        ticketWorkzone={reassignModal.workzone}
+        currentTechnicianId={reassignModal.currentTechnicianId ?? undefined}
+        currentTechnicianName={reassignModal.currentTechnicianName}
+        onAssign={handleReassignSuccess}
+        forceReassign={true}
+        selectedSaId={selectedSaId ?? undefined}
+      />
       </div>
     </AdminLayout>
   );

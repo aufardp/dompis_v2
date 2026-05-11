@@ -81,6 +81,7 @@ function mapTechnicianTicket(t: {
   REPORTED_DATE: string | null;
   STATUS_UPDATE: string | null;
   WORKZONE?: string | null;
+  JENIS_TIKET?: string | null;
 }) {
   const { age, hours } = calculateAge(t.REPORTED_DATE);
   return {
@@ -94,6 +95,7 @@ function mapTechnicianTicket(t: {
     workzone: t.WORKZONE ?? null,
     age,
     ageHours: hours,
+    jenisTiket: t.JENIS_TIKET ?? undefined,
   };
 }
 
@@ -262,6 +264,7 @@ export async function GET(request: NextRequest) {
         teknisi_user_id: true,
         closed_at: true,
         WORKZONE: true,
+        JENIS_TIKET: true,
       },
       orderBy: { REPORTED_DATE: 'asc' },
     });
@@ -288,6 +291,7 @@ export async function GET(request: NextRequest) {
         teknisi_user_id: true,
         closed_at: true,
         WORKZONE: true,
+        JENIS_TIKET: true,
       },
       orderBy: { REPORTED_DATE: 'asc' },
     });
@@ -312,6 +316,7 @@ export async function GET(request: NextRequest) {
             STATUS_UPDATE: true,
             teknisi_user_id: true,
             closed_at: true,
+            JENIS_TIKET: true,
           },
           orderBy: { closed_at: 'desc' },
           take: closedTodayLimit,

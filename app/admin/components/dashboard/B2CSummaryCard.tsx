@@ -128,7 +128,7 @@ export default function B2CSummaryCard({
         {/* Reguler + SQM + Unspec breakdown */}
         <div className='flex gap-8'>
           <div>
-            <p className='mb-1 text-[10px] text-blue-300'>📋 Reguler</p>
+            <p className='mb-1 text-[11px] text-blue-300'>📋 Customer</p>
             <p className='text-2xl font-bold text-white'>
               {customerCount.toLocaleString()}
             </p>
@@ -137,14 +137,14 @@ export default function B2CSummaryCard({
             </p>
           </div>
           <div>
-            <p className='mb-1 text-[10px] text-blue-300'>📊 SQM</p>
+            <p className='mb-1 text-[11px] text-blue-300'>📊 SQM</p>
             <p className='text-2xl font-bold text-white'>
               {sqmCount.toLocaleString()}
             </p>
             <p className='text-[10px] text-blue-300/60'>{sqmPct}% of total</p>
           </div>
           <div>
-            <p className='mb-1 text-[10px] text-blue-300'>❓ Unspec</p>
+            <p className='mb-1 text-[11px] text-blue-300'>❓ Unspec</p>
             <p className='text-2xl font-bold text-white'>
               {unspecCount.toLocaleString()}
             </p>
