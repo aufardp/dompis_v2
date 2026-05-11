@@ -25,9 +25,9 @@ let instance: Redis | null = null;
 function createRedisClient(): Redis {
   const client = new Redis(REDIS_URL, {
     // Connection
-    lazyConnect: true, // ← Buka koneksi saat pertama dipakai, bukan saat import
-    connectTimeout: 5_000, // 5s — jangan tunggu terlalu lama saat startup
-    commandTimeout: 3_000, // 3s — timeout per command (bukan retry)
+    lazyConnect: false,
+    connectTimeout: 5_000,
+    commandTimeout: 3_000,
 
     // Retry — minimal, fail-fast, jangan block aplikasi
     maxRetriesPerRequest: 1, // ← Turun dari 5. Satu retry, lalu throw → cache miss
@@ -91,6 +91,10 @@ export const redis = getInstance();
  */
 export function isRedisReady(): boolean {
   return instance?.status === 'ready';
+}
+
+export function getRedisStatus(): string {
+  return instance?.status ?? 'null';
 }
 
 /**

@@ -1,4 +1,4 @@
-import { redis, isRedisReady } from '@/lib/redis';
+import { redis } from '@/lib/redis';
 
 export type LockResult = 'acquired' | 'skipped' | 'error';
 
@@ -14,12 +14,16 @@ function generateOwnerId(): string {
   return `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function isRedisConnected(): boolean {
+  return redis.status === 'ready' || redis.status === 'connect' || redis.status === 'connecting';
+}
+
 export async function acquireLock(
   key: string,
   ttlSeconds: number = 300,
 ): Promise<{ acquired: boolean; ownerId: string; handle: LockHandle | null }> {
-  if (!isRedisReady()) {
-    console.warn(`[DistLock] Redis not ready — key=${key} — failing open (allow run)`);
+  if (!isRedisConnected()) {
+    console.warn(`[DistLock] Redis not connected (status=${redis.status}) — key=${key} — failing open`);
     const fallbackOwner = generateOwnerId();
     return { acquired: true, ownerId: fallbackOwner, handle: null };
   }
@@ -50,8 +54,8 @@ export async function acquireLock(
 }
 
 export async function releaseLock(key: string, ownerId: string): Promise<boolean> {
-  if (!isRedisReady()) {
-    console.warn(`[DistLock] Redis not ready — key=${key} — skip release`);
+  if (!isRedisConnected()) {
+    console.warn(`[DistLock] Redis not connected (status=${redis.status}) — key=${key} — skip release`);
     activeLocks.delete(key);
     return false;
   }
@@ -89,7 +93,7 @@ export async function extendLock(
   ownerId: string,
   additionalSeconds: number = 300,
 ): Promise<boolean> {
-  if (!isRedisReady()) return false;
+  if (!isRedisConnected()) return false;
 
   const redisKey = `lock:${key}`;
 
@@ -111,7 +115,7 @@ export async function extendLock(
 }
 
 export async function getLockStatus(key: string): Promise<{ held: boolean; owner: string | null }> {
-  if (!isRedisReady()) return { held: false, owner: null };
+  if (!isRedisConnected()) return { held: false, owner: null };
 
   try {
     const owner = await redis.get(`lock:${key}`);
@@ -122,7 +126,7 @@ export async function getLockStatus(key: string): Promise<{ held: boolean; owner
 }
 
 export async function cleanupStaleLock(key: string, maxAgeMs: number = 60_000): Promise<boolean> {
-  if (!isRedisReady()) return false;
+  if (!isRedisConnected()) return false;
 
   const redisKey = `lock:${key}`;
 
