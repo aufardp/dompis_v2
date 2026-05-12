@@ -705,7 +705,10 @@ export default function TicketDetailModal({
                       initialDevice={ticket.deviceName}
                       canEdit={canUpdateAlamat}
                       onError={(err) => setError(err)}
-                      onDeviceSaved={() => setError(null)}
+                      onDeviceSaved={() => {
+                        setError(null);
+                        onUpdated();
+                      }}
                     />
                   </div>
                   <InfoField label='Workzone' value={ticket.workzone} />
