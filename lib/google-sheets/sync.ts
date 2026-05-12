@@ -505,8 +505,8 @@ if (isSameDay) {
         TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
         TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
         RK_INFORMATION = VALUES(RK_INFORMATION),
-        rca = VALUES(rca),
-        sub_rca = VALUES(sub_rca),
+        -- rca = VALUES(rca),
+        -- sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
         synced_at     = ?
@@ -608,8 +608,8 @@ if (isSameDay) {
         TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
         TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
         RK_INFORMATION = VALUES(RK_INFORMATION),
-        rca = VALUES(rca),
-        sub_rca = VALUES(sub_rca),
+        -- rca = VALUES(rca),
+        -- sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
         synced_at     = ?
@@ -693,6 +693,9 @@ if (isSameDay) {
         ONU_RX       = VALUES(ONU_RX),
         -- ✅ STATUS_UPDATE tidak disentuh: workflow app yang pegang kendali
         -- STATUS_UPDATE = VALUES(STATUS_UPDATE),
+        -- ✅ RCA dan Sub_RCA tidak disentuh: teknisi yang pegang kendali
+        -- rca = VALUES(rca),
+        -- sub_rca = VALUES(sub_rca),
         STATUS_MANJA = VALUES(STATUS_MANJA),
         JAM_EXPIRED_12_JAM_GOLD = VALUES(JAM_EXPIRED_12_JAM_GOLD),
         STATUS_TTR_12_GOLD = VALUES(STATUS_TTR_12_GOLD),
@@ -711,8 +714,8 @@ if (isSameDay) {
         TTR_INDIHOME_RESELLER_36_JAM = VALUES(TTR_INDIHOME_RESELLER_36_JAM),
         TTR_WIFI_24_JAM = VALUES(TTR_WIFI_24_JAM),
         RK_INFORMATION = VALUES(RK_INFORMATION),
-        rca = VALUES(rca),
-        sub_rca = VALUES(sub_rca),
+        -- rca = VALUES(rca),
+        -- sub_rca = VALUES(sub_rca),
         sync_date     = VALUES(sync_date),
         import_batch  = VALUES(import_batch),
         synced_at     = ?
