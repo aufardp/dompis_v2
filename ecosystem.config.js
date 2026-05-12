@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'dompis-server',
-      script: 'node_modules/.bin/next',
+      script: '/www/wwwroot/dompis_v2/node_modules/.bin/next',
       args: 'start -p 9005',
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
