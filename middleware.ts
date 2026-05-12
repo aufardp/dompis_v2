@@ -82,6 +82,7 @@ export async function middleware(req: NextRequest) {
   // 1. BYPASS — public / internal paths
   if (
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/tickets/upload-evidence') ||
     pathname === '/login' ||
     pathname === '/' ||
     pathname.startsWith('/_next') ||
