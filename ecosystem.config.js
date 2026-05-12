@@ -2,15 +2,15 @@ module.exports = {
   apps: [
     {
       name: 'dompis-server',
-      script: 'node',
-      args: '.next/standalone/server.js',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 9005',
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
       max_memory_restart: '3G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        HOSTNAME: '0.0.0.0',
         REDIS_PORT: '6379',
       },
       autorestart: true,
