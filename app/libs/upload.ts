@@ -3,7 +3,8 @@ import path from 'path';
 
 export type ActionType = 'pending' | 'close';
 
-export const UPLOADS_ROOT = path.join(process.cwd(), 'public', 'uploads');
+const PROJECT_ROOT = process.env.NEXT_PUBLIC_PROJECT_ROOT || '/www/wwwroot/dompis_v2';
+export const UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
 
 export async function saveFiles(
   files: File[],

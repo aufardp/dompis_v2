@@ -132,7 +132,9 @@ async function runSync(): Promise<void> {
       const result = await syncSpreadsheet(signal);
 
       if (signal.aborted) {
-        await publishSyncEvent('error', { error: 'Sync timed out after 3 minutes' });
+        await publishSyncEvent('error', {
+          error: 'Sync timed out after 3 minutes',
+        });
         return;
       }
 
@@ -175,7 +177,9 @@ async function runPush(): Promise<void> {
   }
 
   if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-    console.warn(`[PUSH] Circuit open — ${state.consecutiveErrors} consecutive errors.`);
+    console.warn(
+      `[PUSH] Circuit open — ${state.consecutiveErrors} consecutive errors.`,
+    );
     return;
   }
 
@@ -192,7 +196,9 @@ async function runPush(): Promise<void> {
       const result = await pushSpreadsheet(signal);
 
       if (signal.aborted) {
-        await publishSyncEvent('error', { error: 'Push timed out after 5 minutes' });
+        await publishSyncEvent('error', {
+          error: 'Push timed out after 5 minutes',
+        });
         return;
       }
 
@@ -200,7 +206,10 @@ async function runPush(): Promise<void> {
       console.log(
         `[PUSH] Done | updated: ${result.updated ?? 0} | skipped: ${result.skipped ?? 0} | ${time} WIB`,
       );
-      await publishSyncEvent('complete', { updated: result.updated, skipped: result.skipped });
+      await publishSyncEvent('complete', {
+        updated: result.updated,
+        skipped: result.skipped,
+      });
 
       state.consecutiveErrors = 0;
       state.lastError = null;
@@ -238,7 +247,9 @@ async function runTechEvents(): Promise<void> {
   }
 
   if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-    console.warn(`[TECH_EVENTS] Circuit open — ${state.consecutiveErrors} consecutive errors.`);
+    console.warn(
+      `[TECH_EVENTS] Circuit open — ${state.consecutiveErrors} consecutive errors.`,
+    );
     return;
   }
 
@@ -289,7 +300,9 @@ async function runAutoAssign(): Promise<void> {
   }
 
   if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-    console.warn(`[AUTO_ASSIGN] Circuit open — ${state.consecutiveErrors} consecutive errors.`);
+    console.warn(
+      `[AUTO_ASSIGN] Circuit open — ${state.consecutiveErrors} consecutive errors.`,
+    );
     return;
   }
 
@@ -443,12 +456,16 @@ async function startWorker() {
       const running = Object.entries(taskState)
         .filter(([, s]) => s.running)
         .map(([name]) => name);
-      console.log(`[worker] Waiting for tasks to finish: ${running.join(', ')}`);
+      console.log(
+        `[worker] Waiting for tasks to finish: ${running.join(', ')}`,
+      );
       await new Promise((r) => setTimeout(r, 1000));
     }
 
     await Promise.allSettled([
-      prisma.$disconnect().then(() => console.log('[worker] Prisma disconnected')),
+      prisma
+        .$disconnect()
+        .then(() => console.log('[worker] Prisma disconnected')),
       redis.quit().then(() => console.log('[worker] Redis disconnected')),
     ]);
 
@@ -461,7 +478,12 @@ async function startWorker() {
   process.on('SIGUSR2', () => void shutdown('SIGUSR2'));
 
   process.on('unhandledRejection', (reason, promise) => {
-    console.error('[worker] Unhandled rejection at:', promise, 'reason:', reason);
+    console.error(
+      '[worker] Unhandled rejection at:',
+      promise,
+      'reason:',
+      reason,
+    );
   });
 }
 
