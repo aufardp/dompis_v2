@@ -96,12 +96,12 @@ model ticket {
   sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
   closed_at                   DateTime?                   @db.Timestamp(0)
-  
+
   // Sync metadata fields
   sync_date                   DateTime?                   @db.Date
   synced_at                   DateTime?                   @db.Timestamp(0)
   import_batch                String?                     @db.VarChar(50)
-  
+
   users                       users?                      @relation(fields: [teknisi_user_id], references: [id_user], onUpdate: NoAction, map: "fk_ticket_user")
   ticket_evidence             ticket_evidence[]
   ticketTracking              ticket_tracking?
@@ -125,7 +125,6 @@ model ticket {
   @@index([REPORTED_DATE], map: "idx_ticket_reported")
   @@index([teknisi_user_id, STATUS_UPDATE, RK_INFORMATION], map: "idx_auto_assign_lookup")
 }
-
 
 model ticket_evidence {
   id                Int       @id @default(autoincrement())

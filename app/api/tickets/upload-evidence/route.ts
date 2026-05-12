@@ -1,5 +1,6 @@
 export const runtime = 'nodejs';
-export const maxDuration = 30; // Allow 30s for upload processing
+export const maxDuration = 30;
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
