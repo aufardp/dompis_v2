@@ -129,14 +129,14 @@ function Pagination({
         {pages.map((p, i) =>
           p === '...' ? (
             <span
-              key={i}
+              key={`ellipsis-${i}`}
               className='flex h-8 w-8 items-center justify-center text-sm text-slate-400 dark:text-slate-500'
             >
               …
             </span>
           ) : (
             <button
-              key={p}
+              key={`page-${p}`}
               type='button'
               onClick={() => handlePageChange(p as number)}
               className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
