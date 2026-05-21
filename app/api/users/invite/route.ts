@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   const ticket = await prisma.ticket.findUnique({
     where: { id_ticket: Number(ticketId) },
-    select: { id_ticket: true, INCIDENT: true, teknisi_user_id: true },
+    select: { id_ticket: true, incident: true, teknisi_user_id: true },
   });
 
   if (!ticket) {

@@ -29,7 +29,7 @@ export default function TicketCardMobile({
   onAssign: (ticketId: string | number) => void;
 }) {
   const isAssigned = Boolean(ticket?.teknisiUserId);
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE ?? ticket.hasilVisit);
+  const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update ?? ticket.hasilVisit);
   const maxTtr = getMaxTtr(ticket) || '-';
 
   return (
@@ -50,8 +50,8 @@ export default function TicketCardMobile({
         </div>
 
         <div className='flex shrink-0 flex-col items-end gap-1'>
-          <Badge size='sm' color={getStatusColor(ticket.STATUS_UPDATE ?? ticket.hasilVisit)}>
-            {(ticket.STATUS_UPDATE ?? ticket.hasilVisit) || '-'}
+          <Badge size='sm' color={getStatusColor(ticket.status_update ?? ticket.status_update ?? ticket.hasilVisit)}>
+            {(ticket.status_update ?? ticket.status_update ?? ticket.hasilVisit) || '-'}
           </Badge>
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}

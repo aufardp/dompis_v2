@@ -11,7 +11,7 @@
 import prisma from '@/app/libs/prisma';
 import { toWIB } from '@/app/utils/datetime';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
-import { normalizeJenis, JENIS_KEYS, JenisKey } from '@/app/libs/tickets/jenis';
+import { normalizeJenis, JENIS_KEYS, JenisKey } from '@/app/config/jenis-tiket';
 
 /**
  * Manhour values per canonical jenis key.
@@ -35,7 +35,7 @@ export const MANHOUR_VALUES: Record<JenisKey, number> = {
 } as const;
 
 /**
- * Normalize raw DB JENIS_TIKET value to canonical manhours key.
+ * Normalize raw DB jenis_tiket value to canonical manhours key.
  * Menggunakan normalizeJenis() dari app/libs/tickets/jenis.ts sebagai single source of truth.
  *
  * Returns null jika jenis tidak dikenali atau tidak ada di MANHOUR_VALUES.
@@ -264,11 +264,11 @@ export async function calculateManhours(
         gte: dateFromWIB,
         lte: dateToWIB,
       },
-      JENIS_TIKET: { not: null },
+      jenis_tiket_1: { not: null },
     },
     select: {
       teknisi_user_id: true,
-      JENIS_TIKET: true,
+      jenis_tiket_1: true,
     },
   });
 
@@ -294,7 +294,7 @@ export async function calculateManhours(
 
   for (const ticket of tickets) {
     const techId = ticket.teknisi_user_id!;
-    const jenisKey = normalizeJenisForManhours(ticket.JENIS_TIKET);
+    const jenisKey = normalizeJenisForManhours(ticket.jenis_tiket_1);
 
     if (!jenisKey) continue;
 

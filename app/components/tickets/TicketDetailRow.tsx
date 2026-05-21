@@ -42,7 +42,7 @@ interface TicketDetail {
   maxTtrGold?: string | null;
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
-  pendingReason?: string | null;
+  pendingDompis?: string | null;
   rca?: string | null;
   subRca?: string | null;
   teknisiUserId?: number | null;
@@ -196,7 +196,7 @@ export default function TicketDetailRow({ ticket }: TicketDetailRowProps) {
               <DetailItem label='RCA' value={ticket.rca} />
               <DetailItem label='Sub RCA' value={ticket.subRca} />
               <DetailItem label='Technician' value={ticket.technicianName} />
-              <DetailItem label='Pending' value={ticket.pendingReason} />
+              <DetailItem label='Pending' value={ticket.pendingDompis} />
             </div>
           </div>
         </div>

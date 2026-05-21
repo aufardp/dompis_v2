@@ -18,8 +18,15 @@ function buildDailyTicketCacheKey(
   params: URLSearchParams,
   role: string,
   userId: number,
-): string {
+): string | null {
   const filterParams = new URLSearchParams(params);
+
+  // `_t` is used by client-side refreshes after mutations/SSE events.
+  // Those refreshes must bypass Redis so the admin table reflects the latest assignment.
+  if (filterParams.has('_t')) {
+    return null;
+  }
+
   filterParams.sort();
   return `daily_tickets:${role}:${userId}:${filterParams.toString()}`;
 }
@@ -30,7 +37,7 @@ function buildDailyTicketCacheKey(
  * Returns tickets for the daily operational work board.
  * Filter logic:
  * - Tickets synced today (sync_date = TODAY) OR
- * - Tickets with pending_reason (not null and not empty)
+ * - Tickets with pending_dompis (not null and not empty)
  *
  * This creates a "working board" for daily operations while keeping
  * historical data in the database.
@@ -47,28 +54,30 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
-    const statusUpdate =
-      searchParams.get('statusUpdate') ||
-      searchParams.get('status') ||
-      undefined;
+    const statusUpdate = [
+      ...searchParams.getAll('statusUpdate'),
+      ...searchParams.getAll('status'),
+    ].filter(Boolean);
     const dept = searchParams.get('dept') || undefined;
-    const ticketType =
-      searchParams.get('ticketType') ||
-      searchParams.get('jenisTiket') ||
-      undefined;
+    const ticketType = [
+      ...searchParams.getAll('ticketType'),
+      ...searchParams.getAll('jenisTiket'),
+    ].filter(Boolean);
+    const flagging = searchParams.getAll('flagging').filter(Boolean);
 
     const filters = {
       search: searchParams.get('search') || '',
-      statusUpdate,
+      statusUpdate: statusUpdate.length > 0 ? statusUpdate : undefined,
       dept,
-      ticketType,
+      ticketType: ticketType.length > 0 ? ticketType : undefined,
+      flagging: flagging.length > 0 ? flagging : undefined,
       workzone: searchParams.get('workzone') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
       page: toInt(searchParams.get('page'), 1),
       limit: toInt(searchParams.get('limit'), 50),
-      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'asc',
+      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'desc',
     };
 
     // Build cache key
@@ -79,13 +88,15 @@ export async function GET(request: Request) {
     );
 
     // Try to get from cache
-    const cached = await getCache(cacheKey);
-    if (cached) {
-      return NextResponse.json({
-        success: true,
-        data: cached,
-        cached: true,
-      });
+    if (cacheKey) {
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        return NextResponse.json({
+          success: true,
+          data: cached,
+          cached: true,
+        });
+      }
     }
 
     // Fetch from database
@@ -96,7 +107,9 @@ export async function GET(request: Request) {
     );
 
     // Cache the result
-    await setCache(cacheKey, result, DAILY_TICKETS_CACHE_TTL);
+    if (cacheKey) {
+      await setCache(cacheKey, result, DAILY_TICKETS_CACHE_TTL);
+    }
 
     return NextResponse.json({
       success: true,

@@ -150,12 +150,12 @@ export default function CustomerTypeCard({
           </span>
           <div className='mt-1 flex flex-wrap gap-1.5'>
             {ffgCount > 0 && (
-              <span className='rounded-md border border-orange-500/20 bg-orange-500/10 px-1.5 py-0.5 text-[9px] font-bold text-orange-600 dark:text-orange-400'>
-                🔥 {ffgCount}
+              <span className='rounded-md border border-orange-500/20 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-bold text-orange-600 dark:text-orange-400'>
+                🔥 FFG {ffgCount}
               </span>
             )}
             {p1Count > 0 && (
-              <span className='rounded-md border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold text-red-600 dark:text-red-400'>
+              <span className='rounded-md border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-600 dark:text-red-400'>
                 ⚡ P1 {p1Count}
               </span>
             )}

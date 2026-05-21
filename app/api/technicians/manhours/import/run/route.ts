@@ -164,70 +164,70 @@ export async function POST(req: Request) {
           // Build ticket data
           const ticketData = {
             teknisi_user_id: teknisiId,
-            JENIS_TIKET: defaultJenis,
-            STATUS_UPDATE: 'close',
-            STATUS: findColumn(row, STATUS_COLUMN_CANDIDATES) ?? 'CLOSED',
+            jenis_tiket: defaultJenis,
+            status_update: 'close',
+            status: findColumn(row, STATUS_COLUMN_CANDIDATES) ?? 'CLOSED',
             closed_at: closedAt,
             sync_date: syncDate,
             import_batch: importBatch,
-            WORKZONE: findColumn(row, ['WORKZONE', 'WITEL']),
-            CUSTOMER_TYPE: findColumn(row, [
+            workzone: findColumn(row, ['WORKZONE', 'WITEL']),
+            customer_type: findColumn(row, [
               'CUSTOMER TYPE',
               'CUSTOMER_TYPE',
             ]),
-            SUMMARY: findColumn(row, ['SUMMARY']),
-            REPORTED_DATE: findColumn(row, [
+            summary: findColumn(row, ['SUMMARY']),
+            reported_date: findColumn(row, [
               'REPORTED DATE',
               'REPORTED_DATE',
             ]),
-            OWNER_GROUP: findColumn(row, ['OWNER GROUP', 'OWNER_GROUP']),
-            SERVICE_NO: findColumn(row, [
+            owner_group: findColumn(row, ['OWNER GROUP', 'OWNER_GROUP']),
+            service_no: findColumn(row, [
               'SERVICE NO',
               'SERVICE_NO',
               'SERVICE ID',
             ]),
-            CONTACT_NAME: findColumn(row, [
+            contact_name: findColumn(row, [
               'CONTACT NAME',
               'CUSTOMER NAME',
             ]),
-            DESCRIPTION_ACTUAL_SOLUTION: findColumn(row, [
+            description_solution_dompis: findColumn(row, [
               'DESCRIPTION ACTUAL SOLUTION',
               'SOLUTION',
               'RESOLUTION',
             ]),
-            RK_INFORMATION: findColumn(row, [
+            rk_information: findColumn(row, [
               'RK INFORMATION',
               'RK_INFORMATION',
             ]),
-            SYMPTOM: findColumn(row, ['SYMPTOM']),
-            LAPUL: findColumn(row, ['LAPUL']),
-            GAUL: findColumn(row, ['GAUL']),
+            symptom: findColumn(row, ['SYMPTOM']),
+            lapul: findColumn(row, ['LAPUL']),
+            gaul: findColumn(row, ['GAUL']),
           };
 
           // Upsert: INSERT atau UPDATE
           const existing = await prisma.ticket.findUnique({
-            where: { INCIDENT: incident },
-            select: { id_ticket: true, STATUS_UPDATE: true },
+            where: { incident: incident },
+            select: { id_ticket: true, status_update: true },
           });
 
           if (existing) {
             // Jangan timpa tiket yang sedang on_progress/pending via workflow
             if (
               WORKFLOW_PROTECTED_STATUSES.has(
-                (existing.STATUS_UPDATE ?? '').toLowerCase().trim(),
+                (existing.status_update ?? '').toLowerCase().trim(),
               )
             ) {
               skipped++;
               continue;
             }
             await prisma.ticket.update({
-              where: { INCIDENT: incident },
+              where: { incident: incident },
               data: ticketData,
             });
             updated++;
           } else {
             await prisma.ticket.create({
-              data: { INCIDENT: incident, ...ticketData },
+              data: { incident: incident, ...ticketData },
             });
             inserted++;
           }

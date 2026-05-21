@@ -22,15 +22,6 @@ import {
   AGE_SEVERITY_HOURS,
 } from '@/app/config/priority-rules';
 
-export { getCustomerPriority } from '@/app/config/customer-types';
-export { normalizeCustomerType } from '@/app/config/customer-types';
-export { normalizeJenis, B2C_JENIS_KEYS, B2B_JENIS_KEYS } from '@/app/config/jenis-tiket';
-export {
-  FLAG_PRIORITY,
-  STATUS_PRIORITY_CONFIG,
-  AGE_SEVERITY_HOURS,
-} from '@/app/config/priority-rules';
-
 export type TicketSeverity = 'critical' | 'warning' | 'normal';
 
 function parseDateInput(
@@ -43,14 +34,17 @@ export function calculateAgeInHours(
   reportedDate: string | Date | null | undefined,
   hasilVisit?: string | null,
   closedAt?: string | Date | null,
+  statusInsera?: string | null,
 ): number {
   if (!reportedDate) return 0;
 
   const start = parseDateInput(reportedDate);
   if (!start) return 0;
 
+  const isClosedInsera = (statusInsera ?? '').trim().toLowerCase() === 'closed';
+
   let end: Date;
-  if (hasilVisit === 'CLOSE' && closedAt) {
+  if (isClosedInsera && closedAt) {
     end = new Date(closedAt);
     if (isNaN(end.getTime())) {
       end = new Date();
@@ -66,8 +60,9 @@ export function getTicketSeverity(
   reportedDate: string | null | undefined,
   hasilVisit?: string | null,
   closedAt?: string | null,
+  statusInsera?: string | null,
 ): TicketSeverity {
-  const hours = calculateAgeInHours(reportedDate, hasilVisit, closedAt);
+  const hours = calculateAgeInHours(reportedDate, hasilVisit, closedAt, statusInsera);
 
   if (hours >= AGE_SEVERITY_HOURS.CRITICAL) return 'critical';
   if (hours >= AGE_SEVERITY_HOURS.WARNING) return 'warning';
@@ -95,14 +90,17 @@ export function formatAge(
   reportedDate: string | null | undefined,
   hasilVisit?: string | null,
   closedAt?: string | null,
+  statusInsera?: string | null,
 ): string {
   if (!reportedDate) return '-';
 
   const start = parseDateInput(reportedDate);
   if (!start) return '-';
 
+  const isClosedInsera = (statusInsera ?? '').trim().toLowerCase() === 'closed';
+
   let end: Date;
-  if (hasilVisit === 'CLOSE' && closedAt) {
+  if (isClosedInsera && closedAt) {
     end = new Date(closedAt);
     if (isNaN(end.getTime())) {
       end = new Date();
@@ -143,6 +141,7 @@ export interface TicketBase {
   jenisTiket?: string | null;
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
+  status?: string | null;
 }
 
 const TICKET_TYPE_PRIORITY = new Map(
@@ -210,11 +209,13 @@ export function sortByPriority<T extends TicketBase>(tickets: T[]): T[] {
         a.reportedDate,
         a.hasilVisit,
         a.closedAt,
+        a.status,
       );
       const ageB = calculateAgeInHours(
         b.reportedDate,
         b.hasilVisit,
         b.closedAt,
+        b.status,
       );
       if (ageA !== ageB) return ageB - ageA;
 
@@ -244,11 +245,13 @@ export function sortByB2CPriority<T extends TicketBase>(tickets: T[]): T[] {
         a.reportedDate,
         a.hasilVisit,
         a.closedAt,
+        a.status,
       );
       const ageB = calculateAgeInHours(
         b.reportedDate,
         b.hasilVisit,
         b.closedAt,
+        b.status,
       );
 
       return ageB - ageA;
@@ -269,11 +272,13 @@ export function computeTicketRanks<T extends TicketBase>(
       a.reportedDate,
       a.hasilVisit,
       a.closedAt,
+      a.status,
     );
     const hoursB = calculateAgeInHours(
       b.reportedDate,
       b.hasilVisit,
       b.closedAt,
+      b.status,
     );
     return hoursB - hoursA;
   });
@@ -287,11 +292,13 @@ export function computeTicketRanks<T extends TicketBase>(
           ticket.reportedDate,
           ticket.hasilVisit,
           ticket.closedAt,
+          ticket.status,
         ),
         ageFormatted: formatAge(
           ticket.reportedDate,
           ticket.hasilVisit,
           ticket.closedAt,
+          ticket.status,
         ),
       });
     }

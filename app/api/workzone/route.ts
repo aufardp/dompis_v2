@@ -17,6 +17,7 @@ export async function GET() {
     if (user.role === 'super_admin' || user.role === 'superadmin') {
       const serviceAreas = await prisma.service_area.findMany({
         orderBy: { nama_sa: 'asc' },
+        distinct: ['id_sa'],
       });
 
       const rows = serviceAreas.map((sa: { id_sa: any; nama_sa: any }) => ({
@@ -30,14 +31,21 @@ export async function GET() {
     const userSas = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       include: { service_area: true },
+      distinct: ['sa_id'],
     });
 
+    const seen = new Set<string>();
     const rows = userSas
       .filter((us: { service_area: any }) => us.service_area)
       .map((us: { service_area: any }) => ({
         value: String(us.service_area!.id_sa),
         label: us.service_area!.nama_sa,
-      }));
+      }))
+      .filter((opt: { value: string }) => {
+        if (seen.has(opt.value)) return false;
+        seen.add(opt.value);
+        return true;
+      });
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {

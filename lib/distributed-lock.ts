@@ -15,7 +15,7 @@ function generateOwnerId(): string {
 }
 
 function isRedisConnected(): boolean {
-  return redis.status === 'ready' || redis.status === 'connect' || redis.status === 'connecting';
+  return redis.status === 'ready';
 }
 
 export async function acquireLock(
@@ -23,9 +23,9 @@ export async function acquireLock(
   ttlSeconds: number = 300,
 ): Promise<{ acquired: boolean; ownerId: string; handle: LockHandle | null }> {
   if (!isRedisConnected()) {
-    console.warn(`[DistLock] Redis not connected (status=${redis.status}) — key=${key} — failing open`);
+    console.warn(`[DistLock] Redis not connected (status=${redis.status}) — key=${key} — lock denied`);
     const fallbackOwner = generateOwnerId();
-    return { acquired: true, ownerId: fallbackOwner, handle: null };
+    return { acquired: false, ownerId: fallbackOwner, handle: null };
   }
 
   const owner = generateOwnerId();

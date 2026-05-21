@@ -1,114 +1,94 @@
-import JenisTicketCard from './JenisTicketCard';
+'use client';
+
+import { Ticket } from '@/app/types/ticket';
+import { B2B_GROUPS, getB2BGroupKey } from '@/app/config/b2b-groups';
+import B2BGroupCard from './B2BGroupCard';
 import B2BGroupSummary from './B2BGroupSummary';
 
-interface JenisCounts {
-  total: number;
-  open: number;
-  assigned: number;
-  close: number;
-  gamasCount: number;
-  ffgCount: number;
-  p1Count: number;
-  pPlusCount: number;
-  regulerCount: number;
-  sqmCount: number;
-}
-
-interface B2BData {
-  sqmCcan: JenisCounts;
-  indibiz: JenisCounts;
-  datin: JenisCounts;
-  reseller: JenisCounts;
-  wifiId: JenisCounts;
-  summary: JenisCounts & { regulerCount: number; sqmCount: number };
+interface B2BGroupedTicket {
+  groupKey: string;
+  tickets: Ticket[];
 }
 
 interface B2BSectionProps {
-  data: B2BData;
+  groupedData: B2BGroupedTicket[];
+  groupSummaries?: Record<
+    string,
+    {
+      total: number;
+      open: number;
+      assigned: number;
+      close: number;
+      ffgCount?: number;
+      gamasCount?: number;
+      p1Count?: number;
+      pPlusCount?: number;
+    }
+  >;
+  summary: {
+    total: number;
+    open: number;
+    assigned: number;
+    close: number;
+    regulerCount: number;
+    sqmCount: number;
+    ffgCount: number;
+    gamasCount: number;
+    p1Count: number;
+    pPlusCount: number;
+  };
 }
 
-export default function B2BSection({ data }: B2BSectionProps) {
+export default function B2BSection({
+  groupedData,
+  groupSummaries,
+  summary,
+}: B2BSectionProps) {
+  const groupMap = new Map<string, Ticket[]>();
+  for (const group of groupedData) {
+    groupMap.set(group.groupKey, group.tickets);
+  }
+
+  const activeGroupCount = B2B_GROUPS.filter((g) => {
+    const summaryTotal = groupSummaries?.[g.key]?.total;
+    return summaryTotal !== undefined
+      ? summaryTotal > 0
+      : (groupMap.get(g.key)?.length ?? 0) > 0;
+  }).length;
+
   return (
     <div className='space-y-6 md:space-y-8'>
       {/* Section header / Summary Banner */}
       <B2BGroupSummary
         title='B2B'
-        icon='📋'
-        total={data.summary.total}
-        open={data.summary.open}
-        assigned={data.summary.assigned}
-        close={data.summary.close}
-        regulerCount={data.summary.regulerCount}
-        sqmCount={data.summary.sqmCount}
-        ffgCount={data.summary.ffgCount}
-        gamasCount={data.summary.gamasCount}
-        p1Count={data.summary.p1Count}
-        pPlusCount={data.summary.pPlusCount}
-        accentColor='#3b82f6'
+        total={summary.total}
+        open={summary.open}
+        assigned={summary.assigned}
+        close={summary.close}
+        regulerCount={summary.regulerCount}
+        sqmCount={summary.sqmCount}
+        ffgCount={summary.ffgCount}
+        gamasCount={summary.gamasCount}
+        p1Count={summary.p1Count}
+        pPlusCount={summary.pPlusCount}
+        activeGroupCount={activeGroupCount}
       />
 
-      {/* Responsive card grid - 5 JenisTicketCards */}
-      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5'>
-        <JenisTicketCard
-          jenisKey='sqm-ccan'
-          label='SQM-CCAN'
-          icon='📡'
-          accentColor='#a855f7'
-          total={data.sqmCcan.total}
-          open={data.sqmCcan.open}
-          assigned={data.sqmCcan.assigned}
-          close={data.sqmCcan.close}
-          totalGroup={data.summary.total}
-          ttrLabel='4 Jam'
-        />
-        <JenisTicketCard
-          jenisKey='indibiz'
-          label='Indibiz'
-          icon='🏢'
-          accentColor='#3b82f6'
-          total={data.indibiz.total}
-          open={data.indibiz.open}
-          assigned={data.indibiz.assigned}
-          close={data.indibiz.close}
-          totalGroup={data.summary.total}
-          ttrLabel='4 Jam'
-        />
-        <JenisTicketCard
-          jenisKey='datin'
-          label='Datin'
-          icon='🔷'
-          accentColor='#06b6d4'
-          total={data.datin.total}
-          open={data.datin.open}
-          assigned={data.datin.assigned}
-          close={data.datin.close}
-          totalGroup={data.summary.total}
-          ttrLabel='1.5 Jam'
-        />
-        <JenisTicketCard
-          jenisKey='reseller'
-          label='Reseller'
-          icon='🏠'
-          accentColor='#f97316'
-          total={data.reseller.total}
-          open={data.reseller.open}
-          assigned={data.reseller.assigned}
-          close={data.reseller.close}
-          totalGroup={data.summary.total}
-          ttrLabel='6 Jam'
-        />
-        <JenisTicketCard
-          jenisKey='wifi-id'
-          label='WiFi-ID'
-          icon='📶'
-          accentColor='#10b981'
-          total={data.wifiId.total}
-          open={data.wifiId.open}
-          assigned={data.wifiId.assigned}
-          close={data.wifiId.close}
-          totalGroup={data.summary.total}
-          ttrLabel='24 Jam'
-        />
+      {/* Grouped card grid */}
+      <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
+        {B2B_GROUPS.map((group) => {
+          const tickets = groupMap.get(group.key) ?? [];
+          return (
+            <B2BGroupCard
+              key={group.key}
+              groupKey={group.key}
+              label={group.label}
+              icon={group.icon}
+              tickets={tickets}
+              summary={groupSummaries?.[group.key]}
+            />
+          );
+        })}
       </div>
     </div>
   );

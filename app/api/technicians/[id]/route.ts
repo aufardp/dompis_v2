@@ -9,12 +9,12 @@ export const dynamic = 'force-dynamic';
 
 interface TicketType {
   id_ticket: number;
-  INCIDENT: string;
-  CONTACT_NAME: string | null;
-  CUSTOMER_TYPE: string | null;
-  SERVICE_NO: string | null;
-  REPORTED_DATE: Date | string | null;
-  STATUS_UPDATE: string | null;
+  incident: string;
+  contact_name: string | null;
+  customer_type: string | null;
+  service_no: string | null;
+  reported_date: Date | string | null;
+  status_update: string | null;
   closed_at: Date | string | null;
 }
 
@@ -167,48 +167,48 @@ export async function GET(
         prisma.ticket.findMany({
           where: {
             teknisi_user_id: techId,
-            OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'closed' } }],
+            OR: [{ status_update: null }, { status_update: { not: 'closed' } }],
           },
-          orderBy: { REPORTED_DATE: 'asc' },
+          orderBy: { reported_date: 'asc' },
         }),
         prisma.ticket.count({
           where: {
             teknisi_user_id: techId,
-            STATUS_UPDATE: 'CLOSE',
+            status_update: 'CLOSE',
             closed_at: { gte: today, lte: todayEnd },
           },
         }),
         prisma.ticket.count({
-          where: { teknisi_user_id: techId, STATUS_UPDATE: 'CLOSE' },
+          where: { teknisi_user_id: techId, status_update: 'CLOSE' },
         }),
         prisma.ticket.findMany({
           where: {
             teknisi_user_id: techId,
-            STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+            status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
             closed_at: { not: null },
           },
-          select: { REPORTED_DATE: true, closed_at: true },
+          select: { reported_date: true, closed_at: true },
           take: 10,
         }),
       ]);
 
     const mappedTickets = assignedTickets.map((t: TicketType) => ({
-      ...calculateAge(t.REPORTED_DATE),
+      ...calculateAge(t.reported_date),
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      contactName: t.CONTACT_NAME,
-      ctype: t.CUSTOMER_TYPE,
-      serviceNo: t.SERVICE_NO,
-      reportedDate: t.REPORTED_DATE,
-      STATUS_UPDATE: t.STATUS_UPDATE,
+      ticket: t.incident,
+      contactName: t.contact_name,
+      ctype: t.customer_type,
+      serviceNo: t.service_no,
+      reportedDate: t.reported_date,
+      status_update: t.status_update,
     }));
 
     // 7. Performance Calculation
     let avgResolveHours: number | null = null;
     if (recentClosed.length > 0) {
       const totalMinutes = recentClosed.reduce(
-        (acc: number, t: { REPORTED_DATE: Date | string | null; closed_at: Date | string | null }) => {
-          const start = parseDateInput(t.REPORTED_DATE);
+        (acc: number, t: { reported_date: Date | string | null; closed_at: Date | string | null }) => {
+          const start = parseDateInput(t.reported_date);
           const end = t.closed_at ? new Date(t.closed_at) : null;
           if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime()))
             return acc;
@@ -234,12 +234,12 @@ export async function GET(
         status: getTechnicianStatus(mappedTickets.length),
         order_counts: {
           assigned: assignedTickets.filter(
-            (t: TicketType) => t.STATUS_UPDATE === 'ASSIGNED',
+            (t: TicketType) => t.status_update === 'ASSIGNED',
           ).length,
           on_progress: assignedTickets.filter(
-            (t: TicketType) => t.STATUS_UPDATE === 'ON_PROGRESS',
+            (t: TicketType) => t.status_update === 'ON_PROGRESS',
           ).length,
-          pending: assignedTickets.filter((t: TicketType) => t.STATUS_UPDATE === 'PENDING')
+          pending: assignedTickets.filter((t: TicketType) => t.status_update === 'PENDING')
             .length,
           closed: totalClosedAll,
         },

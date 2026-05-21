@@ -74,28 +74,28 @@ function getTechnicianStatus(
 
 function mapTechnicianTicket(t: {
   id_ticket: number;
-  INCIDENT: string;
-  CONTACT_NAME: string | null;
-  CUSTOMER_TYPE: string | null;
-  SERVICE_NO: string | null;
-  REPORTED_DATE: string | null;
-  STATUS_UPDATE: string | null;
-  WORKZONE?: string | null;
-  JENIS_TIKET?: string | null;
+  incident: string;
+  contact_name: string | null;
+  customer_type: string | null;
+  service_no: string | null;
+  reported_date: string | null;
+  status_update: string | null;
+  workzone?: string | null;
+  jenis_tiket_2?: string | null;
 }) {
-  const { age, hours } = calculateAge(t.REPORTED_DATE);
+  const { age, hours } = calculateAge(t.reported_date);
   return {
     idTicket: t.id_ticket,
-    ticket: t.INCIDENT,
-    contactName: t.CONTACT_NAME,
-    ctype: t.CUSTOMER_TYPE,
-    serviceNo: t.SERVICE_NO,
-    reportedDate: t.REPORTED_DATE,
-    statusUpdate: t.STATUS_UPDATE,
-    workzone: t.WORKZONE ?? null,
+    ticket: t.incident,
+    contactName: t.contact_name,
+    ctype: t.customer_type,
+    serviceNo: t.service_no,
+    reportedDate: t.reported_date,
+    statusUpdate: t.status_update,
+    workzone: t.workzone ?? null,
     age,
     ageHours: hours,
-    jenisTiket: t.JENIS_TIKET ?? undefined,
+    jenisTiket: t.jenis_tiket_2 ?? undefined,
   };
 }
 
@@ -251,28 +251,28 @@ export async function GET(request: NextRequest) {
     const pendingTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        STATUS_UPDATE: 'pending',
+        status_update: 'pending',
       },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        CONTACT_NAME: true,
-        CUSTOMER_TYPE: true,
-        SERVICE_NO: true,
-        REPORTED_DATE: true,
-        STATUS_UPDATE: true,
+        incident: true,
+        contact_name: true,
+        customer_type: true,
+        service_no: true,
+        reported_date: true,
+        status_update: true,
         teknisi_user_id: true,
         closed_at: true,
-        WORKZONE: true,
-        JENIS_TIKET: true,
+        workzone: true,
+        jenis_tiket_2: true,
       },
-      orderBy: { REPORTED_DATE: 'asc' },
+      orderBy: { reported_date: 'asc' },
     });
 
     const todayAssignedTickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        STATUS_UPDATE: { in: ['assigned', 'on_progress'] },
+        status_update: { in: ['assigned', 'on_progress'] },
         ticket_assignment_history: {
           some: {
             assigned_at: { gte: today, lte: todayEnd },
@@ -282,25 +282,25 @@ export async function GET(request: NextRequest) {
       },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        CONTACT_NAME: true,
-        CUSTOMER_TYPE: true,
-        SERVICE_NO: true,
-        REPORTED_DATE: true,
-        STATUS_UPDATE: true,
+        incident: true,
+        contact_name: true,
+        customer_type: true,
+        service_no: true,
+        reported_date: true,
+        status_update: true,
         teknisi_user_id: true,
         closed_at: true,
-        WORKZONE: true,
-        JENIS_TIKET: true,
+        workzone: true,
+        jenis_tiket_2: true,
       },
-      orderBy: { REPORTED_DATE: 'asc' },
+      orderBy: { reported_date: 'asc' },
     });
 
     const closedTicketsToday = includeClosedToday
       ? await prisma.ticket.findMany({
           where: {
             teknisi_user_id: { in: uniqueTechnicianIds },
-            STATUS_UPDATE: { in: ['close', 'closed'] },
+            status_update: { in: ['close', 'closed'] },
             closed_at: {
               gte: today,
               lte: todayEnd,
@@ -308,15 +308,15 @@ export async function GET(request: NextRequest) {
           },
           select: {
             id_ticket: true,
-            INCIDENT: true,
-            CONTACT_NAME: true,
-            CUSTOMER_TYPE: true,
-            SERVICE_NO: true,
-            REPORTED_DATE: true,
-            STATUS_UPDATE: true,
+            incident: true,
+            contact_name: true,
+            customer_type: true,
+            service_no: true,
+            reported_date: true,
+            status_update: true,
             teknisi_user_id: true,
             closed_at: true,
-            JENIS_TIKET: true,
+            jenis_tiket_2: true,
           },
           orderBy: { closed_at: 'desc' },
           take: closedTodayLimit,
@@ -327,7 +327,7 @@ export async function GET(request: NextRequest) {
       by: ['teknisi_user_id'],
       where: {
         teknisi_user_id: { in: uniqueTechnicianIds },
-        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
         closed_at: {
           gte: today,
           lte: todayEnd,
@@ -385,13 +385,13 @@ export async function GET(request: NextRequest) {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
         const pendingList = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'pending',
+          (t: { status_update: string | null | undefined }) => t.status_update === 'pending',
         );
         const assignedList = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'assigned',
+          (t: { status_update: string | null | undefined }) => t.status_update === 'assigned',
         );
         const onProgressList = tickets.filter(
-          (t: { STATUS_UPDATE: string | null | undefined }) => t.STATUS_UPDATE === 'on_progress',
+          (t: { status_update: string | null | undefined }) => t.status_update === 'on_progress',
         );
 
         const mappedTickets = tickets.map(mapTechnicianTicket);

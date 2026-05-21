@@ -24,6 +24,16 @@ const MENU_ITEMS = [
     path: '/admin/clustering',
     icon: '🗺️',
   },
+  {
+    label: 'Monitoring Durasi',
+    path: '/admin/monitoring',
+    icon: '⏱️',
+  },
+  {
+    label: 'Rekap Workorder',
+    path: '/admin/rekap-workorder',
+    icon: '📊',
+  },
 ];
 
 interface NavItemProps {
@@ -107,7 +117,9 @@ export default function Sidebar({
             const isActive =
               pathname === item.path ||
               (item.path === '/admin' && pathname === '/admin') ||
-              (item.path === '/admin/clustering' && pathname.startsWith('/admin/clustering'));
+              (item.path === '/admin/clustering' && pathname.startsWith('/admin/clustering')) ||
+              (item.path === '/admin/monitoring' && pathname.startsWith('/admin/monitoring')) ||
+              (item.path === '/admin/rekap-workorder' && pathname.startsWith('/admin/rekap-workorder'));
             return (
               <NavItem
                 key={item.path}

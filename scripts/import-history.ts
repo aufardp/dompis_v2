@@ -6,7 +6,7 @@
  *
  * Features:
  * - Batch insert with ON DUPLICATE KEY UPDATE
- * - Data integrity protection (rca, sub_rca, STATUS_UPDATE)
+ * - Data integrity protection (rca, sub_rca, status_update)
  * - Sync date from DATEMODIFIED column
  * - Cache invalidation after import
  * - Dry-run mode for preview
@@ -85,7 +85,7 @@ function buildColumnMap(header: string[]): Record<string, number> {
   const map: Record<string, number> = {};
 
   const columnMappings: Record<string, string[]> = {
-    INCIDENT: ['INCIDENT', 'incident', 'Ticket ID', 'Ticket ID'],
+    incident: ['incident', 'incident', 'Ticket ID', 'Ticket ID'],
     SUMMARY: ['SUMMARY', 'summary', 'Description', 'Description'],
     REPORTED_DATE: [
       'REPORTED DATE',
@@ -174,7 +174,7 @@ function buildColumnMap(header: string[]): Record<string, number> {
       'PENDING REASON',
       'PENDING_REASON',
       'Pending Reason',
-      'pending_reason',
+      'pending_dompis',
     ],
     GUARANTE_STATUS: [
       'GUARANTE STATUS',
@@ -191,9 +191,9 @@ function buildColumnMap(header: string[]): Record<string, number> {
     LAPUL: ['LAPUL', 'lapul'],
     GAUL: ['GAUL', 'gaul'],
     ONU_RX: ['ONU RX', 'ONU_RX', 'Onu Rx', 'onu_rx'],
-    STATUS_UPDATE: [
+    status_update: [
       'STATUS UPDATE',
-      'STATUS_UPDATE',
+      'status_update',
       'Status Update',
       'status_update',
     ],
@@ -241,7 +241,7 @@ function mapRowToTicketData(
     get('DATEMODIFIED') || new Date().toISOString().split('T')[0];
 
   return [
-    get('INCIDENT'), // [0] INCIDENT - Primary Key
+    get('incident'), // [0] incident - Primary Key
     get('SUMMARY'), // [1] SUMMARY
     get('REPORTED_DATE'), // [2] REPORTED_DATE
     get('OWNER_GROUP'), // [3] OWNER_GROUP
@@ -270,7 +270,7 @@ function mapRowToTicketData(
     get('LAPUL'), // [26] LAPUL
     get('GAUL'), // [27] GAUL
     get('ONU_RX'), // [28] ONU_RX
-    get('STATUS_UPDATE'), // [29] STATUS_UPDATE
+    get('status_update'), // [29] status_update
     null, // [30] STATUS_MANJA - skip
     null, // [31] JAM_EXPIRED_12_JAM_GOLD - skip
     null, // [32] STATUS_TTR_12_GOLD - skip
@@ -339,9 +339,9 @@ async function importFromExcel(
     Object.keys(col).filter((k) => col[k] !== undefined),
   );
 
-  const incidentIdx = col['INCIDENT'];
+  const incidentIdx = col['incident'];
   if (incidentIdx === undefined) {
-    result.errors.push('Column INCIDENT not found in Excel file');
+    result.errors.push('Column incident not found in Excel file');
     return result;
   }
 
@@ -353,7 +353,7 @@ async function importFromExcel(
     const incident = row[incidentIdx];
 
     if (!incident || String(incident).trim() === '') {
-      skippedRows.push(`Row ${i + 1}: INCIDENT is empty`);
+      skippedRows.push(`Row ${i + 1}: incident is empty`);
       result.skipped++;
       continue;
     }
@@ -374,7 +374,7 @@ async function importFromExcel(
     console.log('\n🟡 DRY RUN MODE - No data will be inserted');
     console.log('Sample rows (first 3):');
     mappedRows.slice(0, 3).forEach((row, i) => {
-      console.log(`  ${i + 1}. INCIDENT: ${row[0]}, sync_date: ${row[50]}`);
+      console.log(`  ${i + 1}. incident: ${row[0]}, sync_date: ${row[50]}`);
     });
     result.success = true;
     result.duration = Date.now() - startTime;
@@ -389,23 +389,23 @@ async function importFromExcel(
   console.log('\n🔍 Checking existing incidents in database...');
   const existing = await prisma.ticket.findMany({
     select: {
-      INCIDENT: true,
-      STATUS_UPDATE: true,
+      incident: true,
+      status_update: true,
       rca: true,
       sub_rca: true,
     },
     where: {
-      INCIDENT: { in: incidentList },
+      incident: { in: incidentList },
     },
   });
 
   const existingMap = new Map<
     string,
-    { STATUS_UPDATE: string | null; rca: string | null; sub_rca: string | null }
+    { status_update: string | null; rca: string | null; sub_rca: string | null }
   >(
     existing.map((r: any) => [
-      r.INCIDENT,
-      { STATUS_UPDATE: r.STATUS_UPDATE, rca: r.rca, sub_rca: r.sub_rca },
+      r.incident,
+      { status_update: r.status_update, rca: r.rca, sub_rca: r.sub_rca },
     ]),
   );
 
@@ -424,7 +424,7 @@ async function importFromExcel(
     if (!existingData) {
       result.inserted++;
       newRows.push([...row, batchId]);
-    } else if (isWorkflowProtected(existingData.STATUS_UPDATE)) {
+    } else if (isWorkflowProtected(existingData.status_update)) {
       result.updated++;
       const protectedRow = [...row];
       protectedRow[47] = existingData.rca;
@@ -491,7 +491,7 @@ async function batchInsert(
 
     const query = `
       INSERT INTO ticket (
-        INCIDENT,SUMMARY,REPORTED_DATE,OWNER_GROUP,
+        incident,SUMMARY,REPORTED_DATE,OWNER_GROUP,
         CUSTOMER_SEGMENT,SERVICE_TYPE,WORKZONE,STATUS,
         TICKET_ID_GAMAS,CONTACT_PHONE,CONTACT_NAME,
         BOOKING_DATE,SOURCE_TICKET,CUSTOMER_TYPE,
@@ -499,7 +499,7 @@ async function batchInsert(
         DEVICE_NAME,JENIS_TIKET,JAM_EXPIRED,REDAMAN,
         MANJA_EXPIRED,ALAMAT,PENDING_REASON,
         GUARANTE_STATUS,FLAGGING_MANJA,
-        LAPUL,GAUL,ONU_RX,STATUS_UPDATE,
+        LAPUL,GAUL,ONU_RX,status_update,
         STATUS_MANJA,
         JAM_EXPIRED_12_JAM_GOLD,STATUS_TTR_12_GOLD,
         JAM_EXPIRED_3_JAM_DIAMOND,STATUS_TTR_3_DIAMOND,

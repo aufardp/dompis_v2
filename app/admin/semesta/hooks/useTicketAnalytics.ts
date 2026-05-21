@@ -6,10 +6,12 @@ import { Ticket, TicketCtype } from '@/app/types/ticket';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import {
   classifyTicket,
+} from '@/app/libs/tickets/jenis';
+import {
   normalizeJenis,
   JENIS_LABELS,
   type JenisKey,
-} from '@/app/libs/tickets/jenis';
+} from '@/app/config/jenis-tiket';
 
 export type DatePreset = '7d' | '30d' | 'ytd' | 'custom';
 
@@ -234,7 +236,7 @@ function computeAnalytics(
   const trendMap = new Map<string, number>(keys.map((k) => [k, 0]));
 
   for (const t of tickets) {
-    const su = t.STATUS_UPDATE as any as string | null | undefined;
+    const su = t.status_update as any as string | null | undefined;
     const closed = isTicketClosed(su);
     if (closed) metrics.closed += 1;
     else if (isOpenLike(su)) metrics.open += 1;

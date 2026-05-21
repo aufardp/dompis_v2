@@ -7,7 +7,14 @@ import TicketRowB2B from './TicketRowB2B';
 import TicketCardMobile from '../../../components/tickets/TicketCardMobile';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
 import TicketDetailDrawer from './TicketDetailDrawer';
-import { ChevronDown, ChevronUp, Columns3, X, Download, Loader2 } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  X,
+  Download,
+  Loader2,
+} from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
   computeTicketRanks,
@@ -48,6 +55,7 @@ export interface AdminTicketTableB2BProps {
     customerType?: string;
     summary?: string;
     jenisTiket?: string;
+    jenisTiket1?: string | null;
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
@@ -64,6 +72,7 @@ export interface AdminTicketTableB2BProps {
     statusUpdate?: string | null;
   }>;
   loading?: boolean;
+  isRefreshing?: boolean;
   onAssign?: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
   onBulkAssign?: (ticketIds: (string | number)[]) => void;
@@ -149,6 +158,7 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
 export default function TicketTableB2B({
   tickets = [],
   loading = false,
+  isRefreshing = false,
   onAssign,
   onDetail,
   onBulkAssign,
@@ -261,8 +271,8 @@ export default function TicketTableB2B({
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.statusUpdate, a.closedAt);
-        bVal = calculateAgeInHours(b.reportedDate, b.statusUpdate, b.closedAt);
+        aVal = calculateAgeInHours(a.reportedDate, a.statusUpdate, a.closedAt, a.status);
+        bVal = calculateAgeInHours(b.reportedDate, b.statusUpdate, b.closedAt, b.status);
       } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];
@@ -282,12 +292,18 @@ export default function TicketTableB2B({
   const currentPage = pagination?.currentPage ?? 1;
   const pageSize = pagination?.limit ?? 10;
   const pageOffset = (currentPage - 1) * pageSize;
-  const pageTickets = pagination
-    ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
-    : sortedTickets;
+  const isServerPaginated =
+    !!pagination && pagination.total > sortedTickets.length;
+  const pageTickets =
+    pagination && !isServerPaginated
+      ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
+      : sortedTickets;
 
   const MOBILE_PAGE_SIZE = 5;
-  const mobileTotalPages = Math.max(1, Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE));
+  const mobileTotalPages = Math.max(
+    1,
+    Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE),
+  );
   const mobilePageTickets = sortedTickets.slice(
     (mobilePage - 1) * MOBILE_PAGE_SIZE,
     mobilePage * MOBILE_PAGE_SIZE,
@@ -321,7 +337,7 @@ export default function TicketTableB2B({
 
       {/* Mobile */}
       <div className='block lg:hidden'>
-        {loading ? (
+        {loading && !isRefreshing ? (
           <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-(--text-secondary)'>
@@ -332,8 +348,8 @@ export default function TicketTableB2B({
             <div className='mb-2 flex items-center justify-between px-1'>
               <p className='text-xs text-(--text-secondary)'>
                 {(mobilePage - 1) * MOBILE_PAGE_SIZE + 1}–
-                {Math.min(mobilePage * MOBILE_PAGE_SIZE, sortedTickets.length)} dari{' '}
-                {sortedTickets.length} tiket
+                {Math.min(mobilePage * MOBILE_PAGE_SIZE, sortedTickets.length)}{' '}
+                dari {sortedTickets.length} tiket
               </p>
               {mobileTotalPages > 1 && (
                 <span className='text-xs font-semibold text-(--text-primary)'>
@@ -377,8 +393,11 @@ export default function TicketTableB2B({
               <div className='flex items-center gap-2'>
                 <select
                   value={downloadFormat}
-                  onChange={(e) => setDownloadFormat(e.target.value as 'csv' | 'xlsx')}
-                  className='text-xs rounded border border-(--border) bg-surface px-1.5 py-1 text-(--text-secondary)'
+                  onChange={(e) =>
+                    setDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                  }
+                  className='rounded border border-(--border) bg-surface px-1.5 py-1 text-xs text-(--text-secondary)'
+                  suppressHydrationWarning
                 >
                   <option value='xlsx'>XLSX</option>
                   <option value='csv'>CSV</option>
@@ -421,13 +440,14 @@ export default function TicketTableB2B({
                   {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Teknisi', 'technicianName')}
-                  <th className='px-3 py-2.5 text-center'>Status</th>
+                  <th className='px-3 py-2.5 text-center' suppressHydrationWarning>Status Insera</th>
+                  <th className='px-3 py-2.5 text-center' suppressHydrationWarning>Status Dompis</th>
                   {/* Action */}
                   <th className='px-3 py-2.5 text-center'>Aksi</th>
                 </tr>
               </thead>
               <tbody className='divide-y divide-(--border)'>
-                {loading ? (
+                {loading && !isRefreshing ? (
                   <tr>
                     <td colSpan={15}>
                       <TableLoadingSkeleton rows={6} cols={15} />
@@ -444,16 +464,16 @@ export default function TicketTableB2B({
                     const isExpanded = expandedTicketId === ticketId;
                     const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
                     const ttrCountdown = computeTtrCountdown(ticket);
-const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
-                          !ttrCountdown
-                            ? 'On Track'
-                            : ttrCountdown.status === 'overdue'
-                              ? 'Overdue'
-                              : ttrCountdown.status === 'critical'
-                                ? 'Overdue'
-                                : ttrCountdown.status === 'warning'
-                                  ? 'At Risk'
-                                  : 'On Track';
+                    const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
+                      !ttrCountdown
+                        ? 'On Track'
+                        : ttrCountdown.status === 'overdue'
+                          ? 'Overdue'
+                          : ttrCountdown.status === 'critical'
+                            ? 'Overdue'
+                            : ttrCountdown.status === 'warning'
+                              ? 'At Risk'
+                              : 'On Track';
 
                     return (
                       <TicketRowB2B

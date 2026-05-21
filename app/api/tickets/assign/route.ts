@@ -7,10 +7,12 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import prisma from '@/app/libs/prisma';
 
 export async function POST(req: Request) {
   const lockKey = 'ticket-lock';
   const ownerId = `assign-${Date.now()}-${Math.random()}`;
+  let ticketId = 0;
 
   const lockAcquired = await acquireLock(lockKey, ownerId, 30);
 
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
     const teknisiUserId = Number(
       body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id,
     );
-    const ticketId = Number(body.ticketId);
+    ticketId = Number(body.ticketId);
     const forceReassign = Boolean(body.forceReassign);
 
     if (!ticketId || !teknisiUserId) {
@@ -47,6 +49,21 @@ export async function POST(req: Request) {
           message: 'ticketId and teknisiUserId (or teknisiId) are required',
         },
         { status: 400 },
+      );
+    }
+
+    const existingTicket = await prisma.ticket.findUnique({
+      where: { id_ticket: ticketId },
+      select: { id_ticket: true, incident: true },
+    });
+
+    if (!existingTicket) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Tiket dengan ID ${ticketId} tidak ditemukan atau sudah dihapus`,
+        },
+        { status: 404 },
       );
     }
 
@@ -66,6 +83,24 @@ export async function POST(req: Request) {
       message: result.message,
     });
   } catch (error: unknown) {
+    const err = error as Error;
+    const message = err.message || '';
+
+    if (
+      message.includes('Foreign key constraint violated') ||
+      message.includes('constraint failed') ||
+      message.includes('P2003') ||
+      message.includes('P2014')
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Tiket dengan ID ${ticketId} tidak valid atau sudah tidak ada di sistem`,
+        },
+        { status: 404 },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,

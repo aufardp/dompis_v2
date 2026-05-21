@@ -94,22 +94,21 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
 
 /**
  * Invalidate semua cache yang berhubungan dengan tiket.
- * Fire-and-forget — tidak memblok operasi utama.
+ * Awaitable agar refresh UI setelah mutasi tidak membaca cache lama.
  */
 export async function invalidateTicketsCache(): Promise<void> {
   if (!isRedisReady()) return;
 
-  // Fire-and-forget dengan void (tidak perlu await)
-  void (async () => {
-    try {
-      // Jalankan SCAN secara sequential (bukan parallel) untuk mengurangi beban Redis
-      await deleteCachePattern('tickets:*');
-      await deleteCachePattern('stats:*');
-      await deleteCachePattern('dashboard:*');
-    } catch {
-      // Silently ignore — cache miss lebih baik dari crash
-    }
-  })();
+  try {
+    // Jalankan SCAN secara sequential (bukan parallel) untuk mengurangi beban Redis.
+    // Mutasi tiket harus menunggu invalidation selesai agar refresh UI tidak membaca cache lama.
+    await deleteCachePattern('tickets:*');
+    await deleteCachePattern('daily_tickets:*');
+    await deleteCachePattern('stats:*');
+    await deleteCachePattern('dashboard:*');
+  } catch {
+    // Silently ignore — cache miss lebih baik dari crash
+  }
 }
 
 export async function invalidateTicketById(ticketId: number): Promise<void> {

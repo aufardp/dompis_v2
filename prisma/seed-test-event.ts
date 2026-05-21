@@ -29,7 +29,7 @@ const testEvents = [
     status: {
       old_hasil_visit: null,
       new_hasil_visit: 'ASSIGNED',
-      pending_reason: null,
+      pending_dompis: null,
       evidence: null,
     },
     old_technician: null,
@@ -60,7 +60,7 @@ const testEvents = [
     status: {
       old_hasil_visit: 'ASSIGNED',
       new_hasil_visit: 'ON_PROGRESS',
-      pending_reason: null,
+      pending_dompis: null,
       evidence: {
         files: [],
         count: 0,
@@ -98,7 +98,7 @@ const testEvents = [
     status: {
       old_hasil_visit: 'ON_PROGRESS',
       new_hasil_visit: 'CLOSE',
-      pending_reason: null,
+      pending_dompis: null,
       evidence: {
         files: [
           {
@@ -173,34 +173,40 @@ async function seedDiamondTicket() {
 
   // Get today's date in WIB
   const today = new Date();
-  const todayWib = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  const todayWib = new Date(
+    today.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
+  );
   const todayStr = todayWib.toISOString().slice(0, 10);
 
   // Clear any existing test Diamond tickets
   await prisma.ticket.deleteMany({
     where: {
-      INCIDENT: { in: ['TEST-DIAMOND-001', 'TEST-DIAMOND-002', 'TEST-DIAMOND-OLD'] },
+      incident: {
+        in: ['TEST-DIAMOND-001', 'TEST-DIAMOND-002', 'TEST-DIAMOND-OLD'],
+      },
     },
   });
 
   // Create ticket synced TODAY
   const ticketToday = await prisma.ticket.create({
     data: {
-      INCIDENT: 'TEST-DIAMOND-001',
-      SUMMARY: 'Test Diamond Ticket - Hari Ini',
-      CUSTOMER_TYPE: 'HVC_DIAMOND',
-      SERVICE_NO: '123456789',
-      CONTACT_NAME: 'Pelanggan Diamond A',
-      CONTACT_PHONE: '081234567890',
-      WORKZONE: 'RKT',
-      STATUS_UPDATE: 'open',
+      incident: 'TEST-DIAMOND-001',
+      summary: 'Test Diamond Ticket - Hari Ini',
+      customer_type: 'HVC_DIAMOND',
+      service_no: '123456789',
+      contact_name: 'Pelanggan Diamond A',
+      contact_phone: '081234567890',
+      workzone: 'RKT',
+      status_update: 'open',
       sync_date: new Date(`${todayStr}T00:00:00.000Z`),
-      REPORTED_DATE: todayWib.toISOString(),
-      OWNER_GROUP: 'NMS',
-      SERVICE_TYPE: 'FO',
+      reported_date: todayWib.toISOString(),
+      owner_group: 'NMS',
+      service_type: 'FO',
     },
   });
-  console.log(`  ✅ Created ticket TODAY: ${ticketToday.INCIDENT} (sync_date: ${todayStr})`);
+  console.log(
+    `  ✅ Created ticket TODAY: ${ticketToday.incident} (sync_date: ${todayStr})`,
+  );
 
   // Create ticket synced YESTERDAY (should NOT appear in alert)
   const yesterday = new Date(todayWib);
@@ -209,28 +215,32 @@ async function seedDiamondTicket() {
 
   const ticketYesterday = await prisma.ticket.create({
     data: {
-      INCIDENT: 'TEST-DIAMOND-OLD',
-      SUMMARY: 'Test Diamond Ticket - Kemarin',
-      CUSTOMER_TYPE: 'HVC_DIAMOND',
-      SERVICE_NO: '987654321',
-      CONTACT_NAME: 'Pelanggan Diamond B (Lama)',
-      CONTACT_PHONE: '089876543210',
-      WORKZONE: 'RKT',
-      STATUS_UPDATE: 'open',
+      incident: 'TEST-DIAMOND-OLD',
+      summary: 'Test Diamond Ticket - Kemarin',
+      customer_type: 'HVC_DIAMOND',
+      service_no: '987654321',
+      contact_name: 'Pelanggan Diamond B (Lama)',
+      contact_phone: '089876543210',
+      workzone: 'RKT',
+      status_update: 'open',
       sync_date: new Date(`${yesterdayStr}T00:00:00.000Z`),
-      REPORTED_DATE: yesterday.toISOString(),
-      OWNER_GROUP: 'NMS',
-      SERVICE_TYPE: 'FO',
+      reported_date: yesterday.toISOString(),
+      owner_group: 'NMS',
+      service_type: 'FO',
     },
   });
-  console.log(`  ⚠️  Created ticket YESTERDAY: ${ticketYesterday.INCIDENT} (sync_date: ${yesterdayStr})`);
+  console.log(
+    `  ⚠️  Created ticket YESTERDAY: ${ticketYesterday.incident} (sync_date: ${yesterdayStr})`,
+  );
 
   console.log('\n✅ Diamond ticket seeding complete!');
   console.log('\n📋 Test Alert Diamond API:');
   console.log('   curl -X GET http://localhost:3000/api/tickets/alert/diamond');
   console.log('\n📋 Expected:');
   console.log('   ✅ TEST-DIAMOND-001 should appear (sync_date = today)');
-  console.log('   ❌ TEST-DIAMOND-OLD should NOT appear (sync_date = yesterday)');
+  console.log(
+    '   ❌ TEST-DIAMOND-OLD should NOT appear (sync_date = yesterday)',
+  );
 }
 
 main()

@@ -13,6 +13,15 @@ export type StatusUpdateValue =
   | 'pending'
   | 'close';
 
+export interface StatusBucketCounts {
+  total: number;
+  open: number;
+  assigned: number;
+  onProgress: number;
+  pending: number;
+  close: number;
+}
+
 const CLOSE_VALUE = 'close';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,6 +53,58 @@ export function isTicketClosed(
   const status = statusUpdate.trim().toLowerCase();
 
   return status === 'close' || status === 'closed';
+}
+
+export function normalizeStatusUpdate(
+  statusUpdate: string | null | undefined,
+): StatusUpdateValue {
+  const status = (statusUpdate ?? '').trim().toLowerCase();
+
+  if (status === 'close' || status === 'closed') return 'close';
+  if (status === 'assigned') return 'assigned';
+  if (status === 'on_progress' || status === 'on progress') {
+    return 'on_progress';
+  }
+  if (status === 'pending') return 'pending';
+  return 'open';
+}
+
+export function isTicketOpenLike(
+  statusUpdate: string | null | undefined,
+): boolean {
+  return normalizeStatusUpdate(statusUpdate) === 'open';
+}
+
+export function isTicketInWork(
+  statusUpdate: string | null | undefined,
+): boolean {
+  const status = normalizeStatusUpdate(statusUpdate);
+  return status === 'assigned' || status === 'on_progress' || status === 'pending';
+}
+
+export function countStatusBuckets<T>(
+  rows: T[],
+  getStatus: (row: T) => string | null | undefined,
+): StatusBucketCounts {
+  const counts: StatusBucketCounts = {
+    total: rows.length,
+    open: 0,
+    assigned: 0,
+    onProgress: 0,
+    pending: 0,
+    close: 0,
+  };
+
+  for (const row of rows) {
+    const status = normalizeStatusUpdate(getStatus(row));
+    if (status === 'open') counts.open++;
+    else if (status === 'assigned') counts.assigned++;
+    else if (status === 'on_progress') counts.onProgress++;
+    else if (status === 'pending') counts.pending++;
+    else if (status === 'close') counts.close++;
+  }
+
+  return counts;
 }
 
 /**

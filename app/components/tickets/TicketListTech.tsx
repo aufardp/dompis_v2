@@ -67,12 +67,12 @@ export default function TicketListTech({ limit }: Props) {
                 </span>
                 <Badge
                   color={
-                    isTicketClosed(ticket.STATUS_UPDATE)
+                    isTicketClosed(ticket.status_update)
                       ? 'success'
-                      : getStatusColor(ticket.STATUS_UPDATE || '')
+                      : getStatusColor(ticket.status_update || '')
                   }
                 >
-                  {getStatusLabel(ticket.STATUS_UPDATE || '')}
+                  {getStatusLabel(ticket.status_update || '')}
                 </Badge>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${

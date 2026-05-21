@@ -32,7 +32,7 @@ export interface TicketRowSemestaProps {
     closedAt?: string | null;
     reportedDate?: string | null;
     status?: string | null;
-    STATUS_UPDATE?: string | null;
+    status_update?: string | null;
     maxTtrReguler?: string | null;
     maxTtrGold?: string | null;
     maxTtrPlatinum?: string | null;
@@ -84,7 +84,7 @@ export default function TicketRowSemesta({
 }: TicketRowSemestaProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
 
   const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
@@ -292,10 +292,10 @@ export default function TicketRowSemesta({
           <span
             className={clsx(
               'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase',
-              `badge-${getStatusColor(ticket.STATUS_UPDATE || '')}`,
+              `badge-${getStatusColor((ticket.status_update ?? ticket.status_update) || '')}`,
             )}
           >
-            {ticket.STATUS_UPDATE || '-'}
+            {(ticket.status_update ?? ticket.status_update) || '-'}
           </span>
         </td>
 

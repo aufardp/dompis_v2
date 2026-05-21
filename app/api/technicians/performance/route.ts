@@ -32,10 +32,10 @@ function buildWorkzoneTicketFilter(
   const filters: Record<string, unknown>[] = [];
   const wz = selected?.trim();
   if (wz) {
-    filters.push({ WORKZONE: { contains: wz } });
+    filters.push({ workzone: { contains: wz } });
   }
   if (workzones.length > 0) {
-    filters.push({ OR: workzones.map((w) => ({ WORKZONE: { contains: w } })) });
+    filters.push({ OR: workzones.map((w) => ({ workzone: { contains: w } })) });
   }
   if (filters.length === 0) return undefined;
   return { AND: filters };
@@ -171,7 +171,7 @@ export async function GET(req: NextRequest) {
     // Closed counts from ticket table
     const closedWhere = {
       teknisi_user_id: { in: finalTechnicianIds },
-      STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+      status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
       closed_at: { gte: start, lt: end },
       ...(wzFilter ? wzFilter : {}),
     };
@@ -192,13 +192,13 @@ export async function GET(req: NextRequest) {
 
     const wzConditions: any[] = [];
     if (selectedWorkzone) {
-      wzConditions.push(Prisma.sql`t.WORKZONE LIKE ${`%${selectedWorkzone}%`}`);
+      wzConditions.push(Prisma.sql`t.workzone LIKE ${`%${selectedWorkzone}%`}`);
     }
     if (userWorkzones.length > 0) {
       const wzList = userWorkzones.filter((wz: string) => wz && wz.trim() !== '');
       if (wzList.length > 0) {
         const orClauses: any[] = wzList.map(
-          (wz: string) => Prisma.sql`t.WORKZONE LIKE ${`%${wz}%`}`,
+          (wz: string) => Prisma.sql`t.workzone LIKE ${`%${wz}%`}`,
         );
         wzConditions.push(
           Prisma.sql`(${Prisma.join(orClauses, Prisma.sql` OR `)})`,
@@ -222,8 +222,8 @@ export async function GET(req: NextRequest) {
         AND tt.closed_at IS NOT NULL
         AND tt.closed_at >= ${start}
         AND tt.closed_at < ${end}
-        AND t.STATUS_UPDATE IS NOT NULL
-        AND LOWER(t.STATUS_UPDATE) IN ('close','closed')
+        AND t.status_update IS NOT NULL
+        AND LOWER(t.status_update) IN ('close','closed')
         AND t.teknisi_user_id = tt.assigned_to
         AND t.teknisi_user_id IN (${Prisma.join(finalTechnicianIds)})
         ${wzSql}

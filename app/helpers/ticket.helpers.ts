@@ -45,7 +45,7 @@ export type TrackingUpsertPayload = {
     pickedUpAt: Date;
     onProgressAt: Date;
     pendingAt: Date;
-    pendingReason: string | null;
+    pendingDompis: string | null;
     closedAt: Date;
   }>;
 };
@@ -72,8 +72,8 @@ export async function upsertTracking(
       on_progress_at: p.extra.onProgressAt,
     }),
     ...(p.extra?.pendingAt !== undefined && { pending_at: p.extra.pendingAt }),
-    ...(p.extra?.pendingReason !== undefined && {
-      pending_reason: p.extra.pendingReason,
+    ...(p.extra?.pendingDompis !== undefined && {
+      pending_dompis: p.extra.pendingDompis,
     }),
     ...(p.extra?.closedAt !== undefined && { closed_at: p.extra.closedAt }),
   };

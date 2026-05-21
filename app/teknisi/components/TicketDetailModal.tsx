@@ -80,16 +80,16 @@ export default function TicketDetailModal({
 
   // Status derived values
   const status = useMemo(() => {
-    const raw = ticket.STATUS_UPDATE ?? ticket.hasilVisit ?? '';
+    const raw = ticket.status_update ?? ticket.hasilVisit ?? '';
     return raw.toUpperCase().trim() || 'OPEN';
-  }, [ticket.STATUS_UPDATE, ticket.hasilVisit]);
+  }, [ticket.status_update, ticket.hasilVisit]);
 
   const isAssigned = status === 'ASSIGNED';
   const isOnProgress = status === 'ON_PROGRESS';
   const isPending = status === 'PENDING';
   const isClosed = useMemo(
-    () => isTicketClosed(ticket.STATUS_UPDATE ?? ticket.hasilVisit),
-    [ticket.STATUS_UPDATE, ticket.hasilVisit],
+    () => isTicketClosed(ticket.status_update ?? ticket.hasilVisit),
+    [ticket.status_update, ticket.hasilVisit],
   );
 
   const isRcaIncomplete = !selectedRca || !selectedSubRca;
@@ -136,7 +136,9 @@ export default function TicketDetailModal({
   ];
 
   const isDeviceNameEmpty = (() => {
-    const v = String(ticket.deviceName ?? '').trim().toLowerCase();
+    const v = String(ticket.deviceName ?? '')
+      .trim()
+      .toLowerCase();
     return v.length === 0 || DEVICE_EMPTY_VALUES.includes(v);
   })();
 
@@ -325,7 +327,7 @@ export default function TicketDetailModal({
     if (stillTooLarge.length > 0) {
       setError(
         `${stillTooLarge.length} foto masih terlalu besar setelah kompresi (maks 4MB per foto). ` +
-        `Coba foto dengan pencahayaan lebih baik atau resolusi kamera lebih rendah.`,
+          `Coba foto dengan pencahayaan lebih baik atau resolusi kamera lebih rendah.`,
       );
       return;
     }
@@ -448,7 +450,7 @@ export default function TicketDetailModal({
           ticketId: ticket.idTicket,
           rca: selectedRca,
           subRca: selectedSubRca,
-          descriptionActualSolution: detailPerbaikan.trim(),
+          descriptionSolutionDompis: detailPerbaikan.trim(),
         }),
       });
 
@@ -722,13 +724,13 @@ export default function TicketDetailModal({
                   )}
 
                   {/* Pending Reason — show if ticket is PENDING */}
-                  {isPending && ticket.pendingReason && (
+                  {isPending && ticket.pendingDompis && (
                     <div className='rounded-xl border border-purple-100 bg-purple-50 px-3 py-2.5 dark:border-purple-500/20 dark:bg-purple-500/10'>
                       <p className='mb-1 text-[10px] font-bold tracking-wide text-purple-400 uppercase'>
                         Alasan Pending
                       </p>
                       <p className='text-sm font-semibold text-purple-900 dark:text-purple-300'>
-                        {ticket.pendingReason}
+                        {ticket.pendingDompis}
                       </p>
                     </div>
                   )}
@@ -837,14 +839,14 @@ export default function TicketDetailModal({
                     <InfoField label='Sub RCA' value={ticket.subRca} />
 
                     {/* Detail Perbaikan — tampilkan jika ada */}
-                    {ticket.descriptionActualSolution && (
+                    {ticket.descriptionSolutionDompis && (
                       <div className='border-t border-slate-100 pt-3 dark:border-slate-800'>
                         <p className='mb-1.5 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
                           Detail Perbaikan
                         </p>
                         <div className='rounded-xl border border-green-100 bg-green-50/60 px-3.5 py-3 dark:border-green-500/20 dark:bg-green-500/10'>
                           <p className='text-sm leading-relaxed font-medium whitespace-pre-wrap text-slate-700 dark:text-slate-200'>
-                            {ticket.descriptionActualSolution}
+                            {ticket.descriptionSolutionDompis}
                           </p>
                         </div>
                       </div>

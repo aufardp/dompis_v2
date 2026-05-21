@@ -16,7 +16,7 @@ export default function TicketUpdateModal({
   onClose,
   onUpdated,
 }: Props) {
-  const [pendingReason, setPendingReason] = useState('');
+  const [pendingDompis, setPendingDompis] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -27,7 +27,7 @@ export default function TicketUpdateModal({
   const PHOTO_MIN = 2;
   const PHOTO_MAX = 5;
 
-  const isReasonIncomplete = !pendingReason.trim();
+  const isReasonIncomplete = !pendingDompis.trim();
   const isEvidenceIncomplete = selectedFiles.length < PHOTO_MIN;
   const canSubmit = !isReasonIncomplete && !isEvidenceIncomplete && !loading;
 
@@ -110,7 +110,7 @@ export default function TicketUpdateModal({
       const res = await fetchWithAuth('/api/tickets/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId: ticket.idTicket, pendingReason }),
+        body: JSON.stringify({ ticketId: ticket.idTicket, pendingDompis }),
       });
       if (!res) return;
       const data = await res.json();
@@ -220,12 +220,12 @@ export default function TicketUpdateModal({
 
             <div className='px-4 py-3'>
               <textarea
-                value={pendingReason}
-                onChange={(e) => setPendingReason(e.target.value)}
+                value={pendingDompis}
+                onChange={(e) => setPendingDompis(e.target.value)}
                 rows={4}
                 placeholder='Jelaskan progress pekerjaan atau alasan pending secara detail...'
                 className={`w-full resize-none rounded-xl border-[1.5px] px-3.5 py-2.5 text-[13.5px] leading-relaxed font-medium text-slate-800 transition-all outline-none placeholder:text-slate-300 dark:text-slate-100 dark:placeholder:text-slate-600 ${
-                  pendingReason.trim()
+                  pendingDompis.trim()
                     ? 'border-blue-300 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-blue-500/40 dark:bg-slate-800'
                     : 'border-slate-200 bg-slate-50 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-800'
                 }`}
@@ -234,12 +234,12 @@ export default function TicketUpdateModal({
               <div className='mt-1.5 flex justify-end'>
                 <span
                   className={`text-[11px] font-semibold tabular-nums ${
-                    pendingReason.length > 450
+                    pendingDompis.length > 450
                       ? 'text-amber-500'
                       : 'text-slate-400 dark:text-slate-500'
                   }`}
                 >
-                  {pendingReason.length} / 500
+                  {pendingDompis.length} / 500
                 </span>
               </div>
             </div>

@@ -7,7 +7,7 @@ import {
   getEffectiveFlaggingLabel,
   getEffectiveMaxTtrLabel,
 } from '@/app/libs/tickets/effective';
-import { getJenisStyle } from '@/app/libs/tickets/jenis';
+import { getJenisStyle } from '@/app/config/jenis-tiket';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
@@ -27,6 +27,7 @@ export interface TicketRowProps {
     customerType?: string;
     summary?: string;
     jenisTiket?: string;
+    jenisTiket1?: string | null;
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
@@ -40,7 +41,7 @@ export interface TicketRowProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
-    STATUS_UPDATE?: string | null;
+    status_update?: string | null;
     ticketIdGamas?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
@@ -84,7 +85,7 @@ export default function TicketRowB2B({
   ttrCountdown,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -231,7 +232,24 @@ export default function TicketRowB2B({
 
       {/* Customer Type */}
       <td className='px-4 py-3 text-center'>
-        <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
+        {ticket.jenisTiket1 ? (
+          <div className='flex flex-col items-center gap-0.5'>
+            <span className='text-xs font-semibold text-(--text-primary)'>
+              {ticket.jenisTiket1}
+            </span>
+          </div>
+        ) : ticket.jenisTiket ? (
+          <span
+            className={clsx(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+              getJenisStyle(ticket.jenisTiket),
+            )}
+          >
+            {ticket.jenisTiket}
+          </span>
+        ) : (
+          <span className='text-xs text-(--text-secondary) italic'>—</span>
+        )}
       </td>
 
       {/* Max TTR - RAPIH (Stacked) */}
@@ -242,7 +260,7 @@ export default function TicketRowB2B({
             <span className='text-xs font-semibold text-(--text-primary)'>
               {maxTtrDate}
             </span>
-            
+
             {/* Jam dengan font angka tetap (tabular) */}
             <span className='text-[10px] text-(--text-secondary) tabular-nums'>
               {maxTtrTime}
@@ -250,7 +268,7 @@ export default function TicketRowB2B({
 
             {/* Label Booking yang telah dirapikan menjadi Badge */}
             {ticket.bookingDate && (
-              <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 ring-1 ring-inset ring-blue-500/20'>
+              <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold tracking-wider text-blue-600 uppercase ring-1 ring-blue-500/20 ring-inset'>
                 Booking
               </span>
             )}
@@ -291,7 +309,7 @@ export default function TicketRowB2B({
         </div>
       </td>
 
-      {/* Jenis Tiket */}
+      {/* Jenis Tiket - Parent Group (jenis_tiket_1) */}
       <td className='px-4 py-3 text-center'>
         {ticket.jenisTiket ? (
           <span
@@ -340,10 +358,21 @@ export default function TicketRowB2B({
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            getStatusColor(ticket.STATUS_UPDATE ?? ''),
+            getStatusColor(ticket.status ?? ticket.status ?? ''),
           )}
         >
-          {ticket.STATUS_UPDATE || '-'}
+          {(ticket.status ?? ticket.status) || '-'}
+        </span>
+      </td>
+
+      <td className='px-4 py-3 text-center uppercase'>
+        <span
+          className={clsx(
+            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+            getStatusColor(ticket.status_update ?? ticket.status_update ?? ''),
+          )}
+        >
+          {(ticket.status_update ?? ticket.status_update) || '-'}
         </span>
       </td>
 

@@ -3,7 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
-import { normalizeJenis } from '@/app/libs/tickets/jenis';
+import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getCache, setCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
@@ -162,7 +162,7 @@ function filterTicketByJenis(
 ): boolean {
   if (jenisFilter.length === 0) return true;
 
-  const raw = ticket.jenisTiket ?? ticket.JENIS_TIKET ?? '';
+  const raw = ticket.jenisTiket ?? ticket.jenis_tiket_2 ?? '';
   const normalized = normalizeJenis(raw);
 
   if (dept === 'b2c') {
@@ -187,7 +187,7 @@ function filterTicketByStatus(
 ): boolean {
   if (statusFilter.length === 0) return true;
 
-  const statusRaw = ticket.STATUS_UPDATE ?? ticket.statusUpdate ?? '';
+  const statusRaw = ticket.status_update ?? ticket.statusUpdate ?? '';
   const status = statusRaw.trim().toLowerCase();
 
   return statusFilter.some((f) => {
@@ -203,8 +203,8 @@ function filterTicketByFlagging(
   if (flaggingFilter.length === 0) return true;
 
   return flaggingFilter.some((f) => {
-    if (f === 'P1') return (ticket.flaggingManja ?? ticket.FLAGGING_MANJA ?? '') === 'P1';
-    if (f === 'P+') return (ticket.flaggingManja ?? ticket.FLAGGING_MANJA ?? '') === 'P+';
+    if (f === 'P1') return (ticket.flaggingManja ?? ticket.flagging_manja ?? '') === 'P1';
+    if (f === 'P+') return (ticket.flaggingManja ?? ticket.flagging_manja ?? '') === 'P+';
     if (f === 'FFG') {
       const gs = (ticket.guaranteeStatus ?? ticket.GUARANTE_STATUS ?? '').trim().toLowerCase();
       return gs === 'guarantee';
@@ -212,7 +212,7 @@ function filterTicketByFlagging(
     if (f === 'GAMAS') {
       const candidates = [
         ticket.ticketIdGamas,
-        ticket.TICKET_ID_GAMAS,
+        ticket.ticket_id_gamas,
       ];
       const raw = candidates.find((v) => v !== null && v !== undefined);
       const normalized = String(raw ?? '').trim();
@@ -237,23 +237,23 @@ function applyFilters(tickets: any[], dept: string, filters: {
 }
 
 function buildTicketRow(ticket: any) {
-  const jenisRaw = ticket.jenisTiket ?? ticket.JENIS_TIKET ?? '';
+  const jenisRaw = ticket.jenisTiket ?? ticket.jenis_tiket_2 ?? '';
   return [
-    ticket.ticket ?? ticket.INCIDENT ?? '',
-    ticket.serviceNo ?? ticket.SERVICE_NO ?? '',
-    ticket.contactName ?? ticket.CONTACT_NAME ?? '',
-    ticket.contactPhone ?? ticket.CONTACT_PHONE ?? '',
-    ticket.alamat ?? ticket.ALAMAT ?? '',
-    formatDate(ticket.bookingDate ?? ticket.BOOKING_DATE),
-    ticket.ctype ?? ticket.customerType ?? ticket.CUSTOMER_TYPE ?? '',
+    ticket.ticket ?? ticket.incident ?? '',
+    ticket.serviceNo ?? ticket.service_no ?? '',
+    ticket.contactName ?? ticket.contact_name ?? '',
+    ticket.contactPhone ?? ticket.contact_phone ?? '',
+    ticket.alamat ?? ticket.alamat ?? '',
+    formatDate(ticket.bookingDate ?? ticket.booking_date),
+    ticket.ctype ?? ticket.customerType ?? ticket.customer_type ?? '',
     jenisRaw,
-    ticket.workzone ?? ticket.WORKZONE ?? '',
+    ticket.workzone ?? ticket.workzone ?? '',
     ticket.technicianName ?? ticket.users?.nama ?? '',
-    getStatusLabel(ticket.STATUS_UPDATE ?? ticket.statusUpdate),
+    getStatusLabel(ticket.status_update ?? ticket.statusUpdate),
     getFlaggingLabel(ticket),
-    computeAge(ticket.reportedDate ?? ticket.REPORTED_DATE),
+    computeAge(ticket.reportedDate ?? ticket.reported_date),
     getMaxTtr(ticket, jenisRaw),
-    formatDateTime(ticket.reportedDate ?? ticket.REPORTED_DATE),
+    formatDateTime(ticket.reportedDate ?? ticket.reported_date),
   ];
 }
 
@@ -338,21 +338,24 @@ export async function GET(request: Request) {
           );
         }
 
-        whereBase.WORKZONE = { in: workzones };
+        whereBase.workzone = { in: workzones };
       }
 
       await DailyTicketService.applyDailyTicketFilter(whereBase);
 
       if (dept === 'b2c') {
-        whereBase.CUSTOMER_TYPE = { in: B2C_CTYPES };
+        whereBase.customer_type = { in: B2C_CTYPES };
       } else if (dept === 'b2b') {
         whereBase.AND = [
           ...(whereBase.AND ?? []),
           {
             OR: [
-              { CUSTOMER_TYPE: { notIn: B2C_CTYPES } },
-              { CUSTOMER_TYPE: null },
+              { customer_type: { notIn: B2C_CTYPES } },
+              { customer_type: null },
             ],
+          },
+          {
+            customer_segment: { notIn: ['PL-TSEL', 'DCS'] },
           },
         ];
       }

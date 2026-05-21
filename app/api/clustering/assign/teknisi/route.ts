@@ -110,8 +110,8 @@ export async function GET(req: Request) {
     const workloads = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: { in: teknisiHadir.map((t: { id_user: number }) => t.id_user) },
-        WORKZONE: workzoneName,
-        STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
+        workzone: workzoneName,
+        status_update: { in: ['assigned', 'on_progress', 'pending'] },
         ticketTracking: {
           assigned_at: {
             gte: targetDateStart,

@@ -35,8 +35,8 @@ const PAGE_SIZE = 5;
 
 // Normalize status ke uppercase untuk perbandingan yang konsisten
 function normalizeStatus(t: Ticket): string {
-  // hasilVisit diisi dari STATUS_UPDATE (lowercase), normalize ke uppercase
-  const raw = t.hasilVisit ?? t.STATUS_UPDATE ?? '';
+  // hasilVisit diisi dari status_update (lowercase), normalize ke uppercase
+  const raw = t.hasilVisit ?? t.status_update ?? '';
   return raw.toUpperCase().trim();
 }
 
@@ -93,7 +93,7 @@ export function useTickets(
   const filteredTickets = useMemo(() => {
     const filtered = searchedTickets.filter((t) => {
       const status = normalizeStatus(t);
-      const closed = isTicketClosed(t.STATUS_UPDATE);
+      const closed = isTicketClosed(t.status_update);
 
       if (filter === 'all')         return !closed;
       if (filter === 'assigned')    return status === 'ASSIGNED';
@@ -145,7 +145,7 @@ export function useTickets(
       assigned:   searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length,
       onProgress: searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
       pending:    searchedTickets.filter((t) => norm(t) === 'PENDING').length,
-      closed:     searchedTickets.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length,
+      closed:     searchedTickets.filter((t) => isTicketClosed(t.status_update)).length,
       totalAktif:
         searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length +
         searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
