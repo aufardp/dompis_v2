@@ -7,7 +7,7 @@ export interface DailyTicket {
   ticket: string;
   CUSTOMER_TYPE: string | null;
   JENIS_TIKET: string | null;
-  STATUS_UPDATE: string | null;
+  status_update: string | null;
   HASIL_VISIT: string | null;
   teknisi_user_id: number | null;
   PENDING_REASON: string | null;
@@ -66,7 +66,7 @@ export function computeTicketSummary(tickets: DailyTicket[]): TicketSummary {
   };
 
   for (const t of tickets) {
-    const closed = isTicketClosed(t.STATUS_UPDATE);
+    const closed = isTicketClosed(t.status_update);
     const isAssigned = t.teknisi_user_id !== null;
     const isPending = !!(t.PENDING_REASON && t.PENDING_REASON.trim() !== '');
 
@@ -93,8 +93,8 @@ export function computeTicketSummary(tickets: DailyTicket[]): TicketSummary {
 
   const byCustomerType: CustomerTypeSummary[] = Array.from(typeMap.entries()).map(
     ([type, group]) => {
-      const closedCount = group.filter((t) => isTicketClosed(t.STATUS_UPDATE)).length;
-      const nonClosedGroup = group.filter((t) => !isTicketClosed(t.STATUS_UPDATE));
+      const closedCount = group.filter((t) => isTicketClosed(t.status_update)).length;
+      const nonClosedGroup = group.filter((t) => !isTicketClosed(t.status_update));
       const assignedCount = nonClosedGroup.filter((t) => t.teknisi_user_id !== null).length;
       const openCount = nonClosedGroup.filter((t) => t.teknisi_user_id === null).length;
 
@@ -144,7 +144,7 @@ export function filterTickets(
 
   if (activeStatus) {
     result = result.filter((t) => {
-      const closed = isTicketClosed(t.STATUS_UPDATE);
+      const closed = isTicketClosed(t.status_update);
       const isAssigned = t.teknisi_user_id !== null;
       const isPending = !!(t.PENDING_REASON && t.PENDING_REASON.trim() !== '');
 

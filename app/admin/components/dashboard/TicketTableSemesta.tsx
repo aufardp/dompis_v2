@@ -79,7 +79,7 @@ export interface TicketRow {
   closedAt?: string | null;
   reportedDate?: string | null;
   status?: string;
-  STATUS_UPDATE?: string | null;
+  status_update?: string | null;
   maxTtrReguler?: string | null;
   maxTtrGold?: string | null;
   maxTtrPlatinum?: string | null;
@@ -109,13 +109,13 @@ type DrawerTicket = {
   workzone?: string;
   status: string;
   hasilVisit?: 'OPEN' | 'ASSIGNED' | 'ON_PROGRESS' | 'PENDING' | 'ESCALATED' | 'CANCELLED' | 'CLOSE' | null;
-  STATUS_UPDATE?: string | null;
+  status_update?: string | null;
   jenisTiket?: string;
   maxTtrReguler?: string | null;
   maxTtrGold?: string | null;
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
-  pendingReason?: string | null;
+  pendingDompis?: string | null;
   rca?: string | null;
   subRca?: string | null;
   teknisiUserId?: number | null;
@@ -222,9 +222,9 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       ctype: ticket.ctype,
       customerType: ticket.customerType ?? '',
       workzone: ticket.workzone ?? '',
-      status: ticket.STATUS_UPDATE ?? ticket.status ?? '',
+      status: ticket.status_update ?? ticket.status_update ?? ticket.status ?? '',
       hasilVisit: (ticket.hasilVisit ?? null) as Exclude<DrawerTicket, null>['hasilVisit'],
-      STATUS_UPDATE: ticket.STATUS_UPDATE ?? null,
+      status_update: ticket.status_update ?? ticket.status_update ?? null,
       jenisTiket: ticket.jenisTiket ?? '',
       maxTtrReguler: ticket.maxTtrReguler ?? null,
       maxTtrGold: ticket.maxTtrGold ?? null,
@@ -264,8 +264,8 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt);
-        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt);
+        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt, a.status);
+        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt, b.status);
       } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];

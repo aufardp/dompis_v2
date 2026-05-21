@@ -85,12 +85,12 @@ async function getTicketDetails(
 ): Promise<{ service_no: string; customer_name: string } | null> {
   const row = await tx.ticket.findUnique({
     where: { id_ticket: ticketId },
-    select: { SERVICE_NO: true, CONTACT_NAME: true },
+    select: { service_no: true, contact_name: true },
   });
   if (!row) return null;
   return {
-    service_no: row.SERVICE_NO ?? '',
-    customer_name: row.CONTACT_NAME ?? '',
+    service_no: row.service_no ?? '',
+    customer_name: row.contact_name ?? '',
   };
 }
 
@@ -211,13 +211,13 @@ type VisitStatus =
 
 type WorkflowResult = {
   ticketUpdate: Record<string, unknown>;
-  pendingReason: string | null | undefined;
+  pendingDompis: string | null | undefined;
 };
 
 type PatchResult = {
   ticketUpdate: Record<string, unknown>;
   patchChanges: string[];
-  pendingReason: string | null | undefined;
+  pendingDompis: string | null | undefined;
 };
 
 // ── Pure Utilities ────────────────────────────────────────────────────────────
@@ -287,9 +287,9 @@ async function lockTicketRow(
 ): Promise<LockedTicket | null> {
   const rows = await tx.$queryRaw<LockedTicket[]>`
     SELECT id_ticket,
-      INCIDENT, WORKZONE, teknisi_user_id, STATUS_UPDATE,
-      PENDING_REASON, ALAMAT, SERVICE_NO, CONTACT_NAME,
-      OWNER_GROUP, CUSTOMER_TYPE
+      incident, workzone, teknisi_user_id, status_update,
+      pending_dompis AS pending_dompis, alamat, service_no, contact_name,
+      owner_group, customer_type
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -450,12 +450,18 @@ async function handleTechnicianWorkflow(
   if (next === 'PENDING') {
     if (current !== 'ON_PROGRESS') throw new Error('Invalid status transition');
 
-    const reason = cleanNullableString(workflow.pendingReason);
-    if (!reason) throw new Error('pendingReason is required');
+    const reason = cleanNullableString(workflow.pendingDompis);
+    if (!reason) throw new Error('pendingDompis is required');
 
     const reasonDb = truncate255(reason);
 
-    await fastTrackingUpdate(tx, ticketId, actor.id_user, now);
+    await upsertTracking(tx, {
+      ticketId,
+      assignedTo: actor.id_user,
+      isActive: true,
+      now,
+      extra: { pendingAt: now, pendingDompis: reasonDb },
+    });
 
     await logStatusChange(tx, {
       ticketId,
@@ -479,23 +485,23 @@ async function handleTechnicianWorkflow(
     const tech = await getTechnicianSnapshot(tx, actor.id_user);
     const ticketDetails = await getTicketDetails(tx, ticketId);
     const adminInfo = await getLatestAdminAssignment(tx, ticketId);
-    const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
+    const evidence = await buildTechEventEvidence(ticket.incident, tx);
     await createTechEvent(
       {
         event_type: 'TICKET_STATUS_CHANGED',
         ticket: {
           id: ticketId,
-          incident: ticket.INCIDENT,
-          workzone: ticket.WORKZONE ?? '',
+          incident: ticket.incident,
+          workzone: ticket.workzone ?? '',
           service_no: ticketDetails?.service_no ?? '',
           customer_name: ticketDetails?.customer_name ?? '',
-          owner_group: ticket.OWNER_GROUP ?? null,
-          customer_type: ticket.CUSTOMER_TYPE ?? null,
+          owner_group: ticket.owner_group ?? null,
+          customer_type: ticket.customer_type ?? null,
         },
         status: {
           old_hasil_visit: 'ON_PROGRESS',
           new_hasil_visit: 'PENDING',
-          pending_reason: reasonDb,
+          pending_dompis: reasonDb,
           evidence,
           rca: null,
           sub_rca: null,
@@ -510,9 +516,9 @@ async function handleTechnicianWorkflow(
 
     return {
       ticketUpdate: {
-        STATUS_UPDATE: 'pending', // single source of truth
+        status_update: 'pending', // single source of truth
       },
-      pendingReason: reasonDb,
+      pendingDompis: reasonDb,
     };
   }
 
@@ -527,7 +533,7 @@ async function handleTechnicianWorkflow(
       assignedTo: actor.id_user,
       isActive: true,
       now,
-      extra: { onProgressAt: now, pendingReason: null },
+      extra: { onProgressAt: now, pendingDompis: null },
     });
 
     await logStatusChange(tx, {
@@ -554,23 +560,23 @@ async function handleTechnicianWorkflow(
     const tech = await getTechnicianSnapshot(tx, actor.id_user);
     const ticketDetails = await getTicketDetails(tx, ticketId);
     const adminInfo = await getLatestAdminAssignment(tx, ticketId);
-    const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
+    const evidence = await buildTechEventEvidence(ticket.incident, tx);
     await createTechEvent(
       {
         event_type: 'TICKET_STATUS_CHANGED',
         ticket: {
           id: ticketId,
-          incident: ticket.INCIDENT,
-          workzone: ticket.WORKZONE ?? '',
+          incident: ticket.incident,
+          workzone: ticket.workzone ?? '',
           service_no: ticketDetails?.service_no ?? '',
           customer_name: ticketDetails?.customer_name ?? '',
-          owner_group: ticket.OWNER_GROUP ?? null,
-          customer_type: ticket.CUSTOMER_TYPE ?? null,
+          owner_group: ticket.owner_group ?? null,
+          customer_type: ticket.customer_type ?? null,
         },
         status: {
           old_hasil_visit: 'PENDING',
           new_hasil_visit: 'ON_PROGRESS',
-          pending_reason: null,
+          pending_dompis: null,
           evidence,
           rca: null,
           sub_rca: null,
@@ -583,12 +589,12 @@ async function handleTechnicianWorkflow(
       tx,
     );
 
-    // Clear PENDING_REASON by setting to NULL (column is nullable)
+    // Clear pending_dompis by setting to NULL (column is nullable)
     return {
       ticketUpdate: {
-        STATUS_UPDATE: 'on_progress', // single source of truth
+        status_update: 'on_progress', // single source of truth
       },
-      pendingReason: null,
+      pendingDompis: null,
     };
   }
 
@@ -610,25 +616,25 @@ async function applyPatchFields(
 ): Promise<PatchResult> {
   const ticketUpdate: Record<string, unknown> = {};
   const patchChanges: string[] = [];
-  let pendingReason: string | null | undefined;
+  let pendingDompis: string | null | undefined;
 
-  const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+  const current = normalizeVisitStatus(ticket.status_update);
 
   // Simple scalar fields — map patch key → DB column
   const FIELD_MAP: Array<[keyof TicketUpdatePatch, string]> = [
     ['summary', 'SUMMARY'],
-    ['ownerGroup', 'OWNER_GROUP'],
+    ['ownerGroup', 'owner_group'],
     ['status', 'STATUS'],
     ['serviceType', 'SERVICE_TYPE'],
     ['customerSegment', 'CUSTOMER_SEGMENT'],
-    ['customerType', 'CUSTOMER_TYPE'],
-    ['serviceNo', 'SERVICE_NO'],
-    ['contactName', 'CONTACT_NAME'],
+    ['customerType', 'customer_type'],
+    ['serviceNo', 'service_no'],
+    ['contactName', 'contact_name'],
     ['contactPhone', 'CONTACT_PHONE'],
     ['deviceName', 'DEVICE_NAME'],
     ['symptom', 'SYMPTOM'],
-    ['alamat', 'ALAMAT'],
-    ['descriptionActualSolution', 'DESCRIPTION_ACTUAL_SOLUTION'],
+    ['alamat', 'alamat'],
+    ['descriptionSolutionDompis', 'description_solution_dompis'],
   ];
 
   for (const [patchKey, dbKey] of FIELD_MAP) {
@@ -645,30 +651,30 @@ async function applyPatchFields(
     }
   }
 
-  // pendingReason — admin-only, ticket must already be PENDING
-  if (patch.pendingReason !== undefined) {
+  // pendingDompis — admin-only, ticket must already be PENDING
+  if (patch.pendingDompis !== undefined) {
     if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
     if (current !== 'PENDING') {
-      throw new Error('pendingReason can only be set when ticket is PENDING');
+      throw new Error('pendingDompis can only be set when ticket is PENDING');
     }
 
-    const reason = cleanNullableString(patch.pendingReason);
-    if (!reason) throw new Error('pendingReason is required');
+    const reason = cleanNullableString(patch.pendingDompis);
+    if (!reason) throw new Error('pendingDompis is required');
     if (ticket.teknisi_user_id == null)
       throw new Error('Ticket is not assigned');
 
     const reasonDb = truncate255(reason);
-    pendingReason = reasonDb;
+    pendingDompis = reasonDb;
 
     await upsertTracking(tx, {
       ticketId,
       assignedTo: ticket.teknisi_user_id,
       isActive: true,
       now,
-      extra: { pendingAt: now, pendingReason: reasonDb },
+      extra: { pendingAt: now, pendingDompis: reasonDb },
     });
 
-    patchChanges.push('pendingReason');
+    patchChanges.push('pendingDompis');
   }
 
   // workzone — admin-only, validates SA access and technician eligibility
@@ -693,11 +699,11 @@ async function applyPatchFields(
       );
     }
 
-    ticketUpdate.WORKZONE = newWorkzone;
+    ticketUpdate.workzone = newWorkzone;
     patchChanges.push('workzone');
   }
 
-  return { ticketUpdate, patchChanges, pendingReason };
+  return { ticketUpdate, patchChanges, pendingDompis };
 }
 
 // ── Main Service ──────────────────────────────────────────────────────────────
@@ -716,7 +722,7 @@ export class TicketWorkflowService {
     return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const ticket = await tx.ticket.findUnique({
         where: { id_ticket: ticketId },
-        select: { id_ticket: true, WORKZONE: true },
+        select: { id_ticket: true, workzone: true },
       });
 
       if (!ticket) throw new Error('Ticket not found');
@@ -738,12 +744,12 @@ export class TicketWorkflowService {
       if (!targetSa) {
         const resolvedSa = await resolveServiceAreaForWorkzone(
           tx,
-          ticket.WORKZONE,
+          ticket.workzone,
         );
         if (!resolvedSa) {
           return {
             ticketId,
-            workzone: ticket.WORKZONE,
+            workzone: ticket.workzone,
             serviceAreaId: null,
             serviceAreaName: null,
             technicians: [],
@@ -785,7 +791,7 @@ export class TicketWorkflowService {
 
       return {
         ticketId,
-        workzone: ticket.WORKZONE,
+        workzone: ticket.workzone,
         serviceAreaId: targetSa.id_sa,
         serviceAreaName,
         technicians,
@@ -830,10 +836,10 @@ export class TicketWorkflowService {
 
         if (!ticket) throw new Error('Ticket not found');
 
-        if (isTicketClosed(ticket.STATUS_UPDATE))
+        if (isTicketClosed(ticket.status_update))
           throw new Error('Cannot assign a closed ticket');
 
-        const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+        const current = normalizeVisitStatus(ticket.status_update);
 
         if (current === 'CLOSE') throw new Error('Ticket already closed');
 
@@ -847,7 +853,7 @@ export class TicketWorkflowService {
           assertTransition('ASSIGN', current);
         }
 
-        const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
+        const sa = await resolveServiceAreaForWorkzone(tx, ticket.workzone);
 
         if (!sa)
           throw new Error('Ticket workzone is not mapped to a service area');
@@ -882,7 +888,7 @@ export class TicketWorkflowService {
           where: { id_ticket: ticketId },
           data: {
             teknisi_user_id: technicianId,
-            STATUS_UPDATE: 'assigned',
+            status_update: 'assigned',
           },
         });
 
@@ -927,24 +933,24 @@ export class TicketWorkflowService {
 
         const adminName = await getUserName(tx, actor.id_user);
 
-        const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
+        const evidence = await buildTechEventEvidence(ticket.incident, tx);
 
         await createTechEvent(
           {
             event_type: 'TICKET_ASSIGNED',
             ticket: {
               id: ticketId,
-              incident: ticket.INCIDENT,
-              workzone: ticket.WORKZONE ?? '',
-              service_no: ticket.SERVICE_NO ?? '',
-              customer_name: ticket.CONTACT_NAME ?? '',
-              owner_group: ticket.OWNER_GROUP ?? null,
-              customer_type: ticket.CUSTOMER_TYPE ?? null,
+              incident: ticket.incident,
+              workzone: ticket.workzone ?? '',
+              service_no: ticket.service_no ?? '',
+              customer_name: ticket.contact_name ?? '',
+              owner_group: ticket.owner_group ?? null,
+              customer_type: ticket.customer_type ?? null,
             },
             status: {
               old_hasil_visit: current,
               new_hasil_visit: 'ASSIGNED',
-              pending_reason: null,
+              pending_dompis: null,
               evidence,
               rca: null,
               sub_rca: null,
@@ -990,10 +996,10 @@ export class TicketWorkflowService {
 
         if (!ticket) throw new Error('Ticket not found');
 
-        if (isTicketClosed(ticket.STATUS_UPDATE))
+        if (isTicketClosed(ticket.status_update))
           throw new Error('Cannot unassign a closed ticket');
 
-        const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+        const current = normalizeVisitStatus(ticket.status_update);
 
         assertTransition('UNASSIGN', current);
 
@@ -1003,7 +1009,7 @@ export class TicketWorkflowService {
         const oldTechnicianId = ticket.teknisi_user_id;
 
         if (roleKey === 'admin') {
-          const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
+          const sa = await resolveServiceAreaForWorkzone(tx, ticket.workzone);
 
           if (!sa) throw new Error('Unauthorized');
 
@@ -1014,7 +1020,7 @@ export class TicketWorkflowService {
           where: { id_ticket: ticketId },
           data: {
             teknisi_user_id: null,
-            STATUS_UPDATE: 'open',
+            status_update: 'open',
           },
         });
 
@@ -1043,24 +1049,24 @@ export class TicketWorkflowService {
 
         const adminName = await getUserName(tx, actor.id_user);
 
-        const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
+        const evidence = await buildTechEventEvidence(ticket.incident, tx);
 
         await createTechEvent(
           {
             event_type: 'TICKET_UNASSIGNED',
             ticket: {
               id: ticketId,
-              incident: ticket.INCIDENT,
-              workzone: ticket.WORKZONE ?? '',
-              service_no: ticket.SERVICE_NO ?? '',
-              customer_name: ticket.CONTACT_NAME ?? '',
-              owner_group: ticket.OWNER_GROUP ?? null,
-              customer_type: ticket.CUSTOMER_TYPE ?? null,
+              incident: ticket.incident,
+              workzone: ticket.workzone ?? '',
+              service_no: ticket.service_no ?? '',
+              customer_name: ticket.contact_name ?? '',
+              owner_group: ticket.owner_group ?? null,
+              customer_type: ticket.customer_type ?? null,
             },
             status: {
               old_hasil_visit: current,
               new_hasil_visit: 'OPEN',
-              pending_reason: null,
+              pending_dompis: null,
               evidence,
               rca: null,
               sub_rca: null,
@@ -1094,8 +1100,8 @@ export class TicketWorkflowService {
         const ticket = await lockTicketRow(tx, ticketId);
         if (!ticket) throw new Error('Ticket not found');
 
-        // Guard: Check if ticket is closed using STATUS_UPDATE
-        if (isTicketClosed(ticket.STATUS_UPDATE)) {
+        // Guard: Check if ticket is closed using status_update
+        if (isTicketClosed(ticket.status_update)) {
           throw new Error('Cannot update a closed ticket');
         }
 
@@ -1104,13 +1110,13 @@ export class TicketWorkflowService {
         if (ticket.teknisi_user_id !== actor.id_user)
           throw new Error('Unauthorized');
 
-        const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+        const current = normalizeVisitStatus(ticket.status_update);
         assertTransition('PICKUP', current);
 
         await tx.ticket.update({
           where: { id_ticket: ticketId },
           data: {
-            STATUS_UPDATE: 'on_progress', // single source of truth
+            status_update: 'on_progress', // single source of truth
           },
         });
 
@@ -1142,23 +1148,23 @@ export class TicketWorkflowService {
         const adminName = await getUserName(tx, actor.id_user);
         const tech = await getTechnicianSnapshot(tx, actor.id_user);
         const ticketDetails = await getTicketDetails(tx, ticketId);
-        const evidence = await buildTechEventEvidence(ticket.INCIDENT, tx);
+        const evidence = await buildTechEventEvidence(ticket.incident, tx);
         await createTechEvent(
           {
             event_type: 'TICKET_STATUS_CHANGED',
             ticket: {
               id: ticketId,
-              incident: ticket.INCIDENT,
-              workzone: ticket.WORKZONE ?? '',
+              incident: ticket.incident,
+              workzone: ticket.workzone ?? '',
               service_no: ticketDetails?.service_no ?? '',
               customer_name: ticketDetails?.customer_name ?? '',
-              owner_group: ticket.OWNER_GROUP ?? null,
-              customer_type: ticket.CUSTOMER_TYPE ?? null,
+              owner_group: ticket.owner_group ?? null,
+              customer_type: ticket.customer_type ?? null,
             },
             status: {
               old_hasil_visit: 'ASSIGNED',
               new_hasil_visit: 'ON_PROGRESS',
-              pending_reason: null,
+              pending_dompis: null,
               evidence,
             },
             old_technician: tech,
@@ -1179,7 +1185,7 @@ export class TicketWorkflowService {
     actor: ActorContext,
     rca: string,
     subRca: string,
-    descriptionActualSolution: string,
+    descriptionSolutionDompis: string,
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Ticket ID wajib diisi');
@@ -1202,8 +1208,8 @@ export class TicketWorkflowService {
       throw new Error('RCA dan Sub RCA wajib diisi');
 
     if (
-      !descriptionActualSolution ||
-      descriptionActualSolution.trim().length < 10
+      !descriptionSolutionDompis ||
+      descriptionSolutionDompis.trim().length < 10
     )
       throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
@@ -1213,17 +1219,17 @@ export class TicketWorkflowService {
 
         if (!ticket) throw new Error('Ticket not found');
 
-        if (isTicketClosed(ticket.STATUS_UPDATE))
+        if (isTicketClosed(ticket.status_update))
           throw new Error('Ticket already closed');
 
         if (ticket.teknisi_user_id !== actor.id_user)
           throw new Error('Unauthorized');
 
-        const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+        const current = normalizeVisitStatus(ticket.status_update);
 
         assertTransition('CLOSE', current);
 
-        const alamat = cleanNullableString(ticket.ALAMAT);
+        const alamat = cleanNullableString(ticket.alamat);
 
         if (!alamat) throw new Error('Alamat wajib diisi sebelum close');
 
@@ -1237,21 +1243,27 @@ export class TicketWorkflowService {
         await tx.ticket.update({
           where: { id_ticket: ticketId },
           data: {
-            STATUS_UPDATE: 'close',
+            status_update: 'close',
             rca: rcaValue,
             sub_rca: subRcaValue,
-            DESCRIPTION_ACTUAL_SOLUTION: descriptionActualSolution.trim(),
+            description_solution_dompis: descriptionSolutionDompis.trim(),
             closed_at: now,
           },
         });
 
-        await fastTrackingUpdate(tx, ticketId, actor.id_user, now);
+        await upsertTracking(tx, {
+          ticketId,
+          assignedTo: actor.id_user,
+          isActive: false,
+          now,
+          extra: { closedAt: now },
+        });
 
         await deactivateAssignmentHistory(tx, ticketId, now);
 
         await logStatusChange(tx, {
           ticketId,
-          oldStatus: ticket.STATUS_UPDATE ?? 'open',
+          oldStatus: ticket.status_update ?? 'open',
           newStatus: 'close',
           changedBy: actor.id_user,
           roleId,
@@ -1267,7 +1279,7 @@ export class TicketWorkflowService {
         });
 
         // Use centralized evidence builder (consistent with other workflow functions)
-        const evidenceData = await buildTechEventEvidence(ticket.INCIDENT, tx);
+        const evidenceData = await buildTechEventEvidence(ticket.incident, tx);
 
         const tech = await getTechnicianSnapshot(tx, actor.id_user);
 
@@ -1278,21 +1290,21 @@ export class TicketWorkflowService {
             event_type: 'TICKET_CLOSED',
             ticket: {
               id: ticketId,
-              incident: ticket.INCIDENT,
-              workzone: ticket.WORKZONE ?? '',
-              service_no: ticket.SERVICE_NO ?? '',
-              customer_name: ticket.CONTACT_NAME ?? '',
-              owner_group: ticket.OWNER_GROUP ?? null,
-              customer_type: ticket.CUSTOMER_TYPE ?? null,
+              incident: ticket.incident,
+              workzone: ticket.workzone ?? '',
+              service_no: ticket.service_no ?? '',
+              customer_name: ticket.contact_name ?? '',
+              owner_group: ticket.owner_group ?? null,
+              customer_type: ticket.customer_type ?? null,
             },
             status: {
               old_hasil_visit: 'ON_PROGRESS',
               new_hasil_visit: 'CLOSE',
-              pending_reason: null,
+              pending_dompis: null,
               evidence: evidenceData,
               rca: rcaValue,
               sub_rca: subRcaValue,
-              detail_perbaikan: descriptionActualSolution.trim(),
+              detail_perbaikan: descriptionSolutionDompis.trim(),
             },
             old_technician: tech,
             new_technician: tech,
@@ -1328,7 +1340,7 @@ export class TicketWorkflowService {
     const hasWorkflowStatus = workflow?.status !== undefined;
 
     // Validate patch keys against role permissions up-front
-    const TEKNISI_PATCH_KEYS = ['descriptionActualSolution', 'alamat', 'deviceName'] as const;
+    const TEKNISI_PATCH_KEYS = ['descriptionSolutionDompis', 'alamat', 'deviceName'] as const;
     const ADMIN_PATCH_KEYS = [
       'summary',
       'ownerGroup',
@@ -1343,7 +1355,7 @@ export class TicketWorkflowService {
       'deviceName',
       'symptom',
       'alamat',
-      'pendingReason',
+      'pendingDompis',
     ] as const;
 
     const allowedKeys =
@@ -1364,21 +1376,22 @@ export class TicketWorkflowService {
 
     const now = new Date();
 
-    return commitAndInvalidate(
-      prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const ticket = await lockTicketRow(tx, ticketId);
+    try {
+      return commitAndInvalidate(
+        prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const ticket = await lockTicketRow(tx, ticketId);
         if (!ticket) throw new Error('Ticket not found');
 
-        // Guard: Check if ticket is closed using STATUS_UPDATE
-        if (isTicketClosed(ticket.STATUS_UPDATE)) {
+        // Guard: Check if ticket is closed using status_update
+        if (isTicketClosed(ticket.status_update)) {
           throw new Error('Cannot update a closed ticket');
         }
 
-        const current = normalizeVisitStatus(ticket.STATUS_UPDATE);
+        const current = normalizeVisitStatus(ticket.status_update);
 
         // Role-based access guards
         if (roleKey === 'admin') {
-          const sa = await resolveServiceAreaForWorkzone(tx, ticket.WORKZONE);
+          const sa = await resolveServiceAreaForWorkzone(tx, ticket.workzone);
           if (!sa) throw new Error('Unauthorized');
           await assertAdminHasAccessToServiceArea(tx, actor.id_user, sa.id_sa);
         }
@@ -1396,21 +1409,21 @@ export class TicketWorkflowService {
 
         // Lazily fetch pending reason when needed (avoids an extra query otherwise)
         const resolvePendingReason = async (): Promise<string | null> => {
-          const fromTicket = cleanNullableString(ticket.PENDING_REASON);
+          const fromTicket = cleanNullableString(ticket.pending_dompis);
           if (fromTicket) return fromTicket;
 
           const row = await tx.ticket_tracking.findUnique({
             where: { ticket_id: ticketId },
-            select: { pending_reason: true },
+            select: { pending_dompis: true },
           });
-          return cleanNullableString(row?.pending_reason) ?? null;
+          return cleanNullableString(row?.pending_dompis) ?? null;
         };
 
         // Apply direct field patches
         const {
           ticketUpdate,
           patchChanges,
-          pendingReason: patchPendingReason,
+          pendingDompis: patchPendingDompis,
         } = await applyPatchFields(
           tx,
           patch,
@@ -1422,7 +1435,7 @@ export class TicketWorkflowService {
         );
 
         // Apply workflow status transition
-        let workflowPendingReason: string | null | undefined;
+        let workflowPendingDompis: string | null | undefined;
 
         if (hasWorkflowStatus) {
           const result = await handleTechnicianWorkflow(
@@ -1438,7 +1451,7 @@ export class TicketWorkflowService {
           );
 
           Object.assign(ticketUpdate, result.ticketUpdate);
-          workflowPendingReason = result.pendingReason;
+          workflowPendingDompis = result.pendingDompis;
         }
 
         // Persist ticket column changes
@@ -1449,17 +1462,17 @@ export class TicketWorkflowService {
           });
         }
 
-        // PENDING_REASON uses a raw query because the column may be NOT NULL
+        // pending_dompis uses a raw query because the column may be NOT NULL
         // in some deployments, and Prisma would skip a `null` update.
-        const finalPendingReason =
-          workflowPendingReason !== undefined
-            ? workflowPendingReason
-            : patchPendingReason;
+        const finalPendingDompis =
+          workflowPendingDompis !== undefined
+            ? workflowPendingDompis
+            : patchPendingDompis;
 
-        if (finalPendingReason !== undefined) {
+        if (finalPendingDompis !== undefined) {
           await tx.$executeRaw`
           UPDATE ticket
-          SET PENDING_REASON = ${finalPendingReason}
+          SET pending_dompis = ${finalPendingDompis}
           WHERE id_ticket = ${ticketId}
         `;
         }
@@ -1477,6 +1490,17 @@ export class TicketWorkflowService {
         return { message: 'Ticket updated successfully' };
       }),
     );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2010' || error.code === 'P2011' || error.message?.includes('does not exist')) {
+          throw new Error(
+            'Database schema mismatch: Kolom yang diperlukan tidak ditemukan di database. ' +
+            'Hubungi administrator untuk menjalankan migrasi database.'
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   static async logEvidenceUpload(

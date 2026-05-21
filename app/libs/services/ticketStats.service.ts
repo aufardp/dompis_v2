@@ -27,6 +27,9 @@ export class TicketStatsService {
       conditions.push(
         `(CUSTOMER_TYPE NOT IN ('REGULER','HVC_GOLD','HVC_PLATINUM','HVC_DIAMOND') OR CUSTOMER_TYPE IS NULL)`,
       );
+      conditions.push(
+        `(CUSTOMER_SEGMENT NOT IN ('PL-TSEL', 'DCS') OR CUSTOMER_SEGMENT IS NULL)`,
+      );
     }
 
     if (ctype) {
@@ -38,7 +41,7 @@ export class TicketStatsService {
 
     const rows = await prisma.$queryRawUnsafe(`
       SELECT
-        STATUS_UPDATE,
+        status_update,
         CUSTOMER_TYPE,
         JENIS_TIKET,
         FLAGGING_MANJA,
@@ -47,7 +50,7 @@ export class TicketStatsService {
       FROM ticket
       ${where}
       GROUP BY
-        STATUS_UPDATE,
+        status_update,
         CUSTOMER_TYPE,
         JENIS_TIKET,
         FLAGGING_MANJA,
@@ -66,7 +69,7 @@ export class TicketStatsService {
     for (const r of rows as any[]) {
       const total = Number(r.total);
 
-      const status = (r.STATUS_UPDATE ?? 'open').toLowerCase();
+      const status = (r.status_update ?? 'open').toLowerCase();
       stats.status[status] = (stats.status[status] || 0) + total;
 
       const ctypeVal = r.CUSTOMER_TYPE ?? 'UNKNOWN';

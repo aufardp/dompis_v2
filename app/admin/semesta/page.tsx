@@ -64,10 +64,12 @@ import type { Ticket } from '@/app/types/ticket';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import {
   classifyTicket,
+} from '@/app/libs/tickets/jenis';
+import {
   normalizeJenis,
   JENIS_LABELS,
   type JenisKey,
-} from '@/app/libs/tickets/jenis';
+} from '@/app/config/jenis-tiket';
 
 type Dept = 'all' | 'b2b' | 'b2c';
 type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
@@ -408,7 +410,7 @@ export default function SemestaPage() {
     const list = ticketsForAnalytics;
     m.total = list.length;
     for (const t of list) {
-      const su = t.STATUS_UPDATE as any as string | null | undefined;
+      const su = t.status_update as any as string | null | undefined;
       if (isTicketClosed(su)) m.closed += 1;
       else if (isOpenLike(su)) m.open += 1;
       else if (isInProgressLike(su)) m.onProgress += 1;
@@ -510,7 +512,7 @@ export default function SemestaPage() {
     workzone: t.workzone,
     technicianName: t.technicianName,
     teknisiUserId: t.teknisiUserId,
-    STATUS_UPDATE: t.STATUS_UPDATE,
+    status_update: t.status_update,
     hasilVisit: t.hasilVisit,
     closedAt: t.closedAt,
     reportedDate: t.reportedDate,

@@ -9,6 +9,7 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
+import { todayWibDate } from '@/lib/timezone';
 
 export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
@@ -50,27 +51,27 @@ export interface ProgressCallback {
 
 interface TicketWithRk {
   id_ticket: number;
-  INCIDENT: string;
-  RK_INFORMATION: string | null;
-  STATUS_UPDATE: string | null;
+  incident: string;
+  rk_information: string | null;
+  status_update: string | null;
   teknisi_user_id: number | null;
-  WORKZONE: string | null;
-  SERVICE_NO: string | null;
-  CONTACT_NAME: string | null;
-  OWNER_GROUP: string | null;
-  CUSTOMER_TYPE: string | null;
-  JAM_EXPIRED: string | null;
+  workzone: string | null;
+  service_no: string | null;
+  contact_name: string | null;
+  owner_group: string | null;
+  customer_type: string | null;
+  jam_expired: string | null;
 }
 
 interface TicketForTechEvent {
   id_ticket: number;
-  INCIDENT: string;
-  WORKZONE: string | null;
-  SERVICE_NO: string | null;
-  CONTACT_NAME: string | null;
-  OWNER_GROUP: string | null;
-  CUSTOMER_TYPE: string | null;
-  STATUS_UPDATE: string | null;
+  incident: string;
+  workzone: string | null;
+  service_no: string | null;
+  contact_name: string | null;
+  owner_group: string | null;
+  customer_type: string | null;
+  status_update: string | null;
 }
 
 interface ClusterInfo {
@@ -191,7 +192,7 @@ export class ClusterAutoAssignServiceV2 {
       by: ['teknisi_user_id'],
       where: {
         teknisi_user_id: { in: teknisiIds },
-        STATUS_UPDATE: { in: ['assigned', 'on_progress', 'pending'] },
+        status_update: { in: ['assigned', 'on_progress', 'pending'] },
         ticketTracking: {
           assigned_at: {
             gte: targetDateStart,
@@ -338,17 +339,17 @@ export class ClusterAutoAssignServiceV2 {
       if (ticket.teknisi_user_id) {
         autoAssignLogger.ticketSkipped(
           ticket.id_ticket,
-          ticket.INCIDENT,
+          ticket.incident,
           'already_assigned',
         );
         continue;
       }
 
-      const rkValue = ticket.RK_INFORMATION?.trim();
+      const rkValue = ticket.rk_information?.trim();
       if (!rkValue) {
         autoAssignLogger.ticketSkipped(
           ticket.id_ticket,
-          ticket.INCIDENT,
+          ticket.incident,
           'no_rk_information',
         );
         continue;
@@ -358,7 +359,7 @@ export class ClusterAutoAssignServiceV2 {
       if (!cluster) {
         autoAssignLogger.ticketSkipped(
           ticket.id_ticket,
-          ticket.INCIDENT,
+          ticket.incident,
           `no_cluster_matched_rk_${rkValue}`,
         );
         continue;
@@ -371,7 +372,7 @@ export class ClusterAutoAssignServiceV2 {
         console.log(`[AUTO-ASSIGN] SKIP: No teknisi in cluster ${cluster.id} for date ${new Date().toISOString().split('T')[0]}`);
         autoAssignLogger.ticketSkipped(
           ticket.id_ticket,
-          ticket.INCIDENT,
+          ticket.incident,
           `no_teknisi_available_cluster_${cluster.nama_cluster}`,
         );
         continue;
@@ -387,12 +388,12 @@ export class ClusterAutoAssignServiceV2 {
 
       assignments.push({
         ticketId: ticket.id_ticket,
-        incident: ticket.INCIDENT,
+        incident: ticket.incident,
         teknisiId: chosen.teknisi_id,
         teknisiNama: chosen.nama,
         teknisiNik: chosen.nik,
         clusterName: cluster.nama_cluster,
-        oldStatus: ticket.STATUS_UPDATE,
+        oldStatus: ticket.status_update,
       });
 
       workloadMap.set(
@@ -409,7 +410,7 @@ export class ClusterAutoAssignServiceV2 {
             where: { id_ticket: a.ticketId },
             data: {
               teknisi_user_id: a.teknisiId,
-              STATUS_UPDATE: 'assigned',
+              status_update: 'assigned',
             },
           });
 
@@ -483,13 +484,13 @@ export class ClusterAutoAssignServiceV2 {
       where: { id_ticket: { in: ticketIds } },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        WORKZONE: true,
-        SERVICE_NO: true,
-        CONTACT_NAME: true,
-        OWNER_GROUP: true,
-        CUSTOMER_TYPE: true,
-        STATUS_UPDATE: true,
+        incident: true,
+        workzone: true,
+        service_no: true,
+        contact_name: true,
+        owner_group: true,
+        customer_type: true,
+        status_update: true,
       },
     });
 
@@ -504,24 +505,24 @@ export class ClusterAutoAssignServiceV2 {
       if (!ticket) return;
 
       try {
-        const evidence = await buildTechEventEvidence(ticket.INCIDENT);
+        const evidence = await buildTechEventEvidence(ticket.incident);
 
         await createTechEvent({
           event_type: 'TICKET_ASSIGNED',
           ticket: {
             id: a.ticketId,
-            incident: ticket.INCIDENT,
-            workzone: ticket.WORKZONE ?? '',
-            service_no: ticket.SERVICE_NO ?? '',
-            customer_name: ticket.CONTACT_NAME ?? '',
-            owner_group: ticket.OWNER_GROUP ?? null,
-            customer_type: ticket.CUSTOMER_TYPE ?? null,
+            incident: ticket.incident,
+            workzone: ticket.workzone ?? '',
+            service_no: ticket.service_no ?? '',
+            customer_name: ticket.contact_name ?? '',
+            owner_group: ticket.owner_group ?? null,
+            customer_type: ticket.customer_type ?? null,
           },
           status: {
             old_hasil_visit:
-              (ticket.STATUS_UPDATE?.toUpperCase() as any) ?? 'OPEN',
+              (ticket.status_update?.toUpperCase() as any) ?? 'OPEN',
             new_hasil_visit: 'ASSIGNED',
-            pending_reason: null,
+            pending_dompis: null,
             evidence,
             rca: null,
             sub_rca: null,
@@ -605,32 +606,38 @@ export class ClusterAutoAssignServiceV2 {
       return { total: 0, assigned: 0, skipped: 0, failed: 0, results: [] };
     }
 
+    const today = AttendanceService.getTodayDateString();
+    if (isDev) { console.log('[AUTO-ASSIGN] Today date:', today); }
+
+    const todayDate = todayWibDate();
+
     const allTickets: TicketWithRk[] = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: null,
-        RK_INFORMATION: { in: activeOdcValues },
+        rk_information: { in: activeOdcValues },
         ...(workzoneFilter.length > 0 && {
-          WORKZONE: { in: workzoneFilter },
+          workzone: { in: workzoneFilter },
         }),
         OR: [
-          { STATUS_UPDATE: null },
-          { STATUS_UPDATE: 'open' },
+          { status_update: null },
+          { status_update: 'open' },
         ],
+        sync_date: todayDate,
       },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        RK_INFORMATION: true,
-        STATUS_UPDATE: true,
+        incident: true,
+        rk_information: true,
+        status_update: true,
         teknisi_user_id: true,
-        WORKZONE: true,
-        SERVICE_NO: true,
-        CONTACT_NAME: true,
-        OWNER_GROUP: true,
-        CUSTOMER_TYPE: true,
-        JAM_EXPIRED: true,
+        workzone: true,
+        service_no: true,
+        contact_name: true,
+        owner_group: true,
+        customer_type: true,
+        jam_expired: true,
       },
-      orderBy: { JAM_EXPIRED: 'asc' },
+      orderBy: { jam_expired: 'asc' },
     });
 
     if (isDev) {
@@ -638,9 +645,9 @@ export class ClusterAutoAssignServiceV2 {
       if (allTickets.length > 0) {
         console.log('[AUTO-ASSIGN] Sample tickets:', allTickets.slice(0, 3).map(t => ({
           id: t.id_ticket,
-          incident: t.INCIDENT,
-          rk: t.RK_INFORMATION,
-          status: t.STATUS_UPDATE
+          incident: t.incident,
+          rk: t.rk_information,
+          status: t.status_update
         })));
       }
     }
@@ -678,9 +685,6 @@ export class ClusterAutoAssignServiceV2 {
       }
       console.log('[AUTO-ASSIGN] Cluster ID -> Name:', Object.fromEntries(clusterIdToName));
     }
-
-    const today = AttendanceService.getTodayDateString();
-    if (isDev) { console.log('[AUTO-ASSIGN] Today date:', today); }
 
     if (isDev) { console.log('[AUTO-ASSIGN] Getting active teknisi for clusters...'); }
     const teknisiMap = await this.getActiveTeknisiForClusters(

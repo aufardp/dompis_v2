@@ -25,7 +25,7 @@ interface TicketRowProps {
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
-    STATUS_UPDATE?: string | null;
+    status_update?: string | null;
     hasilVisit?: string | null;
     closedAt?: string | null;
     reportedDate?: string | null;
@@ -125,8 +125,8 @@ export default function TicketRow({
       </td>
 
       <td className='px-5 py-4 text-center'>
-        <Badge size='sm' color={getStatusColor(ticket.STATUS_UPDATE || '')}>
-          {getStatusLabel(ticket.STATUS_UPDATE || '')}
+        <Badge size='sm' color={getStatusColor(ticket.status_update || '')}>
+          {getStatusLabel(ticket.status_update || '')}
         </Badge>
       </td>
 
@@ -143,7 +143,7 @@ export default function TicketRow({
       </td>
 
       <td className='px-3 py-4 text-center'>
-        {isTicketClosed(ticket.STATUS_UPDATE) ? (
+        {isTicketClosed(ticket.status_update) ? (
           <span className='text-xs text-gray-400'>Closed</span>
         ) : (
           <Button

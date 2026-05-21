@@ -7,6 +7,15 @@ export async function fastTrackingUpdate(
   assignedTo: number | null,
   now: Date,
 ) {
+  const ticketExists = await tx.ticket.findUnique({
+    where: { id_ticket: ticketId },
+    select: { id_ticket: true },
+  });
+
+  if (!ticketExists) {
+    throw new Error(`Ticket ${ticketId} not found`);
+  }
+
   await tx.ticket_tracking.updateMany({
     where: {
       ticket_id: ticketId,
@@ -19,21 +28,29 @@ export async function fastTrackingUpdate(
   });
 
   if (assignedTo) {
-    // Upsert: update existing inactive record or create new one
-    await tx.ticket_tracking.upsert({
+    const existing = await tx.ticket_tracking.findUnique({
       where: { ticket_id: ticketId },
-      update: {
-        assigned_to: assignedTo,
-        assigned_at: now,
-        is_active: true,
-        closed_at: null,
-      },
-      create: {
-        ticket_id: ticketId,
-        assigned_to: assignedTo,
-        assigned_at: now,
-        is_active: true,
-      },
     });
+
+    if (existing) {
+      await tx.ticket_tracking.update({
+        where: { ticket_id: ticketId },
+        data: {
+          assigned_to: assignedTo,
+          assigned_at: now,
+          is_active: true,
+          closed_at: null,
+        },
+      });
+    } else {
+      await tx.ticket_tracking.create({
+        data: {
+          ticket_id: ticketId,
+          assigned_to: assignedTo,
+          assigned_at: now,
+          is_active: true,
+        },
+      });
+    }
   }
 }

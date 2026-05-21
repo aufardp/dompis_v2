@@ -12,10 +12,12 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay, endOfDay } from 'date-fns';
 import { AttendanceService } from './attendance.service';
 import { CUSTOMER_TYPES, getSlaHours } from '@/app/config/customer-types';
+import { toWibString, toWibDateString, getTodayWibRange } from '@/lib/timezone';
+import { resolveEffectiveFlagging } from '../flagging-manja';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-import { getJenisWhereClause } from '@/lib/jenis';
+import { getJenisWhereClause } from '@/app/config/jenis-tiket';
 
 type TicketFilters = {
   search?: string;
@@ -46,28 +48,28 @@ function applyStatusUpdateWhere(
 
   switch (su) {
     case 'open':
-      where.OR = [{ STATUS_UPDATE: null }, { STATUS_UPDATE: 'open' }];
+      where.OR = [{ status_update: null }, { status_update: 'open' }];
       break;
 
     case 'assigned':
-      where.STATUS_UPDATE = 'assigned';
+      where.status_update = 'assigned';
       break;
 
     case 'on_progress':
-      where.STATUS_UPDATE = 'on_progress';
+      where.status_update = 'on_progress';
       break;
 
     case 'pending':
-      where.STATUS_UPDATE = 'pending';
+      where.status_update = 'pending';
       break;
 
     case 'close':
-      where.STATUS_UPDATE = 'close';
+      where.status_update = 'close';
       break;
 
     default:
       // Fallback: try direct match
-      where.STATUS_UPDATE = su;
+      where.status_update = su;
       break;
   }
 }
@@ -77,46 +79,48 @@ function applyStatusUpdateWhere(
 function mapTicket(t: any) {
   return {
     idTicket: t.id_ticket,
-    ticket: t.INCIDENT,
-    summary: t.SUMMARY,
-    reportedDate: t.REPORTED_DATE,
-    ownerGroup: t.OWNER_GROUP,
-    serviceType: t.SERVICE_TYPE,
-    customerType: t.CUSTOMER_TYPE,
-    ctype: t.CUSTOMER_TYPE || undefined,
-    serviceNo: t.SERVICE_NO,
-    ticketIdGamas: t.TICKET_ID_GAMAS ?? null,
-    contactName: t.CONTACT_NAME,
-    contactPhone: t.CONTACT_PHONE,
-    deviceName: t.DEVICE_NAME,
-    status: t.STATUS,
-    STATUS_UPDATE: (() => {
-      const v = String(t.STATUS_UPDATE ?? '')
+    ticket: t.incident,
+    summary: t.summary,
+    reportedDate: toWibString(t.reported_date),
+    ownerGroup: t.owner_group,
+    serviceType: t.service_type,
+    customerType: t.customer_type,
+    ctype: t.customer_type || undefined,
+    serviceNo: t.service_no,
+    ticketIdGamas: t.ticket_id_gamas ?? null,
+    contactName: t.contact_name,
+    contactPhone: t.contact_phone,
+    deviceName: t.device_name,
+    status: t.status,
+    status_update: (() => {
+      const v = String(t.status_update ?? '')
         .trim()
         .toLowerCase();
       return v || null;
     })(),
-    hasilVisit: t.STATUS_UPDATE,
-    bookingDate: t.BOOKING_DATE,
-    symptom: t.SYMPTOM,
-    descriptionActualSolution: t.DESCRIPTION_ACTUAL_SOLUTION,
-    workzone: t.WORKZONE,
-    customerSegment: t.CUSTOMER_SEGMENT,
-    sourceTicket: t.SOURCE_TICKET,
-    jenisTiket: t.JENIS_TIKET,
-    flaggingManja: t.FLAGGING_MANJA,
-    guaranteeStatus: t.GUARANTE_STATUS,
-    maxTtrReguler: t.JAM_EXPIRED_24_JAM_REGULER,
-    maxTtrGold: t.JAM_EXPIRED_12_JAM_GOLD,
-    maxTtrPlatinum: t.JAM_EXPIRED_6_JAM_PLATINUM,
-    maxTtrDiamond: t.JAM_EXPIRED_3_JAM_DIAMOND,
-    pendingReason: t.PENDING_REASON,
+    hasilVisit: t.status_update,
+    bookingDate: toWibString(t.booking_date),
+    symptom: t.symptom,
+    descriptionSolutionDompis: t.description_solution_dompis,
+    workzone: t.workzone,
+    customerSegment: t.customer_segment,
+    sourceTicket: t.source_ticket,
+    jenisTiket: t.jenis_tiket_2,
+    flaggingManja: resolveEffectiveFlagging(t.flagging_manja, t.booking_date),
+    guaranteeStatus: t.guarantee_status,
+    maxTtrReguler: null,
+    maxTtrGold: null,
+    maxTtrPlatinum: null,
+    maxTtrDiamond: null,
+    pendingDompis: t.pending_dompis,
     teknisiUserId: t.teknisi_user_id,
     rca: t.rca,
     subRca: t.sub_rca,
-    alamat: t.ALAMAT,
-    closedAt: t.closed_at ? t.closed_at.toISOString() : null,
+    alamat: t.alamat,
+    closedAt: toWibString(t.closed_at),
+    syncedAt: toWibString(t.synced_at),
     technicianName: t.users?.nama,
+    worklogSummary: t.worklog_summary,
   };
 }
 
@@ -146,11 +150,11 @@ export class TicketService {
       const B2C_CTYPES = CUSTOMER_TYPES.map((ct) => ct.key);
 
       if (dept === 'b2c') {
-        where.CUSTOMER_TYPE = { in: B2C_CTYPES };
+        where.customer_type = { in: B2C_CTYPES };
       } else if (dept === 'b2b') {
         where.OR = [
-          { CUSTOMER_TYPE: { notIn: B2C_CTYPES } },
-          { CUSTOMER_TYPE: null },
+          { customer_type: { notIn: B2C_CTYPES } },
+          { customer_type: null },
         ];
       }
     }
@@ -199,7 +203,7 @@ export class TicketService {
           // assigned & on_progress: HANYA yang di-assign hari ini (berdasarkan assignment history)
           {
             AND: [
-              { STATUS_UPDATE: { in: ['assigned', 'on_progress'] } },
+              { status_update: { in: ['assigned', 'on_progress'] } },
               {
                 id_ticket:
                   todayTicketIds.length > 0
@@ -209,14 +213,14 @@ export class TicketService {
             ],
           },
           // pending: SEMUA (tidak dibatasi tanggal)
-          { STATUS_UPDATE: 'pending' },
+          { status_update: 'pending' },
           // close: SEMUA history
-          { STATUS_UPDATE: 'close' },
+          { status_update: 'close' },
         ],
       };
 
       if (selectedWorkzone) {
-        where.WORKZONE = { contains: selectedWorkzone };
+        where.workzone = { contains: selectedWorkzone };
       }
 
       console.log('[buildWorkzoneWhere] Teknisi filter:', where);
@@ -237,11 +241,11 @@ export class TicketService {
 
       if (selectedWorkzone) {
         return workzones.includes(selectedWorkzone)
-          ? { WORKZONE: { contains: selectedWorkzone } }
+          ? { workzone: { contains: selectedWorkzone } }
           : { id_ticket: 0 };
       }
 
-      return { WORKZONE: { in: workzones } };
+      return { workzone: { in: workzones } };
     }
 
     return {};
@@ -289,10 +293,10 @@ export class TicketService {
     /* SEARCH */
     if (search) {
       where.OR = [
-        { INCIDENT: { contains: search } },
-        { CONTACT_NAME: { contains: search } },
-        { SERVICE_NO: { contains: search } },
-        { CONTACT_PHONE: { contains: search } },
+        { incident: { contains: search } },
+        { contact_name: { contains: search } },
+        { service_no: { contains: search } },
+        { contact_phone: { contains: search } },
       ];
     }
 
@@ -300,27 +304,27 @@ export class TicketService {
     if (startDate || endDate) {
       if (startDate && endDate) {
         andClauses.push({
-          REPORTED_DATE: {
+          reported_date: {
             gte: startDate,
             lte: endDate + ' 23:59:59',
           },
         });
       } else if (startDate) {
         andClauses.push({
-          REPORTED_DATE: { gte: startDate },
+          reported_date: { gte: startDate },
         });
       } else if (endDate) {
         andClauses.push({
-          REPORTED_DATE: { lte: endDate + ' 23:59:59' },
+          reported_date: { lte: endDate + ' 23:59:59' },
         });
       }
     }
 
-    /* STATUS */
+    /* status */
     if (statusUpdate) applyStatusUpdateWhere(where, statusUpdate);
 
     /* CUSTOMER TYPE */
-    if (ctype) where.CUSTOMER_TYPE = ctype;
+    if (ctype) where.customer_type = ctype;
 
     /* JENIS TIKET */
     if (ticketType && ticketType !== 'all') {
@@ -333,13 +337,16 @@ export class TicketService {
 
       if (dept === 'b2c') {
         andClauses.push({
-          CUSTOMER_TYPE: { in: B2C_CTYPES },
+          customer_type: { in: B2C_CTYPES },
         });
       }
 
       if (dept === 'b2b') {
         andClauses.push({
-          CUSTOMER_TYPE: { notIn: B2C_CTYPES },
+          customer_type: { notIn: B2C_CTYPES },
+        });
+        andClauses.push({
+          customer_segment: { notIn: ['PL-TSEL', 'DCS'] },
         });
       }
     }
@@ -358,37 +365,35 @@ export class TicketService {
 
         select: {
           id_ticket: true,
-          INCIDENT: true,
-          SUMMARY: true,
-          REPORTED_DATE: true,
-          OWNER_GROUP: true,
-          SERVICE_TYPE: true,
-          SERVICE_NO: true,
-          CONTACT_NAME: true,
-          CONTACT_PHONE: true,
-          BOOKING_DATE: true,
-          WORKZONE: true,
-          CUSTOMER_TYPE: true,
-          CUSTOMER_SEGMENT: true,
-          JENIS_TIKET: true,
-          FLAGGING_MANJA: true,
-          GUARANTE_STATUS: true,
-          STATUS_UPDATE: true,
-          SYMPTOM: true,
-          ALAMAT: true,
-          DEVICE_NAME: true,
-          PENDING_REASON: true,
-          SOURCE_TICKET: true,
-          DESCRIPTION_ACTUAL_SOLUTION: true,
-          JAM_EXPIRED_24_JAM_REGULER: true,
-          JAM_EXPIRED_12_JAM_GOLD: true,
-          JAM_EXPIRED_6_JAM_PLATINUM: true,
-          JAM_EXPIRED_3_JAM_DIAMOND: true,
+          incident: true,
+          summary: true,
+          reported_date: true,
+          owner_group: true,
+          service_type: true,
+          service_no: true,
+          contact_name: true,
+          contact_phone: true,
+          booking_date: true,
+          workzone: true,
+          customer_type: true,
+          customer_segment: true,
+          jenis_tiket_2: true,
+          flagging_manja: true,
+          guarantee_status: true,
+          status_update: true,
+          status: true,
+          worklog_summary: true,
+          symptom: true,
+          alamat: true,
+          device_name: true,
+          pending_dompis: true,
+          source_ticket: true,
+          description_solution_dompis: true,
           rca: true,
           sub_rca: true,
           closed_at: true,
           teknisi_user_id: true,
-          TICKET_ID_GAMAS: true,
+          ticket_id_gamas: true,
           users: {
             select: {
               nama: true,
@@ -396,7 +401,7 @@ export class TicketService {
           },
         },
 
-        orderBy: [{ REPORTED_DATE: sort }, { id_ticket: 'asc' }],
+        orderBy: [{ reported_date: sort }, { id_ticket: 'asc' }],
 
         skip: offset,
         take: limit,
@@ -422,18 +427,18 @@ export class TicketService {
     const where = {
       ...roleWhere,
       teknisi_user_id: null,
-      OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'close' } }],
+      OR: [{ status_update: null }, { status_update: { not: 'close' } }],
     };
 
     return prisma.ticket.findMany({
       where,
-      orderBy: { REPORTED_DATE: 'desc' },
+      orderBy: { reported_date: 'desc' },
     });
   }
 
   static async search(incident: string, role: string, userId: number) {
     const roleWhere = await this.buildWorkzoneWhere(role, userId);
-    const where = { ...roleWhere, INCIDENT: { contains: incident } };
+    const where = { ...roleWhere, incident: { contains: incident } };
 
     const tickets = await prisma.ticket.findMany({
       where,
@@ -443,12 +448,12 @@ export class TicketService {
 
     return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      contactName: t.CONTACT_NAME,
-      contactPhone: t.CONTACT_PHONE,
-      serviceNo: t.SERVICE_NO,
-      workzone: t.WORKZONE,
-      hasilVisit: t.STATUS_UPDATE,
+      ticket: t.incident,
+      contactName: t.contact_name,
+      contactPhone: t.contact_phone,
+      serviceNo: t.service_no,
+      workzone: t.workzone,
+      hasilVisit: t.status_update,
     }));
   }
 
@@ -458,7 +463,7 @@ export class TicketService {
     userId: number,
   ) {
     const roleWhere = await this.buildWorkzoneWhere(role, userId);
-    const where = { ...roleWhere, CONTACT_NAME: { contains: contactName } };
+    const where = { ...roleWhere, contact_name: { contains: contactName } };
 
     const tickets = await prisma.ticket.findMany({
       where,
@@ -468,12 +473,12 @@ export class TicketService {
 
     return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      contactName: t.CONTACT_NAME,
-      contactPhone: t.CONTACT_PHONE,
-      serviceNo: t.SERVICE_NO,
-      workzone: t.WORKZONE,
-      hasilVisit: t.STATUS_UPDATE,
+      ticket: t.incident,
+      contactName: t.contact_name,
+      contactPhone: t.contact_phone,
+      serviceNo: t.service_no,
+      workzone: t.workzone,
+      hasilVisit: t.status_update,
     }));
   }
 
@@ -483,7 +488,7 @@ export class TicketService {
     userId: number,
   ) {
     const roleWhere = await this.buildWorkzoneWhere(role, userId);
-    const where = { ...roleWhere, SERVICE_NO: { contains: serviceNo } };
+    const where = { ...roleWhere, service_no: { contains: serviceNo } };
 
     const tickets = await prisma.ticket.findMany({
       where,
@@ -493,12 +498,12 @@ export class TicketService {
 
     return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      serviceNo: t.SERVICE_NO,
-      contactName: t.CONTACT_NAME,
-      contactPhone: t.CONTACT_PHONE,
-      workzone: t.WORKZONE,
-      hasilVisit: t.STATUS_UPDATE,
+      ticket: t.incident,
+      serviceNo: t.service_no,
+      contactName: t.contact_name,
+      contactPhone: t.contact_phone,
+      workzone: t.workzone,
+      hasilVisit: t.status_update,
     }));
   }
 
@@ -506,18 +511,18 @@ export class TicketService {
     const saNames = await getWorkzonesForUser(userId);
 
     const tickets = await prisma.ticket.findMany({
-      where: { WORKZONE: { in: saNames } },
-      orderBy: [{ REPORTED_DATE: 'desc' }, { id_ticket: 'desc' }],
+      where: { workzone: { in: saNames } },
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
       take: 200,
     });
 
     return tickets.map((t: any) => ({
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      summary: t.SUMMARY,
-      reportedDate: t.REPORTED_DATE,
-      workzone: t.WORKZONE,
-      hasilVisit: t.STATUS_UPDATE,
+      ticket: t.incident,
+      summary: t.summary,
+      reportedDate: t.reported_date,
+      workzone: t.workzone,
+      hasilVisit: t.status_update,
       teknisiUserId: t.teknisi_user_id,
     }));
   }
@@ -532,13 +537,13 @@ export class TicketService {
 
   static async getCustomerType() {
     const tickets = await prisma.ticket.findMany({
-      select: { CUSTOMER_TYPE: true },
-      distinct: ['CUSTOMER_TYPE'],
-      where: { CUSTOMER_TYPE: { not: null } },
-      orderBy: { CUSTOMER_TYPE: 'asc' },
+      select: { customer_type: true },
+      distinct: ['customer_type'],
+      where: { customer_type: { not: null } },
+      orderBy: { customer_type: 'asc' },
     });
 
-    return tickets.map((t: any) => ({ customerType: t.CUSTOMER_TYPE }));
+    return tickets.map((t: any) => ({ customerType: t.customer_type }));
   }
 
   // ── Workflow Delegation ───────────────────────────────────────────────────────
@@ -571,14 +576,14 @@ export class TicketService {
     teknisiUserId: number,
     rca: string,
     subRca: string,
-    descriptionActualSolution: string,
+    descriptionSolutionDompis: string,
   ) {
     return TicketWorkflowService.closeTicket(
       ticketId,
       { id_user: teknisiUserId, role: 'teknisi' },
       rca,
       subRca,
-      descriptionActualSolution,
+      descriptionSolutionDompis,
     );
   }
 
@@ -602,7 +607,7 @@ export class TicketService {
     return TicketWorkflowService.updateTicket(ticketId, actor, {
       workflow: {
         status: 'PENDING',
-        pendingReason: cleanDescription,
+        pendingDompis: cleanDescription,
         note: 'Progress update',
       },
     });
@@ -628,17 +633,17 @@ export class TicketService {
     const tickets = await prisma.ticket.findMany({
       where: {
         ...baseWhere,
-        OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: { not: 'close' } }],
+        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
       },
       include: { users: { select: { nama: true } } },
-      orderBy: { REPORTED_DATE: 'asc' },
+      orderBy: { reported_date: 'asc' },
     });
 
     const now = new Date();
     const expiredTickets = tickets.filter((ticket: any) => {
-      if (!ticket.REPORTED_DATE) return false;
-      const slaHours = getSlaHours(ticket.CUSTOMER_TYPE);
-      const reportedDate = new Date(ticket.REPORTED_DATE);
+      if (!ticket.reported_date) return false;
+      const slaHours = getSlaHours(ticket.customer_type);
+      const reportedDate = new Date(ticket.reported_date);
       const hoursElapsed =
         (now.getTime() - reportedDate.getTime()) / (1000 * 60 * 60);
       return hoursElapsed > slaHours;
@@ -646,15 +651,15 @@ export class TicketService {
 
     return expiredTickets.map((t: any) => ({
       idTicket: t.id_ticket,
-      ticket: t.INCIDENT,
-      customerType: t.CUSTOMER_TYPE,
-      reportedDate: t.REPORTED_DATE,
-      status: t.STATUS_UPDATE,
+      ticket: t.incident,
+      customerType: t.customer_type,
+      reportedDate: t.reported_date,
+      status: t.status_update,
       technicianName: t.users?.nama,
       teknisiUserId: t.teknisi_user_id,
-      workzone: t.WORKZONE,
-      contactName: t.CONTACT_NAME,
-      serviceNo: t.SERVICE_NO,
+      workzone: t.workzone,
+      contactName: t.contact_name,
+      serviceNo: t.service_no,
     }));
   }
 }

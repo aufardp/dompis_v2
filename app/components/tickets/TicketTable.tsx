@@ -144,8 +144,8 @@ export default function TicketTable({
       let bVal: any;
 
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt);
-        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt);
+        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt, a.status);
+        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt, b.status);
       } else if (sortConfig.field !== 'priority') {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];

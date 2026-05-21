@@ -19,7 +19,7 @@ interface ImportRow {
   owner_group?: string | null;
   service_no?: string | null;
   contact_name?: string | null;
-  description_actual_solution?: string | null;
+  description_solution_dompis?: string | null;
   rk_information?: string | null;
   symptom?: string | null;
   lapul?: string | null;
@@ -92,7 +92,7 @@ async function batchUpsert(
           where: { INCIDENT: row.incident },
           select: {
             id_ticket: true,
-            STATUS_UPDATE: true,
+            status_update: true,
             rca: true,
             sub_rca: true,
             teknisi_user_id: true,
@@ -103,7 +103,7 @@ async function batchUpsert(
           const updateData: any = {
             teknisi_user_id: row.teknisi_user_id,
             JENIS_TIKET: row.jenis_tiket,
-            STATUS_UPDATE: row.status_update,
+            status_update: row.status_update,
             closed_at: closedAt,
             sync_date: new Date(row.sync_date),
             import_batch: importBatch,
@@ -115,7 +115,7 @@ async function batchUpsert(
             SERVICE_NO: row.service_no ?? null,
             CONTACT_NAME: row.contact_name ?? null,
             DESCRIPTION_ACTUAL_SOLUTION:
-              row.description_actual_solution ?? null,
+                row.description_solution_dompis ?? null,
             RK_INFORMATION: row.rk_information ?? null,
             SYMPTOM: row.symptom ?? null,
             LAPUL: row.lapul ?? null,
@@ -124,7 +124,7 @@ async function batchUpsert(
             synced_at: new Date(),
           };
 
-          if (!isWorkflowProtected(existing.STATUS_UPDATE)) {
+          if (!isWorkflowProtected(existing.status_update)) {
             if (existing.rca) updateData.rca = existing.rca;
             if (existing.sub_rca) updateData.sub_rca = existing.sub_rca;
           }
@@ -140,7 +140,7 @@ async function batchUpsert(
               INCIDENT: row.incident,
               teknisi_user_id: row.teknisi_user_id,
               JENIS_TIKET: row.jenis_tiket,
-              STATUS_UPDATE: row.status_update,
+              status_update: row.status_update,
               closed_at: closedAt,
               sync_date: new Date(row.sync_date),
               import_batch: importBatch,
@@ -152,7 +152,7 @@ async function batchUpsert(
               SERVICE_NO: row.service_no ?? null,
               CONTACT_NAME: row.contact_name ?? null,
               DESCRIPTION_ACTUAL_SOLUTION:
-                row.description_actual_solution ?? null,
+              row.description_solution_dompis ?? null,
               RK_INFORMATION: row.rk_information ?? null,
               SYMPTOM: row.symptom ?? null,
               LAPUL: row.lapul ?? null,

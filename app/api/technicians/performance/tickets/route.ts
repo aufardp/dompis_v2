@@ -33,20 +33,20 @@ export async function GET(req: NextRequest) {
     const tickets = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: techId,
-        STATUS_UPDATE: { in: ['close', 'closed'] },
+        status_update: { in: ['close', 'closed'] },
         closed_at: { gte: start, lt: end },
       },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        CONTACT_NAME: true,
-        SERVICE_NO: true,
-        CUSTOMER_TYPE: true,
-        JENIS_TIKET: true,
-        WORKZONE: true,
-        REPORTED_DATE: true,
+        incident: true,
+        contact_name: true,
+        service_no: true,
+        customer_type: true,
+        jenis_tiket_2: true,
+        workzone: true,
+        reported_date: true,
         closed_at: true,
-        DESCRIPTION_ACTUAL_SOLUTION: true,
+        description_solution_dompis: true,
         rca: true,
         sub_rca: true,
       },
@@ -54,8 +54,8 @@ export async function GET(req: NextRequest) {
     });
 
     const mapped = tickets.map((t) => {
-      const reported = t.REPORTED_DATE
-        ? new Date(t.REPORTED_DATE)
+      const reported = t.reported_date
+        ? new Date(t.reported_date)
         : null;
       const closed = t.closed_at;
       const resolveHours =
@@ -65,18 +65,18 @@ export async function GET(req: NextRequest) {
 
       return {
         idTicket: t.id_ticket,
-        incident: t.INCIDENT,
-        contactName: t.CONTACT_NAME,
-        serviceNo: t.SERVICE_NO,
-        customerType: t.CUSTOMER_TYPE,
-        jenisTiket: t.JENIS_TIKET,
-        workzone: t.WORKZONE,
-        reportedDate: t.REPORTED_DATE,
+        incident: t.incident,
+        contactName: t.contact_name,
+        serviceNo: t.service_no,
+        customerType: t.customer_type,
+        jenisTiket: t.jenis_tiket_2,
+        workzone: t.workzone,
+        reportedDate: t.reported_date,
         closedAt: closed ? closed.toISOString() : null,
         resolveHours,
         rca: t.rca,
         subRca: t.sub_rca,
-        descriptionActualSolution: t.DESCRIPTION_ACTUAL_SOLUTION,
+        descriptionSolutionDompis: t.description_solution_dompis,
       };
     });
 

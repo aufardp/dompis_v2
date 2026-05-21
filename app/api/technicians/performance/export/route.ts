@@ -27,9 +27,9 @@ function monthRange(year: number, month: number) {
 function buildWorkzoneTicketFilter(workzones: string[], selected?: string) {
   const filters: any[] = [];
   const wz = selected?.trim();
-  if (wz) filters.push({ WORKZONE: { contains: wz } });
+  if (wz) filters.push({ workzone: { contains: wz } });
   if (workzones.length > 0) {
-    filters.push({ OR: workzones.map((w) => ({ WORKZONE: { contains: w } })) });
+    filters.push({ OR: workzones.map((w) => ({ workzone: { contains: w } })) });
   }
   if (filters.length === 0) return undefined;
   return { AND: filters };
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     if (type === 'tickets') {
       const where: any = {
-        STATUS_UPDATE: { in: ['closed', 'close', 'CLOSE', 'CLOSED'] },
+        status_update: { in: ['closed', 'close', 'CLOSE', 'CLOSED'] },
         closed_at: { gte: start, lt: end },
         ...(wzFilter ? wzFilter : {}),
       };
@@ -84,12 +84,12 @@ export async function GET(req: NextRequest) {
 
       const headers = [
         'TicketID',
-        'INCIDENT',
-        'SERVICE_NO',
-        'CONTACT_NAME',
-        'CUSTOMER_TYPE',
-        'WORKZONE',
-        'STATUS_UPDATE',
+        'incident',
+        'service_no',
+        'contact_name',
+        'customer_type',
+        'workzone',
+        'status_update',
         'CLOSED_AT',
         'TEKNISI_NAME',
         'TEKNISI_NIK',
@@ -100,11 +100,11 @@ export async function GET(req: NextRequest) {
         ...rows.map((t: any) =>
           [
             t.id_ticket,
-            t.INCIDENT,
-            t.SERVICE_NO,
-            t.CONTACT_NAME,
-            t.CUSTOMER_TYPE,
-            t.WORKZONE,
+            t.incident,
+            t.service_no,
+            t.contact_name,
+            t.customer_type,
+            t.workzone,
             t.closed_at ? t.closed_at.toISOString() : '',
             t.users?.nama,
             t.users?.nik,
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
       by: ['teknisi_user_id'],
       where: {
         teknisi_user_id: { in: finalTechIds },
-        STATUS_UPDATE: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
         closed_at: { gte: start, lt: end },
         ...(wzFilter ? wzFilter : {}),
       },

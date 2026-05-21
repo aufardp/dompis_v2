@@ -15,19 +15,43 @@ export default function AgeBadge({
 }: AgeBadgeProps) {
   const color = getTicketAgeColor(reportedDate, hasilVisit, closedAt);
 
-  const colorMap: Record<string, string> = {
-    green: 'bg-green-100 text-green-700',
-    yellow: 'bg-yellow-100 text-yellow-700',
-    orange: 'bg-orange-100 text-orange-700',
-    red: 'bg-red-100 text-red-700',
-    gray: 'bg-gray-100 text-gray-700',
+  // Mapping warna dengan kombinasi background, text, border, dan warna dot (titik)
+  const colorMap: Record<string, { badge: string; dot: string }> = {
+    green: {
+      badge: 'bg-green-50 text-green-700 border-green-200/60',
+      dot: 'bg-green-500',
+    },
+    yellow: {
+      badge: 'bg-yellow-50 text-yellow-700 border-yellow-200/60',
+      dot: 'bg-yellow-500',
+    },
+    orange: {
+      badge: 'bg-orange-50 text-orange-700 border-orange-200/60',
+      dot: 'bg-orange-500',
+    },
+    red: {
+      badge:
+        'bg-red-50 text-red-700 border-red-200/60 shadow-sm shadow-red-100',
+      dot: 'bg-red-500 animate-pulse', // Efek berkedip khusus untuk status merah/kritis
+    },
+    gray: {
+      badge: 'bg-gray-50 text-gray-600 border-gray-200',
+      dot: 'bg-gray-400',
+    },
   };
+
+  // Gunakan warna gray sebagai fallback jika warna tidak ditemukan
+  const currentStyles = colorMap[color] || colorMap.gray;
 
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium sm:px-2.5 sm:py-1 sm:text-sm ${colorMap[color]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-all duration-200 ease-in-out ${currentStyles.badge} ${className} `}
     >
-      {calculateTicketAge(reportedDate, hasilVisit, closedAt)}
+      {/* Indikator titik kecil di dalam badge */}
+      <span className={`h-1.5 w-1.5 rounded-full ${currentStyles.dot}`} />
+
+      {/* Teks Umur Tiket */}
+      <span>{calculateTicketAge(reportedDate, hasilVisit, closedAt)}</span>
     </span>
   );
 }

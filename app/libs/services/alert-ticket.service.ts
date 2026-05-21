@@ -1,10 +1,7 @@
 import prisma from '@/app/libs/prisma';
-import { todayWIB } from '@/lib/google-sheets/helpers';
-import { formatInTimeZone } from 'date-fns-tz';
+import { todayWibDateForDb } from '@/lib/timezone';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
-
-const WIB = 'Asia/Jakarta';
 
 export type AlertDiamondTicket = {
   idTicket: number;
@@ -46,18 +43,8 @@ export class AlertTicketService {
       `[AlertDiamond] getAlertDiamondTickets — role: ${role}, userId: ${userId}, forcedWorkzone: ${forcedWorkzoneId}`,
     );
 
-    // Get today's date in WIB as Date range (UTC midnight to next midnight)
-    const todayWibStr = todayWIB();
-    const startOfDayUTC = formatInTimeZone(
-      new Date(`${todayWibStr}T00:00:00`),
-      WIB,
-      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-    );
-    const endOfDayUTC = formatInTimeZone(
-      new Date(`${todayWibStr}T23:59:59.999`),
-      WIB,
-      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-    );
+    // Get today's date in WIB for sync_date filter
+    const todayWib = todayWibDateForDb();
 
     // Build status filter
     const statusFilter = includeAssigned
@@ -72,15 +59,12 @@ export class AlertTicketService {
     );
 
     const where: Record<string, any> = {
-      // Only today's sync
-      sync_date: {
-        gte: new Date(startOfDayUTC),
-        lt: new Date(endOfDayUTC),
-      },
+      // Only today's sync (WIB date)
+      sync_date: todayWib,
       // Only Diamond tickets
-      CUSTOMER_TYPE: 'HVC_DIAMOND',
+      customer_type: 'HVC_DIAMOND',
       // Exclude closed tickets
-      STATUS_UPDATE: statusFilter,
+      status_update: statusFilter,
       ...workzoneWhere,
     };
 
@@ -88,34 +72,34 @@ export class AlertTicketService {
       where,
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        SUMMARY: true,
-        REPORTED_DATE: true,
-        CUSTOMER_TYPE: true,
-        SERVICE_NO: true,
-        CONTACT_NAME: true,
-        STATUS_UPDATE: true,
-        WORKZONE: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        customer_type: true,
+        service_no: true,
+        contact_name: true,
+        status_update: true,
+        workzone: true,
         sync_date: true,
         teknisi_user_id: true,
         users: {
           select: { nama: true },
         },
       },
-      orderBy: { REPORTED_DATE: 'asc' },
+      orderBy: { reported_date: 'asc' },
       take: limit,
     });
 
     return tickets.map((t) => ({
       idTicket: t.id_ticket,
-      ticketId: t.INCIDENT,
-      incident: t.INCIDENT,
-      customerType: t.CUSTOMER_TYPE ?? 'HVC_DIAMOND',
-      status: t.STATUS_UPDATE ?? 'open',
-      reportedAt: t.REPORTED_DATE ? new Date(t.REPORTED_DATE) : new Date(),
-      workzone: t.WORKZONE,
-      contactName: t.CONTACT_NAME,
-      serviceNo: t.SERVICE_NO,
+      ticketId: t.incident,
+      incident: t.incident,
+      customerType: t.customer_type ?? 'HVC_DIAMOND',
+      status: t.status_update ?? 'open',
+      reportedAt: t.reported_date ? new Date(t.reported_date) : new Date(),
+      workzone: t.workzone,
+      contactName: t.contact_name,
+      serviceNo: t.service_no,
       technicianName: t.users?.nama ?? null,
       teknisiUserId: t.teknisi_user_id,
       syncDate: t.sync_date ? t.sync_date.toISOString() : '',
@@ -130,17 +114,7 @@ export class AlertTicketService {
     userId: number,
     forcedWorkzoneId?: string,
   ): Promise<number> {
-    const todayWibStr = todayWIB();
-    const startOfDayUTC = formatInTimeZone(
-      new Date(`${todayWibStr}T00:00:00`),
-      WIB,
-      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-    );
-    const endOfDayUTC = formatInTimeZone(
-      new Date(`${todayWibStr}T23:59:59.999`),
-      WIB,
-      "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-    );
+    const todayWib = todayWibDateForDb();
 
     const workzoneWhere = await this.buildWorkzoneWhere(
       role,
@@ -149,12 +123,9 @@ export class AlertTicketService {
     );
 
     const where: Record<string, any> = {
-      sync_date: {
-        gte: new Date(startOfDayUTC),
-        lt: new Date(endOfDayUTC),
-      },
-      CUSTOMER_TYPE: 'HVC_DIAMOND',
-      STATUS_UPDATE: { notIn: ['close', 'closed'] },
+      sync_date: todayWib,
+      customer_type: 'HVC_DIAMOND',
+      status_update: { notIn: ['close', 'closed'] },
       ...workzoneWhere,
     };
 
@@ -179,7 +150,7 @@ export class AlertTicketService {
       );
       return {
         AND: [
-          { WORKZONE: { not: null } },
+          { workzone: { not: null } },
           { teknisi_user_id: userId },
         ],
       };
@@ -190,7 +161,7 @@ export class AlertTicketService {
       console.log(
         `[AlertDiamond] Admin override workzone: ${forcedWorkzoneId}`,
       );
-      return { WORKZONE: { contains: forcedWorkzoneId } };
+      return { workzone: { contains: forcedWorkzoneId } };
     }
 
     // Admin/other roles — filter by user's assigned workzones
@@ -207,7 +178,7 @@ export class AlertTicketService {
         );
         return { id_ticket: 0 };
       }
-      return { WORKZONE: { in: workzones } };
+      return { workzone: { in: workzones } };
     }
 
     // Default — no filter

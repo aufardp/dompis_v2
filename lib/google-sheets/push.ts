@@ -68,8 +68,8 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     const spreadsheetId = getSpreadsheetId();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // STEP 1: Baca SEMUA INCIDENT dari kolom B di Dummy_Dompis
-    //         Bangun map: INCIDENT → nomor baris di sheet
+    // STEP 1: Baca SEMUA incident dari kolom B di Dummy_Dompis
+    //         Bangun map: incident → nomor baris di sheet
     // ──────────────────────────────────────────────────────────────────────────
 
     if (signal?.aborted) throw new Error('Push cancelled');
@@ -84,11 +84,11 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     const incidentRows: string[][] = incidentColRes.data.values || [];
 
     if (incidentRows.length === 0) {
-      console.log('[PUSH] Sheet kosong, tidak ada INCIDENT ditemukan.');
+      console.log('[PUSH] Sheet kosong, tidak ada incident ditemukan.');
       return { success: true, updated: 0, skipped: 0 };
     }
 
-    // Map: INCIDENT → row number di sheet (1-indexed, sesuai Google Sheets API)
+    // Map: incident → row number di sheet (1-indexed, sesuai Google Sheets API)
     const incidentToRowMap = new Map<string, number>();
     incidentRows.forEach((row, idx) => {
       const incident = row[0]?.trim();
@@ -98,7 +98,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
       }
     });
 
-    console.log(`[PUSH] Ditemukan ${incidentToRowMap.size} INCIDENT di sheet`);
+    console.log(`[PUSH] Ditemukan ${incidentToRowMap.size} incident di sheet`);
 
     // ──────────────────────────────────────────────────────────────────────────
     // STEP 2: Baca kolom V-AH yang sudah ada di sheet untuk deteksi perubahan
@@ -117,7 +117,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
 
     const currentRows: any[][] = currentVAHRes.data.values || [];
 
-    // Map: INCIDENT → hash kolom V-AH saat ini di sheet
+    // Map: incident → hash kolom V-AH saat ini di sheet
     const sheetHashMap = new Map<string, string>();
     currentRows.forEach((row) => {
       const incident = row[0]?.toString()?.trim(); // kolom B = index 0
@@ -129,7 +129,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     });
 
     // ──────────────────────────────────────────────────────────────────────────
-    // STEP 3: Ambil data dari MySQL untuk SEMUA INCIDENT yang ada di sheet
+    // STEP 3: Ambil data dari MySQL untuk SEMUA incident yang ada di sheet
     //         Tidak dibatasi sync_date — ambil semua yang punya perubahan
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -147,16 +147,16 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
       const batch = allIncidents.slice(i, i + DB_BATCH_SIZE);
       const tickets = await prisma.ticket.findMany({
         where: {
-          INCIDENT: { in: batch },
+          incident: { in: batch },
         },
         select: {
-          INCIDENT: true,
-          ALAMAT: true,
-          STATUS_UPDATE: true,
-          PENDING_REASON: true,
+          incident: true,
+          alamat: true,
+          status_update: true,
+          pending_dompis: true,
           rca: true,
           sub_rca: true,
-          DESCRIPTION_ACTUAL_SOLUTION: true,
+          description_solution_dompis: true,
           closed_at: true,
           teknisi_user_id: true,
           users: {
@@ -184,7 +184,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     let notInSheet = 0;
 
     for (const t of allTickets) {
-      const sheetRow = incidentToRowMap.get(t.INCIDENT);
+      const sheetRow = incidentToRowMap.get(t.incident);
 
       if (!sheetRow) {
         // Tiket ada di DB tapi tidak ada di sheet — skip, tidak bisa insert
@@ -198,24 +198,24 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
 
       // Build data untuk kolom V-AH (13 kolom: V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH)
       const vahValues = [
-        t.ALAMAT ?? '', // V  = ALAMAT
+        t.alamat ?? '', // V  = alamat
         teknisiNama, // W  = TEKNISI 1 (nama)
         teknisiNik, // X  = LABOR CODE 1 (NIK teknisi)
         '', // Y  = SEKTOR (kosong, diisi manual)
         '', // Z  = TEKNISI 2 (kosong)
         '', // AA = LABOR CODE 2 (kosong)
         '', // AB = STATUS INSERA (kosong, sistem lain)
-        t.STATUS_UPDATE ?? '', // AC = STATUS DOMPIS
-        t.PENDING_REASON ?? '', // AD = UPDATE_KENDALA
+        t.status_update ?? '', // AC = STATUS DOMPIS
+        t.pending_dompis ?? '', // AD = UPDATE_KENDALA
         t.rca ?? '', // AE = RCA
         t.sub_rca ?? '', // AF = SUB_RCA
-        t.DESCRIPTION_ACTUAL_SOLUTION ?? '', // AG = DETAIL_PERBAIKAN
+        t.description_solution_dompis ?? '', // AG = DETAIL_PERBAIKAN
         closedAtStr, // AH = CLOSED_AT
       ];
 
       // Cek apakah data berubah dibanding sheet saat ini
       const newHash = hashRow(vahValues);
-      const currentHash = sheetHashMap.get(t.INCIDENT) ?? '';
+      const currentHash = sheetHashMap.get(t.incident) ?? '';
 
       if (newHash === currentHash) {
         skipped++;

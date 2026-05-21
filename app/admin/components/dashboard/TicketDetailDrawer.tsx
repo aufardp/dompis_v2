@@ -17,6 +17,15 @@ import {
   Activity,
   Settings,
   ClipboardList,
+  Shield,
+  Network,
+  Server,
+  Database,
+  FileText,
+  Gauge,
+  Tag,
+  Globe,
+  Layers,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, formatDistanceToNowStrict } from 'date-fns';
@@ -63,18 +72,60 @@ interface TicketDetail {
   bookingDate?: string;
   sourceTicket?: string;
   jenisTiket?: string;
+  jenisTiket1?: string | null;
+  ticketIdGamas?: string | null;
+  flaggingManja?: string | null;
+  flaggingDatin?: string | null;
+  guaranteeStatus?: string | null;
+  worklogSummary?: string | null;
+  solution?: string | null;
+  descriptionActualSolution?: string | null;
+  descriptionSolutionDompis?: string | null;
+  channel?: string | null;
+  witel?: string | null;
+  incidentDomain?: string | null;
+  customerName?: string | null;
+  statusDate?: string | null;
+  realm?: string | null;
+  snOnt?: string | null;
+  tipeOnt?: string | null;
+  onuRx?: string | null;
+  rkInformation?: string | null;
+  classificationPath?: string | null;
+  lapul?: string | null;
+  gaul?: string | null;
+  tscResult?: string | null;
+  sccResult?: string | null;
+  hours?: string | null;
+  durasiTicket?: string | null;
+  jamExpired?: string | null;
+  manjaExpired?: string | null;
+  statusManja?: string | null;
+  statusTtr12Gold?: string | null;
+  statusTtr3Diamond?: string | null;
+  statusTtr24Reguler?: string | null;
+  statusTtr6Platinum?: string | null;
+  statusTtrDatinK1?: string | null;
+  statusTtrDatinK2?: string | null;
+  statusTtrDatinK3?: string | null;
+  statusTtrIndibiz4Jam?: string | null;
+  statusTtrReseller6Jam?: string | null;
+  statusTtrWifiId?: string | null;
   maxTtrReguler?: string | null;
   maxTtrGold?: string | null;
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
-  pendingReason?: string | null;
+  pendingDompis?: string | null;
   rca?: string | null;
   subRca?: string | null;
   teknisiUserId?: number | null;
   technicianName?: string | null;
   closedAt?: string | null;
   statusUpdate?: string | null;
-  STATUS_UPDATE?: string | null;
+  status_update?: string | null;
+  syncDate?: string | null;
+  syncedAt?: string | null;
+  importBatch?: string | null;
   tracking?: {
     assignedAt: string | null;
     assignedBy: string | null;
@@ -83,7 +134,7 @@ interface TicketDetail {
     onProgressAt: string | null;
     pendingAt: string | null;
     closedAt: string | null;
-    pendingReason: string | null;
+    pendingDompis: string | null;
   } | null;
   activityLog?: Array<{
     id: number;
@@ -304,7 +355,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <button
       type='button'
       onClick={onCopy}
-      className='inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+      className='inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
       title={label}
       aria-label={label}
     >
@@ -353,7 +404,9 @@ function Field({ label, value, mono, fullWidth, highlight }: FieldProps) {
         className={clsx(
           'text-[13.5px] wrap-break-word',
           mono && 'font-mono',
-          highlight ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300',
+          highlight
+            ? 'font-semibold text-slate-900 dark:text-white'
+            : 'text-slate-700 dark:text-slate-300',
         )}
       >
         {displayValue}
@@ -380,10 +433,10 @@ function Section({
   return (
     <div
       className={clsx(
-        'mb-5 rounded-xl border bg-gray p-4  border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm',
+        'bg-gray mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800',
         variant === 'highlighted'
-          ? 'border-slate-300 dark:border-slate-600 shadow-md'
-          : 'border-slate-200 dark:border-slate-700 shadow-sm',
+          ? 'border-slate-300 shadow-md dark:border-slate-600'
+          : 'border-slate-200 shadow-sm dark:border-slate-700',
         fullWidth ? '' : 'grid grid-cols-2 gap-x-4 gap-y-3',
       )}
     >
@@ -428,10 +481,13 @@ function TTRCard({ label, value }: TTRCardProps) {
   const urgency = getTTRUrgency(value);
 
   const styles = {
-    overdue: 'border-red-300 dark:border-red-500/40 bg-gradient-to-br from-red-50 dark:from-red-500/15 to-red-100 dark:to-red-500/10',
-    warning: 'border-amber-300 dark:border-amber-500/40 bg-gradient-to-br from-amber-50 dark:from-amber-500/15 to-amber-100 dark:to-amber-500/10',
+    overdue:
+      'border-red-300 dark:border-red-500/40 bg-gradient-to-br from-red-50 dark:from-red-500/15 to-red-100 dark:to-red-500/10',
+    warning:
+      'border-amber-300 dark:border-amber-500/40 bg-gradient-to-br from-amber-50 dark:from-amber-500/15 to-amber-100 dark:to-amber-500/10',
     safe: 'border-green-300 dark:border-green-500/40 bg-gradient-to-br from-green-50 dark:from-green-500/15 to-green-100 dark:to-green-500/10',
-    unknown: 'border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 dark:from-slate-800 to-slate-100 dark:to-slate-700',
+    unknown:
+      'border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 dark:from-slate-800 to-slate-100 dark:to-slate-700',
   };
 
   const textStyles = {
@@ -459,6 +515,7 @@ interface TimelineEvent {
   detail: string;
   icon: string;
   color: string;
+  sortOrder: number;
 }
 
 function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
@@ -469,12 +526,16 @@ function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
   const timelineEvents: TimelineEvent[] = [];
 
   if (tracking?.assignedAt) {
+    const assignerName = tracking.assignedBy
+      || assignmentHistory.find(h => h.isActive)?.assignerName
+      || activityLog.find(a => a.type?.toLowerCase().includes('assign'))?.userName;
     timelineEvents.push({
       time: tracking.assignedAt,
       label: 'Tiket Di-assign',
-      detail: `Oleh: ${tracking.assignedBy ?? '—'} → ${tracking.assignedTo ?? '—'}`,
+      detail: `Oleh: ${assignerName ?? '—'} → ${tracking.assignedTo ?? '—'}`,
       icon: '📋',
       color: 'blue',
+      sortOrder: 1,
     });
   }
 
@@ -485,6 +546,7 @@ function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
       detail: tracking.assignedTo ?? '—',
       icon: '🤚',
       color: 'indigo',
+      sortOrder: 2,
     });
   }
 
@@ -495,6 +557,7 @@ function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
       detail: tracking.assignedTo ?? '—',
       icon: '🔧',
       color: 'amber',
+      sortOrder: 3,
     });
   }
 
@@ -502,9 +565,10 @@ function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
     timelineEvents.push({
       time: tracking.pendingAt,
       label: 'Pending',
-      detail: tracking.pendingReason ?? '—',
+      detail: tracking.pendingDompis ?? '—',
       icon: '⏸️',
       color: 'orange',
+      sortOrder: 4,
     });
   }
 
@@ -515,12 +579,11 @@ function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
       detail: tracking.assignedTo ?? '—',
       icon: '✅',
       color: 'emerald',
+      sortOrder: 5,
     });
   }
 
-  timelineEvents.sort(
-    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
-  );
+  timelineEvents.sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
     <div className='space-y-6 p-4'>
@@ -725,7 +788,7 @@ export default function TicketDetailDrawer({
     }
 
     const statusRaw = String(
-      ticket.STATUS_UPDATE ??
+      ticket.status_update ??
         ticket.statusUpdate ??
         ticket.hasilVisit ??
         ticket.status ??
@@ -763,7 +826,7 @@ export default function TicketDetailDrawer({
   }, [
     open,
     ticket?.idTicket,
-    ticket?.STATUS_UPDATE,
+    ticket?.status_update,
     ticket?.statusUpdate,
     ticket?.hasilVisit,
     ticket?.status,
@@ -789,7 +852,7 @@ export default function TicketDetailDrawer({
   ] as const;
 
   const rawStatus =
-    ticket?.STATUS_UPDATE ??
+    ticket?.status_update ??
     ticket?.statusUpdate ??
     ticket?.hasilVisit ??
     ticket?.status ??
@@ -812,7 +875,7 @@ export default function TicketDetailDrawer({
     >
       <div
         className={clsx(
-          'flex h-full w-full max-w-130 transform flex-col bg-white dark:bg-slate-900 shadow-2xl transition-transform duration-300 ease-out',
+          'flex h-full w-full max-w-130 transform flex-col bg-white shadow-2xl transition-transform duration-300 ease-out dark:bg-slate-900',
           isVisible ? 'translate-x-0' : 'translate-x-full',
         )}
         style={{ transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
@@ -820,7 +883,7 @@ export default function TicketDetailDrawer({
       >
         {ticket ? (
           <>
-            <div className='sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-5 py-4 shadow-sm'>
+            <div className='sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900'>
               <div className='mb-3 flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
                   <span className='font-mono text-base font-bold text-slate-900 dark:text-white'>
@@ -829,6 +892,31 @@ export default function TicketDetailDrawer({
                   <div className='flex shrink-0 items-center gap-2'>
                     <CopyButton text={ticket.ticket} label='Copy ticket code' />
                   </div>
+                  {ticket.flaggingManja && (
+                    <span
+                      className={clsx(
+                        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm',
+                        ticket.flaggingManja === 'P1'
+                          ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-400'
+                          : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400',
+                      )}
+                    >
+                      <AlertTriangle size={12} />
+                      {ticket.flaggingManja}
+                    </span>
+                  )}
+                  {ticket.flaggingDatin && (
+                    <span className='inline-flex items-center gap-1 rounded-full border border-purple-300 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 shadow-sm dark:border-purple-500/40 dark:bg-purple-500/15 dark:text-purple-400'>
+                      <Shield size={12} />
+                      {ticket.flaggingDatin}
+                    </span>
+                  )}
+                  {ticket.guaranteeStatus?.toLowerCase() === 'guarantee' && (
+                    <span className='inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-400'>
+                      <Shield size={12} />
+                      FFG
+                    </span>
+                  )}
                   <StatusBadge {...workflowConfig} />
                   <CTypeBadge ctype={ticket.ctype} />
                 </div>
@@ -842,7 +930,7 @@ export default function TicketDetailDrawer({
 
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div className='min-w-0'>
-                  <p className='truncate text-sm font-medium text-slate-500 '>
+                  <p className='truncate text-sm font-medium text-slate-500'>
                     {ticket.contactName || '—'}
                   </p>
                   <p className='mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500'>
@@ -860,7 +948,7 @@ export default function TicketDetailDrawer({
               </div>
 
               {/* PENDING REASON BANNER */}
-              {ticket.hasilVisit === 'PENDING' && ticket.pendingReason && (
+              {ticket.hasilVisit === 'PENDING' && ticket.pendingDompis && (
                 <div className='mt-3 rounded-xl border-2 border-purple-200 bg-purple-50 p-4 shadow-sm'>
                   <div className='flex items-start gap-3'>
                     <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100'>
@@ -871,7 +959,7 @@ export default function TicketDetailDrawer({
                         ⏸ Ticket Pending
                       </h4>
                       <p className='mt-1 text-sm text-purple-800'>
-                        {ticket.pendingReason}
+                        {ticket.pendingDompis}
                       </p>
                       {ticket.closedAt && (
                         <p className='mt-2 text-xs text-purple-600'>
@@ -892,7 +980,7 @@ export default function TicketDetailDrawer({
                       'relative px-4 py-2.5 text-xs font-medium transition-colors',
                       activeTab === tab.key
                         ? 'font-semibold text-slate-900 dark:text-white'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
                     )}
                   >
                     {tab.label}
@@ -904,17 +992,17 @@ export default function TicketDetailDrawer({
               </div>
             </div>
 
-            <div className='flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 px-5 py-4'>
+            <div className='flex-1 overflow-y-auto bg-slate-50 px-5 py-4 dark:bg-slate-950'>
               {activeTab === 'umum' && (
                 <>
                   <div
                     className={clsx(
                       'mb-5 rounded-xl border-2 bg-linear-to-br p-5 shadow-md',
                       ttrUrgency === 'overdue'
-                        ? 'border-red-300 dark:border-red-500/40 from-red-50 dark:from-red-500/15 to-red-100 dark:to-red-500/10'
+                        ? 'border-red-300 from-red-50 to-red-100 dark:border-red-500/40 dark:from-red-500/15 dark:to-red-500/10'
                         : ttrUrgency === 'warning'
-                          ? 'border-amber-300 dark:border-amber-500/40 from-amber-50 dark:from-amber-500/15 to-amber-100 dark:to-amber-500/10'
-                          : 'border-slate-200 dark:border-slate-700 from-slate-50 dark:from-slate-800 to-slate-100 dark:to-slate-700',
+                          ? 'border-amber-300 from-amber-50 to-amber-100 dark:border-amber-500/40 dark:from-amber-500/15 dark:to-amber-500/10'
+                          : 'border-slate-200 from-slate-50 to-slate-100 dark:border-slate-700 dark:from-slate-800 dark:to-slate-700',
                     )}
                   >
                     <div className='flex items-start justify-between gap-4'>
@@ -954,8 +1042,8 @@ export default function TicketDetailDrawer({
                     </div>
                   </div>
 
-                  <div className='mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm'>
-                    <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
+                  <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+                    <p className='mb-2 text-xs font-bold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
                       Summary
                     </p>
                     <p className='text-sm leading-relaxed text-slate-700 dark:text-slate-300'>
@@ -975,22 +1063,43 @@ export default function TicketDetailDrawer({
                     />
                     <Field label='Source Ticket' value={ticket.sourceTicket} />
                     <Field label='Jenis Tiket' value={ticket.jenisTiket} />
+                    <Field
+                      label='Jenis Tiket (Group)'
+                      value={ticket.jenisTiket1}
+                    />
                     <Field label='Owner Group' value={ticket.ownerGroup} />
                     <Field
                       label='Booking Date'
                       value={formatDateTime(ticket.bookingDate)}
                     />
+                    <Field label='Realm' value={ticket.realm} />
+                    <Field
+                      label='Ticket ID GAMAS'
+                      value={ticket.ticketIdGamas}
+                      mono
+                    />
                   </Section>
 
                   <Section icon={<Settings size={14} />} title='Status & Hasil'>
-                    <Field label='STATUS_UPDATE' value={workflowConfig.label} />
-                    {ticket.status && ticket.status !== workflowKey && (
-                      <Field label='STATUS' value={ticket.status} />
-                    )}
+                    <Field label='status dompis' value={workflowConfig.label} />
+                    {ticket.status_update &&
+                      ticket.status_update !== workflowKey && (
+                        <Field label='STATUS INSERA' value={ticket.status} />
+                      )}
                     {ticket.closedAt && (
                       <Field
                         label='Closed At'
                         value={formatDateTime(ticket.closedAt)}
+                      />
+                    )}
+                    {ticket.statusDate && (
+                      <Field label='Status Date' value={ticket.statusDate} />
+                    )}
+                    {ticket.worklogSummary && (
+                      <Field
+                        label='Worklog Summary'
+                        value={ticket.worklogSummary}
+                        fullWidth
                       />
                     )}
                   </Section>
@@ -1011,6 +1120,16 @@ export default function TicketDetailDrawer({
                         fullWidth
                       />
                     </div>
+                    {ticket.customerName &&
+                      ticket.customerName !== ticket.contactName && (
+                        <div className='col-span-2'>
+                          <Field
+                            label='Customer Name'
+                            value={ticket.customerName}
+                            fullWidth
+                          />
+                        </div>
+                      )}
                     <Field label='Service No' value={ticket.serviceNo} mono />
                     <Field
                       label='Contact Phone'
@@ -1021,7 +1140,7 @@ export default function TicketDetailDrawer({
                       <div className='col-span-2 mt-1 flex flex-wrap gap-2'>
                         <a
                           href={`tel:${ticket.contactPhone}`}
-                          className='inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                          className='inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                         >
                           <Phone size={14} />
                           Call
@@ -1031,43 +1150,47 @@ export default function TicketDetailDrawer({
                   </Section>
 
                   <Section icon={<UserCircle size={14} />} title='Segmentasi'>
-                    {ticket.customerType ? (
-                      (() => {
-                        const resolvedCtype = ticket.ctype
-                          ? ticket.ctype
-                          : normalizeCustomerType(ticket.customerType);
-                        const config = resolvedCtype
-                          ? CustomerType[resolvedCtype]
-                          : null;
-                        return (
-                          <div className='col-span-2'>
-                            <div className='mb-1.5 text-[10px] font-medium uppercase text-slate-500 dark:text-slate-400'>
-                              Tipe Pelanggan
+                    {ticket.customerType
+                      ? (() => {
+                          const resolvedCtype = ticket.ctype
+                            ? ticket.ctype
+                            : normalizeCustomerType(ticket.customerType);
+                          const config = resolvedCtype
+                            ? CustomerType[resolvedCtype]
+                            : null;
+                          return (
+                            <div className='col-span-2'>
+                              <div className='mb-1.5 text-[10px] font-medium text-slate-500 uppercase dark:text-slate-400'>
+                                Tipe Pelanggan
+                              </div>
+                              {config ? (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${config.bg} ${config.color}`}
+                                >
+                                  <span>{config.icon}</span>
+                                  <span>{config.label}</span>
+                                </span>
+                              ) : (
+                                <span className='inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300'>
+                                  {ticket.customerType}
+                                </span>
+                              )}
                             </div>
-                            {config ? (
-                              <span
-                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${config.bg} ${config.color}`}
-                              >
-                                <span>{config.icon}</span>
-                                <span>{config.label}</span>
-                              </span>
-                            ) : (
-                              <span className='inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300'>
-                                {ticket.customerType}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : null}
+                          );
+                        })()
+                      : null}
                     <Field
                       label='Customer Segment'
                       value={ticket.customerSegment}
                     />
                     <Field label='Service Type' value={ticket.serviceType} />
+                    <Field
+                      label='Incident Domain'
+                      value={ticket.incidentDomain}
+                    />
                   </Section>
 
-                  {(ticket.alamat || ticket.workzone) && (
+                  {(ticket.alamat || ticket.workzone || ticket.witel) && (
                     <Section
                       icon={<MapPin size={14} />}
                       title='Lokasi'
@@ -1083,6 +1206,7 @@ export default function TicketDetailDrawer({
                           fullWidth
                         />
                       </div>
+                      <Field label='Witel' value={ticket.witel} />
                     </Section>
                   )}
                 </>
@@ -1098,6 +1222,41 @@ export default function TicketDetailDrawer({
                     <Field label='Symptom' value={ticket.symptom} />
                   </Section>
 
+                  {(ticket.snOnt ||
+                    ticket.tipeOnt ||
+                    ticket.onuRx ||
+                    ticket.rkInformation) && (
+                    <Section
+                      icon={<Network size={14} />}
+                      title='Informasi Network'
+                    >
+                      <Field label='SN ONT' value={ticket.snOnt} mono />
+                      <Field label='Tipe ONT' value={ticket.tipeOnt} />
+                      <Field label='RX Power ONT' value={ticket.onuRx} mono />
+                      <Field
+                        label='RK Information'
+                        value={ticket.rkInformation}
+                      />
+                    </Section>
+                  )}
+
+                  {(ticket.lapul || ticket.gaul) && (
+                    <Section
+                      icon={<Database size={14} />}
+                      title='Data Tambahan'
+                    >
+                      <Field label='Lapul' value={ticket.lapul} />
+                      <Field label='Gaul' value={ticket.gaul} />
+                    </Section>
+                  )}
+
+                  {(ticket.tscResult || ticket.sccResult) && (
+                    <Section icon={<Gauge size={14} />} title='Hasil Testing'>
+                      <Field label='TSC Result' value={ticket.tscResult} />
+                      <Field label='SCC Result' value={ticket.sccResult} />
+                    </Section>
+                  )}
+
                   <Section
                     icon={<AlertTriangle size={14} />}
                     title='Root Cause Analysis'
@@ -1111,9 +1270,54 @@ export default function TicketDetailDrawer({
                     </div>
                   </Section>
 
+                  {(ticket.solution || ticket.descriptionActualSolution || ticket.descriptionSolutionDompis || ticket.pendingDompis) && (
+                    <Section
+                      icon={<FileText size={14} />}
+                      title='Solution & Notes'
+                      fullWidth
+                    >
+                      {ticket.solution && (
+                        <div className='col-span-2'>
+                          <Field
+                            label='Solution'
+                            value={ticket.solution}
+                            fullWidth
+                          />
+                        </div>
+                      )}
+                      {ticket.descriptionActualSolution && (
+                        <div className='col-span-2'>
+                          <Field
+                            label='Actual Solution'
+                            value={ticket.descriptionActualSolution}
+                            fullWidth
+                          />
+                        </div>
+                      )}
+                      {ticket.descriptionSolutionDompis && (
+                        <div className='col-span-2'>
+                          <Field
+                            label='Solution Dompis'
+                            value={ticket.descriptionSolutionDompis}
+                            fullWidth
+                          />
+                        </div>
+                      )}
+                      {ticket.pendingDompis && (
+                        <div className='col-span-2'>
+                          <Field
+                            label='Pending Dompis'
+                            value={ticket.pendingDompis}
+                            fullWidth
+                          />
+                        </div>
+                      )}
+                    </Section>
+                  )}
+
                   {(() => {
                     const statusRaw = String(
-                      ticket?.STATUS_UPDATE ??
+                      ticket?.status_update ??
                         ticket?.statusUpdate ??
                         ticket?.hasilVisit ??
                         ticket?.status ??
@@ -1122,11 +1326,10 @@ export default function TicketDetailDrawer({
                       .toLowerCase()
                       .trim();
                     const isClosed = statusRaw.includes('close');
-                    if (!isClosed) return null;
-
                     const isPending =
-                      statusRaw.includes('pending') &&
-                      !statusRaw.includes('close');
+                      statusRaw.includes('pending') && !statusRaw.includes('close');
+                    if (!isClosed && !isPending) return null;
+
                     return (
                       <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
                         <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-slate-700'>
@@ -1137,6 +1340,11 @@ export default function TicketDetailDrawer({
                           {isPending && (
                             <span className='ml-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-600 dark:bg-purple-500/20 dark:text-purple-400'>
                               Pending
+                            </span>
+                          )}
+                          {isClosed && (
+                            <span className='ml-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-600 dark:bg-green-500/20 dark:text-green-400'>
+                              Closed
                             </span>
                           )}
                           {evidence.length > 0 && (
@@ -1223,10 +1431,10 @@ export default function TicketDetailDrawer({
 
               {activeTab === 'sla' && (
                 <>
-                  <div className='mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4'>
+                  <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'>
                     <div className='flex items-start justify-between gap-3'>
                       <div>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
+                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
                           SLA / TTR
                         </p>
                         <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
@@ -1238,7 +1446,7 @@ export default function TicketDetailDrawer({
                         </p>
                       </div>
                       <div className='text-right'>
-                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase'>
+                        <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
                           Closed
                         </p>
                         <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
@@ -1254,9 +1462,9 @@ export default function TicketDetailDrawer({
                   </div>
 
                   <div className='mb-5'>
-                    <div className='mb-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2'>
+                    <div className='mb-3 flex items-center gap-2 border-b border-slate-200 pb-2 dark:border-slate-700'>
                       <Clock size={14} className='text-slate-400' />
-                      <h3 className='text-xs font-semibold tracking-wider text-slate-600 dark:text-slate-400 uppercase'>
+                      <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase dark:text-slate-400'>
                         Max TTR per Segmen
                       </h3>
                     </div>
@@ -1279,6 +1487,106 @@ export default function TicketDetailDrawer({
                     </div>
                   </div>
 
+                  {(ticket.hours ||
+                    ticket.durasiTicket ||
+                    ticket.jamExpired ||
+                    ticket.manjaExpired) && (
+                    <div className='mb-5'>
+                      <div className='mb-3 flex items-center gap-2 border-b border-slate-200 pb-2 dark:border-slate-700'>
+                        <Gauge size={14} className='text-slate-400' />
+                        <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase dark:text-slate-400'>
+                          Durasi & Expired
+                        </h3>
+                      </div>
+                      <div className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+                        <div className='grid grid-cols-2 gap-x-4 gap-y-3'>
+                          <Field label='Hours' value={ticket.hours} />
+                          <Field
+                            label='Durasi Ticket'
+                            value={ticket.durasiTicket}
+                          />
+                          <Field
+                            label='Jam Expired'
+                            value={ticket.jamExpired}
+                          />
+                          <Field
+                            label='Manja Expired'
+                            value={ticket.manjaExpired}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(ticket.statusManja ||
+                    ticket.statusTtr12Gold ||
+                    ticket.statusTtr3Diamond ||
+                    ticket.statusTtr24Reguler ||
+                    ticket.statusTtr6Platinum ||
+                    ticket.statusTtrDatinK1 ||
+                    ticket.statusTtrDatinK2 ||
+                    ticket.statusTtrDatinK3 ||
+                    ticket.statusTtrIndibiz4Jam ||
+                    ticket.statusTtrReseller6Jam ||
+                    ticket.statusTtrWifiId) && (
+                    <div className='mb-5'>
+                      <div className='mb-3 flex items-center gap-2 border-b border-slate-200 pb-2 dark:border-slate-700'>
+                        <Layers size={14} className='text-slate-400' />
+                        <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase dark:text-slate-400'>
+                          Status TTR
+                        </h3>
+                      </div>
+                      <div className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+                        <div className='grid grid-cols-2 gap-x-4 gap-y-3'>
+                          <Field
+                            label='Status Manja'
+                            value={ticket.statusManja}
+                          />
+                          <Field
+                            label='TTR 12h Gold'
+                            value={ticket.statusTtr12Gold}
+                          />
+                          <Field
+                            label='TTR 3h Diamond'
+                            value={ticket.statusTtr3Diamond}
+                          />
+                          <Field
+                            label='TTR 24h Reguler'
+                            value={ticket.statusTtr24Reguler}
+                          />
+                          <Field
+                            label='TTR 6h Platinum'
+                            value={ticket.statusTtr6Platinum}
+                          />
+                          <Field
+                            label='TTR Datin K1'
+                            value={ticket.statusTtrDatinK1}
+                          />
+                          <Field
+                            label='TTR Datin K2'
+                            value={ticket.statusTtrDatinK2}
+                          />
+                          <Field
+                            label='TTR Datin K3'
+                            value={ticket.statusTtrDatinK3}
+                          />
+                          <Field
+                            label='TTR Indibiz 4h'
+                            value={ticket.statusTtrIndibiz4Jam}
+                          />
+                          <Field
+                            label='TTR Reseller 6h'
+                            value={ticket.statusTtrReseller6Jam}
+                          />
+                          <Field
+                            label='TTR WiFi-ID'
+                            value={ticket.statusTtrWifiId}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <Section icon={<Calendar size={14} />} title='Waktu Penting'>
                     <Field
                       label='Reported Date'
@@ -1292,6 +1600,12 @@ export default function TicketDetailDrawer({
                       label='Closed At'
                       value={formatDateTime(ticket.closedAt)}
                     />
+                    <Field
+                      label='Sync Date'
+                      value={
+                        ticket.syncDate ? formatDate(ticket.syncDate) : null
+                      }
+                    />
                   </Section>
                 </>
               )}
@@ -1301,11 +1615,11 @@ export default function TicketDetailDrawer({
               )}
             </div>
 
-            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 dark:border-slate-800 bg-linear-to-t dark:from-slate-900 dark:to-slate-950 from-white to-slate-50 px-5 py-4 shadow-lg'>
+            <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-linear-to-t from-white to-slate-50 px-5 py-4 shadow-lg dark:border-slate-800 dark:from-slate-900 dark:to-slate-950'>
               {onEdit && (
                 <button
                   onClick={() => onEdit(ticket)}
-                  className='flex-1 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 transition-all hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.98]'
+                  className='flex-1 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
                 >
                   ✏️ Edit Tiket
                 </button>
@@ -1313,7 +1627,7 @@ export default function TicketDetailDrawer({
               {onUpdateStatus && (
                 <button
                   onClick={() => onUpdateStatus(ticket)}
-                  className='flex-1 rounded-xl bg-linear-to-r dark:from-slate-700 dark:to-slate-600 from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98]'
+                  className='flex-1 rounded-xl bg-linear-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98] dark:from-slate-700 dark:to-slate-600'
                 >
                   🔄 Update Status
                 </button>
@@ -1322,17 +1636,19 @@ export default function TicketDetailDrawer({
           </>
         ) : error ? (
           <div className='flex flex-1 items-center justify-center px-6'>
-            <div className='w-full max-w-sm rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4 text-center'>
+            <div className='w-full max-w-sm rounded-xl border border-red-200 bg-red-50 p-4 text-center dark:border-red-500/30 dark:bg-red-500/10'>
               <p className='text-sm font-semibold text-red-700 dark:text-red-400'>
                 Failed to load ticket
               </p>
-              <p className='mt-1 text-xs text-red-700/80 dark:text-red-400/80'>{error}</p>
+              <p className='mt-1 text-xs text-red-700/80 dark:text-red-400/80'>
+                {error}
+              </p>
               <div className='mt-4 flex items-center justify-center gap-2'>
                 {onRetry && (
                   <button
                     type='button'
                     onClick={onRetry}
-                    className='rounded-lg bg-slate-900 dark:bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-slate-600'
+                    className='rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600'
                   >
                     Retry
                   </button>
@@ -1340,7 +1656,7 @@ export default function TicketDetailDrawer({
                 <button
                   type='button'
                   onClick={handleClose}
-                  className='rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  className='rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                 >
                   Close
                 </button>

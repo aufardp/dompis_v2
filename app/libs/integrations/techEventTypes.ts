@@ -45,7 +45,7 @@ export type TechEventAdmin = {
 export type TechEventStatus = {
   old_hasil_visit: HasilVisit | null;
   new_hasil_visit: HasilVisit;
-  pending_reason: string | null;
+  pending_dompis: string | null;
   evidence: TechEventEvidence | null;
   rca?: string | null;
   sub_rca?: string | null;

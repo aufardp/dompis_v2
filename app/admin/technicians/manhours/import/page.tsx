@@ -18,7 +18,7 @@ import {
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
-import { JENIS_LABELS, JenisKey } from '@/app/libs/tickets/jenis';
+import { JENIS_LABELS, JenisKey } from '@/app/config/jenis-tiket';
 
 type Step = 1 | 2 | 3;
 

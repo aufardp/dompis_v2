@@ -80,27 +80,25 @@ export async function POST(req: Request) {
 
     if (roleKey === 'teknisi') {
       const reasonRaw =
-        typeof body.pendingReason === 'string'
-          ? body.pendingReason
-          : typeof body.pending_reason === 'string'
-            ? body.pending_reason
-            : typeof body.description === 'string'
-              ? body.description
-              : undefined;
+        typeof body.pendingDompis === 'string'
+          ? body.pendingDompis
+          : typeof body.description === 'string'
+            ? body.description
+            : undefined;
 
       if (typeof reasonRaw === 'string') {
         const reason = reasonRaw.trim();
 
         if (!reason) {
           return NextResponse.json(
-            { success: false, message: 'pendingReason is required' },
+            { success: false, message: 'pendingDompis is required' },
             { status: 400 },
           );
         }
 
         const workflow: TicketUpdateWorkflow = {
           status: 'PENDING',
-          pendingReason: reason,
+          pendingDompis: reason,
           note: 'Progress update by technician',
         };
 
@@ -142,9 +140,9 @@ export async function POST(req: Request) {
       deviceName: (patchSrc.deviceName ?? patchSrc.device_name) as any,
       symptom: patchSrc.symptom as any,
       alamat: patchSrc.alamat as any,
-      pendingReason: (patchSrc.pendingReason ?? patchSrc.pending_reason) as any,
-      descriptionActualSolution: (patchSrc.descriptionActualSolution ??
-        patchSrc.description_actual_solution) as any,
+      pendingDompis: (patchSrc.pendingDompis) as any,
+      descriptionSolutionDompis: (patchSrc.descriptionSolutionDompis ??
+        patchSrc.description_solution_dompis) as any,
     };
 
     const wfSrc = isRecord(body.workflow) ? body.workflow : body;
@@ -159,11 +157,9 @@ export async function POST(req: Request) {
       (wfSrc.newStatus as any);
 
     if (typeof rawWorkflowStatus === 'string') {
-      let pendingReason: string | undefined;
-      if (typeof (wfSrc as any).pendingReason === 'string') {
-        pendingReason = String((wfSrc as any).pendingReason);
-      } else if (typeof (wfSrc as any).pending_reason === 'string') {
-        pendingReason = String((wfSrc as any).pending_reason);
+      let pendingDompis: string | undefined;
+      if (typeof (wfSrc as any).pendingDompis === 'string') {
+        pendingDompis = String((wfSrc as any).pendingDompis);
       }
 
       let note: string | undefined;
@@ -171,7 +167,7 @@ export async function POST(req: Request) {
         note = String((wfSrc as any).note);
       }
 
-      workflow = { status: rawWorkflowStatus, pendingReason, note };
+      workflow = { status: rawWorkflowStatus, pendingDompis, note };
     }
 
     const result = (await TicketWorkflowService.updateTicket(ticketId, user, {

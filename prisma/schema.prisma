@@ -1,5 +1,5 @@
 generator client {
-  provider        = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -12,8 +12,135 @@ model area {
   nama_area    String         @db.VarChar(100)
   created_at   DateTime       @default(now()) @db.Timestamp(0)
   updated_at   DateTime       @default(now()) @db.Timestamp(0)
+  branch_id    Int?
+  branch       branch?        @relation(fields: [branch_id], references: [id_branch])
   service_area service_area[]
   users        users[]
+
+  @@index([branch_id])
+}
+
+model branch {
+  id_branch   Int      @id @default(autoincrement())
+  nama_branch String   @db.VarChar(100)
+  kode_branch String   @unique @db.VarChar(10)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  region_id   Int?
+  area        area[]
+  region      region?  @relation(fields: [region_id], references: [id_region])
+
+  @@index([kode_branch])
+  @@index([region_id])
+}
+
+model cluster {
+  id                 Int                  @id @default(autoincrement())
+  sa_id              Int
+  nama_cluster       String               @db.VarChar(100)
+  is_active          Boolean              @default(true)
+  sort_order         Int                  @default(0)
+  created_by         Int
+  created_at         DateTime             @default(now()) @db.Timestamp(0)
+  updated_at         DateTime             @default(now()) @db.Timestamp(0)
+  users              users                @relation(fields: [created_by], references: [id_user])
+  service_area       service_area         @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade)
+  cluster_area       cluster_area[]
+  cluster_assignment cluster_assignment[]
+  cluster_node       cluster_node[]
+
+  @@unique([sa_id, nama_cluster])
+  @@index([created_by], map: "cluster_created_by_fkey")
+  @@index([sa_id, is_active])
+}
+
+model cluster_area {
+  id           Int            @id @default(autoincrement())
+  cluster_id   Int
+  nama_area    String         @db.VarChar(150)
+  sort_order   Int            @default(0)
+  cluster      cluster        @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
+  cluster_node cluster_node[]
+
+  @@index([cluster_id])
+}
+
+model cluster_assignment {
+  id                                          Int      @id @default(autoincrement())
+  cluster_id                                  Int
+  teknisi_id                                  Int
+  assigned_date                               String   @db.VarChar(10)
+  is_active                                   Boolean  @default(true)
+  assigned_by                                 Int
+  note                                        String?  @db.VarChar(255)
+  created_at                                  DateTime @default(now()) @db.Timestamp(0)
+  updated_at                                  DateTime @default(now()) @db.Timestamp(0)
+  users_cluster_assignment_assigned_byTousers users    @relation("cluster_assignment_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  cluster                                     cluster  @relation(fields: [cluster_id], references: [id])
+  users_cluster_assignment_teknisi_idTousers  users    @relation("cluster_assignment_teknisi_idTousers", fields: [teknisi_id], references: [id_user])
+
+  @@unique([cluster_id, teknisi_id, assigned_date])
+  @@index([assigned_by], map: "cluster_assignment_assigned_by_fkey")
+  @@index([assigned_date, cluster_id])
+  @@index([teknisi_id, assigned_date])
+}
+
+model cluster_node {
+  id              Int           @id @default(autoincrement())
+  cluster_id      Int
+  cluster_area_id Int?
+  odc_value       String        @unique @db.VarChar(100)
+  is_active       Boolean       @default(true)
+  sort_order      Int           @default(0)
+  created_at      DateTime      @default(now()) @db.Timestamp(0)
+  cluster_area    cluster_area? @relation(fields: [cluster_area_id], references: [id])
+  cluster         cluster       @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
+
+  @@index([cluster_area_id], map: "cluster_node_cluster_area_id_fkey")
+  @@index([cluster_id])
+  @@index([odc_value])
+}
+
+model invite_tokens {
+  id                                    Int       @id @default(autoincrement())
+  token_hash                            String    @unique @db.VarChar(255)
+  role                                  String    @db.VarChar(50)
+  created_by                            Int
+  used_by                               Int?      @unique
+  used_at                               DateTime? @db.Timestamp(0)
+  expires_at                            DateTime  @db.Timestamp(0)
+  created_at                            DateTime  @default(now()) @db.Timestamp(0)
+  ticket_id                             Int?
+  incident                              String?   @db.VarChar(100)
+  teknisi_user_id                       Int?
+  users_invite_tokens_created_byTousers users     @relation("invite_tokens_created_byTousers", fields: [created_by], references: [id_user], onDelete: Cascade)
+  users_invite_tokens_used_byTousers    users?    @relation("invite_tokens_used_byTousers", fields: [used_by], references: [id_user])
+
+  @@index([created_by], map: "invite_tokens_created_by_fkey")
+  @@index([expires_at])
+  @@index([ticket_id])
+}
+
+model manhours_config {
+  id         Int      @id @default(autoincrement())
+  jenis_key  String   @unique @db.VarChar(50)
+  label      String   @db.VarChar(100)
+  manhours   Decimal  @db.Decimal(4, 2)
+  is_active  Boolean  @default(true)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([is_active, sort_order])
+}
+
+model region {
+  id_region   Int      @id @default(autoincrement())
+  nama_region String   @unique @db.VarChar(100)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  branch      branch[]
 }
 
 model roles {
@@ -26,272 +153,36 @@ model roles {
 }
 
 model service_area {
-  id_sa      Int       @id @default(autoincrement())
-  nama_sa    String?   @db.VarChar(100)
-  area_id    Int?
-  created_at DateTime  @default(now()) @db.Timestamp(0)
-  updated_at DateTime  @default(now()) @db.Timestamp(0)
-  area       area?     @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "service_area_ibfk_1")
-  user_sa    user_sa[]
-  attendances technician_attendance[]
-  clusters   cluster[]
+  id_sa                 Int                     @id @default(autoincrement())
+  nama_sa               String?                 @db.VarChar(100)
+  created_at            DateTime                @default(now()) @db.Timestamp(0)
+  updated_at            DateTime                @default(now()) @db.Timestamp(0)
+  area_id               Int?
+  cluster               cluster[]
+  area                  area?                   @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "service_area_ibfk_1")
+  technician_attendance technician_attendance[]
+  user_sa               user_sa[]
 
   @@index([area_id], map: "id_area")
   @@index([nama_sa], map: "idx_nama_sa")
 }
 
-model ticket {
-  id_ticket                   Int                         @id @default(autoincrement())
-  INCIDENT                    String                      @unique(map: "INCIDENT") @db.VarChar(100)
-  SUMMARY                     String?                     @db.Text
-  REPORTED_DATE               String?                     @db.VarChar(100)
-  OWNER_GROUP                 String?                     @db.VarChar(50)
-  CUSTOMER_SEGMENT            String?                     @db.VarChar(100)
-  SERVICE_TYPE                String?                     @db.VarChar(50)
-  WORKZONE                    String?                     @db.VarChar(100)
-  STATUS                      String?                     @db.VarChar(100)
-  TICKET_ID_GAMAS             String?                     @db.VarChar(100)
-  CONTACT_PHONE               String?                     @db.VarChar(50)
-  CONTACT_NAME                String?                     @db.VarChar(100)
-  BOOKING_DATE                String?                     @db.VarChar(100)
-  SOURCE_TICKET               String?                     @db.VarChar(100)
-  CUSTOMER_TYPE               String?                     @db.VarChar(100)
-  SERVICE_NO                  String?                     @db.VarChar(100)
-  SYMPTOM                     String?                     @db.Text
-  DESCRIPTION_ACTUAL_SOLUTION String?                     @db.Text
-  DEVICE_NAME                 String?                     @db.VarChar(100)
-  RK_INFORMATION              String?                     @db.VarChar(100)
-  JENIS_TIKET                 String?                     @db.VarChar(255)
-  JAM_EXPIRED                 String?                     @db.VarChar(255)
-  REDAMAN                     String?                     @db.VarChar(255)
-  MANJA_EXPIRED               String?                     @db.VarChar(255)
-  ALAMAT                      String?                     @db.Text
-  PENDING_REASON              String?                     @db.VarChar(255)
-  GUARANTE_STATUS             String?                     @db.VarChar(50)
-  FLAGGING_MANJA              String?                     @db.VarChar(50)
-  LAPUL                       String?                     @db.VarChar(255)
-  GAUL                        String?                     @db.VarChar(255)
-  ONU_RX                      String?                     @db.VarChar(100)
-  STATUS_UPDATE               String?                     @db.VarChar(100)
-  STATUS_MANJA                String?                     @db.VarChar(100)
+model source_vlookup {
+  id                Int     @id @default(autoincrement())
+  value_id          Int
+  description       String? @db.VarChar(100)
+  jenis_tiket       String? @db.VarChar(50)
+  customer_type_key String? @db.VarChar(50)
+  jenis_tiket_2_val String? @db.VarChar(50)
+  realm_b2b         String? @db.VarChar(50)
+  flag_1            String? @db.VarChar(50)
+  flag_2            String? @db.VarChar(50)
 
-  JAM_EXPIRED_12_JAM_GOLD     String?                     @db.VarChar(255)
-  STATUS_TTR_12_GOLD          String?                     @db.VarChar(255)
-  JAM_EXPIRED_3_JAM_DIAMOND   String?                     @db.VarChar(255)
-  STATUS_TTR_3_DIAMOND        String?                     @db.VarChar(255)
-  JAM_EXPIRED_24_JAM_REGULER  String?                     @db.VarChar(255)
-  STATUS_TTR_24_REGULER       String?                     @db.VarChar(255)
-  JAM_EXPIRED_6_JAM_PLATINUM  String?                     @db.VarChar(255)
-  STATUS_TTR_6_PLATINUM       String?                     @db.VarChar(100)
-  TTR_K1_DATIN_1_5_JAM        String?                     @db.VarChar(100)
-  TTR_K1_REPAIR_K2_DATIN_3_6_JAM  String?                 @db.VarChar(100)
-  TTR_K3_DATIN_7_2_JAM        String?                     @db.VarChar(100)
-  TTR_INDIBIZ_4_JAM           String?                     @db.VarChar(100)
-  TTR_INDIBIZ_24_JAM          String?                     @db.VarChar(100)
-  TTR_INDIHOME_RESELLER_6_JAM String?                     @db.VarChar(100)
-  TTR_INDIHOME_RESELLER_36_JAM String?                    @db.VarChar(100)
-  TTR_WIFI_24_JAM             String?                     @db.VarChar(100)
-
-  rca                         String?                     @db.VarChar(100)
-  sub_rca                     String?                     @db.VarChar(100)
-  teknisi_user_id             Int?
-  closed_at                   DateTime?                   @db.Timestamp(0)
-
-  // Sync metadata fields
-  sync_date                   DateTime?                   @db.Date
-  synced_at                   DateTime?                   @db.Timestamp(0)
-  import_batch                String?                     @db.VarChar(50)
-
-  users                       users?                      @relation(fields: [teknisi_user_id], references: [id_user], onUpdate: NoAction, map: "fk_ticket_user")
-  ticket_evidence             ticket_evidence[]
-  ticketTracking              ticket_tracking?
-  ticket_status_history       ticket_status_history[]
-  ticket_assignment_history   ticket_assignment_history[]
-  ticket_activity_log         ticket_activity_log[]
-
-  @@index([teknisi_user_id], map: "fk_ticket_user")
-  @@index([WORKZONE], map: "idx_ticket_workzone")
-  @@index([sync_date], map: "idx_sync_date")
-  @@index([PENDING_REASON, sync_date], map: "idx_pending_sync")
-  @@index([sync_date, WORKZONE], map: "idx_sync_workzone")
-  @@index([CUSTOMER_TYPE, sync_date], map: "idx_ctype_sync")
-  @@index([STATUS_UPDATE], map: "idx_status_update")
-  @@index([teknisi_user_id, STATUS_UPDATE], map: "idx_tech_status")
-  @@index([sync_date, STATUS_UPDATE], map: "idx_sync_status")
-  @@index([JENIS_TIKET], map: "idx_jenis_tiket")
-  @@index([CUSTOMER_TYPE], map: "idx_customer_type")
-  @@index([FLAGGING_MANJA], map: "idx_ticket_flagging")
-  @@index([GUARANTE_STATUS], map: "idx_ticket_guarantee")
-  @@index([REPORTED_DATE], map: "idx_ticket_reported")
-  @@index([teknisi_user_id, STATUS_UPDATE, RK_INFORMATION], map: "idx_auto_assign_lookup")
-}
-
-model ticket_evidence {
-  id                Int       @id @default(autoincrement())
-  ticket_id         Int
-  incident          String    @db.VarChar(100)
-  file_name         String    @db.VarChar(255)
-  file_path         String    @db.VarChar(255)
-  file_size         Int?
-  mime_type         String?   @db.VarChar(100)
-
-  // n8n / Google Drive sync fields
-  n8n_file_id       String?   @db.VarChar(255)
-  n8n_web_url       String?   @db.VarChar(500)
-  n8n_sync_status   String    @default("PENDING") @db.VarChar(25) // PENDING, SYNCED, FAILED, FAILED_PERMANENT
-  n8n_attempt       Int       @default(0)
-
-  created_at        DateTime? @default(now()) @db.Timestamp(0)
-  ticket            ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket")
-
-  @@index([incident], map: "idx_incident")
-  @@index([ticket_id], map: "idx_ticket_id")
-  @@index([n8n_sync_status], map: "idx_n8n_sync_status")
-}
-
-model user_sa {
-  id           Int           @id @default(autoincrement())
-  user_id      Int?
-  sa_id        Int?
-  created_at   DateTime?     @db.Timestamp(0)
-  updated_at   DateTime?     @db.Timestamp(0)
-  users        users?        @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_1")
-  service_area service_area? @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_2")
-
-  @@index([sa_id], map: "sa_id")
-  @@index([user_id], map: "user_id")
-  @@index([user_id, sa_id], map: "idx_user_sa")
-}
-
-model users {
-  id_user               Int                     @id @default(autoincrement())
-  nik                   String?                 @unique(map: "nik") @db.VarChar(50)
-  nama                  String?                 @db.VarChar(100)
-  jabatan               String?                 @db.VarChar(100)
-  username              String?                 @unique(map: "username") @db.VarChar(50)
-  password              String?                 @db.VarChar(255)
-  role_id               Int?
-  area_id               Int?
-  created_at            DateTime                @default(now()) @db.Timestamp(0)
-  updated_at            DateTime                @default(now()) @db.Timestamp(0)
-  ticket                ticket[]
-  user_sa               user_sa[]
-  area                  area?                   @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
-  roles                 roles?                  @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
-  ticketTrackings       ticket_tracking[]
-  tracking_assigned_by  ticket_tracking[]       @relation("tracking_assigned_by")
-  tracking_assigned_to  ticket_tracking[]       @relation("tracking_assigned_to")
-
-  assignment_by ticket_assignment_history[] @relation("assignment_by")
-  assignment_to ticket_assignment_history[] @relation("assignment_to")
-
-  status_history ticket_status_history[]
-  activity_log   ticket_activity_log[]
-  attendance_records technician_attendance[]
-
-  // Cluster relations
-  created_clusters cluster[]           @relation("cluster_creator")
-  teknisi_assignments cluster_assignment[] @relation("teknisi_assignment")
-  assigner_assignments cluster_assignment[] @relation("assigner_assignment")
-
-  // Invite relations
-  created_invites invite_token[] @relation("invite_creator")
-  used_invite    invite_token?  @relation("invite_user")
-
-  // Team relations
-  invited_teams  ticket_team[] @relation("team_invited_by")
-  registered_teams ticket_team[] @relation("team_registered")
-
-  @@index([area_id], map: "id_area")
-  @@index([role_id], map: "id_role")
-}
-
-enum ActivityType {
-  ASSIGN
-  REASSIGN
-  STATUS_CHANGE
-  COMMENT
-  UPLOAD_EVIDENCE
-  CLOSE
-  AUTO_ASSIGN    // ← BARU: dibedakan dari ASSIGN manual
-}
-
-model ticket_tracking {
-  id             Int          @id @default(autoincrement())
-  ticket_id      Int          @unique
-  assigned_by    Int?
-  assigned_to    Int
-  assigned_at    DateTime?    @db.Timestamp(0)
-  picked_up_at   DateTime?    @db.Timestamp(0)
-  on_progress_at DateTime?    @db.Timestamp(0)
-  pending_at     DateTime?    @db.Timestamp(0)
-  closed_at      DateTime?    @db.Timestamp(0)
-  pending_reason String?      @db.VarChar(255)
-  is_active      Boolean      @default(true)
-  created_at     DateTime     @default(now()) @db.Timestamp(0)
-  updated_at     DateTime     @default(now()) @db.Timestamp(0)
-
-  ticket       ticket @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  assigner     users? @relation("tracking_assigned_by", fields: [assigned_by], references: [id_user])
-  technician   users  @relation("tracking_assigned_to", fields: [assigned_to], references: [id_user])
-  users        users? @relation(fields: [usersId_user], references: [id_user])
-  usersId_user Int?
-
-  @@index([assigned_to])
-  @@map("ticket_tracking")
-}
-
-model ticket_status_history {
-  id           Int           @id @default(autoincrement())
-  ticket_id    Int
-  old_status   String?       @db.VarChar(50)
-  new_status   String        @db.VarChar(50)
-  changed_by   Int
-  changed_role Int
-  note         String?       @db.VarChar(255)
-  changed_at   DateTime      @default(now()) @db.Timestamp(0)
-
-  ticket ticket @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  user   users  @relation(fields: [changed_by], references: [id_user])
-
-  @@index([ticket_id])
-  @@index([changed_by])
-  @@map("ticket_status_history")
-}
-
-model ticket_assignment_history {
-  id            Int       @id @default(autoincrement())
-  ticket_id     Int
-  assigned_by   Int
-  assigned_to   Int
-  assigned_at   DateTime  @default(now()) @db.Timestamp(0)
-  unassigned_at DateTime? @db.Timestamp(0)
-  is_active     Boolean   @default(true)
-
-  ticket     ticket @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  assigner   users  @relation("assignment_by", fields: [assigned_by], references: [id_user])
-  technician users  @relation("assignment_to", fields: [assigned_to], references: [id_user])
-
-  @@index([ticket_id])
-  @@index([assigned_to])
-  @@map("ticket_assignment_history")
-}
-
-model ticket_activity_log {
-  id            Int          @id @default(autoincrement())
-  ticket_id     Int
-  user_id       Int
-  role_id       Int
-  activity_type ActivityType
-  description   String?      @db.VarChar(255)
-  created_at    DateTime     @default(now()) @db.Timestamp(0)
-
-  ticket ticket @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  user   users  @relation(fields: [user_id], references: [id_user])
-
-  @@index([ticket_id])
-  @@index([user_id])
-  @@map("ticket_activity_log")
+  @@index([customer_type_key], map: "idx_source_vlookup_customerj_type_key")
+  @@index([jenis_tiket], map: "idx_source_vlookup_jenis_tiket")
+  @@index([jenis_tiket_2_val], map: "idx_source_vlookup_jenis_tiket_2_val")
+  @@index([realm_b2b], map: "idx_source_vlookup_realm_b2b")
+  @@index([value_id], map: "idx_source_vlookup_value_id")
 }
 
 model tech_event_outbox {
@@ -306,172 +197,407 @@ model tech_event_outbox {
   last_error      String?   @db.Text
   sent_at         DateTime? @db.Timestamp(0)
   created_at      DateTime  @default(now()) @db.Timestamp(0)
-  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+  updated_at      DateTime  @default(now()) @db.Timestamp(0)
 
-  @@index([status, next_attempt_at], map: "idx_outbox_status_next")
-  @@index([event_type], map: "idx_outbox_event_type")
-  @@index([event_label], map: "idx_outbox_event_label")
   @@index([created_at], map: "idx_outbox_created")
-  @@map("tech_event_outbox")
-}
-
-enum AttendanceStatus {
-  PRESENT
-  LATE
+  @@index([event_label], map: "idx_outbox_event_label")
+  @@index([event_type], map: "idx_outbox_event_type")
+  @@index([status, next_attempt_at], map: "idx_outbox_status_next")
 }
 
 model technician_attendance {
-  id            Int              @id @default(autoincrement())
+  id            Int                          @id @default(autoincrement())
   technician_id Int
-  check_in_at   DateTime         @default(now()) @db.Timestamp(0)
-  check_out_at  DateTime?        @db.Timestamp(0)
-  working_hours Decimal?         @db.Decimal(5, 2)
-  date          String           @db.VarChar(10)
+  check_in_at   DateTime                     @default(now()) @db.Timestamp(0)
+  check_out_at  DateTime?                    @db.Timestamp(0)
+  working_hours Decimal?                     @db.Decimal(5, 2)
+  date          String                       @db.VarChar(10)
   month         Int
   year          Int
   workzone_id   Int
-  status        AttendanceStatus
-  notes         String?          @db.VarChar(255)
-  created_at    DateTime         @default(now()) @db.Timestamp(0)
-  updated_at    DateTime         @default(now()) @db.Timestamp(0)
-
-  technician users        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
-  workzone   service_area @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
+  status        technician_attendance_status
+  notes         String?                      @db.VarChar(255)
+  created_at    DateTime                     @default(now()) @db.Timestamp(0)
+  updated_at    DateTime                     @default(now()) @db.Timestamp(0)
+  users         users                        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
+  service_area  service_area                 @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
 
   @@unique([technician_id, date])
-  @@index([technician_id])
   @@index([date])
   @@index([month, year])
-  @@map("technician_attendance")
+  @@index([technician_id])
+  @@index([workzone_id], map: "technician_attendance_workzone_id_fkey")
 }
 
-model manhours_config {
-  id          Int      @id @default(autoincrement())
-  jenis_key   String   @unique @db.VarChar(50)
-  label       String   @db.VarChar(100)
-  manhours    Decimal  @db.Decimal(4, 2)
-  is_active   Boolean  @default(true)
-  sort_order  Int      @default(0)
-  created_at  DateTime @default(now()) @db.Timestamp(0)
-  updated_at  DateTime @default(now()) @db.Timestamp(0)
+model ticket {
+  id_ticket                   Int                         @id @default(autoincrement())
+  incident                    String                      @unique(map: "INCIDENT") @db.VarChar(100)
+  summary                     String?                     @db.Text
+  reported_date               String?                     @db.VarChar(100)
+  owner_group                 String?                     @db.VarChar(50)
+  customer_segment            String?                     @db.VarChar(100)
+  service_type                String?                     @db.VarChar(50)
+  witel                       String?                     @db.VarChar(100)
+  workzone                    String?                     @db.VarChar(100)
+  status                      String?                     @db.VarChar(100)
+  status_date                 String?                     @db.VarChar(100)
+  ticket_id_gamas             String?                     @db.VarChar(100)
+  contact_phone               String?                     @db.VarChar(50)
+  contact_name                String?                     @db.VarChar(100)
+  booking_date                String?                     @db.VarChar(100)
+  source_ticket               String?                     @db.VarChar(100)
+  channel                     String?                     @db.VarChar(20)
+  customer_type               String?                     @db.VarChar(100)
+  customer_name               String?                     @db.VarChar(100)
+  service_no                  String?                     @db.VarChar(100)
+  incident_domain             String?                     @db.VarChar(100)
+  symptom                     String?                     @db.Text
+  solution                    String?                     @db.Text
+  description_actual_solution String?                     @db.Text
+  device_name                 String?                     @db.VarChar(100)
+  worklog_summary             String?                     @db.VarChar(100)
+  realm                       String?                     @db.VarChar(100)
+  tsc_result                  String?                     @db.VarChar(100)
+  scc_result                  String?                     @db.VarChar(100)
+  sn_ont                      String?                     @db.VarChar(30)
+  tipe_ont                    String?                     @db.VarChar(20)
+  rk_information              String?                     @db.VarChar(100)
+  classification_path         String?                     @db.VarChar(100)
+  lapul                       String?                     @db.VarChar(10)
+  gaul                        String?                     @db.VarChar(10)
+  onu_rx                      String?                     @db.VarChar(20)
+  pending_reason              String?                     @db.VarChar(255)
+  guarantee_status            String?                     @db.VarChar(50)
+  status_update               String?                     @db.VarChar(50)
+  jenis_tiket_1               String?                     @db.VarChar(50)
+  jenis_tiket_2               String?                     @db.VarChar(50)
+  alamat                      String?                     @db.Text
+  flagging_manja              String?                     @db.VarChar(10)
+  flagging_datin              String?                     @db.VarChar(10)
+  hours                       String?                     @db.VarChar(10)
+  durasi_ticket               String?                     @db.VarChar(20)
+  jam_expired                 String?                     @db.VarChar(20)
+  manja_expired               String?                     @db.VarChar(20)
+  status_manja                String?                     @db.VarChar(10)
+  status_ttr_12_gold          String?                     @db.VarChar(10)
+  status_ttr_3_diamond        String?                     @db.VarChar(10)
+  status_ttr_24_reguler       String?                     @db.VarChar(10)
+  status_ttr_6_platinum       String?                     @db.VarChar(10)
+  status_ttr_datin_k1         String?                     @db.VarChar(10)
+  status_ttr_datin_k2         String?                     @db.VarChar(10)
+  status_ttr_datin_k3         String?                     @db.VarChar(10)
+  status_ttr_indibiz_4_jam    String?                     @db.VarChar(10)
+  status_ttr_reseller_6_jam   String?                     @db.VarChar(10)
+  status_ttr_wifi_id          String?                     @db.VarChar(10)
+  pending_dompis              String?                     @db.VarChar(255)
+  description_solution_dompis String?                     @db.VarChar(255)
+  rca                         String?                     @db.VarChar(10)
+  sub_rca                     String?                     @db.VarChar(10)
+  teknisi_user_id             Int?
+  closed_at                   DateTime?                   @db.Timestamp(0)
+  sync_date                   DateTime?                   @db.Date
+  synced_at                   DateTime?                   @db.Timestamp(0)
+  import_batch                String?                     @db.VarChar(50)
+  users                       users?                      @relation(fields: [teknisi_user_id], references: [id_user], onUpdate: NoAction, map: "fk_ticket_user")
+  ticket_activity_log         ticket_activity_log[]
+  ticket_assignment_history   ticket_assignment_history[]
+  ticket_evidence             ticket_evidence[]
+  ticket_status_history       ticket_status_history[]
+  ticket_tracking             ticket_tracking?
 
-  @@index([is_active, sort_order])
-  @@map("manhours_config")
+  @@index([teknisi_user_id], map: "fk_ticket_user")
+  @@index([teknisi_user_id, status_update, rk_information], map: "idx_auto_assign_lookup")
+  @@index([customer_type, sync_date], map: "idx_ctype_sync")
+  @@index([customer_type], map: "idx_customer_type")
+  @@index([jenis_tiket_1], map: "idx_jenis_tiket_1")
+  @@index([jenis_tiket_2], map: "idx_jenis_tiket_2")
+  @@index([pending_reason, sync_date], map: "idx_pending_sync")
+  @@index([status_update], map: "idx_status_update")
+  @@index([sync_date], map: "idx_sync_date")
+  @@index([sync_date, status_update], map: "idx_sync_status")
+  @@index([sync_date, workzone], map: "idx_sync_workzone")
+  @@index([teknisi_user_id, status_update], map: "idx_tech_status")
+  @@index([flagging_manja], map: "idx_ticket_flagging")
+  @@index([guarantee_status], map: "idx_ticket_guarantee")
+  @@index([reported_date], map: "idx_ticket_reported")
+  @@index([workzone], map: "idx_ticket_workzone")
 }
 
-// ── Cluster (Sub Sektor dari tabel mapping lapangan) ──────────────────────────
-model cluster {
+model ticket_activity_log {
+  id            Int                               @id @default(autoincrement())
+  ticket_id     Int
+  user_id       Int
+  role_id       Int
+  activity_type ticket_activity_log_activity_type
+  description   String?                           @db.VarChar(255)
+  created_at    DateTime                          @default(now()) @db.Timestamp(0)
+  ticket        ticket                            @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
+  users         users                             @relation(fields: [user_id], references: [id_user])
+
+  @@index([ticket_id])
+  @@index([user_id])
+}
+
+model ticket_assignment_history {
+  id                                                 Int       @id @default(autoincrement())
+  ticket_id                                          Int
+  assigned_by                                        Int
+  assigned_to                                        Int
+  assigned_at                                        DateTime  @default(now()) @db.Timestamp(0)
+  unassigned_at                                      DateTime? @db.Timestamp(0)
+  is_active                                          Boolean   @default(true)
+  users_ticket_assignment_history_assigned_byTousers users     @relation("ticket_assignment_history_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  users_ticket_assignment_history_assigned_toTousers users     @relation("ticket_assignment_history_assigned_toTousers", fields: [assigned_to], references: [id_user])
+  ticket                                             ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
+
+  @@index([assigned_by], map: "ticket_assignment_history_assigned_by_fkey")
+  @@index([assigned_to])
+  @@index([ticket_id])
+}
+
+model ticket_evidence {
+  id              Int       @id @default(autoincrement())
+  ticket_id       Int
+  incident        String    @db.VarChar(100)
+  file_name       String    @db.VarChar(255)
+  file_path       String    @db.VarChar(255)
+  file_size       Int?
+  mime_type       String?   @db.VarChar(100)
+  n8n_file_id     String?   @db.VarChar(255)
+  n8n_web_url     String?   @db.VarChar(500)
+  n8n_sync_status String    @default("PENDING") @db.VarChar(25)
+  n8n_attempt     Int       @default(0)
+  created_at      DateTime? @default(now()) @db.Timestamp(0)
+  ticket          ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket")
+
+  @@index([incident], map: "idx_incident")
+  @@index([n8n_sync_status], map: "idx_n8n_sync_status")
+  @@index([ticket_id], map: "idx_ticket_id")
+}
+
+model ticket_raw {
+  id_ticket                   String    @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  incident                    String?   @unique @db.VarChar(50)
+  ttr_customer                String?   @db.VarChar(100)
+  summary                     String?   @db.VarChar(1000)
+  reported_date               String?   @db.VarChar(100)
+  owner_group                 String?   @db.VarChar(100)
+  owner                       String?   @db.VarChar(100)
+  customer_segment            String?   @db.VarChar(20)
+  service_type                String?   @db.VarChar(50)
+  witel                       String?   @db.VarChar(100)
+  workzone                    String?   @db.VarChar(10)
+  status                      String?   @db.VarChar(50)
+  status_date                 String?   @db.VarChar(100)
+  ticket_id_gamas             String?   @db.VarChar(100)
+  reported_by                 String?   @db.VarChar(50)
+  contact_phone               String?   @db.VarChar(50)
+  contact_name                String?   @db.VarChar(100)
+  contact_email               String?   @db.VarChar(255)
+  booking_date                String?   @db.VarChar(50)
+  description_assignment      String?   @db.VarChar(100)
+  reported_priority           String?   @db.VarChar(100)
+  source_ticket               String?   @db.VarChar(50)
+  subsidiary                  String?   @db.VarChar(100)
+  external_ticket_id          String?   @db.VarChar(50)
+  channel                     String?   @db.VarChar(20)
+  customer_type               String?   @db.VarChar(100)
+  closed_by                   String?   @db.VarChar(100)
+  closed_reopen_by            String?   @db.VarChar(100)
+  customer_id                 String?   @db.VarChar(100)
+  customer_name               String?   @db.VarChar(255)
+  service_id                  String?   @db.VarChar(100)
+  service_no                  String?   @db.VarChar(100)
+  slg                         String?   @db.VarChar(50)
+  technology                  String?   @db.VarChar(50)
+  lapul                       String?   @db.VarChar(10)
+  gaul                        String?   @db.VarChar(10)
+  onu_rx                      String?   @db.VarChar(10)
+  pending_reason              String?   @db.VarChar(1000)
+  date_modified               String?   @db.VarChar(50)
+  incident_domain             String?   @db.VarChar(100)
+  region                      String?   @db.VarChar(50)
+  symptom                     String?   @db.VarChar(1000)
+  hierarchy_path              String?   @db.VarChar(100)
+  solution                    String?   @db.VarChar(100)
+  description_actual_solution String?   @db.VarChar(100)
+  kode_produk                 String?   @db.VarChar(50)
+  perangkat                   String?   @db.VarChar(100)
+  technician                  String?   @db.VarChar(255)
+  device_name                 String?   @db.VarChar(100)
+  worklog_summary             String?   @db.VarChar(100)
+  last_update_worklog         String?   @db.VarChar(100)
+  classification_flag         String?   @db.VarChar(20)
+  realm                       String?   @db.VarChar(100)
+  related_to_gamas            String?   @db.VarChar(10)
+  tsc_result                  String?   @db.VarChar(100)
+  scc_result                  String?   @db.VarChar(100)
+  ttr_agent                   String?   @db.VarChar(20)
+  ttr_mitra                   String?   @db.VarChar(20)
+  ttr_nasional                String?   @db.VarChar(20)
+  ttr_pending                 String?   @db.VarChar(20)
+  ttr_region                  String?   @db.VarChar(20)
+  ttr_witel                   String?   @db.VarChar(20)
+  ttr_end_to_end              String?   @db.VarChar(20)
+  note                        String?   @db.VarChar(255)
+  guarantee_status            String?   @db.VarChar(50)
+  resolve_date                String?   @db.VarChar(50)
+  sn_ont                      String?   @db.VarChar(30)
+  tipe_ont                    String?   @db.VarChar(20)
+  manufacture_ont             String?   @db.VarChar(20)
+  impacted_site               String?   @db.VarChar(50)
+  cause                       String?   @db.VarChar(50)
+  resolution                  String?   @db.VarChar(50)
+  notes_eskalasi              String?   @db.VarChar(255)
+  rk_information              String?   @db.VarChar(100)
+  external_ticket_tier_3      String?   @db.VarChar(50)
+  customer_category           String?   @db.VarChar(50)
+  classification_path         String?   @db.VarChar(100)
+  teritory_near_end           String?   @db.VarChar(50)
+  teritory_far_end            String?   @db.VarChar(50)
+  urgency                     String?   @db.VarChar(20)
+  urgency_description         String?   @db.VarChar(100)
+  street_address              String?   @db.VarChar(500)
+  source_system               String?   @default("scrap") @db.VarChar(50)
+  sync_date                   DateTime? @db.Date
+  synced_at                   DateTime? @default(now()) @db.Timestamp(0)
+  import_batch                String?   @db.VarChar(100)
+  sourceTable                 String?   @db.VarChar(50)
+  sourceHash                  String?   @db.VarChar(64)
+  lastSeenAt                  DateTime? @db.Timestamp(0)
+  sourceUpdatedAt             DateTime? @db.Timestamp(0)
+  syncBatchId                 String?   @db.VarChar(50)
+  syncVersion                 Int       @default(1)
+  isActive                    Boolean   @default(true)
+  importedAt                  DateTime? @db.Timestamp(0)
+  rawPayload                  Json?
+
+  @@index([customer_id, service_no, reported_date])
+  @@index([isActive, lastSeenAt])
+  @@index([service_no])
+  @@index([sourceHash])
+  @@index([sourceTable, incident])
+  @@index([status, isActive])
+  @@index([syncBatchId])
+}
+
+model ticket_status_history {
   id           Int      @id @default(autoincrement())
-  sa_id        Int                                   // FK → service_area (SA pemilik cluster)
-  nama_cluster String   @db.VarChar(100)             // "AREA 1", "AREA 2", dst
-  is_active    Boolean  @default(true)
-  sort_order   Int      @default(0)
-  created_by   Int                                   // FK → users (admin pembuat)
-  created_at   DateTime @default(now()) @db.Timestamp(0)
-  updated_at   DateTime @default(now()) @db.Timestamp(0)
+  ticket_id    Int
+  old_status   String?  @db.VarChar(50)
+  new_status   String   @db.VarChar(50)
+  changed_by   Int
+  changed_role Int
+  note         String?  @db.VarChar(255)
+  changed_at   DateTime @default(now()) @db.Timestamp(0)
+  users        users    @relation(fields: [changed_by], references: [id_user])
+  ticket       ticket   @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
 
-  service_area service_area       @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade)
-  creator      users              @relation("cluster_creator", fields: [created_by], references: [id_user])
-  areas        cluster_area[]
-  nodes        cluster_node[]
-  assignments  cluster_assignment[]
-
-  @@unique([sa_id, nama_cluster])
-  @@index([sa_id, is_active])
-  @@map("cluster")
-}
-
-// ── Cluster Area (deskripsi wilayah per cluster) ──────────────────────────────
-model cluster_area {
-  id         Int    @id @default(autoincrement())
-  cluster_id Int
-  nama_area  String @db.VarChar(150)   // "ROMOKALISARI", "TAMBAK OSOWILANGUN"
-  sort_order Int    @default(0)
-
-  cluster cluster       @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
-  nodes   cluster_node[]
-
-  @@index([cluster_id])
-  @@map("cluster_area")
-}
-
-// ── Cluster Node (mapping ODC → cluster) ─────────────────────────────────────
-model cluster_node {
-  id              Int     @id @default(autoincrement())
-  cluster_id      Int
-  cluster_area_id Int?                             // opsional — boleh null
-  odc_value       String  @db.VarChar(100)        // EXACT dari RK_INFORMATION, misal "ODC-TDS-FEP"
-  is_active       Boolean @default(true)
-  sort_order      Int     @default(0)
-  created_at      DateTime @default(now()) @db.Timestamp(0)
-
-  cluster      cluster       @relation(fields: [cluster_id], references: [id], onDelete: Cascade)
-  cluster_area cluster_area? @relation(fields: [cluster_area_id], references: [id], onDelete: SetNull)
-
-  @@unique([odc_value])       // 1 ODC hanya boleh di 1 cluster, global unique
-  @@index([cluster_id])
-  @@index([odc_value])        // lookup O(1) saat auto-assign — WAJIB
-  @@map("cluster_node")
-}
-
-// ── Cluster Assignment (plotting teknisi per hari) ────────────────────────────
-model cluster_assignment {
-  id            Int      @id @default(autoincrement())
-  cluster_id    Int
-  teknisi_id    Int
-  assigned_date String   @db.VarChar(10)   // format: "2026-03-29" (YYYY-MM-DD)
-  is_active     Boolean  @default(true)
-  assigned_by   Int
-  note          String?  @db.VarChar(255)
-  created_at    DateTime @default(now()) @db.Timestamp(0)
-  updated_at    DateTime @default(now()) @db.Timestamp(0)
-
-  cluster  cluster @relation(fields: [cluster_id], references: [id])
-  teknisi  users   @relation("teknisi_assignment", fields: [teknisi_id], references: [id_user])
-  assigner users   @relation("assigner_assignment", fields: [assigned_by], references: [id_user])
-
-  @@unique([cluster_id, teknisi_id, assigned_date])
-  @@index([assigned_date, cluster_id])
-  @@index([teknisi_id, assigned_date])
-  @@map("cluster_assignment")
-}
-
-model invite_token {
-  id             Int       @id @default(autoincrement())
-  token_hash     String    @unique @db.VarChar(255)
-  role           String    @db.VarChar(50)
-  created_by     Int
-  used_by        Int?      @unique
-  used_at        DateTime? @db.Timestamp(0)
-  expires_at     DateTime  @db.Timestamp(0)
-  created_at     DateTime  @default(now()) @db.Timestamp(0)
-  ticket_id      Int?
-  incident       String?   @db.VarChar(100)
-  teknisi_user_id Int?
-
-  creator users? @relation("invite_creator", fields: [created_by], references: [id_user], onDelete: Cascade)
-  user    users? @relation("invite_user", fields: [used_by], references: [id_user], onDelete: SetNull)
-
-  @@index([expires_at])
+  @@index([changed_by])
   @@index([ticket_id])
-  @@map("invite_tokens")
 }
 
-// ── Ticket Team (tracking who invited whom for performansi) ───────────────────
 model ticket_team {
-  id                 Int       @id @default(autoincrement())
-  ticket_id          Int
-  incident           String    @db.VarChar(100)
-  invited_by         Int
-  registered_user_id Int?
-  created_at         DateTime  @default(now()) @db.Timestamp(0)
-  registered_at      DateTime? @db.Timestamp(0)
+  id                                          Int       @id @default(autoincrement())
+  ticket_id                                   Int
+  incident                                    String    @db.VarChar(100)
+  invited_by                                  Int
+  registered_user_id                          Int?
+  created_at                                  DateTime  @default(now()) @db.Timestamp(0)
+  registered_at                               DateTime? @db.Timestamp(0)
+  users_ticket_team_invited_byTousers         users     @relation("ticket_team_invited_byTousers", fields: [invited_by], references: [id_user], onDelete: Cascade)
+  users_ticket_team_registered_user_idTousers users?    @relation("ticket_team_registered_user_idTousers", fields: [registered_user_id], references: [id_user])
 
-  invited_tech   users? @relation("team_invited_by", fields: [invited_by], references: [id_user], onDelete: Cascade)
-  registered_tech users? @relation("team_registered", fields: [registered_user_id], references: [id_user], onDelete: SetNull)
-
-  @@index([ticket_id])
   @@index([invited_by])
   @@index([registered_user_id])
-  @@map("ticket_team")
+  @@index([ticket_id])
+}
+
+model ticket_tracking {
+  id                                        Int       @id @default(autoincrement())
+  ticket_id                                 Int       @unique
+  assigned_by                               Int?
+  assigned_to                               Int
+  assigned_at                               DateTime? @db.Timestamp(0)
+  picked_up_at                              DateTime? @db.Timestamp(0)
+  on_progress_at                            DateTime? @db.Timestamp(0)
+  pending_at                                DateTime? @db.Timestamp(0)
+  closed_at                                 DateTime? @db.Timestamp(0)
+  pending_dompis                            String?   @db.VarChar(255)
+  is_active                                 Boolean   @default(true)
+  created_at                                DateTime  @default(now()) @db.Timestamp(0)
+  updated_at                                DateTime  @default(now()) @db.Timestamp(0)
+  usersId_user                              Int?
+  users_ticket_tracking_assigned_byTousers  users?    @relation("ticket_tracking_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  users_ticket_tracking_assigned_toTousers  users     @relation("ticket_tracking_assigned_toTousers", fields: [assigned_to], references: [id_user])
+  ticket                                    ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
+  users_ticket_tracking_usersId_userTousers users?    @relation("ticket_tracking_usersId_userTousers", fields: [usersId_user], references: [id_user])
+
+  @@index([assigned_by], map: "ticket_tracking_assigned_by_fkey")
+  @@index([assigned_to])
+  @@index([usersId_user], map: "ticket_tracking_usersId_user_fkey")
+}
+
+model user_sa {
+  id           Int           @id @default(autoincrement())
+  user_id      Int?
+  sa_id        Int?
+  created_at   DateTime?     @db.Timestamp(0)
+  updated_at   DateTime?     @db.Timestamp(0)
+  users        users?        @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_1")
+  service_area service_area? @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_2")
+
+  @@index([user_id, sa_id], map: "idx_user_sa")
+  @@index([sa_id], map: "sa_id")
+  @@index([user_id], map: "user_id")
+}
+
+model users {
+  id_user                                                                Int                         @id @default(autoincrement())
+  nik                                                                    String?                     @unique(map: "nik") @db.VarChar(50)
+  nama                                                                   String?                     @db.VarChar(100)
+  jabatan                                                                String?                     @db.VarChar(100)
+  username                                                               String?                     @unique(map: "username") @db.VarChar(50)
+  password                                                               String?                     @db.VarChar(255)
+  role_id                                                                Int?
+  area_id                                                                Int?
+  created_at                                                             DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at                                                             DateTime                    @default(now()) @db.Timestamp(0)
+  cluster                                                                cluster[]
+  cluster_assignment_cluster_assignment_assigned_byTousers               cluster_assignment[]        @relation("cluster_assignment_assigned_byTousers")
+  cluster_assignment_cluster_assignment_teknisi_idTousers                cluster_assignment[]        @relation("cluster_assignment_teknisi_idTousers")
+  invite_tokens_invite_tokens_created_byTousers                          invite_tokens[]             @relation("invite_tokens_created_byTousers")
+  invite_tokens_invite_tokens_used_byTousers                             invite_tokens?              @relation("invite_tokens_used_byTousers")
+  technician_attendance                                                  technician_attendance[]
+  ticket                                                                 ticket[]
+  ticket_activity_log                                                    ticket_activity_log[]
+  ticket_assignment_history_ticket_assignment_history_assigned_byTousers ticket_assignment_history[] @relation("ticket_assignment_history_assigned_byTousers")
+  ticket_assignment_history_ticket_assignment_history_assigned_toTousers ticket_assignment_history[] @relation("ticket_assignment_history_assigned_toTousers")
+  ticket_status_history                                                  ticket_status_history[]
+  ticket_team_ticket_team_invited_byTousers                              ticket_team[]               @relation("ticket_team_invited_byTousers")
+  ticket_team_ticket_team_registered_user_idTousers                      ticket_team[]               @relation("ticket_team_registered_user_idTousers")
+  ticket_tracking_ticket_tracking_assigned_byTousers                     ticket_tracking[]           @relation("ticket_tracking_assigned_byTousers")
+  ticket_tracking_ticket_tracking_assigned_toTousers                     ticket_tracking[]           @relation("ticket_tracking_assigned_toTousers")
+  ticket_tracking_ticket_tracking_usersId_userTousers                    ticket_tracking[]           @relation("ticket_tracking_usersId_userTousers")
+  user_sa                                                                user_sa[]
+  area                                                                   area?                       @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
+  roles                                                                  roles?                      @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
+
+  @@index([area_id], map: "id_area")
+  @@index([role_id], map: "id_role")
+}
+
+enum ticket_activity_log_activity_type {
+  ASSIGN
+  REASSIGN
+  STATUS_CHANGE
+  COMMENT
+  UPLOAD_EVIDENCE
+  CLOSE
+  AUTO_ASSIGN
+}
+
+enum technician_attendance_status {
+  PRESENT
+  LATE
 }

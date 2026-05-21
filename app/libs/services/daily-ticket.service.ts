@@ -8,13 +8,16 @@ import {
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
-import { getJenisWhereClause } from '@/lib/jenis';
+import { getJenisWhereClause, getB2CJenisWhereClause, getB2BJenisWhereClause } from '@/app/config/jenis-tiket';
+import { toWibString, toWibDateString, todayWibDateForDb, getTodayWibRange } from '@/lib/timezone';
+import { resolveEffectiveFlagging } from '../flagging-manja';
 
 type TicketFilters = {
   search?: string;
-  statusUpdate?: string;
+  statusUpdate?: string | string[];
   dept?: string;
-  ticketType?: string;
+  ticketType?: string | string[];
+  flagging?: string | string[];
   workzone?: number | string;
   ctype?: string;
   startDate?: string;
@@ -30,29 +33,86 @@ function normalizeStatusUpdateFilter(value: unknown): string {
     .toLowerCase();
 }
 
+function normalizeStringList(value: string | string[] | undefined): string[] {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
+    .map((item) => String(item ?? '').trim())
+    .filter((item) => item.length > 0 && item.toLowerCase() !== 'all');
+}
+
 /**
  * Status filter helper
  */
 function applyStatusUpdateWhere(
   where: Record<string, any>,
-  statusUpdate?: string,
+  statusUpdate?: string | string[],
 ) {
-  const su = normalizeStatusUpdateFilter(statusUpdate);
+  const statuses = normalizeStringList(statusUpdate).map((item) =>
+    normalizeStatusUpdateFilter(item),
+  );
 
-  if (!su || su === 'all') return;
+  if (statuses.length === 0) return;
 
-  if (su === 'open') {
-    where.AND = [
-      ...(where.AND ?? []),
-      {
-        OR: [{ STATUS_UPDATE: null }, { STATUS_UPDATE: 'open' }],
-      },
-    ];
+  const clauses = statuses.map((status) => {
+    if (status === 'open') {
+      return { OR: [{ status_update: null }, { status_update: 'open' }] };
+    }
+    return { status_update: status };
+  });
 
+  if (clauses.length === 1) {
+    where.AND = [...(where.AND ?? []), clauses[0]];
     return;
   }
 
-  where.STATUS_UPDATE = su;
+  where.AND = [...(where.AND ?? []), { OR: clauses }];
+}
+
+function applyTicketTypeWhere(
+  where: Record<string, any>,
+  ticketType?: string | string[],
+) {
+  const ticketTypes = normalizeStringList(ticketType);
+  if (ticketTypes.length === 0) return;
+
+  const variants = new Set<string>();
+  for (const type of ticketTypes) {
+    const clause = getJenisWhereClause(type);
+    for (const value of clause.jenis_tiket_2.in) {
+      variants.add(value);
+    }
+  }
+
+  where.jenis_tiket_2 = { in: [...variants] };
+}
+
+function applyFlaggingWhere(
+  where: Record<string, any>,
+  flagging?: string | string[],
+) {
+  const flags = normalizeStringList(flagging).map((item) => item.toUpperCase());
+  if (flags.length === 0) return;
+
+  const clauses: Record<string, any>[] = [];
+  if (flags.includes('P1')) clauses.push({ flagging_manja: 'P1' });
+  if (flags.includes('P+')) clauses.push({ flagging_manja: 'P+' });
+  if (flags.includes('FFG')) clauses.push({ guarantee_status: 'guarantee' });
+  if (flags.includes('GAMAS')) {
+    clauses.push({
+      AND: [
+        { ticket_id_gamas: { not: null } },
+        { ticket_id_gamas: { not: '' } },
+        { ticket_id_gamas: { not: '-' } },
+        { ticket_id_gamas: { not: '--' } },
+      ],
+    });
+  }
+
+  if (clauses.length === 0) return;
+  where.AND = [
+    ...(where.AND ?? []),
+    clauses.length === 1 ? clauses[0] : { OR: clauses },
+  ];
 }
 
 /**
@@ -62,44 +122,47 @@ function applyStatusUpdateWhere(
 function mapTicket(t: any) {
   return {
     idTicket: t.id_ticket,
-    ticket: t.INCIDENT,
-    summary: t.SUMMARY,
-    reportedDate: t.REPORTED_DATE,
-    ownerGroup: t.OWNER_GROUP,
-    serviceType: t.SERVICE_TYPE,
-    customerType: t.CUSTOMER_TYPE,
-    ctype: t.CUSTOMER_TYPE || undefined,
-    serviceNo: t.SERVICE_NO,
-    contactName: t.CONTACT_NAME,
-    contactPhone: t.CONTACT_PHONE,
-    deviceName: t.DEVICE_NAME,
-    status: t.STATUS,
-    STATUS_UPDATE: (() => {
-      const v = String(t.STATUS_UPDATE ?? '')
+    ticket: t.incident,
+    summary: t.summary,
+    reportedDate: toWibString(t.reported_date),
+    ownerGroup: t.owner_group,
+    serviceType: t.service_type,
+    customerType: t.customer_type,
+    ctype: t.customer_type || undefined,
+    serviceNo: t.service_no,
+    contactName: t.contact_name,
+    contactPhone: t.contact_phone,
+    deviceName: t.device_name,
+    status: t.status,
+    status_update: (() => {
+      const v = String(t.status_update ?? '')
         .trim()
         .toLowerCase();
       return v || null;
     })(),
-    hasilVisit: t.STATUS_UPDATE,
-    bookingDate: t.BOOKING_DATE,
-    symptom: t.SYMPTOM,
-    descriptionActualSolution: t.DESCRIPTION_ACTUAL_SOLUTION,
-    workzone: t.WORKZONE,
-    customerSegment: t.CUSTOMER_SEGMENT,
-    sourceTicket: t.SOURCE_TICKET,
-    jenisTiket: t.JENIS_TIKET,
-    flaggingManja: t.FLAGGING_MANJA,
-    ticketIdGamas: t.TICKET_ID_GAMAS ?? null,
-    guaranteeStatus: t.GUARANTE_STATUS,
-    pendingReason: t.PENDING_REASON,
+    hasilVisit: t.status_update,
+    bookingDate: toWibString(t.booking_date),
+    symptom: t.symptom,
+    descriptionActualSolution: t.description_actual_solution,
+    descriptionSolutionDompis: t.description_solution_dompis,
+    workzone: t.workzone,
+    customerSegment: t.customer_segment,
+    sourceTicket: t.source_ticket,
+    jenisTiket: t.jenis_tiket_2,
+    jenisTiket1: t.jenis_tiket_1,
+    flaggingManja: resolveEffectiveFlagging(t.flagging_manja, t.booking_date),
+    ticketIdGamas: t.ticket_id_gamas ?? null,
+    guaranteeStatus: t.guarantee_status,
+    pendingDompis: t.pending_dompis,
     teknisiUserId: t.teknisi_user_id,
     rca: t.rca,
     subRca: t.sub_rca,
-    alamat: t.ALAMAT,
-    closedAt: t.closed_at,
+    alamat: t.alamat,
+    closedAt: toWibString(t.closed_at),
     technicianName: t.users?.nama,
-    syncDate: t.sync_date,
-    syncedAt: t.synced_at,
+    worklogSummary: t.worklog_summary,
+    syncDate: toWibDateString(t.sync_date),
+    syncedAt: toWibString(t.synced_at),
     importBatch: t.import_batch,
   };
 }
@@ -121,66 +184,57 @@ export class DailyTicketService {
   }
 
   /**
-   * Daily filter
+   * Daily filter for the operational board.
+   * - Tickets synced today AND NOT fully closed in backend (status != 'closed') OR
+   * - Tickets synced today that were closed TODAY (closed_at >= today start WIB) OR
+   * - Carry-over tickets with pending_dompis (not yet closed)
    *
-   * tickets from latest operational sync_date OR pending
-   *
-   * Uses MAX(sync_date) from DB as reference (not server time) to avoid
-   * timezone mismatch. Server may be UTC while data is WIB-based.
+   * This ensures:
+   * 1. Active tickets appear on the board
+   * 2. Tickets closed today still appear (with closed indicator)
+   * 3. Old closed tickets that get re-synced do NOT appear
    */
   static async applyDailyTicketFilter(
     where: Record<string, any>,
     tx?: Prisma.TransactionClient,
-    latestSyncDateOverride?: Date | null,
   ) {
-    const latestSyncDate =
-      latestSyncDateOverride !== undefined
-        ? latestSyncDateOverride
-        : await DailyTicketService.getLatestSyncDate(tx);
-
-    if (!latestSyncDate) {
-      where.AND = [...(where.AND ?? []), { sync_date: null }];
-      return;
-    }
-
-    // Use latestSyncDate directly from DB (already a DATE column value).
-    // Prisma returns DATE columns as midnight UTC for that date.
-    // E.g., sync_date='2026-03-09' → Date(2026-03-09T00:00:00.000Z)
-    const startOfDay = new Date(latestSyncDate);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setUTCDate(endOfDay.getUTCDate() + 1);
-
+    const today = todayWibDateForDb();
+    const { start: todayStart } = getTodayWibRange();
+    
     where.AND = [
       ...(where.AND ?? []),
       {
         OR: [
-          {
-            sync_date: {
-              gte: startOfDay,
-              lt: endOfDay,
-            },
-          },
+          // Active tickets synced today (not closed)
           {
             AND: [
-              {
-                PENDING_REASON: {
-                  not: null,
-                },
-              },
-              {
-                PENDING_REASON: {
-                  not: '',
-                },
-              },
+              { sync_date: today },
+              { status: { not: 'closed' } },
             ],
           },
-          // Tiket yang di-close hari ini tetap muncul di daily board
+          // Tickets closed today (closed_at >= today start in WIB)
           {
             AND: [
-              { STATUS_UPDATE: 'close' },
-              { closed_at: { gte: startOfDay, lt: endOfDay } },
+              { sync_date: today },
+              { status: 'closed' },
+              { closed_at: { gte: todayStart } },
+            ],
+          },
+          // Tickets with status_update = 'close' AND status = 'closed' synced today
+          // (newly closed via Dompis workflow, visible today then gone tomorrow)
+          {
+            AND: [
+              { sync_date: today },
+              { status_update: 'close' },
+              { status: 'closed' },
+            ],
+          },
+          // Carry-over with pending_dompis (not yet closed)
+          {
+            AND: [
+              { pending_dompis: { not: null } },
+              { pending_dompis: { not: '' } },
+              { status: { not: 'closed' } },
             ],
           },
         ],
@@ -203,7 +257,7 @@ export class DailyTicketService {
       };
 
       if (selectedWorkzone) {
-        where.WORKZONE = { contains: selectedWorkzone };
+        where.workzone = { contains: selectedWorkzone };
       }
 
       return where;
@@ -218,12 +272,12 @@ export class DailyTicketService {
 
       if (selectedWorkzone) {
         return workzones.includes(selectedWorkzone)
-          ? { WORKZONE: { contains: selectedWorkzone } }
+          ? { workzone: { contains: selectedWorkzone } }
           : { id_ticket: 0 };
       }
 
       return {
-        WORKZONE: { in: workzones },
+        workzone: { in: workzones },
       };
     }
 
@@ -240,6 +294,65 @@ export class DailyTicketService {
     return resolveWorkzoneName(id);
   }
 
+  static async buildDailyTicketWhere(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<Record<string, any>> {
+    const {
+      search = '',
+      statusUpdate,
+      dept,
+      ticketType,
+      flagging,
+      workzone,
+      ctype,
+    } = filters ?? {};
+
+    const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
+
+    const where: Record<string, any> = {
+      ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
+    };
+
+    await this.applyDailyTicketFilter(where);
+
+    if (search) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { incident: { contains: search } },
+            { contact_name: { contains: search } },
+            { service_no: { contains: search } },
+            { contact_phone: { contains: search } },
+          ],
+        },
+      ];
+    }
+
+    if (statusUpdate) {
+      applyStatusUpdateWhere(where, statusUpdate);
+    }
+
+    if (ctype) {
+      where.customer_type = ctype;
+    }
+
+    applyTicketTypeWhere(where, ticketType);
+    applyFlaggingWhere(where, flagging);
+
+    if (dept && dept !== 'all') {
+      const jenisClause = dept === 'b2c' ? getB2CJenisWhereClause() : getB2BJenisWhereClause();
+      where.AND = [
+        ...(where.AND ?? []),
+        jenisClause,
+      ];
+    }
+
+    return where;
+  }
+
   /**
    * Optimized Status Counter
    *
@@ -248,10 +361,10 @@ export class DailyTicketService {
 
   static async countStatuses(where: Record<string, any>) {
     const grouped = await prisma.ticket.groupBy({
-      by: ['STATUS_UPDATE'],
+      by: ['status_update'],
       where,
       _count: {
-        STATUS_UPDATE: true,
+        status_update: true,
       },
     });
 
@@ -265,11 +378,11 @@ export class DailyTicketService {
     };
 
     for (const g of grouped) {
-      const count = g._count.STATUS_UPDATE;
+      const count = g._count.status_update;
 
       stats.total += count;
 
-      const status = (g.STATUS_UPDATE ?? 'open').toLowerCase();
+      const status = (g.status_update ?? 'open').toLowerCase();
 
       if (status === 'open') stats.open += count;
       if (status === 'assigned') stats.assigned += count;
@@ -285,6 +398,8 @@ export class DailyTicketService {
 
   /**
    * Main Daily Ticket Table
+   * Fetches all matching tickets, sorts by priority (P1 > P+ > others),
+   * then applies client-side pagination.
    */
 
   static async getDailyTicketTable(
@@ -292,97 +407,42 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
-    const {
-      search = '',
-      statusUpdate,
-      dept,
-      ticketType,
-      workzone,
-      ctype,
-      page = 1,
-      limit = 20,
-      sort = 'asc',
-    } = filters ?? {};
+    const { page = 1, limit = 10 } = filters ?? {};
 
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+
+    // Get total count
+    const total = await prisma.ticket.count({ where });
+
+    // Fetch ALL matching tickets (Prisma handles WHERE safely)
+    const allTickets = await prisma.ticket.findMany({
+      where,
+      include: {
+        users: {
+          select: { nama: true },
+        },
+      },
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
+    });
+
+    // Sort by priority: P1 > P+ > others
+    const sorted = allTickets.sort((a, b) => {
+      const priorityA = a.flagging_manja === 'P1' ? 1 : a.flagging_manja === 'P+' ? 2 : 3;
+      const priorityB = b.flagging_manja === 'P1' ? 1 : b.flagging_manja === 'P+' ? 2 : 3;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return 0;
+    });
+
+    // Apply pagination
     const offset = (page - 1) * limit;
-
-    const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
-
-    const where: Record<string, any> = {
-      ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
-    };
-
-    await this.applyDailyTicketFilter(where);
-
-    if (search) {
-      where.AND = [
-        ...(where.AND ?? []),
-        {
-          OR: [
-            { INCIDENT: { contains: search } },
-            { CONTACT_NAME: { contains: search } },
-            { SERVICE_NO: { contains: search } },
-            { CONTACT_PHONE: { contains: search } },
-          ],
-        },
-      ];
-    }
-
-    if (statusUpdate) {
-      applyStatusUpdateWhere(where, statusUpdate);
-    }
-
-    if (ctype) {
-      where.CUSTOMER_TYPE = ctype;
-    }
-
-    if (ticketType && ticketType !== 'all') {
-      Object.assign(where, getJenisWhereClause(ticketType));
-    }
-
-    // Apply dept filter (B2B/B2C)
-    if (dept && dept !== 'all') {
-      const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
-      if (dept === 'b2c') {
-        where.CUSTOMER_TYPE = { in: B2C_CTYPES };
-      } else if (dept === 'b2b') {
-        where.AND = [
-          ...(where.AND ?? []),
-          {
-            OR: [
-              { CUSTOMER_TYPE: { notIn: B2C_CTYPES } },
-              { CUSTOMER_TYPE: null },
-            ],
-          },
-        ];
-      }
-    }
-
-    const [total, tickets] = await Promise.all([
-      prisma.ticket.count({ where }),
-
-      prisma.ticket.findMany({
-        where,
-
-        include: {
-          users: {
-            select: { nama: true },
-          },
-        },
-
-        orderBy: [{ REPORTED_DATE: sort }, { id_ticket: 'asc' }],
-
-        skip: offset,
-        take: limit,
-      }),
-    ]);
+    const paginated = sorted.slice(offset, offset + limit);
 
     return {
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
-      data: tickets.map(mapTicket),
+      data: paginated.map(mapTicket),
     };
   }
 
@@ -408,20 +468,11 @@ export class DailyTicketService {
 
     // Apply dept filter (B2B/B2C)
     if (p0?.dept && p0.dept !== 'all') {
-      const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
-      if (p0.dept === 'b2c') {
-        where.CUSTOMER_TYPE = { in: B2C_CTYPES };
-      } else if (p0.dept === 'b2b') {
-        where.AND = [
-          ...(where.AND ?? []),
-          {
-            OR: [
-              { CUSTOMER_TYPE: { notIn: B2C_CTYPES } },
-              { CUSTOMER_TYPE: null },
-            ],
-          },
-        ];
-      }
+      const jenisClause = p0.dept === 'b2c' ? getB2CJenisWhereClause() : getB2BJenisWhereClause();
+      where.AND = [
+        ...(where.AND ?? []),
+        jenisClause,
+      ];
     }
 
     // Apply ticketType filter
@@ -481,7 +532,7 @@ export class DailyTicketService {
       serviceAreas.map(
         async (sa: { id_sa: number; nama_sa: string | null }) => {
           const where: Record<string, any> = {
-            WORKZONE: { contains: sa.nama_sa },
+            workzone: { contains: sa.nama_sa },
           };
 
           await this.applyDailyTicketFilter(where);
@@ -491,13 +542,13 @@ export class DailyTicketService {
           }
 
           if (options?.dept && options.dept !== 'all') {
-            const { getJenisWhereClause } = await import('@/lib/jenis');
+            const { getJenisWhereClause } = await import('@/app/config/jenis-tiket');
             const jenisClause = getJenisWhereClause(options.dept);
             Object.assign(where, jenisClause);
           }
 
           if (options?.ticketType && options.ticketType !== 'all') {
-            const { getJenisWhereClause } = await import('@/lib/jenis');
+            const { getJenisWhereClause } = await import('@/app/config/jenis-tiket');
             const jenisClause = getJenisWhereClause(options.ticketType);
             Object.assign(where, jenisClause);
           }
@@ -557,14 +608,14 @@ export class DailyTicketService {
     teknisiUserId: number,
     rca: string,
     subRca: string,
-    descriptionActualSolution: string,
+    descriptionSolutionDompis: string,
   ) {
     return TicketWorkflowService.closeTicket(
       ticketId,
       { id_user: teknisiUserId, role: 'teknisi' },
       rca,
       subRca,
-      descriptionActualSolution,
+      descriptionSolutionDompis,
     );
   }
 }

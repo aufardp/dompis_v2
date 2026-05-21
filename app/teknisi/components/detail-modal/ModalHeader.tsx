@@ -41,7 +41,7 @@ export default function ModalHeader({
       <div className='px-4 pt-3 pb-3'>
         {/* Row 1: INC ID + Close button */}
         <div className='mb-2.5 flex items-center justify-between'>
-          <span className='font-mono text-[11px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 truncate mr-2'>
+          <span className='mr-2 truncate font-mono text-[11px] font-semibold tracking-wider text-slate-400 dark:text-slate-500'>
             {ticket}
           </span>
           <button
@@ -69,8 +69,31 @@ export default function ModalHeader({
         <div className='mb-2.5 flex flex-wrap gap-1.5'>
           <StatusBadge status={status} />
           {jenisTiket && (
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'>
-              {jenisTiket}
+            <span
+              className={`/* Dark Mode Support */ inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-slate-50/50 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-600 shadow-sm shadow-slate-100/50 transition-all duration-200 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:shadow-none`}
+            >
+              {/* Ikon Tag/Kategori Mikro (SVG) */}
+              <svg
+                className='h-3 w-3 text-slate-400 dark:text-slate-500'
+                fill='none'
+                viewBox='0 0 24 24'
+                strokeWidth='2.5'
+                stroke='currentColor'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  d='M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581a2.25 2.25 0 0 0 3.182 0l4.318-4.318a2.25 2.25 0 0 0 0-3.182L11.16 3.659A2.25 2.25 0 0 0 9.568 3Z'
+                />
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  d='M6 6h.008v.008H6V6Z'
+                />
+              </svg>
+
+              {/* Teks Jenis Tiket */}
+              <span className='capitalize'>{jenisTiket.toLowerCase()}</span>
             </span>
           )}
           {/* AgeBadge: hanya tampil saat tiket BELUM closed */}
@@ -108,7 +131,7 @@ export default function ModalHeader({
             <button
               type='button'
               onClick={onDismissWarning}
-              className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors'
+              className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/30'
               aria-label='Tutup peringatan'
             >
               ×

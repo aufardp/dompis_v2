@@ -13,7 +13,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const { ticketId, rca, subRca, descriptionActualSolution } = body;
+    const { ticketId, rca, subRca, descriptionSolutionDompis } = body;
 
     if (!ticketId)
       return NextResponse.json(
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
 
-    if (!descriptionActualSolution || String(descriptionActualSolution).trim().length < 10) {
+    if (!descriptionSolutionDompis || String(descriptionSolutionDompis).trim().length < 10) {
       return NextResponse.json(
         { success: false, message: 'Detail perbaikan wajib diisi minimal 10 karakter' },
         { status: 400 },
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       user,
       String(rca || ''),
       String(subRca || ''),
-      String(descriptionActualSolution).trim(),
+      String(descriptionSolutionDompis).trim(),
     )) as { message: string };
 
     await invalidateTicketsCache();

@@ -5,7 +5,7 @@ import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
-import { getJenisStyle } from '@/app/libs/tickets/jenis';
+import { getJenisStyle } from '@/app/config/jenis-tiket';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
@@ -31,7 +31,7 @@ export interface TicketRowProps {
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
-    STATUS_UPDATE?: string | null;
+    status_update?: string | null;
     hasilVisit?: string | null;
     closedAt?: string | null;
     reportedDate?: string | null;
@@ -88,7 +88,7 @@ export default function TicketRow({
   onSelect,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
-  const isClosed = isTicketClosed(ticket.STATUS_UPDATE);
+  const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -247,7 +247,7 @@ export default function TicketRow({
             <span className='text-xs font-semibold text-(--text-primary)'>
               {maxTtrDate}
             </span>
-            
+
             {/* Jam dengan font angka tetap (tabular) */}
             <span className='text-[10px] text-(--text-secondary) tabular-nums'>
               {maxTtrTime}
@@ -255,7 +255,7 @@ export default function TicketRow({
 
             {/* Label Booking yang telah dirapikan menjadi Badge */}
             {ticket.bookingDate && (
-              <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 ring-1 ring-inset ring-blue-500/20'>
+              <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold tracking-wider text-blue-600 uppercase ring-1 ring-blue-500/20 ring-inset'>
                 Booking
               </span>
             )}
@@ -339,16 +339,26 @@ export default function TicketRow({
           </span>
         )}
       </td>
+      <td className='px-4 py-3 text-center uppercase'>
+        <span
+          className={clsx(
+            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+            getStatusColor(ticket.status ?? ticket.status ?? ''),
+          )}
+        >
+          {(ticket.status ?? ticket.status) || '-'}
+        </span>
+      </td>
 
       {/* Status */}
       <td className='px-4 py-3 text-center uppercase'>
         <span
           className={clsx(
             'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-            getStatusColor(ticket.STATUS_UPDATE ?? ''),
+            getStatusColor(ticket.status_update ?? ticket.status_update ?? ''),
           )}
         >
-          {ticket.STATUS_UPDATE || '-'}
+          {(ticket.status_update ?? ticket.status_update) || '-'}
         </span>
       </td>
 

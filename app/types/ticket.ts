@@ -58,12 +58,13 @@ export interface Ticket {
   alamat?: string | null;
 
   status: string;
-  STATUS_UPDATE?: StatusUpdateValue | null;
+  status_update?: StatusUpdateValue | null;
   hasilVisit?: TicketVisitStatus;
 
   bookingDate?: string;
   sourceTicket?: string;
   jenisTiket?: string;
+  jenisTiket1?: string | null;
 
   maxTtrReguler?: string | null;
   maxTtrGold?: string | null;
@@ -73,16 +74,18 @@ export interface Ticket {
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
 
-  pendingReason?: string | null;
+  pendingDompis?: string | null;
 
   rca?: string | null;
   subRca?: string | null;
-  descriptionActualSolution?: string | null;
+  descriptionSolutionDompis?: string | null;
 
   teknisiUserId?: number | null;
   technicianName?: string | null;
 
   closedAt?: string | null;
+
+  worklogSummary?: string | null;
 
   // Sync metadata fields
   syncDate?: string | null;
@@ -92,16 +95,16 @@ export interface Ticket {
 
 export type LockedTicket = {
   id_ticket: number;
-  INCIDENT: string;
-  WORKZONE: string | null;
+  incident: string;
+  workzone: string | null;
   teknisi_user_id: number | null;
-  STATUS_UPDATE: string | null;
-  PENDING_REASON: string | null;
-  ALAMAT: string | null;
-  SERVICE_NO: string | null;
-  CONTACT_NAME: string | null;
-  OWNER_GROUP: string | null;
-  CUSTOMER_TYPE: string | null;
+  status_update: string | null;
+  pending_dompis: string | null;
+  alamat: string | null;
+  service_no: string | null;
+  contact_name: string | null;
+  owner_group: string | null;
+  customer_type: string | null;
 };
 
 export type ActorContext = {
@@ -123,13 +126,13 @@ export type TicketUpdatePatch = {
   deviceName?: string | null;
   symptom?: string | null;
   alamat?: string | null;
-  descriptionActualSolution?: string | null;
-  pendingReason?: string | null;
+  descriptionSolutionDompis?: string | null;
+  pendingDompis?: string | null;
 };
 
 export type TicketUpdateWorkflow = {
   status?: string;
-  pendingReason?: string | null;
+  pendingDompis?: string | null;
   note?: string | null;
 };
 

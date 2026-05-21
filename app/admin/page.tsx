@@ -7,6 +7,8 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import { useDailyTickets } from '@/app/hooks/useDailyTickets';
+import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
 import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
@@ -16,8 +18,15 @@ import {
   normalizeJenis,
   isB2CJenis,
   isB2BJenis,
-} from '@/app/libs/tickets/jenis';
-import { isTicketClosed } from '@/app/libs/ticket-utils';
+} from '@/app/config/jenis-tiket';
+import { getB2BGroupKey } from '@/app/config/b2b-groups';
+import {
+  countStatusBuckets,
+  isTicketClosed,
+  isTicketInWork,
+  isTicketOpenLike,
+  normalizeStatusUpdate,
+} from '@/app/libs/ticket-utils';
 
 import StatCard from './components/dashboard/StatCard';
 import { DiamondAlertBanner } from './components/dashboard/AlertBanner';
@@ -28,6 +37,10 @@ import B2CSection from './components/dashboard/B2CSection';
 import ServiceAreaTable from './components/dashboard/ServiceAreaTable';
 import TicketTable from './components/dashboard/TicketTable';
 import TicketTableB2B from './components/dashboard/TicketTableB2B';
+import TicketTableTabs from './components/dashboard/TicketTableTabs';
+import OperationalFocusQueue, {
+  buildOperationalFocusItems,
+} from './components/dashboard/OperationalFocusQueue';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
 import { RefreshCw } from 'lucide-react';
@@ -68,7 +81,69 @@ interface B2BData {
   datin: JenisCounts;
   reseller: JenisCounts;
   wifiId: JenisCounts;
+  unknown: JenisCounts;
+  digitalSpbu: JenisCounts;
+  permintaan: JenisCounts;
+  unspecB2b: JenisCounts;
+  nonNumbering: JenisCounts;
+  astinet: JenisCounts;
+  tsel: JenisCounts;
+  vpnIp: JenisCounts;
+  metroE: JenisCounts;
+  dwdm: JenisCounts;
   summary: JenisCounts;
+}
+
+function hasValidTicketIdGamas(ticket: Ticket): string | null {
+  const candidates = [
+    ticket.ticketIdGamas,
+    (ticket as any).ticketIdGamas,
+    (ticket as any).ticket_id_gamas,
+    (ticket as any).TICKET_ID_GAMAS,
+  ];
+  const raw = candidates.find((v) => v !== null && v !== undefined);
+  const normalized = String(raw ?? '').trim();
+  if (
+    !normalized ||
+    ['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+      normalized.toLowerCase(),
+    )
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function mapTicketForTable(t: Ticket) {
+  return {
+    idTicket: t.idTicket,
+    ticket: t.ticket,
+    serviceNo: t.serviceNo,
+    ticketIdGamas: hasValidTicketIdGamas(t),
+    contactName: t.contactName,
+    contactPhone: t.contactPhone,
+    alamat: t.alamat,
+    bookingDate: t.bookingDate,
+    ctype: t.ctype,
+    customerType: t.customerType,
+    summary: t.summary,
+    jenisTiket: t.jenisTiket,
+    jenisTiket1: t.jenisTiket1,
+    workzone: t.workzone,
+    technicianName: t.technicianName,
+    teknisiUserId: t.teknisiUserId,
+    status_update: normalizeStatusUpdate(t.status_update),
+    closedAt: t.closedAt,
+    reportedDate: t.reportedDate,
+    status: t.status,
+    maxTtrReguler: t.maxTtrReguler,
+    maxTtrGold: t.maxTtrGold,
+    maxTtrPlatinum: t.maxTtrPlatinum,
+    maxTtrDiamond: t.maxTtrDiamond,
+    flaggingManja: t.flaggingManja,
+    guaranteeStatus: t.guaranteeStatus,
+    pendingDompis: t.pendingDompis,
+  };
 }
 
 export default function TicketPage() {
@@ -137,7 +212,7 @@ export default function TicketPage() {
     triggerSync,
   } = useSyncStatus();
 
-  const { tickets: expiredTickets, refresh: refreshExpired } =
+  const { tickets: expiredTickets, isRefreshing: isExpiredRefreshing, refresh: refreshExpired, refreshSilent: refreshExpiredSilent } =
     useExpiredTickets(workzoneFilter || undefined, {
       dept: deptFilter,
       ticketType: 'all',
@@ -151,7 +226,7 @@ export default function TicketPage() {
     });
 
   // Use Daily Tickets for the operational working board
-  const { tickets, loading, pagination, refresh } = useDailyTickets(
+  const { tickets, loading, isRefreshing, pagination, refresh, refreshSilent } = useDailyTickets(
     searchQuery,
     1,
     workzoneFilter || undefined,
@@ -159,7 +234,43 @@ export default function TicketPage() {
     undefined, // hasilVisitFilter - now handled per section
     deptFilter !== 'all' ? deptFilter : undefined,
     undefined, // ticketTypeFilter - now handled per section
+    { fetchAll: true },
   );
+
+  const b2bPageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'b2b',
+    ticketType: b2bTicketTypeFilter,
+    statusUpdate: b2bHasilVisitFilter,
+    flagging: b2bFlaggingFilter,
+    page: b2bPage,
+    limit: 10,
+  });
+
+  const b2cPageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'b2c',
+    ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
+    ticketType: b2cTicketTypeFilter,
+    statusUpdate: b2cHasilVisitFilter,
+    flagging: b2cFlaggingFilter,
+    page: b2cPage,
+    limit: 10,
+  });
+
+  const refreshB2bPageSilent = b2bPageData.refreshSilent;
+  const refreshB2cPageSilent = b2cPageData.refreshSilent;
+
+  const {
+    data: operationsSummary,
+    refetch: refetchOperationsSummary,
+  } = useOperationsSummary({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: deptFilter,
+  });
 
   // SSE-based real-time updates (primary mechanism)
   const [syncStatus, setSyncStatus] = useState<{
@@ -173,9 +284,13 @@ export default function TicketPage() {
         pendingRefreshRef.current = true;
         return;
       }
-      refresh();
-      refreshExpired();
-    }, [showNewTicketModal, assignModalTicket, refresh, refreshExpired]),
+      refreshSilent();
+      refreshExpiredSilent();
+      refreshDiamond();
+      refetchOperationsSummary();
+      refreshB2bPageSilent();
+      refreshB2cPageSilent();
+    }, [showNewTicketModal, assignModalTicket, refreshSilent, refreshExpiredSilent, refreshDiamond, refetchOperationsSummary, refreshB2bPageSilent, refreshB2cPageSilent]),
     onSyncStart: useCallback(() => {
       setSyncStatus({ inProgress: true });
     }, []),
@@ -208,8 +323,11 @@ export default function TicketPage() {
       if (!document.hidden) {
         const idleMs = Date.now() - lastActiveRef.current;
         if (idleMs > STALE_THRESHOLD_MS) {
-          refresh();
-          refreshExpired();
+          refreshSilent();
+          refreshExpiredSilent();
+          refetchOperationsSummary();
+          refreshB2bPageSilent();
+          refreshB2cPageSilent();
         }
       } else {
         lastActiveRef.current = Date.now();
@@ -217,8 +335,11 @@ export default function TicketPage() {
     };
 
     const handleOnline = () => {
-      refresh();
-      refreshExpired();
+      refreshSilent();
+      refreshExpiredSilent();
+      refetchOperationsSummary();
+      refreshB2bPageSilent();
+      refreshB2cPageSilent();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -228,16 +349,24 @@ export default function TicketPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
-  }, [refresh, refreshExpired]);
+  }, [refreshSilent, refreshExpiredSilent, refetchOperationsSummary]);
 
   // ═══════════════════════════════════════════════════════════════════════
   // SEARCH TOAST + AUTO-SCROLL — uses b2cTicketTableData / b2bTicketTableData
   // ═══════════════════════════════════════════════════════════════════════
   // Search toast + auto-scroll (depends on b2cTicketTableData and b2bTicketTableData)
 
-  // Filter B2C tickets from daily dataset - USE SAME LOGIC AS TABLE
+  // Filter B2C/B2B tickets from daily dataset - USE jenis_tiket_2 (same as backend)
+  const isB2CCustomerType = (t: Ticket) => {
+    return isB2CJenis(t.jenisTiket);
+  };
+
+  const isB2BCustomerType = (t: Ticket) => {
+    return isB2BJenis(t.jenisTiket);
+  };
+
   const b2cDailyTickets = useMemo(
-    () => tickets.filter((t) => isB2CJenis(t.jenisTiket)),
+    () => tickets.filter(isB2CCustomerType),
     [tickets],
   );
 
@@ -270,10 +399,8 @@ export default function TicketPage() {
     };
 
     for (const t of b2cDailyTickets) {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      const isClose = s === 'close';
-      const isAssigned =
-        s === 'assigned' || s === 'on_progress' || s === 'pending';
+      const isClose = isTicketClosed(t.status_update);
+      const isAssigned = isTicketInWork(t.status_update);
       const jenisType = normalizeJenis(t.jenisTiket);
 
       // Status counts
@@ -387,10 +514,8 @@ export default function TicketPage() {
       const data = typeMap.get(type)!;
       data.total++;
 
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      const isClose = s === 'close';
-      const isAssigned =
-        s === 'assigned' || s === 'on_progress' || s === 'pending';
+      const isClose = isTicketClosed(t.status_update);
+      const isAssigned = isTicketInWork(t.status_update);
       const jenisType = normalizeJenis(t.jenisTiket);
 
       if (isClose) data.close++;
@@ -458,7 +583,7 @@ export default function TicketPage() {
 
   const normalizeVisitStatus = useCallback((t: Ticket) => {
     const raw = (
-      (t.STATUS_UPDATE ?? t.hasilVisit ?? t.status) ||
+      (t.status_update ?? t.hasilVisit ?? t.status) ||
       ''
     ).toString();
     return raw.trim().toUpperCase().replace(/\s+/g, '_');
@@ -473,29 +598,24 @@ export default function TicketPage() {
   // This ensures StatCards are ALWAYS in sync with the table
   // ═══════════════════════════════════════════════════════════════════════
 
-  const stats = useMemo(() => {
-    const b2cTickets = tickets.filter((t) => isB2CJenis(t.jenisTiket));
-    const b2bTickets = tickets.filter((t) => isB2BJenis(t.jenisTiket));
+  const clientStats = useMemo(() => {
+    const b2cTickets = tickets.filter(isB2CCustomerType);
+    const b2bTickets = tickets.filter(isB2BCustomerType);
 
-    const total = tickets.length;
-    const unassigned = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return !s || s === 'open';
-    }).length;
-    const assigned = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return s === 'assigned' || s === 'on_progress' || s === 'pending';
-    }).length;
-    const close = tickets.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return s === 'close';
-    }).length;
+    const statusCounts = countStatusBuckets(tickets, (t) => t.status_update);
+    const total = statusCounts.total;
+    const unassigned = statusCounts.open;
+    const assigned =
+      statusCounts.assigned + statusCounts.onProgress + statusCounts.pending;
+    const close = statusCounts.close;
 
     const b2c = b2cTickets.length;
     const b2b = b2bTickets.length;
 
     return { total, unassigned, assigned, close, b2c, b2b };
   }, [tickets]);
+
+  const stats = operationsSummary?.stats ?? clientStats;
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -546,7 +666,11 @@ export default function TicketPage() {
   );
 
   const handleAssignClick = (ticketId: number | string) => {
-    const ticket = tickets.find((t) => t.idTicket === ticketId);
+    const ticket = [
+      ...b2bPageData.tickets,
+      ...b2cPageData.tickets,
+      ...tickets,
+    ].find((t) => String(t.idTicket) === String(ticketId));
     const techId = ticket?.teknisiUserId;
     setAssignModalTicket({
       idTicket: Number(ticketId),
@@ -601,16 +725,13 @@ export default function TicketPage() {
   const getCounts = (arr: Ticket[]) => ({
     total: arr.length,
     open: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return !s || s === 'open';
+      return isTicketOpenLike(t.status_update);
     }).length,
     assigned: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return s === 'assigned' || s === 'on_progress' || s === 'pending';
+      return isTicketInWork(t.status_update);
     }).length,
     close: arr.filter((t) => {
-      const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-      return s === 'close';
+      return isTicketClosed(t.status_update);
     }).length,
     regulerCount: arr.filter((t) => {
       const jt = normalizeTicketType(t);
@@ -657,6 +778,16 @@ export default function TicketPage() {
   const datin = countJenis(filteredTickets, 'datin');
   const reseller = countJenis(filteredTickets, 'reseller');
   const wifiId = countJenis(filteredTickets, 'wifi-id');
+  const unknown = countJenis(filteredTickets, 'unknown');
+  const digitalSpbu = countJenis(filteredTickets, 'digital-spbu');
+  const permintaan = countJenis(filteredTickets, 'permintaan');
+  const unspecB2b = countJenis(filteredTickets, 'unspec-b2b');
+  const nonNumbering = countJenis(filteredTickets, 'non-numbering');
+  const astinet = countJenis(filteredTickets, 'astinet');
+  const tsel = countJenis(filteredTickets, 'tsel');
+  const vpnIp = countJenis(filteredTickets, 'vpn-ip');
+  const metroE = countJenis(filteredTickets, 'metro-e');
+  const dwdm = countJenis(filteredTickets, 'dwdm');
 
   const b2bStats: B2BData = {
     sqmCcan,
@@ -664,70 +795,133 @@ export default function TicketPage() {
     datin,
     reseller,
     wifiId,
+    unknown,
+    digitalSpbu,
+    permintaan,
+    unspecB2b,
+    nonNumbering,
+    astinet,
+    tsel,
+    vpnIp,
+    metroE,
+    dwdm,
     summary: {
       total:
         sqmCcan.total +
         indibiz.total +
         datin.total +
         reseller.total +
-        wifiId.total,
+        wifiId.total +
+        unknown.total +
+        digitalSpbu.total +
+        permintaan.total +
+        unspecB2b.total +
+        nonNumbering.total +
+        astinet.total +
+        tsel.total +
+        vpnIp.total +
+        metroE.total +
+        dwdm.total,
       open:
-        sqmCcan.open + indibiz.open + datin.open + reseller.open + wifiId.open,
+        sqmCcan.open + indibiz.open + datin.open + reseller.open + wifiId.open +
+        unknown.open + digitalSpbu.open + permintaan.open + unspecB2b.open +
+        nonNumbering.open + astinet.open + tsel.open + vpnIp.open + metroE.open +
+        dwdm.open,
       assigned:
-        sqmCcan.assigned +
-        indibiz.assigned +
-        datin.assigned +
-        reseller.assigned +
-        wifiId.assigned,
+        sqmCcan.assigned + indibiz.assigned + datin.assigned + reseller.assigned +
+        wifiId.assigned + unknown.assigned + digitalSpbu.assigned + permintaan.assigned +
+        unspecB2b.assigned + nonNumbering.assigned + astinet.assigned + tsel.assigned +
+        vpnIp.assigned + metroE.assigned + dwdm.assigned,
       close:
-        sqmCcan.close +
-        indibiz.close +
-        datin.close +
-        reseller.close +
-        wifiId.close,
+        sqmCcan.close + indibiz.close + datin.close + reseller.close + wifiId.close +
+        unknown.close + digitalSpbu.close + permintaan.close + unspecB2b.close +
+        nonNumbering.close + astinet.close + tsel.close + vpnIp.close + metroE.close +
+        dwdm.close,
       ffgCount:
-        sqmCcan.ffgCount +
-        indibiz.ffgCount +
-        datin.ffgCount +
-        reseller.ffgCount +
-        wifiId.ffgCount,
+        sqmCcan.ffgCount + indibiz.ffgCount + datin.ffgCount + reseller.ffgCount +
+        wifiId.ffgCount + unknown.ffgCount + digitalSpbu.ffgCount + permintaan.ffgCount +
+        unspecB2b.ffgCount + nonNumbering.ffgCount + astinet.ffgCount + tsel.ffgCount +
+        vpnIp.ffgCount + metroE.ffgCount + dwdm.ffgCount,
       gamasCount:
-        sqmCcan.gamasCount +
-        indibiz.gamasCount +
-        datin.gamasCount +
-        reseller.gamasCount +
-        wifiId.gamasCount,
+        sqmCcan.gamasCount + indibiz.gamasCount + datin.gamasCount + reseller.gamasCount +
+        wifiId.gamasCount + unknown.gamasCount + digitalSpbu.gamasCount + permintaan.gamasCount +
+        unspecB2b.gamasCount + nonNumbering.gamasCount + astinet.gamasCount + tsel.gamasCount +
+        vpnIp.gamasCount + metroE.gamasCount + dwdm.gamasCount,
       p1Count:
-        sqmCcan.p1Count +
-        indibiz.p1Count +
-        datin.p1Count +
-        reseller.p1Count +
-        wifiId.p1Count,
+        sqmCcan.p1Count + indibiz.p1Count + datin.p1Count + reseller.p1Count +
+        wifiId.p1Count + unknown.p1Count + digitalSpbu.p1Count + permintaan.p1Count +
+        unspecB2b.p1Count + nonNumbering.p1Count + astinet.p1Count + tsel.p1Count +
+        vpnIp.p1Count + metroE.p1Count + dwdm.p1Count,
       pPlusCount:
-        sqmCcan.pPlusCount +
-        indibiz.pPlusCount +
-        datin.pPlusCount +
-        reseller.pPlusCount +
-        wifiId.pPlusCount,
+        sqmCcan.pPlusCount + indibiz.pPlusCount + datin.pPlusCount + reseller.pPlusCount +
+        wifiId.pPlusCount + unknown.pPlusCount + digitalSpbu.pPlusCount + permintaan.pPlusCount +
+        unspecB2b.pPlusCount + nonNumbering.pPlusCount + astinet.pPlusCount + tsel.pPlusCount +
+        vpnIp.pPlusCount + metroE.pPlusCount + dwdm.pPlusCount,
       regulerCount:
-        sqmCcan.regulerCount +
-        indibiz.regulerCount +
-        datin.regulerCount +
-        reseller.regulerCount +
-        wifiId.regulerCount,
+        sqmCcan.regulerCount + indibiz.regulerCount + datin.regulerCount + reseller.regulerCount +
+        wifiId.regulerCount + unknown.regulerCount + digitalSpbu.regulerCount + permintaan.regulerCount +
+        unspecB2b.regulerCount + nonNumbering.regulerCount + astinet.regulerCount + tsel.regulerCount +
+        vpnIp.regulerCount + metroE.regulerCount + dwdm.regulerCount,
       sqmCount:
-        sqmCcan.sqmCount +
-        indibiz.sqmCount +
-        datin.sqmCount +
-        reseller.sqmCount +
-        wifiId.sqmCount,
+        sqmCcan.sqmCount + indibiz.sqmCount + datin.sqmCount + reseller.sqmCount +
+        wifiId.sqmCount + unknown.sqmCount + digitalSpbu.sqmCount + permintaan.sqmCount +
+        unspecB2b.sqmCount + nonNumbering.sqmCount + astinet.sqmCount + tsel.sqmCount +
+        vpnIp.sqmCount + metroE.sqmCount + dwdm.sqmCount,
     },
   };
 
   // ═══════════════════════════════════════════════════════════════════════
+  // B2B GROUPED DATA — grouped by jenis_tiket_1 (parent)
+  // ═══════════════════════════════════════════════════════════════════════
+  const b2bGroupedData = useMemo(() => {
+    const b2bTickets = filteredTickets.filter(isB2BCustomerType);
+    const groupMap = new Map<string, Ticket[]>();
+
+    for (const ticket of b2bTickets) {
+      const groupKey = getB2BGroupKey(ticket.jenisTiket1);
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, []);
+      }
+      groupMap.get(groupKey)!.push(ticket);
+    }
+
+    return Array.from(groupMap.entries()).map(([groupKey, tickets]) => ({
+      groupKey,
+      tickets,
+    }));
+  }, [filteredTickets]);
+
+  const clientB2bSummary = useMemo(() => {
+    const arr = filteredTickets.filter(isB2BCustomerType);
+    return {
+      total: arr.length,
+      open: arr.filter((t) => isTicketOpenLike(t.status_update)).length,
+      assigned: arr.filter((t) => isTicketInWork(t.status_update)).length,
+      close: arr.filter((t) => isTicketClosed(t.status_update)).length,
+      regulerCount: 0,
+      sqmCount: 0,
+      ffgCount: arr.filter((t) => t.flaggingManja === 'FFG').length,
+      gamasCount: arr.filter((t) => t.ticketIdGamas).length,
+      p1Count: arr.filter((t) => t.flaggingManja === 'P1').length,
+      pPlusCount: arr.filter((t) => t.flaggingManja === 'P+').length,
+    };
+  }, [filteredTickets]);
+
+  const b2bSummary = operationsSummary?.b2bSummary ?? clientB2bSummary;
+
+  // Section summaries: use backend pagination total to match table count
+  const b2bSectionSummary = useMemo(() => {
+    const breakdown = clientB2bSummary;
+    return {
+      ...breakdown,
+      total: b2bPageData.pagination.total,
+    };
+  }, [clientB2bSummary, b2bPageData.pagination.total]);
+
+  // ═══════════════════════════════════════════════════════════════════════
   // B2C STATS — NOW USING DAILY OPERATIONAL SCOPE (aligned with table)
   // ═══════════════════════════════════════════════════════════════════════
-  const b2cStats = useMemo(() => {
+  const clientB2cStats = useMemo(() => {
     const getTypeData = (type: string) => {
       const data = b2cDailyByType.get(type);
       return (
@@ -761,8 +955,20 @@ export default function TicketPage() {
     };
   }, [b2cDailySummary, b2cDailyByType]);
 
+  const b2cStats = operationsSummary?.b2cStats ?? clientB2cStats;
+
+  // Section summaries: use b2cStats summary (backend when available, client fallback)
+  // with total from backend pagination to match table count
+  const b2cSectionSummary = useMemo(() => {
+    const breakdown = b2cStats.summary;
+    return {
+      ...breakdown,
+      total: b2cPageData.pagination.total,
+    };
+  }, [b2cStats.summary, b2cPageData.pagination.total]);
+
   const b2cTypeCounts = useMemo(() => {
-    const b2cTickets = tickets.filter((t) => isB2CJenis(t.jenisTiket));
+    const b2cTickets = tickets.filter(isB2CCustomerType);
     const typeMap = new Map<string, number>();
 
     for (const t of b2cTickets) {
@@ -785,7 +991,7 @@ export default function TicketPage() {
   // SERVICE AREAS — computed from daily tickets per workzone
   // ═══════════════════════════════════════════════════════════════════════
 
-  const serviceAreas = useMemo(() => {
+  const clientServiceAreas = useMemo(() => {
     const workzoneMap = new Map<string, typeof tickets>();
 
     for (const t of tickets) {
@@ -799,19 +1005,16 @@ export default function TicketPage() {
       name,
       total: arr.length,
       unassigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return !s || s === 'open';
+        return isTicketOpenLike(t.status_update);
       }).length,
       open: arr.filter(
-        (t) => (t.STATUS_UPDATE ?? '').trim().toLowerCase() === 'open',
+        (t) => isTicketOpenLike(t.status_update),
       ).length,
       assigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return s === 'assigned' || s === 'on_progress' || s === 'pending';
+        return isTicketInWork(t.status_update);
       }).length,
       close: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return s === 'close';
+        return isTicketClosed(t.status_update);
       }).length,
     }));
 
@@ -819,57 +1022,143 @@ export default function TicketPage() {
     return rows.slice(0, 5);
   }, [tickets]);
 
-  const ticketTableData = filteredTickets.map((t) => ({
-    idTicket: t.idTicket,
-    ticket: t.ticket,
-    serviceNo: t.serviceNo,
+  const serviceAreas = operationsSummary?.serviceAreas ?? clientServiceAreas;
 
-    ticketIdGamas: (() => {
-      const candidates = [
-        t.ticketIdGamas,
-        (t as any).ticketIdGamas,
-        (t as any).ticket_id_gamas,
-        (t as any).TICKET_ID_GAMAS,
-      ];
-      const raw = candidates.find((v) => v !== null && v !== undefined);
-      const normalized = String(raw ?? '').trim();
-      if (
-        !normalized ||
-        ['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
-          normalized.toLowerCase(),
+  const isValidationTicket = (t: Ticket) => {
+    const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
+    const status = (t.status ?? '').trim().toLowerCase();
+    return statusUpdate === 'close' && status !== 'closed';
+  };
+
+  // Reusable client-side filter function (matches the filter logic used for main table)
+  const applyClientFilters = <T extends {
+    ctype?: string | null;
+    customerType?: string | null;
+    jenisTiket?: string | null;
+    status_update?: string | null;
+    guaranteeStatus?: string | null;
+    ticketIdGamas?: string | null;
+    flaggingManja?: string | null;
+  }>(
+    arr: T[],
+    ticketTypeFilter: string[],
+    hasilVisitFilter: string[],
+    flaggingFilter: string[],
+  ): T[] => {
+    let result = arr;
+
+    if (ticketTypeFilter.length > 0) {
+      result = result.filter((t) => {
+        const normalized = normalizeJenis(t.jenisTiket);
+        return ticketTypeFilter.includes(normalized);
+      });
+    }
+
+    if (hasilVisitFilter.length > 0) {
+      result = result.filter((t) => {
+        if (hasilVisitFilter.includes('close') && isTicketClosed(t.status_update)) {
+          return true;
+        }
+        const status = normalizeStatusUpdate(t.status_update);
+        return hasilVisitFilter.some((f) => {
+          if (f === 'close') return false;
+          return status === f;
+        });
+      });
+    }
+
+    if (flaggingFilter.length > 0) {
+      result = result.filter((t) => {
+        return flaggingFilter.some((f) => {
+          if (f === 'FFG') {
+            return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+          }
+          if (f === 'GAMAS') {
+            const candidates = [
+              t.ticketIdGamas,
+              (t as any).ticket_id_gamas,
+              (t as any).TICKET_ID_GAMAS,
+            ];
+            const raw = candidates.find((v) => v !== null && v !== undefined);
+            const normalized = String(raw ?? '').trim();
+            return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+          }
+          return t.flaggingManja === f;
+        });
+      });
+    }
+
+    return result;
+  };
+
+  // Full dataset from useDailyTickets (includes validation tickets)
+  const b2cAllTicketTableData = applyClientFilters(
+    filteredTickets.filter(isB2CCustomerType).map(mapTicketForTable),
+    b2cTicketTypeFilter,
+    b2cHasilVisitFilter,
+    b2cFlaggingFilter,
+  );
+  const b2bAllTicketTableData = applyClientFilters(
+    filteredTickets.filter(isB2BCustomerType).map(mapTicketForTable),
+    b2bTicketTypeFilter,
+    b2bHasilVisitFilter,
+    b2bFlaggingFilter,
+  );
+
+  // Main table data (excludes validation tickets)
+  const ticketTableData = filteredTickets
+    .filter(t => !isValidationTicket(t))
+    .map(mapTicketForTable);
+  
+  const b2bBackendTicketTableData = b2bAllTicketTableData
+    .filter(t => {
+      const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
+      const status = (t.status ?? '').trim().toLowerCase();
+      return !(statusUpdate === 'close' && status !== 'closed');
+    });
+  const b2cBackendTicketTableData = b2cAllTicketTableData
+    .filter(t => {
+      const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
+      const status = (t.status ?? '').trim().toLowerCase();
+      return !(statusUpdate === 'close' && status !== 'closed');
+    });
+
+  const clientOperationalFocusItems = useMemo(() => {
+    const hasValidGamas = (t: typeof ticketTableData[number]) => {
+      const value = String(t.ticketIdGamas ?? '').trim();
+      return (
+        value.length > 0 &&
+        !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+          value.toLowerCase(),
         )
-      ) {
-        return null;
-      }
-      return normalized;
-    })(),
+      );
+    };
 
-    contactName: t.contactName,
-    contactPhone: t.contactPhone,
-    alamat: t.alamat,
-    bookingDate: t.bookingDate,
-    ctype: t.ctype,
-    customerType: t.customerType,
-    summary: t.summary,
-    jenisTiket: t.jenisTiket,
-    workzone: t.workzone,
-    technicianName: t.technicianName,
-    teknisiUserId: t.teknisiUserId,
-    STATUS_UPDATE: t.STATUS_UPDATE,
-    closedAt: t.closedAt,
-    reportedDate: t.reportedDate,
-    status: t.status,
-    maxTtrReguler: t.maxTtrReguler,
-    maxTtrGold: t.maxTtrGold,
-    maxTtrPlatinum: t.maxTtrPlatinum,
-    maxTtrDiamond: t.maxTtrDiamond,
-    flaggingManja: t.flaggingManja,
-    guaranteeStatus: t.guaranteeStatus,
-  }));
+    return buildOperationalFocusItems({
+      diamond: ticketTableData.filter(
+        (t) => String(t.customerType ?? '').toUpperCase() === 'HVC_DIAMOND',
+      ).length,
+      p1: ticketTableData.filter((t) => t.flaggingManja === 'P1').length,
+      gamas: ticketTableData.filter((t) => hasValidGamas(t)).length,
+      ffg: ticketTableData.filter(
+        (t) =>
+          String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee',
+      ).length,
+      carryOver: ticketTableData.filter(
+        (t) => String(t.pendingDompis ?? '').trim().length > 0,
+      ).length,
+    });
+  }, [ticketTableData]);
+
+  const operationalFocusItems = useMemo(() => {
+    if (!operationsSummary?.focusCounts) return clientOperationalFocusItems;
+
+    return buildOperationalFocusItems(operationsSummary.focusCounts);
+  }, [clientOperationalFocusItems, operationsSummary?.focusCounts]);
 
   // ← ADDED: Split tickets into B2C and B2B arrays with local filtering
   const b2cTicketTableData = ticketTableData
-    .filter((t) => isB2CJenis(t.jenisTiket))
+    .filter(isB2CCustomerType)
     // Client-side ctype filter (instant, no re-fetch)
     .filter((t) => {
       if (ctypeFilter === 'all') return true;
@@ -885,11 +1174,11 @@ export default function TicketPage() {
       if (b2cHasilVisitFilter.length === 0) return true;
       if (
         b2cHasilVisitFilter.includes('close') &&
-        isTicketClosed(t.STATUS_UPDATE)
+        isTicketClosed(t.status_update)
       ) {
         return true;
       }
-      const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      const status = normalizeStatusUpdate(t.status_update);
       return b2cHasilVisitFilter.some((f) => {
         if (f === 'close') return false;
         return status === f;
@@ -925,7 +1214,7 @@ export default function TicketPage() {
     });
 
   const b2bTicketTableData = ticketTableData
-    .filter((t) => isB2BJenis(t.jenisTiket))
+    .filter(isB2BCustomerType)
     .filter((t) => {
       if (b2bTicketTypeFilter.length === 0) return true;
       const normalized = normalizeJenis(t.jenisTiket);
@@ -935,11 +1224,11 @@ export default function TicketPage() {
       if (b2bHasilVisitFilter.length === 0) return true;
       if (
         b2bHasilVisitFilter.includes('close') &&
-        isTicketClosed(t.STATUS_UPDATE)
+        isTicketClosed(t.status_update)
       ) {
         return true;
       }
-      const status = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
+      const status = normalizeStatusUpdate(t.status_update);
       return b2bHasilVisitFilter.some((f) => {
         if (f === 'close') return false;
         return status === f;
@@ -979,22 +1268,33 @@ export default function TicketPage() {
     return {
       total: arr.length,
       open: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return !s || s === 'open';
+        return isTicketOpenLike(t.status_update);
       }).length,
       assigned: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return s === 'assigned' || s === 'on_progress' || s === 'pending';
+        return isTicketInWork(t.status_update);
       }).length,
       close: arr.filter((t) => {
-        const s = (t.STATUS_UPDATE ?? '').trim().toLowerCase();
-        return s === 'close';
+        return isTicketClosed(t.status_update);
       }).length,
     };
   }
 
-  const b2cTableSummary = deriveSummary(b2cTicketTableData);
-  const b2bTableSummary = deriveSummary(b2bTicketTableData);
+  // Table summaries: breakdown from full dataset, total from backend pagination
+  const b2cTableSummary = useMemo(() => {
+    const breakdown = deriveSummary(b2cTicketTableData);
+    return {
+      ...breakdown,
+      total: b2cPageData.pagination.total,
+    };
+  }, [b2cTicketTableData, b2cPageData.pagination.total]);
+
+  const b2bTableSummary = useMemo(() => {
+    const breakdown = deriveSummary(b2bTicketTableData);
+    return {
+      ...breakdown,
+      total: b2bPageData.pagination.total,
+    };
+  }, [b2bTicketTableData, b2bPageData.pagination.total]);
 
   // Search toast + auto-scroll
   useEffect(() => {
@@ -1066,7 +1366,7 @@ export default function TicketPage() {
                           syncStatus.inProgress && 'animate-spin text-blue-500',
                         )}
                       />
-                      <span>{lastSyncLabel}</span>
+                      {/* <span>{lastSyncLabel}</span> */}
                       {nextSyncLabel && (
                         <span className='opacity-90'>· {nextSyncLabel}</span>
                       )}
@@ -1108,7 +1408,11 @@ export default function TicketPage() {
                     customerType: t.customerType,
                     reportedAt: t.reportedAt,
                     status: t.status || 'OPEN',
-                    overdueHours: 0,
+                    overdueHours: Math.max(
+                      0,
+                      (Date.now() - new Date(t.reportedAt).getTime()) /
+                        3_600_000,
+                    ),
                     workzone: t.workzone,
                   }))}
                   onAssign={(ticketId, idTicket) => {
@@ -1157,6 +1461,8 @@ export default function TicketPage() {
                   />
                   <StatCard label='Close' value={stats.close} variant='close' />
                 </div>
+
+                <OperationalFocusQueue items={operationalFocusItems} />
               </div>
             </div>
           </div>
@@ -1179,7 +1485,11 @@ export default function TicketPage() {
                     ref={b2bSectionRef}
                     className='flex flex-col gap-4 space-y-3 md:space-y-4'
                   >
-                    <B2BSection data={b2bStats} />
+                    <B2BSection
+                      groupedData={b2bGroupedData}
+                      groupSummaries={operationsSummary?.b2bGroups}
+                      summary={b2bSectionSummary}
+                    />
                     <FilterBarB2B
                       ticketType={b2bTicketTypeFilter}
                       statusUpdate={b2bHasilVisitFilter}
@@ -1188,30 +1498,39 @@ export default function TicketPage() {
                       onStatusChange={handleB2bHasilVisitChange}
                       onFlaggingChange={handleB2bFlaggingChange}
                     />
-                    <TicketTableB2B
-                      tickets={b2bTicketTableData}
-                      tableSummary={b2bTableSummary}
-                      flaggingFilter={b2bFlaggingFilter}
-                      loading={loading}
+                    <TicketTableTabs
+                      section='b2b'
+                      accentColor='#3b82f6'
+                      mainTable={
+                        <TicketTableB2B
+                          tickets={b2bPageData.tickets}
+                          tableSummary={b2bTableSummary}
+                          flaggingFilter={b2bFlaggingFilter}
+                          loading={b2bPageData.loading}
+                          isRefreshing={b2bPageData.isRefreshing}
+                          onAssign={handleAssignClick}
+                          downloadFilters={{
+                            dept: 'b2b',
+                            ticketType: b2bTicketTypeFilter,
+                            statusUpdate: b2bHasilVisitFilter,
+                            flagging: b2bFlaggingFilter,
+                          }}
+                          pagination={{
+                            currentPage: b2bPageData.pagination.currentPage,
+                            totalPages: b2bPageData.pagination.totalPages,
+                            total: b2bPageData.pagination.total,
+                            limit: b2bPageData.pagination.limit,
+                            onPageChange: (page) => {
+                              setB2bPage(page);
+                            },
+                          }}
+                        />
+                      }
+                      tickets={b2bPageData.tickets}
+                      totalCount={b2bPageData.pagination.total}
+                      loading={b2bPageData.loading}
+                      isRefreshing={b2bPageData.isRefreshing}
                       onAssign={handleAssignClick}
-                      downloadFilters={{
-                        dept: 'b2b',
-                        ticketType: b2bTicketTypeFilter,
-                        statusUpdate: b2bHasilVisitFilter,
-                        flagging: b2bFlaggingFilter,
-                      }}
-                      pagination={{
-                        currentPage: b2bPage,
-                        totalPages: Math.max(
-                          1,
-                          Math.ceil(b2bTicketTableData.length / 10),
-                        ),
-                        total: b2bTicketTableData.length,
-                        limit: 10,
-                        onPageChange: (page) => {
-                          setB2bPage(page);
-                        },
-                      }}
                     />
                   </div>
                 ),
@@ -1226,7 +1545,7 @@ export default function TicketPage() {
                     className='flex flex-col gap-4 space-y-3 md:space-y-4'
                   >
                     <B2CSection
-                      data={b2cStats}
+                      data={{ ...b2cStats, summary: b2cSectionSummary }}
                       activeType={ctypeFilter}
                       onSelectType={handleB2cCustomerTypeSelect}
                     />
@@ -1240,30 +1559,39 @@ export default function TicketPage() {
                       onFlaggingChange={handleB2cFlaggingChange}
                     />
 
-                    <TicketTable
-                      tickets={b2cTicketTableData}
-                      tableSummary={b2cTableSummary}
-                      flaggingFilter={b2cFlaggingFilter}
-                      loading={loading}
+                    <TicketTableTabs
+                      section='b2c'
+                      accentColor='#10b981'
+                      mainTable={
+                        <TicketTable
+                          tickets={b2cPageData.tickets}
+                          tableSummary={b2cTableSummary}
+                          flaggingFilter={b2cFlaggingFilter}
+                          loading={b2cPageData.loading}
+                          isRefreshing={b2cPageData.isRefreshing}
+                          onAssign={handleAssignClick}
+                          downloadFilters={{
+                            dept: 'b2c',
+                            ticketType: b2cTicketTypeFilter,
+                            statusUpdate: b2cHasilVisitFilter,
+                            flagging: b2cFlaggingFilter,
+                          }}
+                          pagination={{
+                            currentPage: b2cPageData.pagination.currentPage,
+                            totalPages: b2cPageData.pagination.totalPages,
+                            total: b2cPageData.pagination.total,
+                            limit: b2cPageData.pagination.limit,
+                            onPageChange: (page) => {
+                              setB2cPage(page);
+                            },
+                          }}
+                        />
+                      }
+                      tickets={b2cPageData.tickets}
+                      totalCount={b2cPageData.pagination.total}
+                      loading={b2cPageData.loading}
+                      isRefreshing={b2cPageData.isRefreshing}
                       onAssign={handleAssignClick}
-                      downloadFilters={{
-                        dept: 'b2c',
-                        ticketType: b2cTicketTypeFilter,
-                        statusUpdate: b2cHasilVisitFilter,
-                        flagging: b2cFlaggingFilter,
-                      }}
-                      pagination={{
-                        currentPage: b2cPage,
-                        totalPages: Math.max(
-                          1,
-                          Math.ceil(b2cTicketTableData.length / 10),
-                        ),
-                        total: b2cTicketTableData.length,
-                        limit: 10,
-                        onPageChange: (page) => {
-                          setB2cPage(page);
-                        },
-                      }}
                     />
                   </div>
                 ),
@@ -1301,6 +1629,9 @@ export default function TicketPage() {
             await new Promise((r) => setTimeout(r, 500));
             await refresh();
             await refreshExpired();
+            await refetchOperationsSummary();
+            await b2bPageData.refresh();
+            await b2cPageData.refresh();
             pendingRefreshRef.current = false;
             setAssignModalTicket(null);
           }}

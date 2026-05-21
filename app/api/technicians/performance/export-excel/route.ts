@@ -109,32 +109,32 @@ export async function GET(req: NextRequest) {
     // Build workzone filter
     const wzFilter: any = {};
     if (selectedWorkzone) {
-      wzFilter.WORKZONE = { contains: selectedWorkzone };
+      wzFilter.workzone = { contains: selectedWorkzone };
     } else if (userWorkzones.length > 0) {
-      wzFilter.OR = userWorkzones.map((w) => ({ WORKZONE: { contains: w } }));
+      wzFilter.OR = userWorkzones.map((w) => ({ workzone: { contains: w } }));
     }
 
     // Fetch all closed tickets for the month
     const allTickets = await prisma.ticket.findMany({
       where: {
-        STATUS_UPDATE: { in: ['close', 'closed'] },
+        status_update: { in: ['close', 'closed'] },
         closed_at: { gte: start, lt: end },
         teknisi_user_id: { not: null },
         ...wzFilter,
       },
       select: {
         id_ticket: true,
-        INCIDENT: true,
-        CONTACT_NAME: true,
-        SERVICE_NO: true,
-        CUSTOMER_TYPE: true,
-        JENIS_TIKET: true,
-        WORKZONE: true,
-        REPORTED_DATE: true,
-        STATUS_UPDATE: true,
+        incident: true,
+        contact_name: true,
+        service_no: true,
+        customer_type: true,
+        jenis_tiket_1: true,
+        workzone: true,
+        reported_date: true,
+        status_update: true,
         closed_at: true,
         teknisi_user_id: true,
-        DESCRIPTION_ACTUAL_SOLUTION: true,
+        description_solution_dompis: true,
         rca: true,
         sub_rca: true,
       },
@@ -154,8 +154,8 @@ export async function GET(req: NextRequest) {
       const tickets = techMap.get(tech.id_user) || [];
       const avgResolve =
         tickets.reduce((sum, t) => {
-          if (!t.REPORTED_DATE || !t.closed_at) return sum;
-          const reported = new Date(t.REPORTED_DATE);
+          if (!t.reported_date || !t.closed_at) return sum;
+          const reported = new Date(t.reported_date);
           const closed = new Date(t.closed_at);
           return (
             sum + (closed.getTime() - reported.getTime()) / 3600000
@@ -169,23 +169,23 @@ export async function GET(req: NextRequest) {
         'Avg Resolve Time (Jam)':
           tickets.length > 0 ? avgResolve.toFixed(1) : '-',
         'Reguler': tickets.filter((t) =>
-          (t.CUSTOMER_TYPE || '').toLowerCase().includes('reguler'),
+          (t.customer_type || '').toLowerCase().includes('reguler'),
         ).length,
         'HVC Gold': tickets.filter((t) =>
-          (t.CUSTOMER_TYPE || '').toLowerCase().includes('hvc_gold'),
+          (t.customer_type || '').toLowerCase().includes('hvc_gold'),
         ).length,
         'HVC Platinum': tickets.filter((t) =>
-          (t.CUSTOMER_TYPE || '').toLowerCase().includes('hvc_platinum'),
+          (t.customer_type || '').toLowerCase().includes('hvc_platinum'),
         ).length,
         'HVC Diamond': tickets.filter((t) =>
-          (t.CUSTOMER_TYPE || '').toLowerCase().includes('hvc_diamond'),
+          (t.customer_type || '').toLowerCase().includes('hvc_diamond'),
         ).length,
         'SQM': tickets.filter((t) =>
-          (t.JENIS_TIKET || '').toLowerCase().includes('sqm'),
+          (t.jenis_tiket_1 || '').toLowerCase().includes('sqm'),
         ).length,
         'Indibiz/B2B': tickets.filter((t) =>
           ['indibiz', 'datin', 'reseller'].some((k) =>
-            (t.JENIS_TIKET || '').toLowerCase().includes(k),
+            (t.jenis_tiket_1 || '').toLowerCase().includes(k),
           ),
         ).length,
       };
@@ -194,8 +194,8 @@ export async function GET(req: NextRequest) {
     // Sheet 2: Detail semua tiket
     const detailData = allTickets.map((t) => {
       const tech = teknisiList.find((tk) => tk.id_user === t.teknisi_user_id);
-      const reported = t.REPORTED_DATE
-        ? new Date(t.REPORTED_DATE)
+      const reported = t.reported_date
+        ? new Date(t.reported_date)
         : null;
       const closed = t.closed_at ? new Date(t.closed_at) : null;
       const resolveHours =
@@ -205,12 +205,12 @@ export async function GET(req: NextRequest) {
       return {
         'Nama Teknisi': tech?.nama || '-',
         'NIK': tech?.nik || '-',
-        'No Tiket': t.INCIDENT || '-',
-        'Customer': t.CONTACT_NAME || '-',
-        'Service No': t.SERVICE_NO || '-',
-        'Tipe Pelanggan': t.CUSTOMER_TYPE || '-',
-        'Jenis Tiket': t.JENIS_TIKET || '-',
-        'Workzone': t.WORKZONE || '-',
+        'No Tiket': t.incident || '-',
+        'Customer': t.contact_name || '-',
+        'Service No': t.service_no || '-',
+        'Tipe Pelanggan': t.customer_type || '-',
+        'Jenis Tiket': t.jenis_tiket_1 || '-',
+        'Workzone': t.workzone || '-',
         'Tanggal Lapor': reported
           ? reported.toLocaleString('id-ID')
           : '-',
@@ -220,7 +220,7 @@ export async function GET(req: NextRequest) {
         'Resolve Time (Jam)': resolveHours,
         'RCA': t.rca || '-',
         'Sub RCA': t.sub_rca || '-',
-        'Detail Perbaikan': t.DESCRIPTION_ACTUAL_SOLUTION || '-',
+        'Detail Perbaikan': t.description_solution_dompis || '-',
       };
     });
 

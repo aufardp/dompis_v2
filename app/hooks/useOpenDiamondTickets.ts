@@ -5,16 +5,14 @@ type AlertDiamondTicketApi = {
   idTicket?: number;
   id_ticket?: number;
   incident?: string;
-  INCIDENT?: string;
   ticketId?: string;
   customerType?: string;
   CUSTOMER_TYPE?: string;
   status?: string;
-  STATUS_UPDATE?: string;
+  status_update?: string;
   reportedAt?: string | Date | null;
   REPORTED_DATE?: string | null;
   workzone?: string | null;
-  WORKZONE?: string | null;
   contactName?: string | null;
   CONTACT_NAME?: string | null;
   serviceNo?: string | null;
@@ -101,7 +99,7 @@ export function useOpenDiamondTickets(
 
     for (const t of rows) {
       const idTicket = t.idTicket || t.id_ticket || 0;
-      const ticketId = String(t.incident || t.INCIDENT || t.ticketId || '').trim();
+      const ticketId = String(t.incident || t.incident || t.ticketId || '').trim();
 
       // Handle reportedDate
       let reportedAt = new Date();
@@ -117,7 +115,7 @@ export function useOpenDiamondTickets(
         }
       }
 
-      const status = String(t.status || t.STATUS_UPDATE || 'OPEN')
+      const status = String(t.status || t.status_update || 'OPEN')
         .trim()
         .toLowerCase();
       // Skip tickets that are already closed
@@ -127,11 +125,11 @@ export function useOpenDiamondTickets(
         idTicket,
         ticketId: ticketId || `TICKET_${idTicket}`,
         customerType: String(t.customerType || t.CUSTOMER_TYPE || 'HVC_DIAMOND'),
-        status: String(t.status || t.STATUS_UPDATE || 'OPEN'),
+        status: String(t.status || t.status_update || 'OPEN'),
         reportedAt,
         technicianName: t.technicianName || null,
         teknisiUserId: t.teknisiUserId || t.teknisi_user_id || null,
-        workzone: t.workzone || t.WORKZONE || null,
+        workzone: t.workzone || t.workzone || null,
         contactName: t.contactName || t.CONTACT_NAME || null,
         serviceNo: t.serviceNo || t.SERVICE_NO || null,
       });

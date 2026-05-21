@@ -12,6 +12,9 @@ export interface TtrCountdown {
 }
 
 export function computeTtrCountdown(ticket: any): TtrCountdown | null {
+  const statusInsera = (ticket.status ?? '').trim().toLowerCase();
+  if (statusInsera === 'closed') return null;
+
   const deadlineMs = getEffectiveTtrMs(ticket);
   if (!deadlineMs) return null;
 

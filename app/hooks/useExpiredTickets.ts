@@ -41,10 +41,15 @@ export function useExpiredTickets(
 ) {
   const [rows, setRows] = useState<ExpiredTicketApiRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchExpired = useCallback(async () => {
-    setLoading(true);
+  const fetchExpired = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     setError(null);
     try {
       const params = new URLSearchParams();
@@ -74,7 +79,11 @@ export function useExpiredTickets(
       setError(e?.message || 'Failed to load expired tickets');
       setRows([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   }, [opts?.dept, opts?.statusUpdate, opts?.ticketType, workzoneId]);
 
@@ -112,7 +121,9 @@ export function useExpiredTickets(
   return {
     tickets,
     loading,
+    isRefreshing,
     error,
-    refresh: fetchExpired,
+    refresh: () => fetchExpired(true),
+    refreshSilent: () => fetchExpired(false),
   };
 }
