@@ -34,7 +34,7 @@ interface SegCount { open: number; close: number; }
 
 interface WorkzoneRow {
   workzone: string;
-  b2c: { diamond: SegCount; platinum: SegCount; goldReg: SegCount; sqmB2c: SegCount; };
+  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
   b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
   totalOpen: number;
   totalClose: number;
@@ -46,7 +46,7 @@ interface SARow {
   saName: string;
   teknisiMasuk: number;
   woPerTeknisi: string;
-  b2c: { diamond: SegCount; platinum: SegCount; goldReg: SegCount; sqmB2c: SegCount; };
+  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
   b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
   workzones: WorkzoneRow[];
   totalOpen: number;
@@ -80,12 +80,13 @@ function classifySegment(row: RekapTicketRow): { segment: string | null; isB2c: 
   const isB2b = isB2BJenis(jenis);
 
   if (isB2c) {
-    const ct = (row.customer_type ?? '').toUpperCase();
-    if (ct.includes('DIAMOND')) return { segment: 'diamond', isB2c: true, isB2b: false };
-    if (ct.includes('PLATINUM')) return { segment: 'platinum', isB2c: true, isB2b: false };
-    const normalized = normalizeJenis(jenis);
-    if (normalized === 'sqm') return { segment: 'sqmB2c', isB2c: true, isB2b: false };
-    return { segment: 'goldReg', isB2c: true, isB2b: false };
+      const ct = (row.customer_type ?? '').toUpperCase();
+      if (ct.includes('DIAMOND')) return { segment: 'diamond', isB2c: true, isB2b: false };
+      if (ct.includes('PLATINUM')) return { segment: 'platinum', isB2c: true, isB2b: false };
+      if (ct.includes('GOLD')) return { segment: 'gold', isB2c: true, isB2b: false };
+      const normalized = normalizeJenis(jenis);
+      if (normalized === 'sqm') return { segment: 'sqmB2c', isB2c: true, isB2b: false };
+      return { segment: 'reg', isB2c: true, isB2b: false };
   }
 
   if (isB2b) {
@@ -102,7 +103,8 @@ function classifySegment(row: RekapTicketRow): { segment: string | null; isB2c: 
 function emptyB2c(): SARow['b2c'] {
   return {
     diamond: { open: 0, close: 0 }, platinum: { open: 0, close: 0 },
-    goldReg: { open: 0, close: 0 }, sqmB2c: { open: 0, close: 0 },
+    gold: { open: 0, close: 0 }, reg: { open: 0, close: 0 },
+    sqmB2c: { open: 0, close: 0 },
   };
 }
 
@@ -116,7 +118,8 @@ function emptyB2b(): SARow['b2b'] {
 function emptyWzB2c(): WorkzoneRow['b2c'] {
   return {
     diamond: { open: 0, close: 0 }, platinum: { open: 0, close: 0 },
-    goldReg: { open: 0, close: 0 }, sqmB2c: { open: 0, close: 0 },
+    gold: { open: 0, close: 0 }, reg: { open: 0, close: 0 },
+    sqmB2c: { open: 0, close: 0 },
   };
 }
 

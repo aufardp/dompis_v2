@@ -1,7 +1,7 @@
 import cron, { ScheduledTask } from 'node-cron';
 import 'dotenv/config';
 import { connectDB } from '@/app/libs/prisma';
-import { runProjection } from '@/lib/projection';
+import { runFullScanProjection, runProjection } from '@/lib/projection';
 import { setProjectionStatus } from '@/lib/sync-metrics/metrics';
 import {
   cleanupWorkerLock,
@@ -10,23 +10,26 @@ import {
   nowWIB,
   parsePositiveInt,
   scheduleEveryMinutes,
+  shouldRunWithCircuitBreaker,
+  startWorkerHeartbeat,
   waitForRedisReady,
   withCancellableTimeout,
   withTaskLock,
 } from '@/lib/workers/task-runner';
+import { createCorrelationId, logger } from '@/lib/observability/logger';
 
 const WORKER_NAME = 'projection-worker';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
   process.env.PROJECTION_MAX_CONSECUTIVE_ERRORS,
   5,
 );
+const CIRCUIT_RESET_MINUTES = parsePositiveInt(
+  process.env.PROJECTION_CIRCUIT_RESET_MINUTES,
+  10,
+);
 const INTERVAL_MINUTES = parsePositiveInt(
   process.env.PROJECTION_INTERVAL_MINUTES,
   2,
-);
-const LOOKBACK_MINUTES = parsePositiveInt(
-  process.env.PROJECTION_LOOKBACK_MINUTES,
-  180,
 );
 const TIMEOUT_MINUTES = parsePositiveInt(
   process.env.PROJECTION_TIMEOUT_MINUTES,
@@ -54,29 +57,38 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
     return;
   }
 
-  if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-    console.warn(
-      `[PROJECTION] Circuit open after ${state.consecutiveErrors} consecutive errors`,
-    );
+  if (
+    !shouldRunWithCircuitBreaker(
+      state,
+      MAX_CONSECUTIVE_ERRORS,
+      CIRCUIT_RESET_MINUTES * 60_000,
+    )
+  ) {
+    logger.warn('Projection circuit open', {
+      worker: WORKER_NAME,
+      consecutiveErrors: state.consecutiveErrors,
+      resetMinutes: CIRCUIT_RESET_MINUTES,
+    });
     return;
   }
 
   state.running = true;
   const startTime = Date.now();
-  const { signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
+  const { controller, signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
+  state.abortController = controller;
+  const correlationId = createCorrelationId(`projection-${mode}`);
 
   try {
     const lockResult = await withTaskLock(
       'projection',
       LOCK_TTL_SECONDS,
-      async () => {
+      async ({ fencingToken }) => {
         if (signal.aborted) return;
 
-        const since =
-          mode === 'incremental'
-            ? new Date(Date.now() - LOOKBACK_MINUTES * 60_000)
-            : undefined;
-        const result = await runProjection(signal, { since });
+        const result =
+          mode === 'full'
+            ? await runFullScanProjection(signal)
+            : await runProjection(signal, { mode: 'incremental' });
         const duration = Date.now() - startTime;
 
         if (signal.aborted) {
@@ -87,36 +99,63 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
         console.log(
           `[PROJECTION] Done | mode=${mode} | processed=${result.processed} | inserted=${result.inserted} | updated=${result.updated} | skipped=${result.skipped} | failed=${result.failed} | ${nowWIB()} WIB`,
         );
+        logger.info('Projection task complete', {
+          worker: WORKER_NAME,
+          task: mode,
+          correlationId,
+          fencingToken,
+          processed: result.processed,
+          inserted: result.inserted,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: result.failed,
+          retried: result.retried,
+          protected: result.protected,
+          durationMs: duration,
+          checkpoint: result.checkpoint,
+        });
 
         state.consecutiveErrors = 0;
+        state.circuitOpenedAt = null;
         state.lastError = null;
       },
+      { abortController: controller, correlationId },
     );
 
     if (lockResult === 'skipped') {
       state.running = false;
     }
-  } catch (error: any) {
-    const message = error?.message ?? String(error);
-    console.error('[PROJECTION] Failed:', message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Projection task failed', error, {
+      worker: WORKER_NAME,
+      task: mode,
+      correlationId,
+      durationMs: Date.now() - startTime,
+    });
     await setProjectionStatus('failed', { duration: Date.now() - startTime });
     state.lastError = message;
     state.consecutiveErrors++;
+    if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      state.circuitOpenedAt = new Date();
+    }
   } finally {
     cancel();
     state.running = false;
     state.lastRunAt = new Date();
+    state.abortController = null;
   }
 }
 
 async function startWorker(): Promise<void> {
   console.log(
-    `[${WORKER_NAME}] Starting | interval=${INTERVAL_MINUTES}m lookback=${LOOKBACK_MINUTES}m timeout=${TIMEOUT_MINUTES}m lockTtl=${LOCK_TTL_SECONDS}s fullScan=${FULL_SCAN_ENABLED ? FULL_SCAN_CRON : 'disabled'}`,
+    `[${WORKER_NAME}] Starting | interval=${INTERVAL_MINUTES}m timeout=${TIMEOUT_MINUTES}m lockTtl=${LOCK_TTL_SECONDS}s fullScan=${FULL_SCAN_ENABLED ? FULL_SCAN_CRON : 'disabled'}`,
   );
 
   await connectDB();
   await waitForRedisReady();
   await cleanupWorkerLock('projection', TIMEOUT_MINUTES * 60_000);
+  startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
     scheduleEveryMinutes(INTERVAL_MINUTES, () =>
@@ -129,7 +168,7 @@ async function startWorker(): Promise<void> {
     );
   }
 
-  installShutdownHandlers(WORKER_NAME, scheduledTasks, () => state.running);
+  installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
 
   if (RUN_ON_START) {
     void runProjectionTask('incremental');
@@ -137,7 +176,7 @@ async function startWorker(): Promise<void> {
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error(`[${WORKER_NAME}] Unhandled rejection at:`, promise, 'reason:', reason);
+  logger.error('Unhandled rejection', reason, { worker: WORKER_NAME, promise: String(promise) });
 });
 
 startWorker().catch((error) => {

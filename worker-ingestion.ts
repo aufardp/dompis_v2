@@ -9,15 +9,22 @@ import {
   nowWIB,
   parsePositiveInt,
   scheduleEveryMinutes,
+  shouldRunWithCircuitBreaker,
+  startWorkerHeartbeat,
   waitForRedisReady,
   withCancellableTimeout,
   withTaskLock,
 } from '@/lib/workers/task-runner';
+import { createCorrelationId, logger } from '@/lib/observability/logger';
 
 const WORKER_NAME = 'ingestion-worker';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
   process.env.INGESTION_MAX_CONSECUTIVE_ERRORS,
   5,
+);
+const CIRCUIT_RESET_MINUTES = parsePositiveInt(
+  process.env.INGESTION_CIRCUIT_RESET_MINUTES,
+  10,
 );
 const INTERVAL_MINUTES = parsePositiveInt(
   process.env.INGESTION_INTERVAL_MINUTES,
@@ -47,22 +54,32 @@ async function runIngestionTask(): Promise<void> {
     return;
   }
 
-  if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-    console.warn(
-      `[INGESTION] Circuit open after ${state.consecutiveErrors} consecutive errors`,
-    );
+  if (
+    !shouldRunWithCircuitBreaker(
+      state,
+      MAX_CONSECUTIVE_ERRORS,
+      CIRCUIT_RESET_MINUTES * 60_000,
+    )
+  ) {
+    logger.warn('Ingestion circuit open', {
+      worker: WORKER_NAME,
+      consecutiveErrors: state.consecutiveErrors,
+      resetMinutes: CIRCUIT_RESET_MINUTES,
+    });
     return;
   }
 
   state.running = true;
   const startTime = Date.now();
-  const { signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
+  const { controller, signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
+  state.abortController = controller;
+  const correlationId = createCorrelationId('ingestion');
 
   try {
     const lockResult = await withTaskLock(
       'ingestion',
       LOCK_TTL_SECONDS,
-      async () => {
+      async ({ fencingToken }) => {
         if (signal.aborted) return;
 
         const result = await runIngestion(signal);
@@ -76,25 +93,49 @@ async function runIngestionTask(): Promise<void> {
         console.log(
           `[INGESTION] Done | batch=${result.syncBatchId ?? '-'} | inserted=${result.inserted} | updated=${result.updated} | skipped=${result.skipped} | failed=${result.failed} | ${nowWIB()} WIB`,
         );
+        logger.info('Ingestion task complete', {
+          worker: WORKER_NAME,
+          correlationId,
+          fencingToken,
+          batchId: result.syncBatchId,
+          processed: result.processed,
+          inserted: result.inserted,
+          updated: result.updated,
+          skipped: result.skipped,
+          failed: result.failed,
+          quarantined: result.quarantined,
+          retried: result.retried,
+          durationMs: duration,
+        });
 
         state.consecutiveErrors = 0;
+        state.circuitOpenedAt = null;
         state.lastError = null;
       },
+      { abortController: controller, correlationId },
     );
 
     if (lockResult === 'skipped') {
       state.running = false;
     }
-  } catch (error: any) {
-    const message = error?.message ?? String(error);
-    console.error('[INGESTION] Failed:', message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Ingestion task failed', error, {
+      worker: WORKER_NAME,
+      correlationId,
+      durationMs: Date.now() - startTime,
+    });
     await setSyncStatus('failed', { duration: Date.now() - startTime });
     state.lastError = message;
     state.consecutiveErrors++;
+    if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      state.circuitOpenedAt = new Date();
+    }
   } finally {
     cancel();
     state.running = false;
     state.lastRunAt = new Date();
+    state.abortController = null;
   }
 }
 
@@ -106,12 +147,13 @@ async function startWorker(): Promise<void> {
   await connectDB();
   await waitForRedisReady();
   await cleanupWorkerLock('ingestion', TIMEOUT_MINUTES * 60_000);
+  startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
     scheduleEveryMinutes(INTERVAL_MINUTES, () => void runIngestionTask()),
   );
 
-  installShutdownHandlers(WORKER_NAME, scheduledTasks, () => state.running);
+  installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
 
   if (RUN_ON_START) {
     void runIngestionTask();
@@ -119,7 +161,7 @@ async function startWorker(): Promise<void> {
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error(`[${WORKER_NAME}] Unhandled rejection at:`, promise, 'reason:', reason);
+  logger.error('Unhandled rejection', reason, { worker: WORKER_NAME, promise: String(promise) });
 });
 
 startWorker().catch((error) => {

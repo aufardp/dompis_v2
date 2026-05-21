@@ -92,7 +92,7 @@ async function main() {
 
   const vlookupCount = await prisma.sourceVlookup.count();
   const vlookupByValueId = await prisma.sourceVlookup.groupBy({
-    by: ['jenisTiket'],
+    by: ['jenis_tiket'],
     _count: true,
   });
 
@@ -100,7 +100,7 @@ async function main() {
   console.log(`  Total vlookup rows: ${vlookupCount}`);
   console.log('  Jenis tiket distribution:');
   vlookupByValueId.forEach((v) => {
-    console.log(`    ${v.jenisTiket || '(null)'}: ${v._count}`);
+    console.log(`    ${v.jenis_tiket || '(null)'}: ${v._count}`);
   });
 
   await prisma.$disconnect();

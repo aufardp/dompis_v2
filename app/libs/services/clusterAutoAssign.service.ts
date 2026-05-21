@@ -193,7 +193,7 @@ export class ClusterAutoAssignServiceV2 {
       where: {
         teknisi_user_id: { in: teknisiIds },
         status_update: { in: ['assigned', 'on_progress', 'pending'] },
-        ticketTracking: {
+        ticket_tracking: {
           assigned_at: {
             gte: targetDateStart,
             lt: targetDateEnd,

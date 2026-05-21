@@ -12,7 +12,7 @@ interface SegCount { open: number; close: number; }
 
 interface WorkzoneRow {
   workzone: string;
-  b2c: { diamond: SegCount; platinum: SegCount; goldReg: SegCount; sqmB2c: SegCount; };
+  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
   b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
   totalOpen: number;
   totalClose: number;
@@ -24,7 +24,7 @@ interface SARow {
   saName: string;
   teknisiMasuk: number;
   woPerTeknisi: string;
-  b2c: { diamond: SegCount; platinum: SegCount; goldReg: SegCount; sqmB2c: SegCount; };
+  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
   b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
   workzones: WorkzoneRow[];
   totalOpen: number;

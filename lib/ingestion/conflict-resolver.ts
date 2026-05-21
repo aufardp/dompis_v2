@@ -1,10 +1,15 @@
 const STATUS_PRIORITY: Record<string, number> = {
-  'CLOSED': 4,
-  'CLOSE': 4,
-  'PENDING': 3,
-  'OPEN': 2,
-  'UNKNOWN': 1,
-  'NULL': 0,
+  CLOSED: 90,
+  CLOSE: 90,
+  FINALCHECK: 80,
+  MEDIACARE: 70,
+  BACKEND: 60,
+  ANALYSIS: 50,
+  PENDING: 40,
+  OPEN: 30,
+  DRAFT: 20,
+  UNKNOWN: 10,
+  NULL: 0,
 };
 
 export function resolveStatusConflict(existing: string | null, incoming: string | null): string {

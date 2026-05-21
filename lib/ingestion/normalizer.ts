@@ -1,6 +1,14 @@
 import { createHash } from 'crypto';
 import { ExternalRow, NormalizedExternalRow, IdentityResolution } from '../external-db/types';
 
+export interface StrictIdentityResolution {
+  primaryIdentity: string | null;
+  fallback1Identity: string | null;
+  fallback2Identity: string | null;
+  valid: boolean;
+  reason?: string;
+}
+
 function toMySQLDateString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) {
@@ -72,6 +80,15 @@ export function normalizeExternalRow(row: ExternalRow, sourceTable: string): Nor
 }
 
 export function resolveIdentity(row: NormalizedExternalRow): IdentityResolution {
+  const resolution = resolveIdentityStrict(row);
+  return {
+    primaryIdentity: resolution.primaryIdentity ?? '',
+    fallback1Identity: resolution.fallback1Identity,
+    fallback2Identity: resolution.fallback2Identity,
+  };
+}
+
+export function resolveIdentityStrict(row: NormalizedExternalRow): StrictIdentityResolution {
   const incident = String(row.incident || '').trim() || null;
   const externalTicketId = String(row.external_ticket_id || '').trim() || null;
   const serviceNo = String(row.service_no || '').trim() || null;
@@ -96,10 +113,15 @@ export function resolveIdentity(row: NormalizedExternalRow): IdentityResolution 
     fallback2Identity = `cust_${customerId}_${serviceNo}_${reportedDate}`;
   }
 
+  const resolved = primaryIdentity || fallback1Identity || fallback2Identity;
   return {
-    primaryIdentity: primaryIdentity || fallback1Identity || fallback2Identity || `unknown_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+    primaryIdentity: resolved,
     fallback1Identity,
     fallback2Identity,
+    valid: Boolean(resolved),
+    reason: resolved
+      ? undefined
+      : 'missing stable identity: incident, external_ticket_id+service_no, or customer_id+service_no+reported_date',
   };
 }
 
@@ -109,7 +131,7 @@ export function computeSourceHash(row: NormalizedExternalRow): string {
   for (const key of Object.keys(row).sort()) {
     if (key === '_sourceTable' || key === '_rawPayload') continue;
     const value = row[key as keyof NormalizedExternalRow];
-    stablePayload[key] = value ?? null;
+    stablePayload[key] = value instanceof Date ? toMySQLDateString(value) : value ?? null;
   }
 
   return createHash('sha256')

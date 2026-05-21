@@ -1,4 +1,4 @@
-import { redis } from '@/lib/redis';
+import { isRedisReady, redis } from '@/lib/redis';
 
 interface SyncMetric {
   key: string;
@@ -15,6 +15,11 @@ interface SyncHealth {
   updatedCount: number;
   skippedCount: number;
   failedCount: number;
+  quarantinedCount: number;
+  retriedCount: number;
+  tableName: string | null;
+  batchId: string | null;
+  checkpoint: string | null;
 }
 
 interface ProjectionHealth {
@@ -24,6 +29,11 @@ interface ProjectionHealth {
   processedRecords: number;
   insertedRecords: number;
   updatedRecords: number;
+  skippedRecords: number;
+  failedRecords: number;
+  retriedRecords: number;
+  protectedRecords: number;
+  checkpoint: string | null;
 }
 
 const SYNC_METRICS_PREFIX = 'sync:metrics';
@@ -33,11 +43,32 @@ function getMetricKey(prefix: string, metric: string): string {
   return `${prefix}:${metric}`;
 }
 
+async function safeHset(
+  key: string,
+  values: Record<string, string>,
+): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    await redis.hset(key, values);
+  } catch (error) {
+    console.warn('[SyncMetrics] Redis hset skipped:', error);
+  }
+}
+
+async function safeHget(key: string, field: string): Promise<string | null> {
+  if (!isRedisReady()) return null;
+  try {
+    return await redis.hget(key, field);
+  } catch {
+    return null;
+  }
+}
+
 export async function recordSyncMetric(metric: string, value: number | string): Promise<void> {
   const key = getMetricKey(SYNC_METRICS_PREFIX, metric);
   const timestamp = Date.now();
 
-  await redis.hset(key, {
+  await safeHset(key, {
     value: String(value),
     timestamp: String(timestamp),
   });
@@ -47,21 +78,27 @@ export async function recordProjectionMetric(metric: string, value: number | str
   const key = getMetricKey(PROJECTION_METRICS_PREFIX, metric);
   const timestamp = Date.now();
 
-  await redis.hset(key, {
+  await safeHset(key, {
     value: String(value),
     timestamp: String(timestamp),
   });
 }
 
 export async function getSyncHealth(): Promise<SyncHealth> {
-  const lastSyncTime = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'timestamp');
-  const lastSyncDuration = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'duration');
-  const lastSyncStatus = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'status');
-  const rowsProcessed = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'processed');
-  const insertedCount = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'inserted');
-  const updatedCount = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'updated');
-  const skippedCount = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'skipped');
-  const failedCount = await redis.hget(getMetricKey(SYNC_METRICS_PREFIX, 'lastSync'), 'failed');
+  const key = getMetricKey(SYNC_METRICS_PREFIX, 'lastSync');
+  const lastSyncTime = await safeHget(key, 'timestamp');
+  const lastSyncDuration = await safeHget(key, 'duration');
+  const lastSyncStatus = await safeHget(key, 'status');
+  const rowsProcessed = await safeHget(key, 'processed');
+  const insertedCount = await safeHget(key, 'inserted');
+  const updatedCount = await safeHget(key, 'updated');
+  const skippedCount = await safeHget(key, 'skipped');
+  const failedCount = await safeHget(key, 'failed');
+  const quarantinedCount = await safeHget(key, 'quarantined');
+  const retriedCount = await safeHget(key, 'retried');
+  const tableName = await safeHget(key, 'tableName');
+  const batchId = await safeHget(key, 'batchId');
+  const checkpoint = await safeHget(key, 'checkpoint');
 
   return {
     lastSyncTime: lastSyncTime ? parseInt(lastSyncTime) : null,
@@ -72,16 +109,27 @@ export async function getSyncHealth(): Promise<SyncHealth> {
     updatedCount: updatedCount ? parseInt(updatedCount) : 0,
     skippedCount: skippedCount ? parseInt(skippedCount) : 0,
     failedCount: failedCount ? parseInt(failedCount) : 0,
+    quarantinedCount: quarantinedCount ? parseInt(quarantinedCount) : 0,
+    retriedCount: retriedCount ? parseInt(retriedCount) : 0,
+    tableName,
+    batchId,
+    checkpoint,
   };
 }
 
 export async function getProjectionHealth(): Promise<ProjectionHealth> {
-  const lastProjectionTime = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'timestamp');
-  const lastProjectionDuration = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'duration');
-  const lastProjectionStatus = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'status');
-  const processedRecords = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'processed');
-  const insertedRecords = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'inserted');
-  const updatedRecords = await redis.hget(getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection'), 'updated');
+  const key = getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection');
+  const lastProjectionTime = await safeHget(key, 'timestamp');
+  const lastProjectionDuration = await safeHget(key, 'duration');
+  const lastProjectionStatus = await safeHget(key, 'status');
+  const processedRecords = await safeHget(key, 'processed');
+  const insertedRecords = await safeHget(key, 'inserted');
+  const updatedRecords = await safeHget(key, 'updated');
+  const skippedRecords = await safeHget(key, 'skipped');
+  const failedRecords = await safeHget(key, 'failed');
+  const retriedRecords = await safeHget(key, 'retried');
+  const protectedRecords = await safeHget(key, 'protected');
+  const checkpoint = await safeHget(key, 'checkpoint');
 
   return {
     lastProjectionTime: lastProjectionTime ? parseInt(lastProjectionTime) : null,
@@ -90,6 +138,11 @@ export async function getProjectionHealth(): Promise<ProjectionHealth> {
     processedRecords: processedRecords ? parseInt(processedRecords) : 0,
     insertedRecords: insertedRecords ? parseInt(insertedRecords) : 0,
     updatedRecords: updatedRecords ? parseInt(updatedRecords) : 0,
+    skippedRecords: skippedRecords ? parseInt(skippedRecords) : 0,
+    failedRecords: failedRecords ? parseInt(failedRecords) : 0,
+    retriedRecords: retriedRecords ? parseInt(retriedRecords) : 0,
+    protectedRecords: protectedRecords ? parseInt(protectedRecords) : 0,
+    checkpoint,
   };
 }
 
@@ -102,20 +155,30 @@ export async function setSyncStatus(
     updated?: number;
     skipped?: number;
     failed?: number;
+    quarantined?: number;
+    retried?: number;
+    tableName?: string;
+    batchId?: string;
+    checkpoint?: string;
   }
 ): Promise<void> {
   const timestamp = Date.now();
   const key = getMetricKey(SYNC_METRICS_PREFIX, 'lastSync');
 
-  await redis.hset(key, {
+  await safeHset(key, {
     status,
     timestamp: String(timestamp),
-    ...(metrics?.duration && { duration: String(metrics.duration) }),
-    ...(metrics?.processed && { processed: String(metrics.processed) }),
-    ...(metrics?.inserted && { inserted: String(metrics.inserted) }),
-    ...(metrics?.updated && { updated: String(metrics.updated) }),
-    ...(metrics?.skipped && { skipped: String(metrics.skipped) }),
-    ...(metrics?.failed && { failed: String(metrics.failed) }),
+    ...(metrics?.duration !== undefined && { duration: String(metrics.duration) }),
+    ...(metrics?.processed !== undefined && { processed: String(metrics.processed) }),
+    ...(metrics?.inserted !== undefined && { inserted: String(metrics.inserted) }),
+    ...(metrics?.updated !== undefined && { updated: String(metrics.updated) }),
+    ...(metrics?.skipped !== undefined && { skipped: String(metrics.skipped) }),
+    ...(metrics?.failed !== undefined && { failed: String(metrics.failed) }),
+    ...(metrics?.quarantined !== undefined && { quarantined: String(metrics.quarantined) }),
+    ...(metrics?.retried !== undefined && { retried: String(metrics.retried) }),
+    ...(metrics?.tableName && { tableName: metrics.tableName }),
+    ...(metrics?.batchId && { batchId: metrics.batchId }),
+    ...(metrics?.checkpoint && { checkpoint: metrics.checkpoint }),
   });
 }
 
@@ -126,18 +189,28 @@ export async function setProjectionStatus(
     processed?: number;
     inserted?: number;
     updated?: number;
+    skipped?: number;
+    failed?: number;
+    retried?: number;
+    protected?: number;
+    checkpoint?: string;
   }
 ): Promise<void> {
   const timestamp = Date.now();
   const key = getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection');
 
-  await redis.hset(key, {
+  await safeHset(key, {
     status,
     timestamp: String(timestamp),
-    ...(metrics?.duration && { duration: String(metrics.duration) }),
-    ...(metrics?.processed && { processed: String(metrics.processed) }),
-    ...(metrics?.inserted && { inserted: String(metrics.inserted) }),
-    ...(metrics?.updated && { updated: String(metrics.updated) }),
+    ...(metrics?.duration !== undefined && { duration: String(metrics.duration) }),
+    ...(metrics?.processed !== undefined && { processed: String(metrics.processed) }),
+    ...(metrics?.inserted !== undefined && { inserted: String(metrics.inserted) }),
+    ...(metrics?.updated !== undefined && { updated: String(metrics.updated) }),
+    ...(metrics?.skipped !== undefined && { skipped: String(metrics.skipped) }),
+    ...(metrics?.failed !== undefined && { failed: String(metrics.failed) }),
+    ...(metrics?.retried !== undefined && { retried: String(metrics.retried) }),
+    ...(metrics?.protected !== undefined && { protected: String(metrics.protected) }),
+    ...(metrics?.checkpoint && { checkpoint: metrics.checkpoint }),
   });
 }
 

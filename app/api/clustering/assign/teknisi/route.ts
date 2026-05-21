@@ -112,7 +112,7 @@ export async function GET(req: Request) {
         teknisi_user_id: { in: teknisiHadir.map((t: { id_user: number }) => t.id_user) },
         workzone: workzoneName,
         status_update: { in: ['assigned', 'on_progress', 'pending'] },
-        ticketTracking: {
+        ticket_tracking: {
           assigned_at: {
             gte: targetDateStart,
             lt: targetDateEnd,

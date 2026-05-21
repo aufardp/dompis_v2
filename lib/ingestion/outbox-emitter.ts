@@ -1,4 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
+import type { Prisma } from '@prisma/client';
 import { nowWib } from '@/lib/timezone';
 
 function generateEventId(): string {
@@ -133,4 +134,24 @@ export async function emitBulkEvents(
   } catch (error) {
     console.error('[OutboxEmitter] Failed to emit bulk events:', error);
   }
+}
+
+export async function createBulkOutboxEvents(
+  tx: Prisma.TransactionClient,
+  events: Array<{ eventType: IngestionEventType; payload: TicketRawEvent }>,
+): Promise<void> {
+  const now = nowWib();
+  const eventsToInsert = events.map(({ eventType, payload }) => ({
+    event_id: generateEventId(),
+    event_type: eventType,
+    event_label: `External Ingestion: ${payload.incident}`,
+    payload: JSON.parse(JSON.stringify(payload)),
+    status: 'PENDING',
+    attempt_count: 0,
+    created_at: now,
+    updated_at: now,
+  }));
+
+  if (eventsToInsert.length === 0) return;
+  await tx.tech_event_outbox.createMany({ data: eventsToInsert });
 }

@@ -159,6 +159,135 @@ export async function fetchTableRowsAfterId(
   return rows;
 }
 
+export interface ExternalColumnInfo {
+  name: string;
+  dataType: string;
+  ordinalPosition: number;
+}
+
+export interface ExternalCursorDefinition {
+  idColumn: string | null;
+  modifiedColumn: string | null;
+  strategy: 'id_modified' | 'modified' | 'id' | 'snapshot';
+  columns: ExternalColumnInfo[];
+}
+
+function assertSafeIdentifier(identifier: string): void {
+  if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
+    throw new Error(`Unsafe SQL identifier: ${identifier}`);
+  }
+}
+
+export async function getTableColumns(tableName: string): Promise<ExternalColumnInfo[]> {
+  assertSafeIdentifier(tableName);
+  const externalPool = getExternalPool();
+  const config = getExternalDbConfig();
+
+  if (!externalPool || !config) {
+    throw new Error('External DB pool not available');
+  }
+
+  const [rows] = await externalPool.query<RowDataPacket[]>(
+    `
+      SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, ORDINAL_POSITION AS ordinalPosition
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION ASC
+    `,
+    [config.database, tableName],
+  );
+
+  return rows.map((row) => ({
+    name: String(row.name),
+    dataType: String(row.dataType),
+    ordinalPosition: Number(row.ordinalPosition),
+  }));
+}
+
+export async function getExternalCursorDefinition(
+  tableName: string,
+): Promise<ExternalCursorDefinition> {
+  const columns = await getTableColumns(tableName);
+  const names = new Set(columns.map((column) => column.name));
+  const modifiedCandidates = [
+    'date_modified',
+    'datemodified',
+    'updated_at',
+    'modified_at',
+    'last_modified',
+    'status_date',
+  ];
+  const idColumn = names.has('id') ? 'id' : null;
+  const modifiedColumn =
+    modifiedCandidates.find((candidate) => names.has(candidate)) ?? null;
+
+  return {
+    idColumn,
+    modifiedColumn,
+    strategy:
+      idColumn && modifiedColumn
+        ? 'id_modified'
+        : modifiedColumn
+          ? 'modified'
+          : idColumn
+            ? 'id'
+            : 'snapshot',
+    columns,
+  };
+}
+
+export async function fetchTableRowsByCursor(
+  tableName: string,
+  options: {
+    limit: number;
+    idColumn?: string | null;
+    modifiedColumn?: string | null;
+    lastCursorId?: string | null;
+    lastModifiedAt?: Date | null;
+  },
+): Promise<RowDataPacket[]> {
+  assertSafeIdentifier(tableName);
+  if (options.idColumn) assertSafeIdentifier(options.idColumn);
+  if (options.modifiedColumn) assertSafeIdentifier(options.modifiedColumn);
+
+  const externalPool = getExternalPool();
+  if (!externalPool) throw new Error('External DB pool not available');
+
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  const orderBy: string[] = [];
+
+  if (options.modifiedColumn && options.lastModifiedAt) {
+    if (options.idColumn && options.lastCursorId !== null && options.lastCursorId !== undefined) {
+      clauses.push(
+        `(\`${options.modifiedColumn}\` > ? OR (\`${options.modifiedColumn}\` = ? AND \`${options.idColumn}\` > ?))`,
+      );
+      params.push(options.lastModifiedAt, options.lastModifiedAt, options.lastCursorId);
+    } else {
+      clauses.push(`\`${options.modifiedColumn}\` > ?`);
+      params.push(options.lastModifiedAt);
+    }
+  } else if (options.idColumn && options.lastCursorId !== null && options.lastCursorId !== undefined) {
+    clauses.push(`\`${options.idColumn}\` > ?`);
+    params.push(options.lastCursorId);
+  }
+
+  if (options.modifiedColumn) orderBy.push(`\`${options.modifiedColumn}\` ASC`);
+  if (options.idColumn) orderBy.push(`\`${options.idColumn}\` ASC`);
+  if (orderBy.length === 0) orderBy.push('1 ASC');
+
+  const query = `
+    SELECT * FROM \`${tableName}\`
+    ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+    ORDER BY ${orderBy.join(', ')}
+    LIMIT ?
+  `;
+  params.push(options.limit);
+
+  const [rows] = await externalPool.query<RowDataPacket[]>(query, params);
+  return rows;
+}
+
 export async function fetchTableCount(tableName: string): Promise<number> {
   const externalPool = getExternalPool();
 

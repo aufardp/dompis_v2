@@ -212,12 +212,16 @@ export default function TicketPage() {
     triggerSync,
   } = useSyncStatus();
 
-  const { tickets: expiredTickets, isRefreshing: isExpiredRefreshing, refresh: refreshExpired, refreshSilent: refreshExpiredSilent } =
-    useExpiredTickets(workzoneFilter || undefined, {
-      dept: deptFilter,
-      ticketType: 'all',
-      statusUpdate: 'all',
-    });
+  const {
+    tickets: expiredTickets,
+    isRefreshing: isExpiredRefreshing,
+    refresh: refreshExpired,
+    refreshSilent: refreshExpiredSilent,
+  } = useExpiredTickets(workzoneFilter || undefined, {
+    dept: deptFilter,
+    ticketType: 'all',
+    statusUpdate: 'all',
+  });
 
   const { tickets: diamondTickets, refresh: refreshDiamond } =
     useOpenDiamondTickets(workzoneFilter || undefined, {
@@ -226,16 +230,17 @@ export default function TicketPage() {
     });
 
   // Use Daily Tickets for the operational working board
-  const { tickets, loading, isRefreshing, pagination, refresh, refreshSilent } = useDailyTickets(
-    searchQuery,
-    1,
-    workzoneFilter || undefined,
-    undefined, // ctype: filter di client-side (tidak perlu fetch ulang)
-    undefined, // hasilVisitFilter - now handled per section
-    deptFilter !== 'all' ? deptFilter : undefined,
-    undefined, // ticketTypeFilter - now handled per section
-    { fetchAll: true },
-  );
+  const { tickets, loading, isRefreshing, pagination, refresh, refreshSilent } =
+    useDailyTickets(
+      searchQuery,
+      1,
+      workzoneFilter || undefined,
+      undefined, // ctype: filter di client-side (tidak perlu fetch ulang)
+      undefined, // hasilVisitFilter - now handled per section
+      deptFilter !== 'all' ? deptFilter : undefined,
+      undefined, // ticketTypeFilter - now handled per section
+      { fetchAll: true },
+    );
 
   const b2bPageData = useDailyTicketPage({
     search: searchQuery,
@@ -263,14 +268,12 @@ export default function TicketPage() {
   const refreshB2bPageSilent = b2bPageData.refreshSilent;
   const refreshB2cPageSilent = b2cPageData.refreshSilent;
 
-  const {
-    data: operationsSummary,
-    refetch: refetchOperationsSummary,
-  } = useOperationsSummary({
-    search: searchQuery,
-    workzone: workzoneFilter || undefined,
-    dept: deptFilter,
-  });
+  const { data: operationsSummary, refetch: refetchOperationsSummary } =
+    useOperationsSummary({
+      search: searchQuery,
+      workzone: workzoneFilter || undefined,
+      dept: deptFilter,
+    });
 
   // SSE-based real-time updates (primary mechanism)
   const [syncStatus, setSyncStatus] = useState<{
@@ -290,7 +293,16 @@ export default function TicketPage() {
       refetchOperationsSummary();
       refreshB2bPageSilent();
       refreshB2cPageSilent();
-    }, [showNewTicketModal, assignModalTicket, refreshSilent, refreshExpiredSilent, refreshDiamond, refetchOperationsSummary, refreshB2bPageSilent, refreshB2cPageSilent]),
+    }, [
+      showNewTicketModal,
+      assignModalTicket,
+      refreshSilent,
+      refreshExpiredSilent,
+      refreshDiamond,
+      refetchOperationsSummary,
+      refreshB2bPageSilent,
+      refreshB2cPageSilent,
+    ]),
     onSyncStart: useCallback(() => {
       setSyncStatus({ inProgress: true });
     }, []),
@@ -823,50 +835,149 @@ export default function TicketPage() {
         metroE.total +
         dwdm.total,
       open:
-        sqmCcan.open + indibiz.open + datin.open + reseller.open + wifiId.open +
-        unknown.open + digitalSpbu.open + permintaan.open + unspecB2b.open +
-        nonNumbering.open + astinet.open + tsel.open + vpnIp.open + metroE.open +
+        sqmCcan.open +
+        indibiz.open +
+        datin.open +
+        reseller.open +
+        wifiId.open +
+        unknown.open +
+        digitalSpbu.open +
+        permintaan.open +
+        unspecB2b.open +
+        nonNumbering.open +
+        astinet.open +
+        tsel.open +
+        vpnIp.open +
+        metroE.open +
         dwdm.open,
       assigned:
-        sqmCcan.assigned + indibiz.assigned + datin.assigned + reseller.assigned +
-        wifiId.assigned + unknown.assigned + digitalSpbu.assigned + permintaan.assigned +
-        unspecB2b.assigned + nonNumbering.assigned + astinet.assigned + tsel.assigned +
-        vpnIp.assigned + metroE.assigned + dwdm.assigned,
+        sqmCcan.assigned +
+        indibiz.assigned +
+        datin.assigned +
+        reseller.assigned +
+        wifiId.assigned +
+        unknown.assigned +
+        digitalSpbu.assigned +
+        permintaan.assigned +
+        unspecB2b.assigned +
+        nonNumbering.assigned +
+        astinet.assigned +
+        tsel.assigned +
+        vpnIp.assigned +
+        metroE.assigned +
+        dwdm.assigned,
       close:
-        sqmCcan.close + indibiz.close + datin.close + reseller.close + wifiId.close +
-        unknown.close + digitalSpbu.close + permintaan.close + unspecB2b.close +
-        nonNumbering.close + astinet.close + tsel.close + vpnIp.close + metroE.close +
+        sqmCcan.close +
+        indibiz.close +
+        datin.close +
+        reseller.close +
+        wifiId.close +
+        unknown.close +
+        digitalSpbu.close +
+        permintaan.close +
+        unspecB2b.close +
+        nonNumbering.close +
+        astinet.close +
+        tsel.close +
+        vpnIp.close +
+        metroE.close +
         dwdm.close,
       ffgCount:
-        sqmCcan.ffgCount + indibiz.ffgCount + datin.ffgCount + reseller.ffgCount +
-        wifiId.ffgCount + unknown.ffgCount + digitalSpbu.ffgCount + permintaan.ffgCount +
-        unspecB2b.ffgCount + nonNumbering.ffgCount + astinet.ffgCount + tsel.ffgCount +
-        vpnIp.ffgCount + metroE.ffgCount + dwdm.ffgCount,
+        sqmCcan.ffgCount +
+        indibiz.ffgCount +
+        datin.ffgCount +
+        reseller.ffgCount +
+        wifiId.ffgCount +
+        unknown.ffgCount +
+        digitalSpbu.ffgCount +
+        permintaan.ffgCount +
+        unspecB2b.ffgCount +
+        nonNumbering.ffgCount +
+        astinet.ffgCount +
+        tsel.ffgCount +
+        vpnIp.ffgCount +
+        metroE.ffgCount +
+        dwdm.ffgCount,
       gamasCount:
-        sqmCcan.gamasCount + indibiz.gamasCount + datin.gamasCount + reseller.gamasCount +
-        wifiId.gamasCount + unknown.gamasCount + digitalSpbu.gamasCount + permintaan.gamasCount +
-        unspecB2b.gamasCount + nonNumbering.gamasCount + astinet.gamasCount + tsel.gamasCount +
-        vpnIp.gamasCount + metroE.gamasCount + dwdm.gamasCount,
+        sqmCcan.gamasCount +
+        indibiz.gamasCount +
+        datin.gamasCount +
+        reseller.gamasCount +
+        wifiId.gamasCount +
+        unknown.gamasCount +
+        digitalSpbu.gamasCount +
+        permintaan.gamasCount +
+        unspecB2b.gamasCount +
+        nonNumbering.gamasCount +
+        astinet.gamasCount +
+        tsel.gamasCount +
+        vpnIp.gamasCount +
+        metroE.gamasCount +
+        dwdm.gamasCount,
       p1Count:
-        sqmCcan.p1Count + indibiz.p1Count + datin.p1Count + reseller.p1Count +
-        wifiId.p1Count + unknown.p1Count + digitalSpbu.p1Count + permintaan.p1Count +
-        unspecB2b.p1Count + nonNumbering.p1Count + astinet.p1Count + tsel.p1Count +
-        vpnIp.p1Count + metroE.p1Count + dwdm.p1Count,
+        sqmCcan.p1Count +
+        indibiz.p1Count +
+        datin.p1Count +
+        reseller.p1Count +
+        wifiId.p1Count +
+        unknown.p1Count +
+        digitalSpbu.p1Count +
+        permintaan.p1Count +
+        unspecB2b.p1Count +
+        nonNumbering.p1Count +
+        astinet.p1Count +
+        tsel.p1Count +
+        vpnIp.p1Count +
+        metroE.p1Count +
+        dwdm.p1Count,
       pPlusCount:
-        sqmCcan.pPlusCount + indibiz.pPlusCount + datin.pPlusCount + reseller.pPlusCount +
-        wifiId.pPlusCount + unknown.pPlusCount + digitalSpbu.pPlusCount + permintaan.pPlusCount +
-        unspecB2b.pPlusCount + nonNumbering.pPlusCount + astinet.pPlusCount + tsel.pPlusCount +
-        vpnIp.pPlusCount + metroE.pPlusCount + dwdm.pPlusCount,
+        sqmCcan.pPlusCount +
+        indibiz.pPlusCount +
+        datin.pPlusCount +
+        reseller.pPlusCount +
+        wifiId.pPlusCount +
+        unknown.pPlusCount +
+        digitalSpbu.pPlusCount +
+        permintaan.pPlusCount +
+        unspecB2b.pPlusCount +
+        nonNumbering.pPlusCount +
+        astinet.pPlusCount +
+        tsel.pPlusCount +
+        vpnIp.pPlusCount +
+        metroE.pPlusCount +
+        dwdm.pPlusCount,
       regulerCount:
-        sqmCcan.regulerCount + indibiz.regulerCount + datin.regulerCount + reseller.regulerCount +
-        wifiId.regulerCount + unknown.regulerCount + digitalSpbu.regulerCount + permintaan.regulerCount +
-        unspecB2b.regulerCount + nonNumbering.regulerCount + astinet.regulerCount + tsel.regulerCount +
-        vpnIp.regulerCount + metroE.regulerCount + dwdm.regulerCount,
+        sqmCcan.regulerCount +
+        indibiz.regulerCount +
+        datin.regulerCount +
+        reseller.regulerCount +
+        wifiId.regulerCount +
+        unknown.regulerCount +
+        digitalSpbu.regulerCount +
+        permintaan.regulerCount +
+        unspecB2b.regulerCount +
+        nonNumbering.regulerCount +
+        astinet.regulerCount +
+        tsel.regulerCount +
+        vpnIp.regulerCount +
+        metroE.regulerCount +
+        dwdm.regulerCount,
       sqmCount:
-        sqmCcan.sqmCount + indibiz.sqmCount + datin.sqmCount + reseller.sqmCount +
-        wifiId.sqmCount + unknown.sqmCount + digitalSpbu.sqmCount + permintaan.sqmCount +
-        unspecB2b.sqmCount + nonNumbering.sqmCount + astinet.sqmCount + tsel.sqmCount +
-        vpnIp.sqmCount + metroE.sqmCount + dwdm.sqmCount,
+        sqmCcan.sqmCount +
+        indibiz.sqmCount +
+        datin.sqmCount +
+        reseller.sqmCount +
+        wifiId.sqmCount +
+        unknown.sqmCount +
+        digitalSpbu.sqmCount +
+        permintaan.sqmCount +
+        unspecB2b.sqmCount +
+        nonNumbering.sqmCount +
+        astinet.sqmCount +
+        tsel.sqmCount +
+        vpnIp.sqmCount +
+        metroE.sqmCount +
+        dwdm.sqmCount,
     },
   };
 
@@ -1007,9 +1118,7 @@ export default function TicketPage() {
       unassigned: arr.filter((t) => {
         return isTicketOpenLike(t.status_update);
       }).length,
-      open: arr.filter(
-        (t) => isTicketOpenLike(t.status_update),
-      ).length,
+      open: arr.filter((t) => isTicketOpenLike(t.status_update)).length,
       assigned: arr.filter((t) => {
         return isTicketInWork(t.status_update);
       }).length,
@@ -1031,15 +1140,17 @@ export default function TicketPage() {
   };
 
   // Reusable client-side filter function (matches the filter logic used for main table)
-  const applyClientFilters = <T extends {
-    ctype?: string | null;
-    customerType?: string | null;
-    jenisTiket?: string | null;
-    status_update?: string | null;
-    guaranteeStatus?: string | null;
-    ticketIdGamas?: string | null;
-    flaggingManja?: string | null;
-  }>(
+  const applyClientFilters = <
+    T extends {
+      ctype?: string | null;
+      customerType?: string | null;
+      jenisTiket?: string | null;
+      status_update?: string | null;
+      guaranteeStatus?: string | null;
+      ticketIdGamas?: string | null;
+      flaggingManja?: string | null;
+    },
+  >(
     arr: T[],
     ticketTypeFilter: string[],
     hasilVisitFilter: string[],
@@ -1056,7 +1167,10 @@ export default function TicketPage() {
 
     if (hasilVisitFilter.length > 0) {
       result = result.filter((t) => {
-        if (hasilVisitFilter.includes('close') && isTicketClosed(t.status_update)) {
+        if (
+          hasilVisitFilter.includes('close') &&
+          isTicketClosed(t.status_update)
+        ) {
           return true;
         }
         const status = normalizeStatusUpdate(t.status_update);
@@ -1071,7 +1185,11 @@ export default function TicketPage() {
       result = result.filter((t) => {
         return flaggingFilter.some((f) => {
           if (f === 'FFG') {
-            return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+            return (
+              String(t.guaranteeStatus ?? '')
+                .trim()
+                .toLowerCase() === 'guarantee'
+            );
           }
           if (f === 'GAMAS') {
             const candidates = [
@@ -1081,7 +1199,12 @@ export default function TicketPage() {
             ];
             const raw = candidates.find((v) => v !== null && v !== undefined);
             const normalized = String(raw ?? '').trim();
-            return normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase());
+            return (
+              normalized &&
+              !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+                normalized.toLowerCase(),
+              )
+            );
           }
           return t.flaggingManja === f;
         });
@@ -1107,24 +1230,22 @@ export default function TicketPage() {
 
   // Main table data (excludes validation tickets)
   const ticketTableData = filteredTickets
-    .filter(t => !isValidationTicket(t))
+    .filter((t) => !isValidationTicket(t))
     .map(mapTicketForTable);
-  
-  const b2bBackendTicketTableData = b2bAllTicketTableData
-    .filter(t => {
-      const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
-      const status = (t.status ?? '').trim().toLowerCase();
-      return !(statusUpdate === 'close' && status !== 'closed');
-    });
-  const b2cBackendTicketTableData = b2cAllTicketTableData
-    .filter(t => {
-      const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
-      const status = (t.status ?? '').trim().toLowerCase();
-      return !(statusUpdate === 'close' && status !== 'closed');
-    });
+
+  const b2bBackendTicketTableData = b2bAllTicketTableData.filter((t) => {
+    const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
+    const status = (t.status ?? '').trim().toLowerCase();
+    return !(statusUpdate === 'close' && status !== 'closed');
+  });
+  const b2cBackendTicketTableData = b2cAllTicketTableData.filter((t) => {
+    const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
+    const status = (t.status ?? '').trim().toLowerCase();
+    return !(statusUpdate === 'close' && status !== 'closed');
+  });
 
   const clientOperationalFocusItems = useMemo(() => {
-    const hasValidGamas = (t: typeof ticketTableData[number]) => {
+    const hasValidGamas = (t: (typeof ticketTableData)[number]) => {
       const value = String(t.ticketIdGamas ?? '').trim();
       return (
         value.length > 0 &&
@@ -1142,7 +1263,9 @@ export default function TicketPage() {
       gamas: ticketTableData.filter((t) => hasValidGamas(t)).length,
       ffg: ticketTableData.filter(
         (t) =>
-          String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee',
+          String(t.guaranteeStatus ?? '')
+            .trim()
+            .toLowerCase() === 'guarantee',
       ).length,
       carryOver: ticketTableData.filter(
         (t) => String(t.pendingDompis ?? '').trim().length > 0,

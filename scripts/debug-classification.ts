@@ -61,9 +61,9 @@ async function main() {
     const channelId = parseInt(tc.channel || '', 10);
     if (!isNaN(channelId)) {
       const vlookup = await prisma.sourceVlookup.findFirst({
-        where: { valueId: channelId },
+        where: { value_id: channelId },
       });
-      console.log(`  Vlookup for channel ${channelId}: jenisTiket="${vlookup?.jenisTiket || '(null)'}"`);
+      console.log(`  Vlookup for channel ${channelId}: jenisTiket="${vlookup?.jenis_tiket || '(null)'}"`);
     }
 
     console.log('');

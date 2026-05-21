@@ -184,10 +184,13 @@ export interface IdentityResolution {
 
 export type SyncResult = {
   syncBatchId?: string;
+  processed?: number;
   inserted: number;
   updated: number;
   skipped: number;
   failed: number;
+  quarantined?: number;
+  retried?: number;
   errors: Array<{
     table: string;
     incident: string;

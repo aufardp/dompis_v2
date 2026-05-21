@@ -27,7 +27,7 @@ model branch {
   created_at  DateTime @default(now()) @db.Timestamp(0)
   updated_at  DateTime @default(now()) @db.Timestamp(0)
   region_id   Int?
-  area        area[]
+  areas        area[]
   region      region?  @relation(fields: [region_id], references: [id_region])
 
   @@index([kode_branch])
@@ -45,9 +45,9 @@ model cluster {
   updated_at         DateTime             @default(now()) @db.Timestamp(0)
   users              users                @relation(fields: [created_by], references: [id_user])
   service_area       service_area         @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade)
-  cluster_area       cluster_area[]
-  cluster_assignment cluster_assignment[]
-  cluster_node       cluster_node[]
+  areas       cluster_area[]
+  assignments cluster_assignment[]
+  nodes       cluster_node[]
 
   @@unique([sa_id, nama_cluster])
   @@index([created_by], map: "cluster_created_by_fkey")
@@ -75,9 +75,9 @@ model cluster_assignment {
   note                                        String?  @db.VarChar(255)
   created_at                                  DateTime @default(now()) @db.Timestamp(0)
   updated_at                                  DateTime @default(now()) @db.Timestamp(0)
-  users_cluster_assignment_assigned_byTousers users    @relation("cluster_assignment_assigned_byTousers", fields: [assigned_by], references: [id_user])
-  cluster                                     cluster  @relation(fields: [cluster_id], references: [id])
-  users_cluster_assignment_teknisi_idTousers  users    @relation("cluster_assignment_teknisi_idTousers", fields: [teknisi_id], references: [id_user])
+  assigner users    @relation("cluster_assignment_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  cluster  cluster  @relation(fields: [cluster_id], references: [id])
+  teknisi  users    @relation("cluster_assignment_teknisi_idTousers", fields: [teknisi_id], references: [id_user])
 
   @@unique([cluster_id, teknisi_id, assigned_date])
   @@index([assigned_by], map: "cluster_assignment_assigned_by_fkey")
@@ -101,7 +101,7 @@ model cluster_node {
   @@index([odc_value])
 }
 
-model invite_tokens {
+model invite_token {
   id                                    Int       @id @default(autoincrement())
   token_hash                            String    @unique @db.VarChar(255)
   role                                  String    @db.VarChar(50)
@@ -140,7 +140,7 @@ model region {
   is_active   Boolean  @default(true)
   created_at  DateTime @default(now()) @db.Timestamp(0)
   updated_at  DateTime @default(now()) @db.Timestamp(0)
-  branch      branch[]
+  branches      branch[]
 }
 
 model roles {
@@ -167,7 +167,7 @@ model service_area {
   @@index([nama_sa], map: "idx_nama_sa")
 }
 
-model source_vlookup {
+model sourceVlookup {
   id                Int     @id @default(autoincrement())
   value_id          Int
   description       String? @db.VarChar(100)
@@ -178,6 +178,7 @@ model source_vlookup {
   flag_1            String? @db.VarChar(50)
   flag_2            String? @db.VarChar(50)
 
+  @@map("source_vlookup")
   @@index([customer_type_key], map: "idx_source_vlookup_customerj_type_key")
   @@index([jenis_tiket], map: "idx_source_vlookup_jenis_tiket")
   @@index([jenis_tiket_2_val], map: "idx_source_vlookup_jenis_tiket_2_val")
@@ -219,8 +220,8 @@ model technician_attendance {
   notes         String?                      @db.VarChar(255)
   created_at    DateTime                     @default(now()) @db.Timestamp(0)
   updated_at    DateTime                     @default(now()) @db.Timestamp(0)
-  users         users                        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
-  service_area  service_area                 @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
+  technician  users                        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
+  workzone    service_area                 @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
 
   @@unique([technician_id, date])
   @@index([date])
@@ -332,7 +333,7 @@ model ticket_activity_log {
   description   String?                           @db.VarChar(255)
   created_at    DateTime                          @default(now()) @db.Timestamp(0)
   ticket        ticket                            @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  users         users                             @relation(fields: [user_id], references: [id_user])
+  user         users                             @relation(fields: [user_id], references: [id_user])
 
   @@index([ticket_id])
   @@index([user_id])
@@ -346,8 +347,8 @@ model ticket_assignment_history {
   assigned_at                                        DateTime  @default(now()) @db.Timestamp(0)
   unassigned_at                                      DateTime? @db.Timestamp(0)
   is_active                                          Boolean   @default(true)
-  users_ticket_assignment_history_assigned_byTousers users     @relation("ticket_assignment_history_assigned_byTousers", fields: [assigned_by], references: [id_user])
-  users_ticket_assignment_history_assigned_toTousers users     @relation("ticket_assignment_history_assigned_toTousers", fields: [assigned_to], references: [id_user])
+  assigner  users     @relation("ticket_assignment_history_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  technician users     @relation("ticket_assignment_history_assigned_toTousers", fields: [assigned_to], references: [id_user])
   ticket                                             ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
 
   @@index([assigned_by], map: "ticket_assignment_history_assigned_by_fkey")
@@ -477,8 +478,128 @@ model ticket_raw {
   @@index([service_no])
   @@index([sourceHash])
   @@index([sourceTable, incident])
+  @@index([sourceTable, sourceUpdatedAt])
+  @@index([sourceTable, lastSeenAt])
+  @@index([sourceTable, syncBatchId])
+  @@index([importedAt])
+  @@index([lastSeenAt])
+  @@index([sourceUpdatedAt])
   @@index([status, isActive])
   @@index([syncBatchId])
+}
+
+model ingestion_checkpoint {
+  id                    Int       @id @default(autoincrement())
+  tableName             String    @unique @db.VarChar(100)
+  cursorStrategy        String    @default("snapshot") @db.VarChar(30)
+  idColumn              String?   @db.VarChar(100)
+  modifiedColumn        String?   @db.VarChar(100)
+  lastCursorId          String?   @db.VarChar(191)
+  lastModifiedAt        DateTime? @db.Timestamp(0)
+  lastSuccessfulBatchId String?   @db.VarChar(50)
+  lastStartedAt         DateTime? @db.Timestamp(0)
+  lastFinishedAt        DateTime? @db.Timestamp(0)
+  status                String    @default("idle") @db.VarChar(20)
+  processedCount        Int       @default(0)
+  insertedCount         Int       @default(0)
+  updatedCount          Int       @default(0)
+  skippedCount          Int       @default(0)
+  failedCount           Int       @default(0)
+  quarantinedCount      Int       @default(0)
+  retriedCount          Int       @default(0)
+  errorMessage          String?   @db.Text
+  createdAt             DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt             DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([status])
+  @@index([lastModifiedAt, lastCursorId])
+}
+
+model ingestion_quarantine {
+  id          BigInt   @id @default(autoincrement())
+  sourceTable String   @db.VarChar(100)
+  batchId     String   @db.VarChar(50)
+  reason      String   @db.VarChar(255)
+  rawPayload  Json
+  sourceHash  String?  @db.VarChar(64)
+  createdAt   DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([sourceTable])
+  @@index([batchId])
+  @@index([sourceHash])
+  @@index([createdAt])
+}
+
+model ingestion_run_log {
+  id                BigInt    @id @default(autoincrement())
+  batchId           String    @db.VarChar(50)
+  tableName         String    @db.VarChar(100)
+  mode              String    @db.VarChar(20)
+  status            String    @db.VarChar(20)
+  cursorStrategy    String?   @db.VarChar(30)
+  lastCursorId      String?   @db.VarChar(191)
+  lastModifiedAt    DateTime? @db.Timestamp(0)
+  processed         Int       @default(0)
+  inserted          Int       @default(0)
+  updated           Int       @default(0)
+  skipped           Int       @default(0)
+  failed            Int       @default(0)
+  quarantined       Int       @default(0)
+  retried           Int       @default(0)
+  durationMs        Int       @default(0)
+  errorMessage      String?   @db.Text
+  startedAt         DateTime  @default(now()) @db.Timestamp(0)
+  finishedAt        DateTime? @db.Timestamp(0)
+
+  @@index([batchId])
+  @@index([tableName])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model ticket_projection_checkpoint {
+  id                      Int       @id @default(autoincrement())
+  name                    String    @unique @db.VarChar(50)
+  lastProjectedImportedAt DateTime? @db.Timestamp(0)
+  lastProjectedTicketRawId String?  @db.VarChar(36)
+  lastSyncBatchId         String?   @db.VarChar(50)
+  status                  String    @default("idle") @db.VarChar(20)
+  processed               Int       @default(0)
+  inserted                Int       @default(0)
+  updated                 Int       @default(0)
+  skipped                 Int       @default(0)
+  failed                  Int       @default(0)
+  retried                 Int       @default(0)
+  protected               Int       @default(0)
+  lastError               String?   @db.Text
+  startedAt               DateTime? @db.Timestamp(0)
+  completedAt             DateTime? @db.Timestamp(0)
+  createdAt               DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt               DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([status])
+}
+
+model ticket_projection_log {
+  id              BigInt    @id @default(autoincrement())
+  ticketRawId     String    @unique @db.VarChar(36)
+  incident        String    @db.VarChar(100)
+  syncBatchId     String?   @db.VarChar(50)
+  importedAt      DateTime? @db.Timestamp(0)
+  action          String    @db.VarChar(20)
+  status          String    @db.VarChar(20)
+  attempts        Int       @default(1)
+  sourceHash      String?   @db.VarChar(64)
+  syncVersion     Int?
+  error           String?   @db.Text
+  projectedAt     DateTime  @default(now()) @db.Timestamp(0)
+  createdAt       DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt       DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([incident])
+  @@index([status])
+  @@index([syncBatchId])
+  @@index([importedAt, ticketRawId])
 }
 
 model ticket_status_history {
@@ -528,10 +649,10 @@ model ticket_tracking {
   created_at                                DateTime  @default(now()) @db.Timestamp(0)
   updated_at                                DateTime  @default(now()) @db.Timestamp(0)
   usersId_user                              Int?
-  users_ticket_tracking_assigned_byTousers  users?    @relation("ticket_tracking_assigned_byTousers", fields: [assigned_by], references: [id_user])
-  users_ticket_tracking_assigned_toTousers  users     @relation("ticket_tracking_assigned_toTousers", fields: [assigned_to], references: [id_user])
-  ticket                                    ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
-  users_ticket_tracking_usersId_userTousers users?    @relation("ticket_tracking_usersId_userTousers", fields: [usersId_user], references: [id_user])
+  assigner   users?    @relation("ticket_tracking_assigned_byTousers", fields: [assigned_by], references: [id_user])
+  technician  users     @relation("ticket_tracking_assigned_toTousers", fields: [assigned_to], references: [id_user])
+  ticket      ticket    @relation(fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
+  usersId_user_rel users?    @relation("ticket_tracking_usersId_userTousers", fields: [usersId_user], references: [id_user])
 
   @@index([assigned_by], map: "ticket_tracking_assigned_by_fkey")
   @@index([assigned_to])
@@ -564,21 +685,21 @@ model users {
   created_at                                                             DateTime                    @default(now()) @db.Timestamp(0)
   updated_at                                                             DateTime                    @default(now()) @db.Timestamp(0)
   cluster                                                                cluster[]
-  cluster_assignment_cluster_assignment_assigned_byTousers               cluster_assignment[]        @relation("cluster_assignment_assigned_byTousers")
-  cluster_assignment_cluster_assignment_teknisi_idTousers                cluster_assignment[]        @relation("cluster_assignment_teknisi_idTousers")
-  invite_tokens_invite_tokens_created_byTousers                          invite_tokens[]             @relation("invite_tokens_created_byTousers")
-  invite_tokens_invite_tokens_used_byTousers                             invite_tokens?              @relation("invite_tokens_used_byTousers")
+  cluster_assignment_assigner               cluster_assignment[]        @relation("cluster_assignment_assigned_byTousers")
+  cluster_assignment_teknisi                cluster_assignment[]        @relation("cluster_assignment_teknisi_idTousers")
+  invite_token_invite_tokens_created_byTousers                          invite_token[]             @relation("invite_tokens_created_byTousers")
+  invite_token_invite_tokens_used_byTousers                             invite_token?              @relation("invite_tokens_used_byTousers")
   technician_attendance                                                  technician_attendance[]
   ticket                                                                 ticket[]
   ticket_activity_log                                                    ticket_activity_log[]
-  ticket_assignment_history_ticket_assignment_history_assigned_byTousers ticket_assignment_history[] @relation("ticket_assignment_history_assigned_byTousers")
-  ticket_assignment_history_ticket_assignment_history_assigned_toTousers ticket_assignment_history[] @relation("ticket_assignment_history_assigned_toTousers")
+  ticket_assignment_history_assigner    ticket_assignment_history[] @relation("ticket_assignment_history_assigned_byTousers")
+  ticket_assignment_history_technician  ticket_assignment_history[] @relation("ticket_assignment_history_assigned_toTousers")
   ticket_status_history                                                  ticket_status_history[]
   ticket_team_ticket_team_invited_byTousers                              ticket_team[]               @relation("ticket_team_invited_byTousers")
   ticket_team_ticket_team_registered_user_idTousers                      ticket_team[]               @relation("ticket_team_registered_user_idTousers")
-  ticket_tracking_ticket_tracking_assigned_byTousers                     ticket_tracking[]           @relation("ticket_tracking_assigned_byTousers")
-  ticket_tracking_ticket_tracking_assigned_toTousers                     ticket_tracking[]           @relation("ticket_tracking_assigned_toTousers")
-  ticket_tracking_ticket_tracking_usersId_userTousers                    ticket_tracking[]           @relation("ticket_tracking_usersId_userTousers")
+  ticket_tracking_assigner                     ticket_tracking[]           @relation("ticket_tracking_assigned_byTousers")
+  ticket_tracking_technician                    ticket_tracking[]           @relation("ticket_tracking_assigned_toTousers")
+  ticket_tracking_usersId_user_rel              ticket_tracking[]           @relation("ticket_tracking_usersId_userTousers")
   user_sa                                                                user_sa[]
   area                                                                   area?                       @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
   roles                                                                  roles?                      @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")

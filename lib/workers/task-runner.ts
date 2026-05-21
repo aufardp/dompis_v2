@@ -8,12 +8,15 @@ import {
   releaseLock,
 } from '@/lib/distributed-lock';
 import { closeExternalPool } from '@/lib/external-db/connection';
+import { createCorrelationId, logger } from '@/lib/observability/logger';
 
 export interface WorkerTaskState {
   running: boolean;
   lastRunAt: Date | null;
   lastError: string | null;
   consecutiveErrors: number;
+  circuitOpenedAt: Date | null;
+  abortController: AbortController | null;
 }
 
 export type LockResult = 'acquired' | 'skipped';
@@ -24,6 +27,8 @@ export function createTaskState(): WorkerTaskState {
     lastRunAt: null,
     lastError: null,
     consecutiveErrors: 0,
+    circuitOpenedAt: null,
+    abortController: null,
   };
 }
 
@@ -49,6 +54,7 @@ export function parsePositiveInt(
 }
 
 export function withCancellableTimeout(ms: number): {
+  controller: AbortController;
   signal: AbortController['signal'];
   cancel: () => void;
 } {
@@ -59,6 +65,7 @@ export function withCancellableTimeout(ms: number): {
   }, ms);
 
   return {
+    controller,
     signal: controller.signal,
     cancel: () => clearTimeout(timer),
   };
@@ -67,25 +74,53 @@ export function withCancellableTimeout(ms: number): {
 export async function withTaskLock(
   lockKey: string,
   ttlSeconds: number,
-  fn: () => Promise<void>,
+  fn: (context: { ownerId: string; fencingToken: number; correlationId: string }) => Promise<void>,
+  options: { abortController?: AbortController; correlationId?: string } = {},
 ): Promise<LockResult> {
+  const correlationId = options.correlationId ?? createCorrelationId(lockKey);
   const lockResult = await acquireLock(lockKey, ttlSeconds);
 
   if (!lockResult.acquired) {
-    console.log(`[Worker] ${lockKey}: skipped, lock held by another process`);
+    logger.info('Task skipped because lock is held', { component: 'worker', task: lockKey, correlationId });
     return 'skipped';
   }
 
   const ownerId = lockResult.ownerId;
+  const fencingToken = lockResult.fencingToken ?? 0;
   const refreshMs = Math.max(10_000, Math.floor((ttlSeconds * 1000) / 3));
+  let lostLock = false;
   const refreshTimer = setInterval(() => {
-    void extendLock(lockKey, ownerId, ttlSeconds).catch((error) =>
-      console.error(`[Worker] ${lockKey}: failed to extend lock`, error),
-    );
+    void extendLock(lockKey, ownerId, ttlSeconds)
+      .then((extended) => {
+        if (!extended) {
+          lostLock = true;
+          logger.error('Lost distributed lock ownership, aborting task', undefined, {
+            component: 'worker',
+            task: lockKey,
+            ownerId,
+            fencingToken,
+            correlationId,
+          });
+          options.abortController?.abort();
+        }
+      })
+      .catch((error) => {
+        lostLock = true;
+        logger.error('Failed to renew lock, aborting task', error, {
+          component: 'worker',
+          task: lockKey,
+          ownerId,
+          fencingToken,
+          correlationId,
+        });
+        options.abortController?.abort();
+      });
   }, refreshMs);
+  refreshTimer.unref?.();
 
   try {
-    await fn();
+    await fn({ ownerId, fencingToken, correlationId });
+    if (lostLock) throw new Error(`Lost distributed lock for ${lockKey}`);
     return 'acquired';
   } finally {
     clearInterval(refreshTimer);
@@ -100,7 +135,7 @@ export async function waitForRedisReady(
 ): Promise<void> {
   if (redis.status === 'ready') return;
 
-  console.log(`[Worker] Waiting for Redis ready (current=${redis.status})...`);
+  logger.info('Waiting for Redis ready', { component: 'worker', redisStatus: redis.status });
   await new Promise<void>((resolve) => {
     const timeout = setTimeout(resolve, timeoutMs);
     redis.once('ready', () => {
@@ -122,27 +157,40 @@ export async function cleanupWorkerLock(
 export function installShutdownHandlers(
   workerName: string,
   scheduledTasks: ScheduledTask[],
-  isRunning: () => boolean,
+  stateOrIsRunning: WorkerTaskState | (() => boolean),
 ): void {
+  let shuttingDown = false;
   const shutdown = async (signal: string) => {
-    console.log(`[${workerName}] Received ${signal}, shutting down...`);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.warn('Worker received shutdown signal', { worker: workerName, signal });
     scheduledTasks.forEach((task) => task.stop());
+    const isRunning =
+      typeof stateOrIsRunning === 'function'
+        ? stateOrIsRunning
+        : () => stateOrIsRunning.running;
+    const abortController =
+      typeof stateOrIsRunning === 'function'
+        ? null
+        : stateOrIsRunning.abortController;
+
+    abortController?.abort();
 
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && isRunning()) {
-      console.log(`[${workerName}] Waiting for active task to finish...`);
+      logger.info('Waiting for active task to finish', { worker: workerName });
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    await Promise.allSettled([
-      prisma.$disconnect().then(() => console.log(`[${workerName}] Prisma disconnected`)),
-      redis.quit().then(() => console.log(`[${workerName}] Redis disconnected`)),
+      await Promise.allSettled([
+        prisma.$disconnect().then(() => logger.info('Prisma disconnected', { worker: workerName })),
+        redis.quit().then(() => logger.info('Redis disconnected', { worker: workerName })),
       closeExternalPool().then(() =>
-        console.log(`[${workerName}] External DB pool closed`),
+        logger.info('External DB pool closed', { worker: workerName }),
       ),
-    ]);
+      ]);
 
-    console.log(`[${workerName}] Shutdown complete`);
+    logger.info('Shutdown complete', { worker: workerName });
     process.exit(0);
   };
 
@@ -158,3 +206,55 @@ export function scheduleEveryMinutes(
   return cron.schedule(`*/${minutes} * * * *`, task);
 }
 
+export function shouldRunWithCircuitBreaker(
+  state: WorkerTaskState,
+  maxConsecutiveErrors: number,
+  resetAfterMs: number,
+): boolean {
+  if (state.consecutiveErrors < maxConsecutiveErrors) return true;
+  if (!state.circuitOpenedAt) {
+    state.circuitOpenedAt = new Date();
+    return false;
+  }
+  if (Date.now() - state.circuitOpenedAt.getTime() >= resetAfterMs) {
+    logger.warn('Circuit breaker half-open after reset window', {
+      component: 'worker',
+      consecutiveErrors: state.consecutiveErrors,
+      resetAfterMs,
+    });
+    state.consecutiveErrors = Math.max(0, maxConsecutiveErrors - 1);
+    state.circuitOpenedAt = null;
+    return true;
+  }
+  return false;
+}
+
+export function startWorkerHeartbeat(
+  workerName: string,
+  state: WorkerTaskState,
+  intervalMs: number = 30_000,
+): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    const memory = process.memoryUsage();
+    void redis
+      .hset(`worker:heartbeat:${workerName}`, {
+        workerName,
+        pid: String(process.pid),
+        running: String(state.running),
+        lastRunAt: state.lastRunAt?.toISOString() ?? '',
+        lastError: state.lastError ?? '',
+        consecutiveErrors: String(state.consecutiveErrors),
+        rss: String(memory.rss),
+        heapUsed: String(memory.heapUsed),
+        heapTotal: String(memory.heapTotal),
+        updatedAt: String(Date.now()),
+      })
+      .catch((error) =>
+        logger.error('Failed to write worker heartbeat', error, {
+          worker: workerName,
+        }),
+      );
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
+}

@@ -20,16 +20,16 @@ async function main() {
 
   // Get all vlookup entries
   const vlookups = await prisma.sourceVlookup.findMany({
-    orderBy: { valueId: 'asc' },
+    orderBy: { value_id: 'asc' },
   });
 
   console.log('\n── All source_vlookup entries ──');
   vlookups.forEach((v) => {
-    console.log(`  valueId: ${v.valueId} | jenisTiket: ${v.jenisTiket || '(null)'} | customerTypeKey: ${v.customerTypeKey || '(null)'} | realmB2b: ${v.realmB2b || '(null)'} | flag1: ${v.flag1 || '(null)'}`);
+    console.log(`  valueId: ${v.value_id} | jenisTiket: ${v.jenis_tiket || '(null)'} | customerTypeKey: ${v.customer_type_key || '(null)'} | realmB2b: ${v.realm_b2b || '(null)'} | flag1: ${v.flag_1 || '(null)'}`);
   });
 
   // Check which channels from ticket_raw are NOT in vlookup
-  const vlookupValueIds = new Set(vlookups.map((v) => String(v.valueId)));
+  const vlookupValueIds = new Set(vlookups.map((v) => String(v.value_id)));
   const missingChannels = channels.filter(
     (c) => c.channel && !vlookupValueIds.has(c.channel)
   );

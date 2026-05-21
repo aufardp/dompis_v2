@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronDown, ChevronUp, UserPlus, Clock } from 'lucide-react';
-import clsx from 'clsx';
+import { ChevronDown, ChevronUp, UserPlus, AlertTriangle } from 'lucide-react';
+import { cn } from '@/app/libs/utils';
 
 interface ExpiredTicket {
   ticketId: string;
@@ -30,22 +30,56 @@ function formatDateTime(date: Date): string {
 
 function getAgeBadge(hours: number): { label: string; className: string } {
   if (hours < 1) {
-    return { label: `${Math.round(hours * 60)}m`, className: 'bg-emerald-500/20 text-emerald-400' };
+    return {
+      label: `${Math.round(hours * 60)}m`,
+      className:
+        'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+    };
   }
   if (hours <= 3) {
-    return { label: `${Math.round(hours)}h`, className: 'bg-amber-500/20 text-amber-400' };
+    return {
+      label: `${Math.round(hours)}h`,
+      className:
+        'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20',
+    };
   }
-  return { label: `${Math.round(hours)}h`, className: 'bg-red-500/20 text-red-400 animate-pulse' };
+  return {
+    label: `${Math.round(hours)}h`,
+    className:
+      'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20 animate-pulse font-black',
+  };
 }
 
 function getStatusBadge(status: string): { label: string; className: string } {
   const s = (status || '').toLowerCase();
-  if (s === 'open') return { label: 'OPEN', className: 'bg-amber-500/20 text-amber-400' };
-  if (s === 'assigned') return { label: 'ASSIGNED', className: 'bg-blue-500/20 text-blue-400' };
-  if (s === 'on_progress') return { label: 'ON PROGRESS', className: 'bg-orange-500/20 text-orange-400' };
-  return { label: s.toUpperCase() || 'UNKNOWN', className: 'bg-slate-500/20 text-slate-400' };
+  if (s === 'open')
+    return {
+      label: 'OPEN',
+      className:
+        'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+    };
+  if (s === 'assigned')
+    return {
+      label: 'ASSIGNED',
+      className:
+        'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20',
+    };
+  if (s === 'on_progress')
+    return {
+      label: 'ON PROGRESS',
+      className:
+        'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20',
+    };
+  return {
+    label: s.toUpperCase() || 'UNKNOWN',
+    className:
+      'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20',
+  };
 }
 
+/* ==========================================
+   1. EXPIRED TICKETS BANNER (RED REDESIGN)
+   ========================================== */
 export function AlertBanner({ tickets }: AlertBannerProps) {
   if (tickets.length === 0) return null;
 
@@ -53,55 +87,61 @@ export function AlertBanner({ tickets }: AlertBannerProps) {
   const maxOverdue = Math.max(...tickets.map((t) => t.overdueHours));
 
   return (
-    <div className='relative overflow-hidden rounded-2xl border border-red-500/30 bg-gradient-to-br from-red-500/10 via-red-500/5 to-transparent'>
-      {/* Animated pulse border */}
-      <div className='pointer-events-none absolute inset-0 rounded-2xl border-2 border-red-500/20 animate-pulse' />
+    <div className='relative overflow-hidden rounded-2xl border border-red-200 bg-red-50/60 p-4 shadow-xs md:p-5 dark:border-red-500/20 dark:bg-red-950/20'>
+      {/* Pulse effect border malam hari */}
+      <div className='pointer-events-none absolute inset-0 animate-pulse rounded-2xl border border-red-500/10 dark:border-red-500/20' />
 
-      {/* Header */}
-      <div className='relative z-10 flex flex-col gap-3 p-4 md:p-5'>
-        <div className='flex items-center justify-between'>
+      <div className='relative z-10 flex flex-col gap-4'>
+        {/* Top Header */}
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex items-center gap-3'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/20 text-xl'>
-              ⚠️
+            <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400'>
+              <AlertTriangle className='h-5 w-5' />
             </div>
             <div>
-              <p className='text-base font-bold text-red-400 md:text-lg'>
+              <h3 className='text-base font-black text-red-900 dark:text-red-200'>
                 {tickets.length} Expired Ticket Perlu Perhatian!
-              </p>
-              <p className='text-xs text-(--text-secondary)'>
-                TTR terlampaui — butuh segera ditindak lanjuti
+              </h3>
+              <p className='mt-0.5 text-xs font-medium text-red-700/70 dark:text-red-400/60'>
+                TTR terlampaui — butuh segera ditindak lanjuti hari ini
               </p>
             </div>
           </div>
 
-          <div className='flex items-center gap-2'>
-            <span className='rounded-full bg-red-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg shadow-red-500/30'>
-              ⚠️ {Math.round(maxOverdue)}h OVERDUE
+          <div className='flex items-center self-start sm:self-center'>
+            <span className='rounded-full bg-red-600 px-3 py-1 text-xs font-black tracking-wide text-white shadow-sm shadow-red-500/30 dark:bg-red-500 dark:text-slate-950'>
+              ⚠️ {Math.round(maxOverdue)}H OVERDUE
             </span>
           </div>
         </div>
 
-        {/* First ticket preview */}
-        <div className='flex flex-wrap items-center gap-3 rounded-xl border border-red-500/10 bg-red-500/5 px-4 py-3'>
-          <span className='font-mono text-sm font-bold text-red-400'>
+        {/* First Ticket Preview Box */}
+        <div className='flex flex-wrap items-center gap-2.5 rounded-xl border border-red-200/60 bg-white/80 px-4 py-3 dark:border-red-500/10 dark:bg-red-950/40'>
+          <span className='rounded bg-red-100/60 px-2 py-0.5 font-mono text-xs font-black tracking-wide text-red-700 dark:bg-red-500/10 dark:text-red-400'>
             {firstTicket.ticketId}
           </span>
-          <span className='text-xs text-amber-400'>⚡ {firstTicket.customerType}</span>
+          <span className='rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-400'>
+            ⚡ {firstTicket.customerType}
+          </span>
           {firstTicket.workzone && (
-            <span className='text-xs text-(--text-secondary)'>📍 {firstTicket.workzone}</span>
+            <span className='text-xs font-semibold text-slate-600 dark:text-slate-400'>
+              📍 {firstTicket.workzone}
+            </span>
           )}
-          <span className='text-xs text-(--text-secondary)'>
+          <span className='text-[11px] font-medium text-slate-500 dark:text-slate-400'>
             {formatDateTime(firstTicket.reportedAt)}
           </span>
+
           <span
-            className={clsx(
-              'rounded-full px-2 py-0.5 text-[10px] font-bold',
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-black',
               getStatusBadge(firstTicket.status).className,
             )}
           >
             {getStatusBadge(firstTicket.status).label}
           </span>
-          <span className='ml-auto text-[10px] text-(--text-secondary)'>
+
+          <span className='ml-auto text-[11px] font-bold text-red-700/80 dark:text-red-400/80'>
             +{tickets.length - 1} tiket lainnya
           </span>
         </div>
@@ -115,6 +155,9 @@ interface DiamondAlertBannerProps {
   onAssign?: (ticketId: string, idTicket?: number) => void;
 }
 
+/* ==========================================
+   2. DIAMOND ALERTS BANNER (CYAN REDESIGN)
+   ========================================== */
 export function DiamondAlertBanner({
   tickets,
   onAssign,
@@ -149,161 +192,176 @@ export function DiamondAlertBanner({
   if (tickets.length === 0) return null;
 
   return (
-    <div className='relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent'>
-      {/* Animated shimmer border */}
-      <style>{`
-        @keyframes shimmer {
-          0% { opacity: 0.3; }
-          50% { opacity: 0.8; }
-          100% { opacity: 0.3; }
-        }
-        .shimmer-border { animation: shimmer 2s ease-in-out infinite; }
-      `}</style>
-      <div className='pointer-events-none absolute inset-0 rounded-2xl border-2 border-cyan-500/20 shimmer-border' />
+    <div className='relative overflow-hidden rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4 shadow-xs md:p-5 dark:border-cyan-500/20 dark:bg-cyan-950/20'>
+      {/* Subtle Breathing Border */}
+      <div className='pointer-events-none absolute inset-0 rounded-2xl border border-cyan-500/10 dark:border-cyan-500/20' />
 
-      {/* Header */}
-      <div className='relative z-10 flex flex-col gap-3 p-4 md:p-5'>
-        <div className='flex items-center justify-between'>
+      <div className='relative z-10 flex flex-col gap-4'>
+        {/* Main Header Row */}
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
           <div className='flex items-center gap-3'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-xl'>
+            <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-lg text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400'>
               💎
             </div>
             <div>
-              <p className='text-base font-bold text-cyan-400 md:text-lg'>
+              <h3 className='text-base font-black text-cyan-950 dark:text-cyan-100'>
                 {tickets.length} Diamond Ticket Perlu Perhatian!
-              </p>
-              <p className='text-xs text-(--text-secondary)'>
-                Prioritas tertinggi — fokus pada open dan belum progress
+              </h3>
+              <p className='mt-0.5 text-xs font-medium text-cyan-800/70 dark:text-cyan-400/60'>
+                Prioritas tertinggi — fokus utama pada open dan reassign segera
               </p>
             </div>
           </div>
 
-          <div className='flex flex-wrap items-center gap-2'>
-            <span className='rounded-full bg-cyan-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg shadow-cyan-500/30'>
-              💎 DIAMOND
+          {/* Quick Pillar Pill Status */}
+          <div className='flex flex-wrap items-center gap-1.5 self-start lg:self-center'>
+            <span className='rounded-md bg-cyan-600 px-2.5 py-1 text-[10px] font-black tracking-wide text-white dark:bg-cyan-500 dark:text-slate-950'>
+              DIAMOND VIP
             </span>
-            <span className='rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-bold text-red-300'>
-              Open {statusSummary.open}
+            <span className='rounded-md border border-red-200 bg-red-100 px-2 py-1 text-[10px] font-black text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'>
+              OPEN: {statusSummary.open}
             </span>
-            <span className='rounded-full bg-blue-500/15 px-3 py-1.5 text-xs font-bold text-blue-300'>
-              Assigned {statusSummary.assigned}
+            <span className='rounded-md border border-blue-200 bg-blue-100 px-2 py-1 text-[10px] font-black text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400'>
+              ASSIGNED: {statusSummary.assigned}
             </span>
-            <span className='rounded-full bg-orange-500/15 px-3 py-1.5 text-xs font-bold text-orange-300'>
-              Progress {statusSummary.onProgress}
+            <span className='rounded-md border border-orange-200 bg-orange-100 px-2 py-1 text-[10px] font-black text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400'>
+              PROGRESS: {statusSummary.onProgress}
             </span>
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-2 md:grid-cols-4'>
-          <div className='rounded-xl border border-cyan-500/10 bg-cyan-500/5 px-3 py-2'>
-            <p className='text-[10px] font-bold uppercase tracking-wide text-cyan-300'>Total</p>
-            <p className='text-lg font-black text-cyan-100'>{tickets.length}</p>
+        {/* Analytic Cards Row */}
+        <div className='grid grid-cols-2 gap-2.5 md:grid-cols-4'>
+          <div className='rounded-xl border border-cyan-100 bg-white p-3 shadow-2xs dark:border-cyan-500/10 dark:bg-cyan-950/40'>
+            <p className='text-[10px] font-bold tracking-wider text-cyan-700/80 uppercase dark:text-cyan-400/70'>
+              Total Antrean
+            </p>
+            <p className='mt-1 text-xl font-black text-cyan-950 dark:text-cyan-100'>
+              {tickets.length}
+            </p>
           </div>
-          <div className='rounded-xl border border-red-500/10 bg-red-500/5 px-3 py-2'>
-            <p className='text-[10px] font-bold uppercase tracking-wide text-red-300'>Butuh Assign</p>
-            <p className='text-lg font-black text-red-100'>{statusSummary.open}</p>
+          <div className='rounded-xl border border-red-100 bg-white p-3 shadow-2xs dark:border-red-500/10 dark:bg-red-950/40'>
+            <p className='text-[10px] font-bold tracking-wider text-red-600 uppercase dark:text-red-400/80'>
+              Butuh Assign
+            </p>
+            <p className='mt-1 text-xl font-black text-red-600 dark:text-red-400'>
+              {statusSummary.open}
+            </p>
           </div>
-          <div className='rounded-xl border border-amber-500/10 bg-amber-500/5 px-3 py-2'>
-            <p className='text-[10px] font-bold uppercase tracking-wide text-amber-300'>Belum Progress</p>
-            <p className='text-lg font-black text-amber-100'>{statusSummary.assigned + statusSummary.pending}</p>
+          <div className='rounded-xl border border-amber-100 bg-white p-3 shadow-2xs dark:border-amber-500/10 dark:bg-red-950/40'>
+            <p className='text-[10px] font-bold tracking-wider text-amber-700 uppercase dark:text-amber-400/80'>
+              Belum Progress
+            </p>
+            <p className='mt-1 text-xl font-black text-amber-600 dark:text-amber-300'>
+              {statusSummary.assigned + statusSummary.pending}
+            </p>
           </div>
-          <div className='rounded-xl border border-slate-500/10 bg-slate-500/5 px-3 py-2'>
-            <p className='text-[10px] font-bold uppercase tracking-wide text-slate-300'>Tertua</p>
-            <p className='text-lg font-black text-slate-100'>{Math.round(oldestHours)}h</p>
+          <div className='rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900/40'>
+            <p className='text-[10px] font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400'>
+              Durasi Tertua
+            </p>
+            <p className='mt-1 text-xl font-black text-slate-800 dark:text-slate-200'>
+              {Math.round(oldestHours)}h
+            </p>
           </div>
         </div>
 
-        {/* Ticket list */}
+        {/* Dynamic Ticket Row Lists */}
         <div className='space-y-2'>
           {visibleTickets.map((ticket, index) => {
             const statusLower = (ticket.status || '').toLowerCase();
             const statusBadge = getStatusBadge(ticket.status);
             const ageBadge = getAgeBadge(ticket.overdueHours);
-            const reportedDate = new Date(ticket.reportedAt);
-            const now = new Date();
-            const ageHours = (now.getTime() - reportedDate.getTime()) / (1000 * 60 * 60);
-            const canAssign = onAssign && statusLower !== 'on_progress' && statusLower !== 'close';
+            const canAssign =
+              onAssign &&
+              statusLower !== 'on_progress' &&
+              statusLower !== 'close';
 
             return (
               <div
                 key={ticket.ticketId || ticket.idTicket || index}
-                className='flex flex-wrap items-center gap-2 rounded-xl border border-cyan-500/10 bg-cyan-500/5 px-3 py-2.5 transition-colors hover:bg-cyan-500/10'
+                className='flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 shadow-2xs transition-all hover:border-cyan-300 dark:border-cyan-500/10 dark:bg-cyan-950/30 dark:hover:bg-cyan-500/10'
               >
-                {/* Number */}
-                <span className='flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-400'>
+                {/* Index Count */}
+                <span className='flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-[10px] font-black text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400'>
                   {index + 1}
                 </span>
 
                 {/* Ticket ID */}
-                <span className='font-mono text-sm font-bold text-cyan-400'>
+                <span className='rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-black text-slate-900 dark:bg-slate-800 dark:text-cyan-300'>
                   {ticket.ticketId}
                 </span>
 
-                {/* Customer type */}
-                <span className='text-xs text-cyan-300'>⚡ {ticket.customerType}</span>
+                {/* Customer Code */}
+                <span className='text-xs font-bold text-cyan-700 dark:text-cyan-400'>
+                  ⚡ {ticket.customerType}
+                </span>
 
-                {/* Workzone */}
+                {/* Location Workzone */}
                 {ticket.workzone && (
-                  <span className='hidden text-xs text-(--text-secondary) sm:inline'>
+                  <span className='text-xs font-semibold text-slate-600 sm:inline dark:text-slate-400'>
                     📍 {ticket.workzone}
                   </span>
                 )}
 
-                {/* Reported date */}
-                <span className='text-[11px] text-(--text-secondary)'>
+                {/* Post Time */}
+                <span className='text-[11px] font-medium text-slate-400 dark:text-slate-500'>
                   {formatDateTime(ticket.reportedAt)}
                 </span>
 
-                {/* Age badge */}
-                <span
-                  className={clsx(
-                    'rounded-full px-2 py-0.5 text-[10px] font-bold',
-                    ageBadge.className,
-                  )}
-                >
-                  {ageBadge.label}
-                </span>
-
-                {/* Status badge */}
-                <span
-                  className={clsx(
-                    'rounded-full px-2 py-0.5 text-[10px] font-bold',
-                    statusBadge.className,
-                  )}
-                >
-                  {statusBadge.label}
-                </span>
-
-                {/* Assign button */}
-                {canAssign && (
-                  <button
-                    onClick={() => onAssign!(ticket.ticketId, ticket.idTicket)}
-                    className='ml-auto flex items-center gap-1 rounded-lg border border-cyan-500/30 bg-cyan-500/15 px-2.5 py-1 text-[11px] font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/25'
+                {/* Right Badge Status Operations */}
+                <div className='ml-auto flex items-center gap-2'>
+                  <span
+                    className={cn(
+                      'rounded-md px-2 py-0.5 text-[10px] font-black tracking-wide',
+                      ageBadge.className,
+                    )}
                   >
-                    <UserPlus size={11} />
-                    {statusLower === 'assigned' ? 'Reassign' : 'Assign'}
-                  </button>
-                )}
+                    {ageBadge.label}
+                  </span>
+
+                  <span
+                    className={cn(
+                      'rounded-md px-2 py-0.5 text-[10px] font-black tracking-wide',
+                      statusBadge.className,
+                    )}
+                  >
+                    {statusBadge.label}
+                  </span>
+
+                  {/* Assign Action Trigger */}
+                  {canAssign && (
+                    <button
+                      onClick={() =>
+                        onAssign!(ticket.ticketId, ticket.idTicket)
+                      }
+                      className='flex items-center gap-1.5 rounded-lg border border-cyan-600 bg-cyan-600 px-3 py-1 text-[11px] font-bold text-white shadow-2xs transition-all hover:bg-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-400 dark:hover:bg-cyan-500/20'
+                    >
+                      <UserPlus size={11} className='stroke-3' />
+                      {statusLower === 'assigned' ? 'Reassign' : 'Assign'}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
 
-        {/* Expand toggle */}
+        {/* Collapse Control Footer */}
         {tickets.length > MAX_VISIBLE && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className='flex w-full items-center justify-center gap-1 rounded-lg border border-cyan-500/10 bg-cyan-500/5 py-2 text-xs font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/10'
+            className='flex w-full items-center justify-center gap-1 rounded-xl border border-cyan-200 bg-white py-2 text-xs font-bold text-cyan-700 shadow-2xs transition-all hover:bg-cyan-50/50 dark:border-cyan-500/10 dark:bg-cyan-950/40 dark:text-cyan-400 dark:hover:bg-cyan-500/10'
           >
             {expanded ? (
               <>
-                <ChevronUp size={14} />
-                Sembunyikan
+                <ChevronUp size={13} className='stroke-[2.5]' />
+                Sembunyikan Antrean
               </>
             ) : (
               <>
-                <ChevronDown size={14} />
-                Lihat semua {tickets.length} tiket
+                <ChevronDown size={13} className='stroke-[2.5]' />
+                Lihat Semua ({tickets.length} Tiket Diamond)
               </>
             )}
           </button>

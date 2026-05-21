@@ -59,19 +59,19 @@ export async function refreshVlookupCache(): Promise<void> {
 
     for (const r of rows) {
       const row: SourceVlookupRow = {
-        valueId: r.valueId,
+        valueId: r.value_id,
         description: r.description,
-        jenisTiket: r.jenisTiket,
-        customerTypeKey: r.customerTypeKey,
-        jenisTiket2Val: r.jenisTiket2Val,
-        realmB2b: r.realmB2b,
-        flag1: r.flag1,
-        flag2: r.flag2,
+        jenisTiket: r.jenis_tiket,
+        customerTypeKey: r.customer_type_key,
+        jenisTiket2Val: r.jenis_tiket_2_val,
+        realmB2b: r.realm_b2b,
+        flag1: r.flag_1,
+        flag2: r.flag_2,
       };
 
-      if (r.valueId) vlookupCache.byValueId.set(r.valueId, row);
-      if (r.customerTypeKey) vlookupCache.byCustomerTypeKey.set(r.customerTypeKey.toUpperCase(), row);
-      if (r.realmB2b) vlookupCache.byRealmB2b.set(r.realmB2b.toUpperCase(), row);
+      if (r.value_id) vlookupCache.byValueId.set(r.value_id, row);
+      if (r.customer_type_key) vlookupCache.byCustomerTypeKey.set(r.customer_type_key.toUpperCase(), row);
+      if (r.realm_b2b) vlookupCache.byRealmB2b.set(r.realm_b2b.toUpperCase(), row);
     }
 
     vlookupCache.lastRefresh = now;
