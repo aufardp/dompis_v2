@@ -622,17 +622,17 @@ async function applyPatchFields(
 
   // Simple scalar fields — map patch key → DB column
   const FIELD_MAP: Array<[keyof TicketUpdatePatch, string]> = [
-    ['summary', 'SUMMARY'],
+    ['summary', 'summary'],
     ['ownerGroup', 'owner_group'],
-    ['status', 'STATUS'],
-    ['serviceType', 'SERVICE_TYPE'],
-    ['customerSegment', 'CUSTOMER_SEGMENT'],
+    ['status', 'status'],
+    ['serviceType', 'service_type'],
+    ['customerSegment', 'customer_segment'],
     ['customerType', 'customer_type'],
     ['serviceNo', 'service_no'],
     ['contactName', 'contact_name'],
-    ['contactPhone', 'CONTACT_PHONE'],
-    ['deviceName', 'DEVICE_NAME'],
-    ['symptom', 'SYMPTOM'],
+    ['contactPhone', 'contact_phone'],
+    ['deviceName', 'device_name'],
+    ['symptom', 'symptom'],
     ['alamat', 'alamat'],
     ['descriptionSolutionDompis', 'description_solution_dompis'],
   ];
@@ -796,7 +796,7 @@ export class TicketWorkflowService {
         serviceAreaName,
         technicians,
       };
-    });
+    }, { timeout: 15000 });
   }
 
   static async assignToUser(
@@ -971,7 +971,7 @@ export class TicketWorkflowService {
             ? 'Ticket reassigned successfully'
             : 'Ticket assigned successfully',
         };
-      }),
+      }, { timeout: 15000 }),
     );
   }
 
@@ -1080,7 +1080,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket unassigned successfully' };
-      }),
+      }, { timeout: 15000 }),
     );
   }
 
@@ -1176,7 +1176,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket picked up successfully' };
-      }),
+      }, { timeout: 15000 }),
     );
   }
 
@@ -1317,7 +1317,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket closed successfully' };
-      }),
+      }, { timeout: 15000 }),
     );
   }
 
@@ -1488,7 +1488,7 @@ export class TicketWorkflowService {
         }
 
         return { message: 'Ticket updated successfully' };
-      }),
+      }, { timeout: 15000 }),
     );
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
