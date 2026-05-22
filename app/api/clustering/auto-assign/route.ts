@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const acceptHeader = req.headers.get('accept') || '';
   const wantsSSE = acceptHeader.includes('text/event-stream');
 
-  const lockKey = 'auto-assign-lock';
+  const lockKey = 'auto_assign';
   const ownerId = `autoassign-${Date.now()}`;
 
   const lockAcquired = await acquireLock(lockKey, ownerId, LOCK_TTL);
@@ -76,7 +76,9 @@ export async function POST(req: Request) {
     const saIds = userSAs
       .map((usa) => usa.sa_id)
       .filter((id): id is number => id !== null);
-    console.log('[AUTO-ASSIGN API] User workzones:', saIds);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[AUTO-ASSIGN API] User workzones:', saIds);
+    }
 
     ClusterAutoAssignServiceV2.setProgressCallback((data) => {
       if (data.type === 'completed') {

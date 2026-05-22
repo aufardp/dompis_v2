@@ -360,7 +360,7 @@ export async function GET(request: Request) {
         ];
       }
 
-      const FETCH_PAGE_SIZE = 500;
+      const FETCH_PAGE_SIZE = 100;
       const firstRes = await DailyTicketService.getDailyTicketTable(
         user.role,
         user.id_user,

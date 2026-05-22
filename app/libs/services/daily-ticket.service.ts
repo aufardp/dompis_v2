@@ -397,9 +397,9 @@ export class DailyTicketService {
   }
 
   /**
-   * Main Daily Ticket Table
-   * Fetches all matching tickets, sorts by priority (P1 > P+ > others),
-   * then applies client-side pagination.
+   * Main Daily Ticket Table.
+   * Pagination must happen in MySQL so a dashboard request never loads the
+   * whole daily board into the Node.js heap.
    */
 
   static async getDailyTicketTable(
@@ -407,42 +407,52 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
-    const { page = 1, limit = 10 } = filters ?? {};
+    const { page = 1, limit = 10, sort = 'desc' } = filters ?? {};
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const offset = (safePage - 1) * safeLimit;
 
     const where = await this.buildDailyTicketWhere(role, userId, filters);
 
-    // Get total count
-    const total = await prisma.ticket.count({ where });
+    // Clone where for validasi count (status_update = 'close' AND status != 'closed')
+    const validasiWhere = structuredClone(where);
+    if (validasiWhere.AND) {
+      validasiWhere.AND = validasiWhere.AND.filter((clause: any) => {
+        const hasStatusUpdate =
+          clause?.status_update ||
+          (clause?.OR && clause.OR.some((c: any) => c?.status_update));
+        return !hasStatusUpdate;
+      });
+    }
+    validasiWhere.AND = [
+      ...(validasiWhere.AND ?? []),
+      { status_update: 'close' },
+      { status: { not: 'closed' } },
+    ];
 
-    // Fetch ALL matching tickets (Prisma handles WHERE safely)
-    const allTickets = await prisma.ticket.findMany({
-      where,
-      include: {
-        users: {
-          select: { nama: true },
+    const [total, validasiCount, tickets] = await Promise.all([
+      prisma.ticket.count({ where }),
+      prisma.ticket.count({ where: validasiWhere }),
+      prisma.ticket.findMany({
+        where,
+        include: {
+          users: {
+            select: { nama: true },
+          },
         },
-      },
-      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
-    });
-
-    // Sort by priority: P1 > P+ > others
-    const sorted = allTickets.sort((a, b) => {
-      const priorityA = a.flagging_manja === 'P1' ? 1 : a.flagging_manja === 'P+' ? 2 : 3;
-      const priorityB = b.flagging_manja === 'P1' ? 1 : b.flagging_manja === 'P+' ? 2 : 3;
-      if (priorityA !== priorityB) return priorityA - priorityB;
-      return 0;
-    });
-
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    const paginated = sorted.slice(offset, offset + limit);
+        orderBy: [{ reported_date: sort }, { id_ticket: 'asc' }],
+        skip: offset,
+        take: safeLimit,
+      }),
+    ]);
 
     return {
       total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      data: paginated.map(mapTicket),
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+      data: tickets.map(mapTicket),
+      validasiCount: validasiCount,
     };
   }
 

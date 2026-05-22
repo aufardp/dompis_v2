@@ -1,4 +1,4 @@
-import { redis } from '@/lib/redis';
+import { redis, isRedisReady } from '@/lib/redis';
 
 let subClient: ReturnType<typeof redis.duplicate> | null = null;
 const activeConnections = new Set<ReadableStreamDefaultController>();
@@ -29,7 +29,7 @@ export async function initSSERedis() {
       });
     }
 
-    subClient = redis.duplicate();
+    subClient = redis.duplicate({ lazyConnect: true });
 
     subClient.on('error', (err: Error) => {
       if ((err as any).code !== 'ECONNREFUSED') {
@@ -76,6 +76,9 @@ export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
       activeConnections.delete(ctrl);
     }
   }
+  if (isRedisReady()) {
+    void redis.publish('sse:sync', message).catch(() => {});
+  }
 }
 
 export function broadcastTicketInvalidate(reason?: string) {
@@ -86,6 +89,9 @@ export function broadcastTicketInvalidate(reason?: string) {
     } catch {
       activeConnections.delete(ctrl);
     }
+  }
+  if (isRedisReady()) {
+    void redis.publish('sse:tickets', message).catch(() => {});
   }
 }
 

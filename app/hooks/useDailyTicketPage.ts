@@ -35,6 +35,7 @@ export function useDailyTicketPage({
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [validasiCount, setValidasiCount] = useState(0);
   const [pagination, setPagination] = useState<PaginationInfo>({
     currentPage: page,
     totalPages: 1,
@@ -95,6 +96,7 @@ export function useDailyTicketPage({
 
         const data = json.data;
         setTickets(data?.data ?? []);
+        setValidasiCount(Number(data?.validasiCount ?? 0));
         setPagination({
           currentPage: Number(data?.page || page),
           totalPages: Math.max(1, Number(data?.totalPages || 1)),
@@ -104,6 +106,7 @@ export function useDailyTicketPage({
       } catch {
         if (requestId !== requestIdRef.current) return;
         setTickets([]);
+        setValidasiCount(0);
         setPagination({
           currentPage: page,
           totalPages: 1,
@@ -128,10 +131,11 @@ export function useDailyTicketPage({
       tickets,
       loading,
       isRefreshing,
+      validasiCount,
       pagination,
       refresh: () => fetchPage(true, true),
       refreshSilent: () => fetchPage(false, true),
     }),
-    [fetchPage, isRefreshing, loading, pagination, tickets],
+    [fetchPage, isRefreshing, loading, pagination, tickets, validasiCount],
   );
 }

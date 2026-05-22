@@ -4,7 +4,6 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 
 export async function POST(req: Request) {
@@ -25,8 +24,6 @@ export async function POST(req: Request) {
       user,
     )) as { message: string };
 
-    await invalidateTicketsCache();
-    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('pickup');
 
     return NextResponse.json({ success: true, message: result.message });

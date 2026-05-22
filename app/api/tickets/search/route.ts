@@ -2,9 +2,17 @@ import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(req: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tickets-search',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'teknisi',

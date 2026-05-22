@@ -7,15 +7,6 @@ export async function fastTrackingUpdate(
   assignedTo: number | null,
   now: Date,
 ) {
-  const ticketExists = await tx.ticket.findUnique({
-    where: { id_ticket: ticketId },
-    select: { id_ticket: true },
-  });
-
-  if (!ticketExists) {
-    throw new Error(`Ticket ${ticketId} not found`);
-  }
-
   await tx.ticket_tracking.updateMany({
     where: {
       ticket_id: ticketId,

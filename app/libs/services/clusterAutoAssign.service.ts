@@ -15,8 +15,19 @@ export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
 const CHUNK_SIZE = 50;
 const isDev = process.env.NODE_ENV !== 'production';
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = Math.max(
+  1,
+  Math.min(10, Number(process.env.AUTO_ASSIGN_CONCURRENCY || 3)),
+);
 const MAX_RETRIES = 3;
+const MAX_TICKETS_PER_RUN = Math.max(
+  50,
+  Math.min(2000, Number(process.env.AUTO_ASSIGN_MAX_TICKETS_PER_RUN || 500)),
+);
+const TECH_EVENT_DISPATCH_CONCURRENCY = Math.max(
+  1,
+  Math.min(10, Number(process.env.AUTO_ASSIGN_EVENT_CONCURRENCY || 5)),
+);
 
 export interface AutoAssignResult {
   assigned: boolean;
@@ -238,8 +249,10 @@ export class ClusterAutoAssignServiceV2 {
   > {
     if (!clusterIds.length) return new Map();
 
-    console.log('[DEBUG-GATEC] Input clusterIds:', clusterIds);
-    console.log('[DEBUG-GATEC] Input today:', today);
+    if (isDev) {
+      console.log('[DEBUG-GATEC] Input clusterIds:', clusterIds);
+      console.log('[DEBUG-GATEC] Input today:', today);
+    }
 
     const assignments = await prisma.cluster_assignment.findMany({
       where: {
@@ -252,21 +265,23 @@ export class ClusterAutoAssignServiceV2 {
       },
     });
 
-    console.log('[DEBUG-GATEC] cluster_assignment found:', assignments.length);
-    console.log('[DEBUG-GATEC] Assignments:', assignments.map(a => ({ 
-      cluster_id: a.cluster_id, 
-      teknisi_id: a.teknisi_id,
-      assigned_date: a.assigned_date 
-    })));
+    if (isDev) {
+      console.log('[DEBUG-GATEC] cluster_assignment found:', assignments.length);
+      console.log('[DEBUG-GATEC] Assignments:', assignments.map(a => ({
+        cluster_id: a.cluster_id,
+        teknisi_id: a.teknisi_id,
+        assigned_date: a.assigned_date
+      })));
+    }
 
     const teknisiIds = [...new Set(assignments.map((a) => a.teknisi_id))];
-    console.log('[DEBUG-GATEC] Unique teknisi IDs:', teknisiIds);
+    if (isDev) console.log('[DEBUG-GATEC] Unique teknisi IDs:', teknisiIds);
 
     const checkedInTeknisi = await this.getCheckedInTeknisiIds(teknisiIds, today);
-    console.log('[DEBUG-GATEC] Checked in teknisi:', Array.from(checkedInTeknisi));
+    if (isDev) console.log('[DEBUG-GATEC] Checked in teknisi:', Array.from(checkedInTeknisi));
 
     const workloadMap = await this.getWorkloadsForTeknisi(teknisiIds, today);
-    console.log('[DEBUG-GATEC] Workload map:', Array.from(workloadMap.entries()));
+    if (isDev) console.log('[DEBUG-GATEC] Workload map:', Array.from(workloadMap.entries()));
 
     const MAX_LOAD_PER_TEKNISI = 40;
     const result = new Map<
@@ -334,6 +349,7 @@ export class ClusterAutoAssignServiceV2 {
       clusterName: string;
       oldStatus: string | null;
     }> = [];
+    const appliedAssignments: typeof assignments = [];
 
     for (const ticket of tickets) {
       if (ticket.teknisi_user_id) {
@@ -366,10 +382,14 @@ export class ClusterAutoAssignServiceV2 {
       }
 
       const teknisiList = teknisiMap.get(cluster.id);
-      console.log(`[AUTO-ASSIGN] Ticket ${ticket.id_ticket} (RK: ${rkValue}) -> Cluster ${cluster.id} (${cluster.nama_cluster}) -> Teknisi:`, teknisiList?.length || 0);
+      if (isDev) {
+        console.log(`[AUTO-ASSIGN] Ticket ${ticket.id_ticket} (RK: ${rkValue}) -> Cluster ${cluster.id} (${cluster.nama_cluster}) -> Teknisi:`, teknisiList?.length || 0);
+      }
       
       if (!teknisiList?.length) {
-        console.log(`[AUTO-ASSIGN] SKIP: No teknisi in cluster ${cluster.id} for date ${new Date().toISOString().split('T')[0]}`);
+        if (isDev) {
+          console.log(`[AUTO-ASSIGN] SKIP: No teknisi in cluster ${cluster.id} for date ${new Date().toISOString().split('T')[0]}`);
+        }
         autoAssignLogger.ticketSkipped(
           ticket.id_ticket,
           ticket.incident,
@@ -384,7 +404,9 @@ export class ClusterAutoAssignServiceV2 {
         return loadA - loadB;
       });
       const chosen = sorted[0];
-      console.log(`[AUTO-ASSIGN] Round-robin: chosen teknisi ${chosen.teknisi_id} (${chosen.nama}), current batch load: ${workloadMap.get(chosen.teknisi_id) ?? 0}`);
+      if (isDev) {
+        console.log(`[AUTO-ASSIGN] Round-robin: chosen teknisi ${chosen.teknisi_id} (${chosen.nama}), current batch load: ${workloadMap.get(chosen.teknisi_id) ?? 0}`);
+      }
 
       assignments.push({
         ticketId: ticket.id_ticket,
@@ -400,19 +422,27 @@ export class ClusterAutoAssignServiceV2 {
         chosen.teknisi_id,
         (workloadMap.get(chosen.teknisi_id) ?? 0) + 1,
       );
-      console.log(`[AUTO-ASSIGN] ASSIGNED: Ticket ${ticket.id_ticket} to Teknisi ${chosen.teknisi_id} (load: ${chosen.load})`);
+      if (isDev) {
+        console.log(`[AUTO-ASSIGN] ASSIGNED: Ticket ${ticket.id_ticket} to Teknisi ${chosen.teknisi_id} (load: ${chosen.load})`);
+      }
     }
 
     for (const a of assignments) {
       try {
-        await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-          await tx.ticket.update({
-            where: { id_ticket: a.ticketId },
+        const applied = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          const updated = await tx.ticket.updateMany({
+            where: {
+              id_ticket: a.ticketId,
+              teknisi_user_id: null,
+              OR: [{ status_update: null }, { status_update: 'open' }],
+            },
             data: {
               teknisi_user_id: a.teknisiId,
               status_update: 'assigned',
             },
           });
+
+          if (updated.count === 0) return false;
 
           await fastTrackingUpdate(tx, a.ticketId, a.teknisiId, now);
 
@@ -438,9 +468,21 @@ export class ClusterAutoAssignServiceV2 {
             type: ActivityType.AUTO_ASSIGN,
             description: `Auto-assigned ke ${a.teknisiNama} via cluster "${a.clusterName}"`,
           });
+
+          return true;
         });
 
+        if (!applied) {
+          autoAssignLogger.ticketSkipped(
+            a.ticketId,
+            a.incident,
+            'ticket_changed_before_autoassign_commit',
+          );
+          continue;
+        }
+
         assigned++;
+        appliedAssignments.push(a);
 
         autoAssignLogger.ticketAssigned(
           a.ticketId,
@@ -459,8 +501,8 @@ export class ClusterAutoAssignServiceV2 {
       }
     }
 
-    if (assignments.length > 0) {
-      this.dispatchTechEventsAsync(assignments, actorId);
+    if (appliedAssignments.length > 0) {
+      void this.dispatchTechEventsAsync(appliedAssignments, actorId);
     }
 
     return { assigned, failed };
@@ -500,62 +542,70 @@ export class ClusterAutoAssignServiceV2 {
       ),
     );
 
-    const dispatchPromises = assignments.map(async (a) => {
-      const ticket = ticketMap.get(a.ticketId);
-      if (!ticket) return;
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(TECH_EVENT_DISPATCH_CONCURRENCY, assignments.length) },
+      async () => {
+        while (cursor < assignments.length) {
+          const a = assignments[cursor++];
+          if (!a) continue;
+          const ticket = ticketMap.get(a.ticketId);
+          if (!ticket) continue;
 
-      try {
-        const evidence = await buildTechEventEvidence(ticket.incident);
+          try {
+            const evidence = await buildTechEventEvidence(ticket.incident);
 
-        await createTechEvent({
-          event_type: 'TICKET_ASSIGNED',
-          ticket: {
-            id: a.ticketId,
-            incident: ticket.incident,
-            workzone: ticket.workzone ?? '',
-            service_no: ticket.service_no ?? '',
-            customer_name: ticket.contact_name ?? '',
-            owner_group: ticket.owner_group ?? null,
-            customer_type: ticket.customer_type ?? null,
-          },
-          status: {
-            old_hasil_visit:
-              (ticket.status_update?.toUpperCase() as any) ?? 'OPEN',
-            new_hasil_visit: 'ASSIGNED',
-            pending_dompis: null,
-            evidence,
-            rca: null,
-            sub_rca: null,
-          },
-          old_technician: null,
-          new_technician: {
-            id_user: a.teknisiId,
-            nik: a.teknisiNik,
-            nama: a.teknisiNama ?? null,
-          },
-          actor: {
-            id_user: actorId || 0,
-            role: 'system',
-          },
-          admin: {
-            nama: `AUTO-ASSIGN via cluster "${a.clusterName}"`,
-            action: 'ASSIGNED',
-          },
-        });
+            await createTechEvent({
+              event_type: 'TICKET_ASSIGNED',
+              ticket: {
+                id: a.ticketId,
+                incident: ticket.incident,
+                workzone: ticket.workzone ?? '',
+                service_no: ticket.service_no ?? '',
+                customer_name: ticket.contact_name ?? '',
+                owner_group: ticket.owner_group ?? null,
+                customer_type: ticket.customer_type ?? null,
+              },
+              status: {
+                old_hasil_visit:
+                  (ticket.status_update?.toUpperCase() as any) ?? 'OPEN',
+                new_hasil_visit: 'ASSIGNED',
+                pending_dompis: null,
+                evidence,
+                rca: null,
+                sub_rca: null,
+              },
+              old_technician: null,
+              new_technician: {
+                id_user: a.teknisiId,
+                nik: a.teknisiNik,
+                nama: a.teknisiNama ?? null,
+              },
+              actor: {
+                id_user: actorId || 0,
+                role: 'system',
+              },
+              admin: {
+                nama: `AUTO-ASSIGN via cluster "${a.clusterName}"`,
+                action: 'ASSIGNED',
+              },
+            });
 
-        autoAssignLogger.webhookDispatched(a.ticketId, a.incident, true);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-        autoAssignLogger.webhookDispatched(
-          a.ticketId,
-          a.incident,
-          false,
-          errorMsg,
-        );
-      }
-    });
+            autoAssignLogger.webhookDispatched(a.ticketId, a.incident, true);
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            autoAssignLogger.webhookDispatched(
+              a.ticketId,
+              a.incident,
+              false,
+              errorMsg,
+            );
+          }
+        }
+      },
+    );
 
-    Promise.allSettled(dispatchPromises);
+    await Promise.allSettled(workers);
   }
 
   static async runBatchV2(
@@ -638,6 +688,7 @@ export class ClusterAutoAssignServiceV2 {
         jam_expired: true,
       },
       orderBy: { jam_expired: 'asc' },
+      take: MAX_TICKETS_PER_RUN,
     });
 
     if (isDev) {
@@ -728,7 +779,7 @@ export class ClusterAutoAssignServiceV2 {
             chunk,
             clusterMap,
             teknisiMap,
-            new Map(workloadMap),
+            workloadMap,
             actorId,
             i + idx,
           ),

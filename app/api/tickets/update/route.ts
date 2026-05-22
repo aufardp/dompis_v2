@@ -4,7 +4,6 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { TicketUpdatePatch, TicketUpdateWorkflow } from '@/app/types/ticket';
 
@@ -66,9 +65,6 @@ export async function POST(req: Request) {
         workflow,
       })) as { message: string };
 
-      // Invalidate cache to ensure fresh data on next fetch
-      await invalidateTicketsCache();
-      await new Promise((r) => setTimeout(r, 150));
       broadcastTicketInvalidate('update');
 
       return NextResponse.json({ success: true, message: result.message });
@@ -110,9 +106,6 @@ export async function POST(req: Request) {
           },
         )) as { message: string };
 
-        // Invalidate cache to ensure fresh data on next fetch
-        await invalidateTicketsCache();
-        await new Promise((r) => setTimeout(r, 150));
         broadcastTicketInvalidate('update');
 
         return NextResponse.json({ success: true, message: result.message });
@@ -175,9 +168,6 @@ export async function POST(req: Request) {
       workflow,
     })) as { message: string };
 
-    // Invalidate cache to ensure fresh data on next fetch
-    await invalidateTicketsCache();
-    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('update');
 
     return NextResponse.json({ success: true, message: result.message });

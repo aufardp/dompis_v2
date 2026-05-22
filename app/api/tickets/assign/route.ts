@@ -5,26 +5,13 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
-import { invalidateTicketsCache } from '@/lib/cache';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
-import prisma from '@/app/libs/prisma';
 
 export async function POST(req: Request) {
-  const lockKey = 'ticket-lock';
-  const ownerId = `assign-${Date.now()}-${Math.random()}`;
+  let lockKey: string | null = null;
+  let ownerId: string | null = null;
   let ticketId = 0;
-
-  const lockAcquired = await acquireLock(lockKey, ownerId, 30);
-
-  if (!lockAcquired) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Ticket sedang diproses oleh admin lain. Silakan coba lagi.',
-      },
-      { status: 409 },
-    );
-  }
+  let lockAcquired = false;
 
   try {
     const user = await protectApi([
@@ -52,18 +39,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const existingTicket = await prisma.ticket.findUnique({
-      where: { id_ticket: ticketId },
-      select: { id_ticket: true, incident: true },
-    });
+    lockKey = `ticket-lock:${ticketId}`;
+    ownerId = `assign-${ticketId}-${Date.now()}-${Math.random()}`;
+    lockAcquired = await acquireLock(lockKey, ownerId, 30);
 
-    if (!existingTicket) {
+    if (!lockAcquired) {
       return NextResponse.json(
         {
           success: false,
-          message: `Tiket dengan ID ${ticketId} tidak ditemukan atau sudah dihapus`,
+          message: 'Ticket sedang diproses oleh admin lain. Silakan coba lagi.',
         },
-        { status: 404 },
+        { status: 409 },
       );
     }
 
@@ -74,8 +60,6 @@ export async function POST(req: Request) {
       { forceReassign },
     )) as { message: string };
 
-    await invalidateTicketsCache();
-    await new Promise((r) => setTimeout(r, 150));
     broadcastTicketInvalidate('assign');
 
     return NextResponse.json({
@@ -109,6 +93,8 @@ export async function POST(req: Request) {
       { status: getErrorStatus(error, 400) },
     );
   } finally {
-    await releaseLock(lockKey, ownerId);
+    if (lockAcquired && lockKey && ownerId) {
+      await releaseLock(lockKey, ownerId);
+    }
   }
 }

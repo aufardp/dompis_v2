@@ -1,22 +1,21 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import {
-  countStatusBuckets,
   isTicketClosed,
   isTicketInWork,
-  isTicketOpenLike,
 } from '@/app/libs/ticket-utils';
 import {
-  isB2BJenis,
-  isB2CJenis,
   normalizeJenis,
+  getB2BJenisWhereClause,
+  getB2CJenisWhereClause,
 } from '@/app/config/jenis-tiket';
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
-import { resolveEffectiveFlagging } from '@/app/libs/flagging-manja';
 import { getCache, setCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,57 +37,8 @@ const EMPTY_COUNTS = {
 
 type SummaryCounts = typeof EMPTY_COUNTS;
 
-type SummaryRow = {
-  id_ticket: number;
-  customer_type: string | null;
-  customer_segment: string | null;
-  status_update: string | null;
-  jenis_tiket_1: string | null;
-  jenis_tiket_2: string | null;
-  ticket_id_gamas: string | null;
-  guarantee_status: string | null;
-  flagging_manja: string | null;
-  booking_date: string | null;
-  pending_dompis: string | null;
-  workzone: string | null;
-};
-
 function cloneCounts(): SummaryCounts {
   return { ...EMPTY_COUNTS };
-}
-
-function hasValidGamas(value: string | null | undefined): boolean {
-  const normalized = String(value ?? '').trim();
-  return (
-    normalized.length > 0 &&
-    !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
-      normalized.toLowerCase(),
-    )
-  );
-}
-
-function incrementCounts(counts: SummaryCounts, row: SummaryRow) {
-  counts.total++;
-
-  if (isTicketClosed(row.status_update)) counts.close++;
-  else if (isTicketInWork(row.status_update)) counts.assigned++;
-  else counts.open++;
-
-  const jenis = normalizeJenis(row.jenis_tiket_2);
-  if (jenis === 'reguler' || jenis === 'hvc') counts.customerCount++;
-  else if (jenis === 'sqm') counts.sqmCount++;
-  else counts.unspecCount++;
-
-  if (
-    String(row.guarantee_status ?? '').trim().toLowerCase() === 'guarantee'
-  ) {
-    counts.ffgCount++;
-  }
-  if (hasValidGamas(row.ticket_id_gamas)) counts.gamasCount++;
-
-  const flagging = resolveEffectiveFlagging(row.flagging_manja, row.booking_date);
-  if (flagging === 'P1') counts.p1Count++;
-  if (flagging === 'P+') counts.pPlusCount++;
 }
 
 function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
@@ -98,8 +48,228 @@ function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   return `dashboard_operations_summary:${role}:${userId}:${filterParams.toString()}`;
 }
 
+function withWhere(
+  baseWhere: Prisma.ticketWhereInput,
+  ...clauses: Prisma.ticketWhereInput[]
+) {
+  const activeClauses = clauses.filter((clause) => Object.keys(clause).length > 0);
+  if (activeClauses.length === 0) return baseWhere;
+  return {
+    AND: [baseWhere, ...activeClauses],
+  };
+}
+
+const validGamasWhere = {
+  AND: [
+    { ticket_id_gamas: { not: null } },
+    { ticket_id_gamas: { not: '' } },
+    { ticket_id_gamas: { not: '-' } },
+    { ticket_id_gamas: { not: '--' } },
+    { ticket_id_gamas: { not: 'null' } },
+    { ticket_id_gamas: { not: 'undefined' } },
+    { ticket_id_gamas: { not: 'n/a' } },
+    { ticket_id_gamas: { not: 'na' } },
+  ],
+};
+
+const carryOverWhere = {
+  AND: [
+    { pending_dompis: { not: null } },
+    { pending_dompis: { not: '' } },
+  ],
+};
+
+async function countStatusSummary(
+  where: Prisma.ticketWhereInput,
+): Promise<Pick<SummaryCounts, 'total' | 'open' | 'assigned' | 'close'>> {
+  const groups = await prisma.ticket.groupBy({
+    by: ['status_update'],
+    where,
+    _count: { _all: true },
+  });
+
+  const result = { total: 0, open: 0, assigned: 0, close: 0 };
+  for (const group of groups) {
+    const count = group._count._all;
+    result.total += count;
+    if (isTicketClosed(group.status_update)) result.close += count;
+    else if (isTicketInWork(group.status_update)) result.assigned += count;
+    else result.open += count;
+  }
+
+  return result;
+}
+
+async function countTicketSummary(
+  where: Prisma.ticketWhereInput,
+): Promise<SummaryCounts> {
+  const [
+    statusCounts,
+    jenisGroups,
+    ffgCount,
+    gamasCount,
+    p1Count,
+    pPlusCount,
+  ] = await Promise.all([
+    countStatusSummary(where),
+    prisma.ticket.groupBy({
+      by: ['jenis_tiket_2'],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.ticket.count({
+      where: withWhere(where, { guarantee_status: 'guarantee' }),
+    }),
+    prisma.ticket.count({
+      where: withWhere(where, validGamasWhere),
+    }),
+    prisma.ticket.count({
+      where: withWhere(where, { flagging_manja: 'P1' }),
+    }),
+    prisma.ticket.count({
+      where: withWhere(where, { flagging_manja: 'P+' }),
+    }),
+  ]);
+
+  const result: SummaryCounts = {
+    ...cloneCounts(),
+    ...statusCounts,
+    ffgCount,
+    gamasCount,
+    p1Count,
+    pPlusCount,
+  };
+
+  for (const group of jenisGroups) {
+    const jenis = normalizeJenis(group.jenis_tiket_2);
+    const count = group._count._all;
+    if (jenis === 'reguler' || jenis === 'hvc') result.customerCount += count;
+    else if (jenis === 'sqm') result.sqmCount += count;
+    else result.unspecCount += count;
+  }
+
+  return result;
+}
+
+function mergeGroupSummary(
+  target: SummaryCounts,
+  statusUpdate: string | null,
+  count: number,
+) {
+  target.total += count;
+  if (isTicketClosed(statusUpdate)) target.close += count;
+  else if (isTicketInWork(statusUpdate)) target.assigned += count;
+  else target.open += count;
+}
+
+async function buildB2BGroups(where: Prisma.ticketWhereInput) {
+  const b2bWhere = withWhere(
+    where,
+    getB2BJenisWhereClause() as Prisma.ticketWhereInput,
+  );
+  const [statusGroups, ffgGroups, gamasGroups, p1Groups, pPlusGroups] =
+    await Promise.all([
+      prisma.ticket.groupBy({
+        by: ['jenis_tiket_1', 'status_update'],
+        where: b2bWhere,
+        _count: { _all: true },
+      }),
+      prisma.ticket.groupBy({
+        by: ['jenis_tiket_1'],
+        where: withWhere(b2bWhere, { guarantee_status: 'guarantee' }),
+        _count: { _all: true },
+      }),
+      prisma.ticket.groupBy({
+        by: ['jenis_tiket_1'],
+        where: withWhere(b2bWhere, validGamasWhere),
+        _count: { _all: true },
+      }),
+      prisma.ticket.groupBy({
+        by: ['jenis_tiket_1'],
+        where: withWhere(b2bWhere, { flagging_manja: 'P1' }),
+        _count: { _all: true },
+      }),
+      prisma.ticket.groupBy({
+        by: ['jenis_tiket_1'],
+        where: withWhere(b2bWhere, { flagging_manja: 'P+' }),
+        _count: { _all: true },
+      }),
+    ]);
+
+  const groups = new Map<string, SummaryCounts>();
+  const getGroup = (jenisTiket1: string | null) => {
+    const key = getB2BGroupKey(jenisTiket1);
+    if (!groups.has(key)) groups.set(key, cloneCounts());
+    return groups.get(key)!;
+  };
+
+  for (const group of statusGroups) {
+    mergeGroupSummary(
+      getGroup(group.jenis_tiket_1),
+      group.status_update,
+      group._count._all,
+    );
+  }
+
+  for (const group of ffgGroups) getGroup(group.jenis_tiket_1).ffgCount += group._count._all;
+  for (const group of gamasGroups) getGroup(group.jenis_tiket_1).gamasCount += group._count._all;
+  for (const group of p1Groups) getGroup(group.jenis_tiket_1).p1Count += group._count._all;
+  for (const group of pPlusGroups) getGroup(group.jenis_tiket_1).pPlusCount += group._count._all;
+
+  return Object.fromEntries(groups.entries());
+}
+
+async function buildServiceAreas(where: Prisma.ticketWhereInput) {
+  const groups = await prisma.ticket.groupBy({
+    by: ['workzone', 'status_update'],
+    where,
+    _count: { _all: true },
+  });
+
+  const areaMap = new Map<
+    string,
+    { name: string; total: number; unassigned: number; open: number; assigned: number; close: number }
+  >();
+
+  for (const group of groups) {
+    const name = String(group.workzone ?? '').trim();
+    if (!name) continue;
+    if (!areaMap.has(name)) {
+      areaMap.set(name, {
+        name,
+        total: 0,
+        unassigned: 0,
+        open: 0,
+        assigned: 0,
+        close: 0,
+      });
+    }
+
+    const row = areaMap.get(name)!;
+    const count = group._count._all;
+    row.total += count;
+    if (isTicketClosed(group.status_update)) row.close += count;
+    else if (isTicketInWork(group.status_update)) row.assigned += count;
+    else {
+      row.open += count;
+      row.unassigned += count;
+    }
+  }
+
+  return Array.from(areaMap.values())
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+}
+
 export async function GET(request: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'operations-summary',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'teknisi',
@@ -135,135 +305,81 @@ export async function GET(request: Request) {
       }
     }
 
-    const where = await DailyTicketService.buildDailyTicketWhere(
+    const where = (await DailyTicketService.buildDailyTicketWhere(
       user.role,
       user.id_user,
       filters,
+    )) as Prisma.ticketWhereInput;
+
+    const b2cWhere = withWhere(
+      where,
+      getB2CJenisWhereClause() as Prisma.ticketWhereInput,
+    );
+    const b2bWhere = withWhere(
+      where,
+      getB2BJenisWhereClause() as Prisma.ticketWhereInput,
     );
 
-    const rows = await prisma.ticket.findMany({
-      where,
-      select: {
-        id_ticket: true,
-        customer_type: true,
-        customer_segment: true,
-        status_update: true,
-        jenis_tiket_1: true,
-        jenis_tiket_2: true,
-        ticket_id_gamas: true,
-        guarantee_status: true,
-        flagging_manja: true,
-        booking_date: true,
-        pending_dompis: true,
-        workzone: true,
-      },
-    });
+    const [
+      statusCounts,
+      b2cSummary,
+      b2bSummary,
+      reguler,
+      hvcGold,
+      hvcPlatinum,
+      hvcDiamond,
+      b2bGroups,
+      serviceAreas,
+      diamondCount,
+      p1Count,
+      gamasCount,
+      ffgCount,
+      carryOverCount,
+    ] = await Promise.all([
+      countStatusSummary(where),
+      countTicketSummary(b2cWhere),
+      countTicketSummary(b2bWhere),
+      countTicketSummary(withWhere(b2cWhere, { customer_type: 'REGULER' })),
+      countTicketSummary(withWhere(b2cWhere, { customer_type: 'HVC_GOLD' })),
+      countTicketSummary(withWhere(b2cWhere, { customer_type: 'HVC_PLATINUM' })),
+      countTicketSummary(withWhere(b2cWhere, { customer_type: 'HVC_DIAMOND' })),
+      buildB2BGroups(where),
+      buildServiceAreas(where),
+      prisma.ticket.count({ where: withWhere(where, { customer_type: 'HVC_DIAMOND' }) }),
+      prisma.ticket.count({ where: withWhere(where, { flagging_manja: 'P1' }) }),
+      prisma.ticket.count({ where: withWhere(where, validGamasWhere) }),
+      prisma.ticket.count({ where: withWhere(where, { guarantee_status: 'guarantee' }) }),
+      prisma.ticket.count({ where: withWhere(where, carryOverWhere) }),
+    ]);
 
-    const statusCounts = countStatusBuckets(rows, (row) => row.status_update);
     const stats = {
       total: statusCounts.total,
       unassigned: statusCounts.open,
-      assigned:
-        statusCounts.assigned + statusCounts.onProgress + statusCounts.pending,
+      assigned: statusCounts.assigned,
       close: statusCounts.close,
-      b2c: 0,
-      b2b: 0,
+      b2c: b2cSummary.total,
+      b2b: b2bSummary.total,
     };
 
-    const b2cSummary = cloneCounts();
-    const b2bSummary = cloneCounts();
-    const b2cByType = new Map<string, SummaryCounts>();
-    const b2bGroups = new Map<string, SummaryCounts>();
-    const serviceAreaMap = new Map<string, SummaryRow[]>();
     const focusCounts = {
-      diamond: 0,
-      p1: 0,
-      gamas: 0,
-      ffg: 0,
-      carryOver: 0,
+      diamond: diamondCount,
+      p1: p1Count,
+      gamas: gamasCount,
+      ffg: ffgCount,
+      carryOver: carryOverCount,
     };
-
-    for (const row of rows) {
-      const jenis = row.jenis_tiket_2;
-      const isB2c = isB2CJenis(jenis);
-      const isB2b = isB2BJenis(jenis);
-      const flagging = resolveEffectiveFlagging(row.flagging_manja, row.booking_date);
-
-      if (isB2c) {
-        stats.b2c++;
-        incrementCounts(b2cSummary, row);
-
-        const customerType = String(row.customer_type ?? '').trim().toUpperCase();
-        const key = [
-          'REGULER',
-          'HVC_GOLD',
-          'HVC_PLATINUM',
-          'HVC_DIAMOND',
-        ].includes(customerType)
-          ? customerType
-          : 'UNCLASSIFIED';
-
-        if (!b2cByType.has(key)) b2cByType.set(key, cloneCounts());
-        incrementCounts(b2cByType.get(key)!, row);
-      }
-
-      if (isB2b) {
-        stats.b2b++;
-        incrementCounts(b2bSummary, row);
-
-        const groupKey = getB2BGroupKey(row.jenis_tiket_1);
-        if (!b2bGroups.has(groupKey)) b2bGroups.set(groupKey, cloneCounts());
-        incrementCounts(b2bGroups.get(groupKey)!, row);
-      }
-
-      const workzone = String(row.workzone ?? '').trim();
-      if (workzone) {
-        if (!serviceAreaMap.has(workzone)) serviceAreaMap.set(workzone, []);
-        serviceAreaMap.get(workzone)!.push(row);
-      }
-
-      if (String(row.customer_type ?? '').toUpperCase() === 'HVC_DIAMOND') {
-        focusCounts.diamond++;
-      }
-      if (flagging === 'P1') focusCounts.p1++;
-      if (hasValidGamas(row.ticket_id_gamas)) focusCounts.gamas++;
-      if (
-        String(row.guarantee_status ?? '').trim().toLowerCase() ===
-        'guarantee'
-      ) {
-        focusCounts.ffg++;
-      }
-      if (String(row.pending_dompis ?? '').trim().length > 0) {
-        focusCounts.carryOver++;
-      }
-    }
-
-    const serviceAreas = Array.from(serviceAreaMap.entries())
-      .map(([name, areaRows]) => ({
-        name,
-        total: areaRows.length,
-        unassigned: areaRows.filter((row) => isTicketOpenLike(row.status_update))
-          .length,
-        open: areaRows.filter((row) => isTicketOpenLike(row.status_update))
-          .length,
-        assigned: areaRows.filter((row) => isTicketInWork(row.status_update))
-          .length,
-        close: areaRows.filter((row) => isTicketClosed(row.status_update)).length,
-      }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
 
     const result = {
       stats,
       b2cStats: {
         summary: b2cSummary,
-        reguler: b2cByType.get('REGULER') ?? cloneCounts(),
-        hvcGold: b2cByType.get('HVC_GOLD') ?? cloneCounts(),
-        hvcPlatinum: b2cByType.get('HVC_PLATINUM') ?? cloneCounts(),
-        hvcDiamond: b2cByType.get('HVC_DIAMOND') ?? cloneCounts(),
+        reguler,
+        hvcGold,
+        hvcPlatinum,
+        hvcDiamond,
       },
       b2bSummary,
-      b2bGroups: Object.fromEntries(b2bGroups.entries()),
+      b2bGroups,
       serviceAreas,
       focusCounts,
       generatedAt: new Date().toISOString(),

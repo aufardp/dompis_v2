@@ -82,6 +82,7 @@ model cluster_assignment {
   @@unique([cluster_id, teknisi_id, assigned_date])
   @@index([assigned_by], map: "cluster_assignment_assigned_by_fkey")
   @@index([assigned_date, cluster_id])
+  @@index([assigned_date, is_active, cluster_id], map: "idx_cluster_assignment_date_active_cluster")
   @@index([teknisi_id, assigned_date])
 }
 
@@ -98,6 +99,7 @@ model cluster_node {
 
   @@index([cluster_area_id], map: "cluster_node_cluster_area_id_fkey")
   @@index([cluster_id])
+  @@index([is_active, odc_value], map: "idx_cluster_node_active_odc")
   @@index([odc_value])
 }
 
@@ -116,6 +118,7 @@ model invite_token {
   users_invite_tokens_created_byTousers users     @relation("invite_tokens_created_byTousers", fields: [created_by], references: [id_user], onDelete: Cascade)
   users_invite_tokens_used_byTousers    users?    @relation("invite_tokens_used_byTousers", fields: [used_by], references: [id_user])
 
+  @@map("invite_tokens")
   @@index([created_by], map: "invite_tokens_created_by_fkey")
   @@index([expires_at])
   @@index([ticket_id])
@@ -225,6 +228,7 @@ model technician_attendance {
 
   @@unique([technician_id, date])
   @@index([date])
+  @@index([date, technician_id], map: "idx_attendance_date_technician")
   @@index([month, year])
   @@index([technician_id])
   @@index([workzone_id], map: "technician_attendance_workzone_id_fkey")
@@ -318,6 +322,7 @@ model ticket {
   @@index([sync_date, status_update], map: "idx_sync_status")
   @@index([sync_date, workzone], map: "idx_sync_workzone")
   @@index([teknisi_user_id, status_update], map: "idx_tech_status")
+  @@index([sync_date, teknisi_user_id, status_update, rk_information, jam_expired], map: "idx_ticket_autoassign_daily")
   @@index([flagging_manja], map: "idx_ticket_flagging")
   @@index([guarantee_status], map: "idx_ticket_guarantee")
   @@index([reported_date], map: "idx_ticket_reported")
@@ -354,6 +359,7 @@ model ticket_assignment_history {
   @@index([assigned_by], map: "ticket_assignment_history_assigned_by_fkey")
   @@index([assigned_to])
   @@index([ticket_id])
+  @@index([ticket_id, is_active], map: "idx_assignment_history_ticket_active")
 }
 
 model ticket_evidence {
@@ -706,6 +712,24 @@ model users {
 
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
+}
+
+model reguler_webhook_outbox {
+  id              Int       @id @default(autoincrement())
+  event_id        String    @unique @db.VarChar(36)
+  total_tickets   Int       @default(0)
+  total_branches  Int       @default(0)
+  payload         Json
+  status          String    @default("PENDING") @db.VarChar(20)
+  attempt_count   Int       @default(0)
+  next_attempt_at DateTime? @db.Timestamp(0)
+  last_error      String?   @db.Text
+  sent_at         DateTime? @db.Timestamp(0)
+  created_at      DateTime  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([status, next_attempt_at])
+  @@index([created_at])
 }
 
 enum ticket_activity_log_activity_type {

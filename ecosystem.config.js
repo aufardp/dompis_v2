@@ -5,8 +5,8 @@ module.exports = {
       script: '/www/wwwroot/dompis_v2/node_modules/.bin/next',
       args: 'start -p 9005',
       cwd: '/www/wwwroot/dompis_v2',
-      instances: 1,
-      exec_mode: 'fork',
+      instances: Number(process.env.WEB_INSTANCES || 1),
+      exec_mode: Number(process.env.WEB_INSTANCES || 1) > 1 ? 'cluster' : 'fork',
       max_memory_restart: '3G',
       env: {
         NODE_ENV: 'production',

@@ -3,7 +3,11 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { registerSSEConnection, unregisterSSEConnection } from '@/app/libs/sseBroadcast';
+import {
+  initSSERedis,
+  registerSSEConnection,
+  unregisterSSEConnection,
+} from '@/app/libs/sseBroadcast';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,6 +15,8 @@ export async function GET(req: NextRequest) {
   } catch {
     return new Response('Unauthorized', { status: 401 });
   }
+
+  await initSSERedis();
 
   const encoder = new TextEncoder();
 

@@ -10,10 +10,7 @@ interface PaginationInfo {
 }
 
 const UI_PAGE_SIZE = 10;
-// Fetch in bigger chunks so we can reach 5k+ rows fast.
-const FETCH_PAGE_SIZE = 500;
-// Safety cap to avoid runaway requests if API misbehaves.
-const MAX_TOTAL_PAGES = 200;
+const DEFAULT_PAGE_SIZE = 10;
 
 /**
  * React hook for fetching daily tickets.
@@ -57,8 +54,8 @@ export function useDailyTickets(
           setIsRefreshing(true);
         }
 
-        const fetchAll = options?.fetchAll ?? true;
-        const fetchLimit = options?.limit ?? FETCH_PAGE_SIZE;
+        const fetchAll = options?.fetchAll ?? false;
+        const fetchLimit = options?.limit ?? DEFAULT_PAGE_SIZE;
         const params = new URLSearchParams({
           limit: String(fetchLimit),
         });
@@ -91,10 +88,7 @@ export function useDailyTickets(
           params.append('_t', String(Date.now()));
         }
 
-        const all: Ticket[] = [];
-
-        // Page 1 first (to get totalPages)
-        params.set('page', '1');
+        params.set('page', String(fetchAll ? 1 : page));
         const firstRes = await fetchWithAuth(
           `/api/tickets/daily?${params.toString()}`,
         );
@@ -114,52 +108,17 @@ export function useDailyTickets(
 
         const firstRows: Ticket[] =
           (firstJson?.success && firstJson?.data?.data) || [];
-        all.push(...firstRows);
 
         const apiTotalPages = Number(firstJson?.data?.totalPages || 1);
         const totalPages =
-          Number.isFinite(apiTotalPages) && apiTotalPages > 0
-            ? Math.min(apiTotalPages, MAX_TOTAL_PAGES)
-            : 1;
+          Number.isFinite(apiTotalPages) && apiTotalPages > 0 ? apiTotalPages : 1;
+        const total = Number(firstJson?.data?.total || firstRows.length);
 
-        for (let p = 2; fetchAll && p <= totalPages; p++) {
-          if (requestId !== requestIdRef.current) return;
-          params.set('page', String(p));
-
-          const res = await fetchWithAuth(
-            `/api/tickets/daily?${params.toString()}`,
-          );
-          if (!res) return;
-
-          const json = await res.json();
-          if (requestId !== requestIdRef.current) return;
-          if (!res.ok) {
-            throw new Error(json.message || 'Failed fetch daily tickets');
-          }
-
-          const rows: Ticket[] = (json?.success && json?.data?.data) || [];
-          all.push(...rows);
-
-          // Early stop if backend returns short page
-          if (rows.length < fetchLimit) break;
-        }
-
-        // Dedupe by idTicket
-        const seen = new Set<number>();
-        const deduped: Ticket[] = [];
-        for (const t of all) {
-          const id = Number(t?.idTicket);
-          if (!Number.isFinite(id) || id <= 0) continue;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          deduped.push(t);
-        }
-
-        setTickets(deduped);
+        setTickets(firstRows);
         setPagination({
-          total: deduped.length,
+          total,
           totalPages: fetchAll
-            ? Math.max(1, Math.ceil(deduped.length / UI_PAGE_SIZE))
+            ? Math.max(1, Math.ceil(total / UI_PAGE_SIZE))
             : Math.max(1, apiTotalPages),
           limit: UI_PAGE_SIZE,
         });
@@ -175,7 +134,7 @@ export function useDailyTickets(
         }
       }
     },
-    [search, workzone, ctype, statusUpdate, dept, ticketType, options?.fetchAll, options?.limit],
+    [search, page, workzone, ctype, statusUpdate, dept, ticketType, options?.fetchAll, options?.limit],
   );
 
   useEffect(() => {

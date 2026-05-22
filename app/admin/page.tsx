@@ -239,7 +239,7 @@ export default function TicketPage() {
       undefined, // hasilVisitFilter - now handled per section
       deptFilter !== 'all' ? deptFilter : undefined,
       undefined, // ticketTypeFilter - now handled per section
-      { fetchAll: true },
+      { fetchAll: false, limit: 10 },
     );
 
   const b2bPageData = useDailyTicketPage({
@@ -1651,6 +1651,7 @@ export default function TicketPage() {
                       }
                       tickets={b2bPageData.tickets}
                       totalCount={b2bPageData.pagination.total}
+                      validasiTotalCount={b2bPageData.validasiCount}
                       loading={b2bPageData.loading}
                       isRefreshing={b2bPageData.isRefreshing}
                       onAssign={handleAssignClick}
@@ -1712,6 +1713,7 @@ export default function TicketPage() {
                       }
                       tickets={b2cPageData.tickets}
                       totalCount={b2cPageData.pagination.total}
+                      validasiTotalCount={b2cPageData.validasiCount}
                       loading={b2cPageData.loading}
                       isRefreshing={b2cPageData.isRefreshing}
                       onAssign={handleAssignClick}

@@ -17,6 +17,7 @@ import {
 } from '@/lib/distributed-lock';
 import { runIngestion } from '@/lib/ingestion';
 import { runProjection } from '@/lib/projection';
+import { dispatchRegulerWebhook } from '@/app/libs/integrations/dispatchRegulerWebhook';
 import { setSyncStatus, setProjectionStatus, getSyncHealth, getProjectionHealth } from '@/lib/sync-metrics/metrics';
 import { closeExternalPool } from '@/lib/external-db/connection';
 
@@ -27,6 +28,7 @@ const TASK_LOCK_CONFIGS = {
   sync:        { ttl: 180, timeout: 3 * 60 * 1000 },
   push:        { ttl: 360, timeout: 5 * 60 * 1000 },
   tech_events: { ttl: 150, timeout: 2 * 60 * 1000 },
+  reguler_webhook: { ttl: 150, timeout: 2 * 60 * 1000 },
   auto_assign: { ttl:  75, timeout: 1 * 60 * 1000 },
   ingestion:   { ttl: 300, timeout: 5 * 60 * 1000 },
   projection:  { ttl: 300, timeout: 5 * 60 * 1000 },
@@ -53,6 +55,12 @@ const taskState = {
     lastError: null as string | null,
     consecutiveErrors: 0,
     lastDispatchAt: null as number | null,
+  },
+  regulerWebhook: {
+    running: false,
+    lastRunAt: null as Date | null,
+    lastError: null as string | null,
+    consecutiveErrors: 0,
   },
   autoAssign: {
     running: false,
@@ -252,6 +260,41 @@ async function runTechEvents(): Promise<void> {
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     console.error('[TECH_EVENTS] Failed:', msg);
+    state.lastError = msg;
+    state.consecutiveErrors++;
+  } finally {
+    cancel(); state.running = false; state.lastRunAt = new Date();
+  }
+}
+
+async function runRegulerWebhook(): Promise<void> {
+  const state = taskState.regulerWebhook;
+  if (state.running) { console.log('[REGULER_WEBHOOK] Skipped — previous run still in progress'); return; }
+  if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+    console.warn(`[REGULER_WEBHOOK] Circuit open — ${state.consecutiveErrors} consecutive errors.`);
+    return;
+  }
+
+  state.running = true;
+  const cfg = TASK_LOCK_CONFIGS.reguler_webhook;
+  const { signal, cancel } = withCancellableTimeout(cfg.timeout);
+
+  try {
+    const lockResult = await withTaskLock('reguler_webhook', cfg.ttl, async () => {
+      if (signal.aborted) return;
+      const result = await dispatchRegulerWebhook();
+      if (!signal.aborted && 'skipped' in result && result.skipped) return;
+      if (!signal.aborted) {
+        const time = nowWIB();
+        console.log(`[REGULER_WEBHOOK] Done | success: ${(result as any).success ?? 0} | failed: ${(result as any).failed ?? 0} | ${time} WIB`);
+        state.consecutiveErrors = 0;
+        state.lastError = null;
+      }
+    });
+    if (lockResult === 'skipped') state.running = false;
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error('[REGULER_WEBHOOK] Failed:', msg);
     state.lastError = msg;
     state.consecutiveErrors++;
   } finally {
@@ -481,6 +524,7 @@ async function startWorker() {
 
   scheduledTasks = [
     cron.schedule('*/2 * * * *', () => void runTechEvents()),
+    cron.schedule('*/15 * * * *', () => void runRegulerWebhook()),
     cron.schedule('*/5 * * * *', () => void runAutoAssign()),
     cron.schedule('*/15 * * * *', () => void logWorkerHealth()),
   ];
@@ -493,7 +537,7 @@ async function startWorker() {
   }
 
   console.log(
-    `[CRON] Scheduled: tech-events(2m) auto-assign(5m) health(15m) pipeline=${pipelineEnabled ? `enabled ingestion(${ingestionInterval}m)` : 'disabled'} - [Google Sheets sync DISABLED]`,
+    `[CRON] Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) health(15m) pipeline=${pipelineEnabled ? `enabled ingestion(${ingestionInterval}m)` : 'disabled'} - [Google Sheets sync DISABLED]`,
   );
 
   const shutdown = async (signal: string) => {

@@ -3,6 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getCache, setCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,13 @@ function buildDailyTicketCacheKey(
  */
 export async function GET(request: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'tickets-daily',
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'teknisi',
