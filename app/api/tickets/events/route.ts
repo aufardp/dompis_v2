@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
         }
       }, 20_000);
 
-      req.signal.addEventListener('abort', () => {
+      const cleanup = () => {
         clearInterval(heartbeat);
         unregisterSSEConnection(controller);
         try {
@@ -55,7 +55,12 @@ export async function GET(req: NextRequest) {
         } catch {
           /* already closed */
         }
-      });
+      };
+
+      req.signal.addEventListener('abort', cleanup);
+    },
+    cancel() {
+      unregisterSSEConnection(controller);
     },
   });
 

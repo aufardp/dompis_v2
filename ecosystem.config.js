@@ -6,8 +6,9 @@ module.exports = {
       args: 'start -p 9005',
       cwd: '/www/wwwroot/dompis_v2',
       instances: Number(process.env.WEB_INSTANCES || 1),
-      exec_mode: Number(process.env.WEB_INSTANCES || 1) > 1 ? 'cluster' : 'fork',
-      max_memory_restart: '3G',
+      exec_mode:
+        Number(process.env.WEB_INSTANCES || 1) > 1 ? 'cluster' : 'fork',
+      max_memory_restart: '8G',
       env: {
         NODE_ENV: 'production',
         HOSTNAME: '0.0.0.0',
@@ -52,7 +53,7 @@ module.exports = {
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
-      max_memory_restart: '1G',
+      max_memory_restart: '2G',
       node_args: '--max-old-space-size=1536',
       env: {
         NODE_ENV: 'production',
@@ -84,7 +85,7 @@ module.exports = {
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
       exec_mode: 'fork',
-      max_memory_restart: '1G',
+      max_memory_restart: '2G',
       node_args: '--max-old-space-size=1536',
       env: {
         NODE_ENV: 'production',

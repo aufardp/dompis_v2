@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       await tx.ticket_activity_log.create({
         data: activityLogData,
       });
-    });
+    }, { timeout: 15000 });
 
     return NextResponse.json({
       success: true,

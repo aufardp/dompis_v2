@@ -39,27 +39,11 @@ export async function initSSERedis() {
 
     await subClient.connect();
 
-    await subClient.subscribe('sse:sync', (message) => {
-      const enc = new TextEncoder();
-      for (const ctrl of activeConnections) {
-        try {
-          ctrl.enqueue(enc.encode(`data: ${message}\n\n`));
-        } catch {
-          activeConnections.delete(ctrl);
-        }
-      }
+    subClient.on('message', (_channel: string, message: string) => {
+      broadcastToActive(message);
     });
 
-    await subClient.subscribe('sse:tickets', (message) => {
-      const enc = new TextEncoder();
-      for (const ctrl of activeConnections) {
-        try {
-          ctrl.enqueue(enc.encode(`data: ${message}\n\n`));
-        } catch {
-          activeConnections.delete(ctrl);
-        }
-      }
-    });
+    await subClient.subscribe('sse:sync', 'sse:tickets');
 
     console.log('[SSE-Redis] Subscriber connected');
   } catch (err) {
@@ -67,15 +51,22 @@ export async function initSSERedis() {
   }
 }
 
-export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
-  const message = JSON.stringify({ type: 'sync', syncType: type, ...data, ts: Date.now() });
+function broadcastToActive(message: string) {
+  const enc = new TextEncoder();
+  const stale: typeof activeConnections = new Set();
   for (const ctrl of activeConnections) {
     try {
-      ctrl.enqueue(new TextEncoder().encode(`data: ${message}\n\n`));
+      ctrl.enqueue(enc.encode(`data: ${message}\n\n`));
     } catch {
-      activeConnections.delete(ctrl);
+      stale.add(ctrl);
     }
   }
+  for (const ctrl of stale) activeConnections.delete(ctrl);
+}
+
+export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
+  const message = JSON.stringify({ type: 'sync', syncType: type, ...data, ts: Date.now() });
+  broadcastToActive(message);
   if (isRedisReady()) {
     void redis.publish('sse:sync', message).catch(() => {});
   }
@@ -83,13 +74,7 @@ export function broadcastSyncEvent(type: SyncEventType, data?: SyncEventData) {
 
 export function broadcastTicketInvalidate(reason?: string) {
   const message = JSON.stringify({ type: 'invalidate', reason: reason ?? 'mutation', ts: Date.now() });
-  for (const ctrl of activeConnections) {
-    try {
-      ctrl.enqueue(new TextEncoder().encode(`data: ${message}\n\n`));
-    } catch {
-      activeConnections.delete(ctrl);
-    }
-  }
+  broadcastToActive(message);
   if (isRedisReady()) {
     void redis.publish('sse:tickets', message).catch(() => {});
   }
@@ -105,6 +90,7 @@ export function unregisterSSEConnection(controller: ReadableStreamDefaultControl
 
 export async function closeSSERedis() {
   if (subClient) {
+    await subClient.unsubscribe().catch(() => {});
     await subClient.quit().catch(() => {});
     subClient = null;
     console.log('[SSE-Redis] Subscriber disconnected');
