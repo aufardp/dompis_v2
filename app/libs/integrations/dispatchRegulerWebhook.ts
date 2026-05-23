@@ -18,10 +18,12 @@ interface RawRegulerTicket {
   service_no: string | null;
   service_type: string | null;
   booking_date: string | null;
+  jenis_tiket_1: string | null;
   jenis_tiket_2: string | null;
   guarantee_status: string | null;
   area: string | null;
   teknisi: string | null;
+  status: string | null;
   status_update: string | null;
   branch_id: number | null;
   branch_name: string | null;
@@ -37,8 +39,10 @@ export async function buildRegulerBranchReport(): Promise<RegulerBranchReportPay
       t.service_no,
       t.service_type,
       t.booking_date,
+      t.jenis_tiket_1,
       t.jenis_tiket_2,
       t.guarantee_status,
+      t.status,
       a.nama_area AS area,
       u.nama AS teknisi,
       t.status_update,
@@ -52,6 +56,7 @@ export async function buildRegulerBranchReport(): Promise<RegulerBranchReportPay
     LEFT JOIN branch b ON b.id_branch = a.branch_id
     WHERE t.jenis_tiket_1 = 'reguler'
       AND (t.status_update IS NULL OR t.status_update NOT IN ('close', 'closed'))
+      AND (t.status IS NULL OR t.status != 'closed')
     ORDER BY b.nama_branch, t.workzone
   `;
 
@@ -82,19 +87,20 @@ export async function buildRegulerBranchReport(): Promise<RegulerBranchReportPay
     branch_name: g.branch_name,
     kode_branch: g.kode_branch,
     total_tickets: g.tickets.length,
-    tickets: g.tickets.map((t) => ({
-      incident: t.incident,
-      reported_date: t.reported_date,
-      service_area: t.service_area,
-      service_no: t.service_no,
-      service_type: t.service_type,
-      booking_date: t.booking_date,
-      jenis_tiket_2: t.jenis_tiket_2,
-      guarantee_status: t.guarantee_status,
-      area: t.area,
-      teknisi: t.teknisi ?? t.teknisi,
-      status_update: t.status_update,
-    })),
+      tickets: g.tickets.map((t) => ({
+        incident: t.incident,
+        reported_date: t.reported_date,
+        service_area: t.service_area,
+        service_no: t.service_no,
+        service_type: t.service_type,
+        booking_date: t.booking_date,
+        jenis_tiket_1: t.jenis_tiket_1,
+        jenis_tiket_2: t.jenis_tiket_2,
+        guarantee_status: t.guarantee_status,
+        area: t.area,
+        teknisi: t.teknisi,
+        status_update: t.status_update,
+      })),
   }));
 
   const totalTickets = branches.reduce((sum, b) => sum + b.total_tickets, 0);

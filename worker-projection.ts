@@ -2,6 +2,7 @@ import cron, { ScheduledTask } from 'node-cron';
 import 'dotenv/config';
 import { connectDB } from '@/app/libs/prisma';
 import { runFullScanProjection, runProjection } from '@/lib/projection';
+import { redis } from '@/lib/redis';
 import { setProjectionStatus } from '@/lib/sync-metrics/metrics';
 import {
   cleanupWorkerLock,
@@ -19,6 +20,7 @@ import {
 import { createCorrelationId, logger } from '@/lib/observability/logger';
 
 const WORKER_NAME = 'projection-worker';
+const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
   process.env.PROJECTION_MAX_CONSECUTIVE_ERRORS,
   5,
@@ -147,6 +149,31 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   }
 }
 
+async function subscribeProjectionRequests(): Promise<void> {
+  const subscriber = redis.duplicate();
+
+  subscriber.on('error', (error) => {
+    logger.error('Projection request subscriber error', error, {
+      worker: WORKER_NAME,
+    });
+  });
+
+  subscriber.on('message', (channel, message) => {
+    if (channel !== PROJECTION_REQUEST_CHANNEL) return;
+    logger.info('Projection requested by ingestion signal', {
+      worker: WORKER_NAME,
+      message,
+    });
+    void runProjectionTask('incremental');
+  });
+
+  await subscriber.subscribe(PROJECTION_REQUEST_CHANNEL);
+  logger.info('Projection request subscriber ready', {
+    worker: WORKER_NAME,
+    channel: PROJECTION_REQUEST_CHANNEL,
+  });
+}
+
 async function startWorker(): Promise<void> {
   console.log(
     `[${WORKER_NAME}] Starting | interval=${INTERVAL_MINUTES}m timeout=${TIMEOUT_MINUTES}m lockTtl=${LOCK_TTL_SECONDS}s fullScan=${FULL_SCAN_ENABLED ? FULL_SCAN_CRON : 'disabled'}`,
@@ -156,6 +183,7 @@ async function startWorker(): Promise<void> {
   await waitForRedisReady();
   await cleanupWorkerLock('projection', TIMEOUT_MINUTES * 60_000);
   startWorkerHeartbeat(WORKER_NAME, state);
+  await subscribeProjectionRequests();
 
   scheduledTasks.push(
     scheduleEveryMinutes(INTERVAL_MINUTES, () =>

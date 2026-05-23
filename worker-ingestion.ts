@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { connectDB } from '@/app/libs/prisma';
 import { runIngestion } from '@/lib/ingestion';
+import { isRedisReady, redis } from '@/lib/redis';
 import { setSyncStatus } from '@/lib/sync-metrics/metrics';
 import {
   cleanupWorkerLock,
@@ -18,6 +19,7 @@ import {
 import { createCorrelationId, logger } from '@/lib/observability/logger';
 
 const WORKER_NAME = 'ingestion-worker';
+const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
   process.env.INGESTION_MAX_CONSECUTIVE_ERRORS,
   5,
@@ -42,6 +44,34 @@ const RUN_ON_START = process.env.INGESTION_RUN_ON_START !== 'false';
 
 const state = createTaskState();
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
+
+async function requestImmediateProjection(syncBatchId?: string | null): Promise<void> {
+  if (process.env.INGESTION_TRIGGER_PROJECTION === 'false') return;
+  if (!isRedisReady()) {
+    logger.warn('Projection trigger skipped because Redis is not ready', {
+      worker: WORKER_NAME,
+      batchId: syncBatchId,
+    });
+    return;
+  }
+
+  try {
+    await redis.publish(
+      PROJECTION_REQUEST_CHANNEL,
+      JSON.stringify({
+        source: WORKER_NAME,
+        syncBatchId,
+        requestedAt: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    logger.warn('Projection trigger publish failed', {
+      worker: WORKER_NAME,
+      batchId: syncBatchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 async function runIngestionTask(): Promise<void> {
   if (process.env.INGESTION_ENABLED !== 'true') {
@@ -93,6 +123,7 @@ async function runIngestionTask(): Promise<void> {
         console.log(
           `[INGESTION] Done | batch=${result.syncBatchId ?? '-'} | inserted=${result.inserted} | updated=${result.updated} | skipped=${result.skipped} | failed=${result.failed} | ${nowWIB()} WIB`,
         );
+        await requestImmediateProjection(result.syncBatchId);
         logger.info('Ingestion task complete', {
           worker: WORKER_NAME,
           correlationId,

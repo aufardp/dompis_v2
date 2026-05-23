@@ -5,6 +5,7 @@ export interface RegulerTicket {
   service_no: string | null;
   service_type: string | null;
   booking_date: string | null;
+  jenis_tiket_1: string | null;
   jenis_tiket_2: string | null;
   guarantee_status: string | null;
   area: string | null;
