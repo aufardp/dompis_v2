@@ -1,5 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   getTableNames,
   fetchTableRows,
@@ -141,6 +141,24 @@ const FIELDS_TO_MAP: Array<keyof NormalizedExternalRow> = [
   'street_address',
 ];
 
+const TICKET_RAW_BULK_COLUMNS = [
+  'incident',
+  'sourceTable',
+  'sourceHash',
+  'lastSeenAt',
+  'syncBatchId',
+  'syncVersion',
+  'isActive',
+  'importedAt',
+  'rawPayload',
+  'status',
+  'sourceUpdatedAt',
+  'sync_date',
+  'synced_at',
+  'import_batch',
+  ...FIELDS_TO_MAP.filter((field) => field !== 'incident'),
+] as const;
+
 const COLUMN_MAX_LENGTH: Record<string, number> = {
   onu_rx: 10,
   lapul: 10,
@@ -215,6 +233,7 @@ const COLUMN_MAX_LENGTH: Record<string, number> = {
   contact_email: 255,
   note: 255,
   notes_eskalasi: 255,
+  street_address: 500,
 };
 
 type IngestionMode = 'initial' | 'incremental' | 'recovery' | 'force_resync';
@@ -250,6 +269,10 @@ interface ProcessableRow {
   sourceHash: string;
   normalizedStatus: string;
 }
+
+type TicketRawBulkColumn = (typeof TICKET_RAW_BULK_COLUMNS)[number];
+
+type TicketRawBulkRow = Partial<Record<TicketRawBulkColumn, unknown>>;
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -429,6 +452,65 @@ function buildRawData(
   return data as Prisma.ticket_rawUncheckedCreateInput;
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function sqlIdentifier(identifier: string): Prisma.Sql {
+  if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
+    throw new Error(`Unsafe SQL identifier: ${identifier}`);
+  }
+  return Prisma.raw(`\`${identifier}\``);
+}
+
+function toSqlValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+async function bulkUpsertTicketRaw(
+  tx: Prisma.TransactionClient,
+  rows: TicketRawBulkRow[],
+  updateColumns: readonly TicketRawBulkColumn[],
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  const insertColumns = TICKET_RAW_BULK_COLUMNS;
+  const assignments = updateColumns
+    .filter((column) => column !== 'incident')
+    .map(
+      (column) =>
+        Prisma.sql`${sqlIdentifier(column)} = VALUES(${sqlIdentifier(column)})`,
+    );
+
+  if (assignments.length === 0) {
+    throw new Error('bulkUpsertTicketRaw requires at least one update column');
+  }
+
+  for (const chunk of chunkArray(rows, DEFAULT_BATCH_SIZE)) {
+    await tx.$executeRaw`
+      INSERT INTO ${sqlIdentifier('ticket_raw')}
+        (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
+      VALUES ${Prisma.join(
+        chunk.map((row) =>
+          Prisma.sql`(${Prisma.join(
+            insertColumns.map((column) => toSqlValue(row[column])),
+          )})`,
+        ),
+      )}
+      ON DUPLICATE KEY UPDATE ${Prisma.join(assignments)}
+    `;
+  }
+}
+
 function buildEvent(
   eventType: (typeof IngestionEventTypes)[keyof typeof IngestionEventTypes],
   row: ProcessableRow,
@@ -544,11 +626,8 @@ async function processBatch(
     : [];
   const existingMap = new Map(existingRows.map((row) => [row.incident, row]));
   const events: Array<Parameters<typeof createBulkOutboxEvents>[1][number]> = [];
-  const upserts: Array<{
-    where: { incident: string };
-    create: Prisma.ticket_rawUncheckedCreateInput;
-    update: Prisma.ticket_rawUncheckedUpdateInput;
-  }> = [];
+  const changedRows: TicketRawBulkRow[] = [];
+  const heartbeatRows: TicketRawBulkRow[] = [];
 
   for (const item of processable) {
     const existing = existingMap.get(item.identity);
@@ -574,11 +653,7 @@ async function processBatch(
     );
 
     if (!existing) {
-      upserts.push({
-        where: { incident: item.identity },
-        create: data,
-        update: data,
-      });
+      changedRows.push(data as TicketRawBulkRow);
       events.push(
         buildEvent(
           IngestionEventTypes.TICKET_RAW_CREATED,
@@ -591,11 +666,7 @@ async function processBatch(
       );
       result.inserted++;
     } else if (conflict.shouldUpdate) {
-      upserts.push({
-        where: { incident: item.identity },
-        create: data,
-        update: data,
-      });
+      changedRows.push(data as TicketRawBulkRow);
       events.push(
         buildEvent(
           existing.status !== conflict.newStatus
@@ -610,16 +681,7 @@ async function processBatch(
       );
       result.updated++;
     } else {
-      upserts.push({
-        where: { incident: item.identity },
-        create: data,
-        update: {
-          lastSeenAt: now,
-          syncBatchId: batchId,
-          importedAt: now,
-          isActive: true,
-        },
-      });
+      heartbeatRows.push(data as TicketRawBulkRow);
       result.skipped++;
     }
     result.processed++;
@@ -628,9 +690,13 @@ async function processBatch(
   await prisma.$transaction(
     async (tx) => {
       assertNotAborted(signal);
-      for (const item of upserts) {
-        await tx.ticket_raw.upsert(item);
-      }
+      await bulkUpsertTicketRaw(tx, changedRows, TICKET_RAW_BULK_COLUMNS);
+      await bulkUpsertTicketRaw(tx, heartbeatRows, [
+        'lastSeenAt',
+        'syncBatchId',
+        'importedAt',
+        'isActive',
+      ]);
       if (quarantined.length > 0) {
         await tx.ingestion_quarantine.createMany({ data: quarantined });
       }
