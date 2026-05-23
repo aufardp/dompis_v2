@@ -414,7 +414,7 @@ export class DailyTicketService {
 
     const where = await this.buildDailyTicketWhere(role, userId, filters);
 
-    // Clone where for validasi count (status_update = 'close' AND status != 'closed')
+    // Clone where for validasi: (status_update = 'close' OR worklog_summary = 'Tech Closed') AND status != 'closed'
     const validasiWhere = structuredClone(where);
     if (validasiWhere.AND) {
       validasiWhere.AND = validasiWhere.AND.filter((clause: any) => {
@@ -426,23 +426,34 @@ export class DailyTicketService {
     }
     validasiWhere.AND = [
       ...(validasiWhere.AND ?? []),
-      { status_update: 'close' },
+      {
+        OR: [
+          { status_update: 'close' },
+          { worklog_summary: 'Tech Closed' },
+        ],
+      },
       { status: { not: 'closed' } },
     ];
 
-    const [total, validasiCount, tickets] = await Promise.all([
+    const ticketInclude = {
+      users: {
+        select: { nama: true },
+      },
+    } as const;
+
+    const [total, validasiCount, tickets, validasiTickets] = await Promise.all([
       prisma.ticket.count({ where }),
       prisma.ticket.count({ where: validasiWhere }),
       prisma.ticket.findMany({
         where,
-        include: {
-          users: {
-            select: { nama: true },
-          },
-        },
+        include: ticketInclude,
         orderBy: [{ reported_date: sort }, { id_ticket: 'asc' }],
         skip: offset,
         take: safeLimit,
+      }),
+      prisma.ticket.findMany({
+        where: validasiWhere,
+        include: ticketInclude,
       }),
     ]);
 
@@ -453,6 +464,7 @@ export class DailyTicketService {
       totalPages: Math.ceil(total / safeLimit),
       data: tickets.map(mapTicket),
       validasiCount: validasiCount,
+      validasiTickets: validasiTickets.map(mapTicket),
     };
   }
 

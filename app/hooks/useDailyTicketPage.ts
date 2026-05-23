@@ -33,6 +33,7 @@ export function useDailyTicketPage({
   limit = 10,
 }: DailyTicketPageFilters) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [validasiTickets, setValidasiTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [validasiCount, setValidasiCount] = useState(0);
@@ -96,6 +97,7 @@ export function useDailyTicketPage({
 
         const data = json.data;
         setTickets(data?.data ?? []);
+        setValidasiTickets(data?.validasiTickets ?? []);
         setValidasiCount(Number(data?.validasiCount ?? 0));
         setPagination({
           currentPage: Number(data?.page || page),
@@ -106,6 +108,7 @@ export function useDailyTicketPage({
       } catch {
         if (requestId !== requestIdRef.current) return;
         setTickets([]);
+        setValidasiTickets([]);
         setValidasiCount(0);
         setPagination({
           currentPage: page,
@@ -129,6 +132,7 @@ export function useDailyTicketPage({
   return useMemo(
     () => ({
       tickets,
+      validasiTickets,
       loading,
       isRefreshing,
       validasiCount,
@@ -136,6 +140,14 @@ export function useDailyTicketPage({
       refresh: () => fetchPage(true, true),
       refreshSilent: () => fetchPage(false, true),
     }),
-    [fetchPage, isRefreshing, loading, pagination, tickets, validasiCount],
+    [
+      fetchPage,
+      isRefreshing,
+      loading,
+      pagination,
+      tickets,
+      validasiTickets,
+      validasiCount,
+    ],
   );
 }

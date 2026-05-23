@@ -1650,6 +1650,7 @@ export default function TicketPage() {
                         />
                       }
                       tickets={b2bPageData.tickets}
+                      validasiTickets={b2bPageData.validasiTickets}
                       totalCount={b2bPageData.pagination.total}
                       validasiTotalCount={b2bPageData.validasiCount}
                       loading={b2bPageData.loading}
@@ -1712,6 +1713,7 @@ export default function TicketPage() {
                         />
                       }
                       tickets={b2cPageData.tickets}
+                      validasiTickets={b2cPageData.validasiTickets}
                       totalCount={b2cPageData.pagination.total}
                       validasiTotalCount={b2cPageData.validasiCount}
                       loading={b2cPageData.loading}

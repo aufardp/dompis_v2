@@ -40,6 +40,7 @@ interface TicketTableTabsProps {
   accentColor: string;
   mainTable: ReactNode;
   tickets: TicketTableRow[];
+  validasiTickets?: TicketTableRow[];
   totalCount?: number;
   validasiTotalCount?: number;
   loading?: boolean;
@@ -52,6 +53,7 @@ export default function TicketTableTabs({
   accentColor,
   mainTable,
   tickets,
+  validasiTickets = [],
   totalCount,
   validasiTotalCount,
   loading,
@@ -86,18 +88,9 @@ export default function TicketTableTabs({
     }
   }, [activeTab, STORAGE_KEY, mounted]);
 
-  // Filter tickets for validasi tab
-  // Syarat: status_update = 'close' dan status != 'closed'
-  // Termasuk tiket dengan status = 'BACKEND' yang belum benar-benar closed
-  const validasiTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      const statusUpdate = (t.status_update ?? t.statusUpdate ?? '')
-        .trim()
-        .toLowerCase();
-      const status = (t.status ?? '').trim().toLowerCase();
-      return statusUpdate === 'close' && status !== 'closed';
-    });
-  }, [tickets]);
+  // Validasi tickets are fetched server-side with their own WHERE clause.
+  // Condition: (status_update = 'close' OR worklog_summary = 'Tech Closed') AND status != 'closed'
+  // (no longer filtered client-side — avoid pagination mismatch)
 
   const tabs = [
     {
