@@ -54,7 +54,7 @@ export async function buildRegulerBranchReport(): Promise<RegulerBranchReportPay
     LEFT JOIN service_area sa ON sa.nama_sa = t.workzone
     LEFT JOIN area a ON a.id_area = sa.area_id
     LEFT JOIN branch b ON b.id_branch = a.branch_id
-    WHERE t.jenis_tiket_1 = 'reguler'
+    WHERE t.jenis_tiket_1 IN ('reguler', 'datin', 'indibiz', 'reseller', 'top olo', 'vpn ip', 'wifi-id', 'ccan')
       AND (t.status_update IS NULL OR t.status_update NOT IN ('close', 'closed'))
       AND (t.status IS NULL OR t.status != 'closed')
     ORDER BY b.nama_branch, t.workzone

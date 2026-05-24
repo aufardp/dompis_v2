@@ -713,14 +713,23 @@ async function projectRecords(
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const retryMax = options.retryMax ?? DEFAULT_RETRY_MAX;
-  const checkpoint = await getOrCreateCheckpoint();
+  let metadataRetries = 0;
+  const checkpoint = (
+    await withRetry(() => getOrCreateCheckpoint(), {
+      retryMax,
+      signal,
+      onRetry: () => {
+        metadataRetries++;
+      },
+    })
+  ).value;
   const result: ProjectionResult = {
     processed: 0,
     inserted: 0,
     updated: 0,
     skipped: 0,
     failed: 0,
-    retried: 0,
+    retried: metadataRetries,
     setToOpen: 0,
     setToClose: 0,
     protected: 0,
@@ -756,7 +765,17 @@ async function projectRecords(
 
   while (hasMore) {
     assertNotAborted(signal);
-    const rawRecords = await fetchBatch(activeCheckpoint, { ...options, batchSize });
+    let fetchRetries = 0;
+    const rawRecords = (
+      await withRetry(() => fetchBatch(activeCheckpoint, { ...options, batchSize }), {
+        retryMax,
+        signal,
+        onRetry: () => {
+          fetchRetries++;
+        },
+      })
+    ).value;
+    result.retried += fetchRetries;
     assertNotAborted(signal);
     if (rawRecords.length === 0) break;
 

@@ -488,6 +488,8 @@ model ticket_raw {
   @@index([sourceTable, lastSeenAt])
   @@index([sourceTable, syncBatchId])
   @@index([importedAt])
+  @@index([importedAt, id_ticket], map: "idx_ticket_raw_projection_cursor")
+  @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
   @@index([lastSeenAt])
   @@index([sourceUpdatedAt])
   @@index([status, isActive])
