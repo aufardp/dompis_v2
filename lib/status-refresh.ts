@@ -301,26 +301,38 @@ async function markChecked(
   await prisma.$transaction(
     candidates.map((candidate) => {
       const external = externalRowsByIncident.get(candidate.incident);
-      return prisma.status_refresh_ticket_state.upsert({
-        where: { incident: candidate.incident },
-        create: {
-          incident: candidate.incident,
-          sourceTable: candidate.sourceTable,
-          lastCheckedAt: now,
-          lastStatus: external?.normalizedStatus ?? candidate.status,
-          lastSourceHash: external?.sourceHash ?? candidate.sourceHash,
-          lastBatchId: batchId,
-          missingCount: external ? 0 : 1,
-        },
-        update: {
-          sourceTable: candidate.sourceTable,
-          lastCheckedAt: now,
-          lastStatus: external?.normalizedStatus ?? candidate.status,
-          lastSourceHash: external?.sourceHash ?? candidate.sourceHash,
-          lastBatchId: batchId,
-          missingCount: external ? 0 : { increment: 1 },
-        },
-      });
+      return prisma.$executeRaw`
+        INSERT INTO status_refresh_ticket_state
+          (
+            incident,
+            sourceTable,
+            lastCheckedAt,
+            lastStatus,
+            lastSourceHash,
+            lastBatchId,
+            missingCount,
+            updatedAt
+          )
+        VALUES
+          (
+            ${candidate.incident},
+            ${candidate.sourceTable},
+            ${now},
+            ${external?.normalizedStatus ?? candidate.status},
+            ${external?.sourceHash ?? candidate.sourceHash},
+            ${batchId},
+            ${external ? 0 : 1},
+            ${now}
+          )
+        ON DUPLICATE KEY UPDATE
+          sourceTable = VALUES(sourceTable),
+          lastCheckedAt = VALUES(lastCheckedAt),
+          lastStatus = VALUES(lastStatus),
+          lastSourceHash = VALUES(lastSourceHash),
+          lastBatchId = VALUES(lastBatchId),
+          missingCount = IF(VALUES(missingCount) = 0, 0, missingCount + 1),
+          updatedAt = VALUES(updatedAt)
+      `;
     }),
   );
 }
