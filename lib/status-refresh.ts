@@ -60,6 +60,7 @@ const SLOW_RUN_THRESHOLD_MS = parsePositiveIntEnv(
 );
 const TIMEOUT_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_TIMEOUT_MINUTES', 5);
 const RECHECK_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_RECHECK_MINUTES', 2);
+const SEED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_SEED_BATCH_SIZE', 500);
 const RUN_BUDGET_MS = parsePositiveIntEnv(
   'STATUS_REFRESH_RUN_BUDGET_MS',
   Math.max(5_000, Math.floor(TIMEOUT_MINUTES * 60_000 * 0.8)),
@@ -211,8 +212,49 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
       tr.worklog_summary,
       tr.last_update_worklog,
       tr.sourceHash
-    FROM ticket_raw tr
-    LEFT JOIN status_refresh_ticket_state s ON s.incident = tr.incident
+    FROM (
+      SELECT s.incident
+      FROM status_refresh_ticket_state s
+      WHERE s.lastCheckedAt < ${recheckBefore}
+      ORDER BY s.lastCheckedAt ASC
+      LIMIT ${limit}
+    ) q
+    INNER JOIN ticket_raw tr ON tr.incident = q.incident
+    WHERE tr.sourceTable IS NOT NULL
+      AND tr.isActive = TRUE
+      AND (
+        tr.status IS NULL
+        OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
+      )
+  `;
+}
+
+async function seedRefreshState(limit: number): Promise<void> {
+  const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 2_000);
+  const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
+
+  await prisma.$executeRaw`
+    INSERT IGNORE INTO status_refresh_ticket_state
+      (
+        incident,
+        sourceTable,
+        lastCheckedAt,
+        lastStatus,
+        lastSourceHash,
+        lastBatchId,
+        missingCount,
+        updatedAt
+      )
+    SELECT
+      tr.incident,
+      tr.sourceTable,
+      ${dueAt},
+      tr.status,
+      tr.sourceHash,
+      'seed',
+      0,
+      ${nowWib()}
+    FROM ticket_raw tr FORCE INDEX (idx_ticket_raw_status_refresh)
     WHERE tr.incident IS NOT NULL
       AND tr.sourceTable IS NOT NULL
       AND tr.isActive = TRUE
@@ -220,17 +262,8 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
         tr.status IS NULL
         OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
       )
-      AND (
-        s.lastCheckedAt IS NULL
-        OR s.lastCheckedAt < ${recheckBefore}
-      )
-    ORDER BY
-      s.lastCheckedAt ASC,
-      tr.synced_at DESC,
-      tr.importedAt DESC,
-      tr.lastSeenAt DESC,
-      tr.id_ticket DESC
-    LIMIT ${limit}
+    ORDER BY tr.synced_at DESC
+    LIMIT ${seedLimit}
   `;
 }
 
@@ -495,7 +528,11 @@ export async function runStatusRefresh(
       return result;
     }
 
-    const candidates = await fetchCandidates(effectiveBatchSize);
+    let candidates = await fetchCandidates(effectiveBatchSize);
+    if (candidates.length === 0 && !shouldStopForBudget(start)) {
+      await seedRefreshState(effectiveBatchSize);
+      candidates = await fetchCandidates(effectiveBatchSize);
+    }
     result.scanned = candidates.length;
 
     const byTable = new Map<string, CandidateRow[]>();
