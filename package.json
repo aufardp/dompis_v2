@@ -13,6 +13,7 @@
     "worker:ingestion": "NODE_ENV=production tsx worker-ingestion.ts",
     "worker:projection": "NODE_ENV=production tsx worker-projection.ts",
     "worker:active-refresh": "NODE_ENV=production tsx worker-active-refresh.ts",
+    "worker:status-refresh": "NODE_ENV=production tsx worker-status-refresh.ts",
     "ingestion:initial": "tsx scripts/ingestion-initial.ts",
     "ingestion:incremental": "tsx scripts/ingestion-incremental.ts",
     "ingestion:recovery": "tsx scripts/ingestion-recovery.ts",

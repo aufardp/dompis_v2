@@ -612,6 +612,43 @@ model active_refresh_run_log {
   @@index([startedAt])
 }
 
+model status_refresh_run_log {
+  id           BigInt    @id @default(autoincrement())
+  batchId      String    @unique @db.VarChar(100)
+  status       String    @db.VarChar(20)
+  batchSize    Int       @default(300)
+  scanned      Int       @default(0)
+  fetched      Int       @default(0)
+  changed      Int       @default(0)
+  unchanged    Int       @default(0)
+  missing      Int       @default(0)
+  durationMs   Int       @default(0)
+  errorMessage String?   @db.Text
+  startedAt    DateTime  @default(now()) @db.Timestamp(0)
+  finishedAt   DateTime? @db.Timestamp(0)
+  createdAt    DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([batchId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model status_refresh_ticket_state {
+  id             BigInt    @id @default(autoincrement())
+  incident       String    @unique @db.VarChar(50)
+  sourceTable    String?   @db.VarChar(50)
+  lastCheckedAt  DateTime  @default(now()) @db.Timestamp(0)
+  lastStatus     String?   @db.VarChar(50)
+  lastSourceHash String?   @db.VarChar(64)
+  lastBatchId    String?   @db.VarChar(100)
+  missingCount   Int       @default(0)
+  createdAt      DateTime  @default(now()) @db.Timestamp(0)
+  updatedAt      DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@index([lastCheckedAt])
+  @@index([sourceTable, lastCheckedAt])
+}
+
 model ticket_projection_log {
   id              BigInt    @id @default(autoincrement())
   ticketRawId     String    @unique @db.VarChar(36)
