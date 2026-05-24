@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS `active_refresh_run_log` (
   `batchId` VARCHAR(50) NOT NULL,
   `status` VARCHAR(20) NOT NULL,
   `batchSize` INT NOT NULL DEFAULT 1000,
+  `maxScan` INT NOT NULL DEFAULT 5000,
   `scanned` INT NOT NULL DEFAULT 0,
   `updated` INT NOT NULL DEFAULT 0,
   `durationMs` INT NOT NULL DEFAULT 0,

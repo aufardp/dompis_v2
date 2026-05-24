@@ -1,4 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
+import { Prisma } from '@prisma/client';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 
 export interface ActiveRefreshResult {
@@ -9,6 +10,10 @@ export interface ActiveRefreshResult {
 }
 
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('ACTIVE_REFRESH_BATCH_SIZE', 1000);
+const DEFAULT_MAX_SCAN_PER_RUN = parsePositiveIntEnv(
+  'ACTIVE_REFRESH_MAX_SCAN_PER_RUN',
+  5000,
+);
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -30,9 +35,9 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 async function createRunLog(batchId: string): Promise<void> {
   await prisma.$executeRaw`
     INSERT INTO active_refresh_run_log
-      (batchId, status, batchSize, startedAt)
+      (batchId, status, batchSize, maxScan, startedAt)
     VALUES
-      (${batchId}, 'running', ${DEFAULT_BATCH_SIZE}, ${nowWib()})
+      (${batchId}, 'running', ${DEFAULT_BATCH_SIZE}, ${DEFAULT_MAX_SCAN_PER_RUN}, ${nowWib()})
   `;
 }
 
@@ -55,7 +60,7 @@ async function finishRunLog(
   `;
 }
 
-async function fetchActiveTicketIds(
+async function fetchCandidateTicketIds(
   lastId: number,
   today: Date,
   limit: number,
@@ -63,17 +68,16 @@ async function fetchActiveTicketIds(
   return prisma.$queryRaw<Array<{ id_ticket: number }>>`
     SELECT t.id_ticket
     FROM ticket t
-    INNER JOIN ticket_raw tr ON tr.incident = t.incident
     WHERE t.id_ticket > ${lastId}
-      AND tr.isActive = TRUE
-      AND COALESCE(LOWER(tr.status), '') <> 'closed'
       AND (
         t.sync_date IS NULL
         OR t.sync_date <> ${today}
       )
       AND (
-        COALESCE(LOWER(t.status), '') <> 'closed'
-        OR COALESCE(LOWER(t.status_update), '') IN ('open', 'assigned', 'on_progress', 'pending')
+        t.status IS NULL
+        OR t.status NOT IN ('closed', 'Closed', 'CLOSED')
+        OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending')
+        OR t.status_update IN ('OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
         OR (
           t.pending_dompis IS NOT NULL
           AND t.pending_dompis <> ''
@@ -82,6 +86,24 @@ async function fetchActiveTicketIds(
     ORDER BY t.id_ticket ASC
     LIMIT ${limit}
   `;
+}
+
+async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
+  if (ids.length === 0) return [];
+
+  const rows = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
+    SELECT t.id_ticket
+    FROM ticket t
+    INNER JOIN ticket_raw tr ON tr.incident = t.incident
+    WHERE t.id_ticket IN (${Prisma.join(ids)})
+      AND tr.isActive = TRUE
+      AND (
+        tr.status IS NULL
+        OR tr.status NOT IN ('closed', 'Closed', 'CLOSED')
+      )
+  `;
+
+  return rows.map((row) => row.id_ticket);
 }
 
 async function refreshTicketIds(ids: number[], batchId: string): Promise<number> {
@@ -122,16 +144,24 @@ export async function runActiveRefresh(
     const today = todayWibDateForDb();
     let lastId = 0;
 
-    while (true) {
+    while (result.scanned < DEFAULT_MAX_SCAN_PER_RUN) {
       assertNotAborted(signal);
-      const rows = await fetchActiveTicketIds(lastId, today, DEFAULT_BATCH_SIZE);
+      const remainingScan = DEFAULT_MAX_SCAN_PER_RUN - result.scanned;
+      const rows = await fetchCandidateTicketIds(
+        lastId,
+        today,
+        Math.min(DEFAULT_BATCH_SIZE, remainingScan),
+      );
       if (rows.length === 0) break;
 
       lastId = rows[rows.length - 1]!.id_ticket;
       result.scanned += rows.length;
+      const activeIds = await filterRawActiveTicketIds(
+        rows.map((row) => row.id_ticket),
+      );
 
       for (const chunk of chunkArray(
-        rows.map((row) => row.id_ticket),
+        activeIds,
         DEFAULT_BATCH_SIZE,
       )) {
         assertNotAborted(signal);

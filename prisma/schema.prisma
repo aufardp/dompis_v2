@@ -598,6 +598,7 @@ model active_refresh_run_log {
   batchId      String    @unique @db.VarChar(50)
   status       String    @db.VarChar(20)
   batchSize    Int       @default(1000)
+  maxScan      Int       @default(5000)
   scanned      Int       @default(0)
   updated      Int       @default(0)
   durationMs   Int       @default(0)
