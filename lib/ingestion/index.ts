@@ -38,6 +38,8 @@ const DEFAULT_RETRY_MAX = parsePositiveIntEnv(
   parsePositiveIntEnv('INGESTION_MAX_RETRIES', 3),
 );
 const DEFAULT_RETRY_BASE_MS = parsePositiveIntEnv('INGESTION_RETRY_BASE_MS', 250);
+const MYSQL_MAX_PREPARED_STATEMENT_PLACEHOLDERS = 65_535;
+const MYSQL_PLACEHOLDER_SAFETY_MARGIN = 5_000;
 
 const TRANSIENT_ERROR_PATTERNS = [
   'deadlock',
@@ -484,6 +486,14 @@ async function bulkUpsertTicketRaw(
   if (rows.length === 0) return;
 
   const insertColumns = TICKET_RAW_BULK_COLUMNS;
+  const maxRowsByPlaceholderLimit = Math.max(
+    1,
+    Math.floor(
+      (MYSQL_MAX_PREPARED_STATEMENT_PLACEHOLDERS - MYSQL_PLACEHOLDER_SAFETY_MARGIN) /
+        insertColumns.length,
+    ),
+  );
+  const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
     .map(
@@ -495,7 +505,7 @@ async function bulkUpsertTicketRaw(
     throw new Error('bulkUpsertTicketRaw requires at least one update column');
   }
 
-  for (const chunk of chunkArray(rows, DEFAULT_BATCH_SIZE)) {
+  for (const chunk of chunkArray(rows, sqlBatchSize)) {
     await tx.$executeRaw`
       INSERT INTO ${sqlIdentifier('ticket_raw')}
         (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
