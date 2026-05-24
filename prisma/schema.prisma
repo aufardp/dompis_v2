@@ -593,6 +593,24 @@ model ticket_projection_checkpoint {
   @@index([status])
 }
 
+model active_refresh_run_log {
+  id           BigInt    @id @default(autoincrement())
+  batchId      String    @unique @db.VarChar(50)
+  status       String    @db.VarChar(20)
+  batchSize    Int       @default(1000)
+  scanned      Int       @default(0)
+  updated      Int       @default(0)
+  durationMs   Int       @default(0)
+  errorMessage String?   @db.Text
+  startedAt    DateTime  @default(now()) @db.Timestamp(0)
+  finishedAt   DateTime? @db.Timestamp(0)
+  createdAt    DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([batchId])
+  @@index([status])
+  @@index([startedAt])
+}
+
 model ticket_projection_log {
   id              BigInt    @id @default(autoincrement())
   ticketRawId     String    @unique @db.VarChar(36)
