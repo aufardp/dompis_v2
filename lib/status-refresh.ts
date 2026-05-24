@@ -69,6 +69,8 @@ const METRICS_KEY = 'status-refresh:metrics';
 const RECENT_DURATIONS_KEY = 'status-refresh:durations';
 const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const METRICS_TTL_SECONDS = 24 * 60 * 60;
+const UPDATE_CHUNK_SIZE = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_CHUNK_SIZE', 50);
+const UPDATE_RETRY_MAX = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_RETRY_MAX', 3);
 
 const FINAL_STATUS_VALUES = [
   'closed',
@@ -109,6 +111,29 @@ function clamp(value: number, min: number, max: number): number {
 
 function shouldStopForBudget(start: number): boolean {
   return Date.now() - start >= RUN_BUDGET_MS;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientWriteError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('deadlock') ||
+    message.includes('write conflict') ||
+    message.includes('lock wait timeout') ||
+    message.includes('timeout') ||
+    message.includes('p2034')
+  );
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 function trimTo(value: unknown, maxLength: number): string | null {
@@ -313,36 +338,86 @@ async function updateChangedRows(
   batchId: string,
 ): Promise<number> {
   if (changedRows.length === 0) return 0;
-  const now = nowWib();
-  const today = todayWibDateForDb();
-
-  await prisma.$transaction(
-    changedRows.map((row) =>
-      prisma.ticket_raw.update({
-        where: { incident: row.incident },
-        data: {
-          status: row.normalizedStatus,
-          status_date: row.statusDate,
-          date_modified: row.dateModified,
-          worklog_summary: row.worklogSummary,
-          last_update_worklog: row.lastUpdateWorklog,
-          sourceHash: row.sourceHash,
-          sourceUpdatedAt: row.sourceUpdatedAt,
-          rawPayload: row.rawPayload,
-          lastSeenAt: now,
-          importedAt: now,
-          syncBatchId: batchId,
-          syncVersion: { increment: 1 },
-          isActive: true,
-          sync_date: today,
-          synced_at: now,
-          import_batch: batchId,
-        },
-      }),
-    ),
+  let updated = 0;
+  const sortedRows = [...changedRows].sort((a, b) =>
+    a.incident.localeCompare(b.incident),
   );
 
-  return changedRows.length;
+  for (const chunk of chunkArray(sortedRows, UPDATE_CHUNK_SIZE)) {
+    for (let attempt = 0; attempt <= UPDATE_RETRY_MAX; attempt++) {
+      try {
+        const now = nowWib();
+        const today = todayWibDateForDb();
+        const values = chunk.map((row) =>
+          Prisma.sql`(
+            ${row.incident},
+            ${row.normalizedStatus},
+            ${row.statusDate},
+            ${row.dateModified},
+            ${row.worklogSummary},
+            ${row.lastUpdateWorklog},
+            ${row.sourceHash},
+            ${row.sourceUpdatedAt},
+            ${row.rawPayload},
+            ${now},
+            ${now},
+            ${batchId},
+            ${today},
+            ${now},
+            ${batchId}
+          )`,
+        );
+
+        await prisma.$executeRaw`
+          INSERT INTO ticket_raw
+            (
+              incident,
+              status,
+              status_date,
+              date_modified,
+              worklog_summary,
+              last_update_worklog,
+              sourceHash,
+              sourceUpdatedAt,
+              rawPayload,
+              lastSeenAt,
+              importedAt,
+              syncBatchId,
+              sync_date,
+              synced_at,
+              import_batch
+            )
+          VALUES ${Prisma.join(values)}
+          ON DUPLICATE KEY UPDATE
+            status = VALUES(status),
+            status_date = VALUES(status_date),
+            date_modified = VALUES(date_modified),
+            worklog_summary = VALUES(worklog_summary),
+            last_update_worklog = VALUES(last_update_worklog),
+            sourceHash = VALUES(sourceHash),
+            sourceUpdatedAt = VALUES(sourceUpdatedAt),
+            rawPayload = VALUES(rawPayload),
+            lastSeenAt = VALUES(lastSeenAt),
+            importedAt = VALUES(importedAt),
+            syncBatchId = VALUES(syncBatchId),
+            syncVersion = syncVersion + 1,
+            isActive = TRUE,
+            sync_date = VALUES(sync_date),
+            synced_at = VALUES(synced_at),
+            import_batch = VALUES(import_batch)
+        `;
+        updated += chunk.length;
+        break;
+      } catch (error) {
+        if (attempt >= UPDATE_RETRY_MAX || !isTransientWriteError(error)) {
+          throw error;
+        }
+        await sleep(150 * (attempt + 1));
+      }
+    }
+  }
+
+  return updated;
 }
 
 async function markChecked(
