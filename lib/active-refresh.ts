@@ -1,19 +1,42 @@
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
+import { isRedisReady, redis } from '@/lib/redis';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 
 export interface ActiveRefreshResult {
   batchId: string;
   scanned: number;
   updated: number;
+  effectiveBatchSize: number;
+  maxScan: number;
+  backlogEstimate: number | null;
+  stoppedByBudget: boolean;
   durationMs: number;
 }
 
-const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('ACTIVE_REFRESH_BATCH_SIZE', 1000);
+const CONFIGURED_BATCH_SIZE = parsePositiveIntEnv('ACTIVE_REFRESH_BATCH_SIZE', 200);
 const DEFAULT_MAX_SCAN_PER_RUN = parsePositiveIntEnv(
   'ACTIVE_REFRESH_MAX_SCAN_PER_RUN',
   5000,
 );
+const MIN_BATCH_SIZE = parsePositiveIntEnv('ACTIVE_REFRESH_MIN_BATCH_SIZE', 100);
+const MAX_BATCH_SIZE = parsePositiveIntEnv('ACTIVE_REFRESH_MAX_BATCH_SIZE', 500);
+const FAST_RUN_THRESHOLD_MS = parsePositiveIntEnv(
+  'ACTIVE_REFRESH_FAST_RUN_THRESHOLD_MS',
+  10_000,
+);
+const SLOW_RUN_THRESHOLD_MS = parsePositiveIntEnv(
+  'ACTIVE_REFRESH_SLOW_RUN_THRESHOLD_MS',
+  60_000,
+);
+const TIMEOUT_MINUTES = parsePositiveIntEnv('ACTIVE_REFRESH_TIMEOUT_MINUTES', 10);
+const RUN_BUDGET_MS = parsePositiveIntEnv(
+  'ACTIVE_REFRESH_RUN_BUDGET_MS',
+  Math.max(5_000, Math.floor(TIMEOUT_MINUTES * 60_000 * 0.8)),
+);
+const METRICS_KEY = 'active-refresh:metrics';
+const RECENT_DURATIONS_KEY = 'active-refresh:durations';
+const METRICS_TTL_SECONDS = 24 * 60 * 60;
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -24,20 +47,71 @@ function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error('Active refresh aborted');
 }
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
-async function createRunLog(batchId: string): Promise<void> {
+function shouldStopForBudget(start: number): boolean {
+  return Date.now() - start >= RUN_BUDGET_MS;
+}
+
+async function getAdaptiveBatchSize(): Promise<number> {
+  if (!isRedisReady()) return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+
+  try {
+    const [lastDurationRaw, lastStatus] = await Promise.all([
+      redis.hget(METRICS_KEY, 'lastDurationMs'),
+      redis.hget(METRICS_KEY, 'lastStatus'),
+    ]);
+    const lastDuration = Number.parseInt(lastDurationRaw ?? '', 10);
+    if (!Number.isFinite(lastDuration) || lastStatus !== 'success') {
+      return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+    }
+    if (lastDuration < FAST_RUN_THRESHOLD_MS) {
+      return clamp(Math.ceil(CONFIGURED_BATCH_SIZE * 1.25), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+    }
+    if (lastDuration > SLOW_RUN_THRESHOLD_MS) {
+      return clamp(Math.floor(CONFIGURED_BATCH_SIZE * 0.5), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+    }
+  } catch {
+    return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+  }
+
+  return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+}
+
+async function estimateBacklog(today: Date): Promise<number | null> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) AS count
+      FROM ticket t
+      WHERE (
+          t.sync_date IS NULL
+          OR t.sync_date <> ${today}
+        )
+        AND (
+          t.status IS NULL
+          OR t.status NOT IN ('closed', 'Closed', 'CLOSED')
+          OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending')
+          OR t.status_update IN ('OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
+          OR (
+            t.pending_dompis IS NOT NULL
+            AND t.pending_dompis <> ''
+          )
+        )
+    `;
+    return Number(rows[0]?.count ?? 0);
+  } catch {
+    return null;
+  }
+}
+
+async function createRunLog(batchId: string, batchSize: number): Promise<void> {
   await prisma.$executeRaw`
     INSERT INTO active_refresh_run_log
       (batchId, status, batchSize, maxScan, startedAt)
     VALUES
-      (${batchId}, 'running', ${DEFAULT_BATCH_SIZE}, ${DEFAULT_MAX_SCAN_PER_RUN}, ${nowWib()})
+      (${batchId}, 'running', ${batchSize}, ${DEFAULT_MAX_SCAN_PER_RUN}, ${nowWib()})
   `;
 }
 
@@ -61,15 +135,14 @@ async function finishRunLog(
 }
 
 async function fetchCandidateTicketIds(
-  lastId: number,
+  offset: number,
   today: Date,
   limit: number,
 ): Promise<Array<{ id_ticket: number }>> {
   return prisma.$queryRaw<Array<{ id_ticket: number }>>`
     SELECT t.id_ticket
     FROM ticket t
-    WHERE t.id_ticket > ${lastId}
-      AND (
+    WHERE (
         t.sync_date IS NULL
         OR t.sync_date <> ${today}
       )
@@ -83,8 +156,9 @@ async function fetchCandidateTicketIds(
           AND t.pending_dompis <> ''
         )
       )
-    ORDER BY t.id_ticket ASC
+    ORDER BY t.synced_at DESC, t.id_ticket DESC
     LIMIT ${limit}
+    OFFSET ${offset}
   `;
 }
 
@@ -121,15 +195,75 @@ async function refreshTicketIds(ids: number[], batchId: string): Promise<number>
   return result.count;
 }
 
+async function recordMetrics(
+  status: 'success' | 'failed' | 'aborted',
+  result: ActiveRefreshResult,
+  errorMessage?: string,
+): Promise<void> {
+  if (!isRedisReady()) return;
+
+  try {
+    const rowsPerSecond =
+      result.durationMs > 0
+        ? Math.round((result.updated / result.durationMs) * 1000 * 100) / 100
+        : 0;
+    await redis
+      .multi()
+      .hset(METRICS_KEY, {
+        lastStatus: status,
+        lastBatchId: result.batchId,
+        lastScanned: String(result.scanned),
+        lastUpdated: String(result.updated),
+        lastDurationMs: String(result.durationMs),
+        lastRowsPerSecond: String(rowsPerSecond),
+        lastEffectiveBatchSize: String(result.effectiveBatchSize),
+        lastMaxScan: String(result.maxScan),
+        lastBacklogEstimate:
+          result.backlogEstimate === null ? '' : String(result.backlogEstimate),
+        lastStoppedByBudget: String(result.stoppedByBudget),
+        lastError: errorMessage ?? '',
+        lastRunAt: new Date().toISOString(),
+        ...(status === 'success' && { lastSuccessAt: new Date().toISOString() }),
+      })
+      .lpush(RECENT_DURATIONS_KEY, String(result.durationMs))
+      .ltrim(RECENT_DURATIONS_KEY, 0, 19)
+      .expire(METRICS_KEY, METRICS_TTL_SECONDS)
+      .expire(RECENT_DURATIONS_KEY, METRICS_TTL_SECONDS)
+      .exec();
+
+    const durations = (await redis.lrange(RECENT_DURATIONS_KEY, 0, 19))
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    if (durations.length > 0) {
+      const p95Index = Math.min(
+        durations.length - 1,
+        Math.ceil(durations.length * 0.95) - 1,
+      );
+      await redis.hset(METRICS_KEY, {
+        durationP95Ms: String(durations[p95Index]),
+      });
+    }
+  } catch {
+    // Metrics must never fail the refresh path.
+  }
+}
+
 export async function runActiveRefresh(
   signal?: AbortSignal,
 ): Promise<ActiveRefreshResult> {
   const start = Date.now();
   const batchId = `active-refresh-${Date.now()}`;
+  const today = todayWibDateForDb();
+  const effectiveBatchSize = await getAdaptiveBatchSize();
   const result: ActiveRefreshResult = {
     batchId,
     scanned: 0,
     updated: 0,
+    effectiveBatchSize,
+    maxScan: DEFAULT_MAX_SCAN_PER_RUN,
+    backlogEstimate: null,
+    stoppedByBudget: false,
     durationMs: 0,
   };
 
@@ -138,49 +272,53 @@ export async function runActiveRefresh(
     return result;
   }
 
-  await createRunLog(batchId);
+  result.backlogEstimate = await estimateBacklog(today);
+  await createRunLog(batchId, effectiveBatchSize);
 
   try {
-    const today = todayWibDateForDb();
-    let lastId = 0;
+    let offset = 0;
 
-    while (result.scanned < DEFAULT_MAX_SCAN_PER_RUN) {
+    while (
+      result.scanned < DEFAULT_MAX_SCAN_PER_RUN &&
+      !shouldStopForBudget(start)
+    ) {
       assertNotAborted(signal);
       const remainingScan = DEFAULT_MAX_SCAN_PER_RUN - result.scanned;
       const rows = await fetchCandidateTicketIds(
-        lastId,
+        offset,
         today,
-        Math.min(DEFAULT_BATCH_SIZE, remainingScan),
+        Math.min(effectiveBatchSize, remainingScan),
       );
       if (rows.length === 0) break;
 
-      lastId = rows[rows.length - 1]!.id_ticket;
+      offset += rows.length;
       result.scanned += rows.length;
       const activeIds = await filterRawActiveTicketIds(
         rows.map((row) => row.id_ticket),
       );
 
-      for (const chunk of chunkArray(
-        activeIds,
-        DEFAULT_BATCH_SIZE,
-      )) {
-        assertNotAborted(signal);
-        result.updated += await refreshTicketIds(chunk, batchId);
-      }
+      assertNotAborted(signal);
+      if (shouldStopForBudget(start)) break;
+      result.updated += await refreshTicketIds(activeIds, batchId);
+      offset = activeIds.length > 0 ? 0 : offset;
     }
 
+    result.stoppedByBudget = shouldStopForBudget(start);
     result.durationMs = Date.now() - start;
     await finishRunLog(batchId, 'success', result);
+    await recordMetrics('success', result);
     return result;
   } catch (error) {
     result.durationMs = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
+    const status = message.includes('Active refresh aborted') ? 'aborted' : 'failed';
     await finishRunLog(
       batchId,
-      message.includes('Active refresh aborted') ? 'aborted' : 'failed',
+      status,
       result,
       message,
     ).catch(() => undefined);
+    await recordMetrics(status, result, message);
     throw error;
   }
 }
