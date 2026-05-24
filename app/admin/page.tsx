@@ -173,6 +173,9 @@ export default function TicketPage() {
   // Auto-scroll refs
   const b2cSectionRef = useRef<HTMLDivElement>(null);
   const b2bSectionRef = useRef<HTMLDivElement>(null);
+  const b2cTableRef = useRef<HTMLDivElement>(null);
+  const b2bTableRef = useRef<HTMLDivElement>(null);
+  const [searchOpenSectionIds, setSearchOpenSectionIds] = useState<string[]>([]);
 
   const pendingRefreshRef = useRef(false);
 
@@ -1423,16 +1426,20 @@ export default function TicketPage() {
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchToast(null);
+      setSearchOpenSectionIds([]);
       return;
     }
 
+    if (b2cPageData.loading || b2bPageData.loading) return;
+
     const timer = setTimeout(() => {
-      const b2cCount = b2cTicketTableData.length;
-      const b2bCount = b2bTicketTableData.length;
+      const b2cCount = b2cPageData.pagination.total;
+      const b2bCount = b2bPageData.pagination.total;
       const totalFound = b2cCount + b2bCount;
 
       if (totalFound === 0) {
         setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+        setSearchOpenSectionIds([]);
         return;
       }
 
@@ -1441,21 +1448,35 @@ export default function TicketPage() {
         type: 'success',
       });
 
-      if (b2cCount > 0) {
-        b2cSectionRef.current?.scrollIntoView({
+      const target =
+        deptFilter === 'b2c' && b2cCount > 0
+          ? 'b2c'
+          : deptFilter === 'b2b' && b2bCount > 0
+            ? 'b2b'
+            : b2bCount > 0
+              ? 'b2b'
+              : 'b2c';
+
+      setSearchOpenSectionIds([target]);
+
+      window.setTimeout(() => {
+        const targetRef = target === 'b2b' ? b2bTableRef : b2cTableRef;
+        targetRef.current?.scrollIntoView({
           behavior: 'smooth',
           block: 'start',
         });
-      } else if (b2bCount > 0) {
-        b2bSectionRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }
+      }, 350);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, b2cTicketTableData.length, b2bTicketTableData.length]);
+  }, [
+    searchQuery,
+    deptFilter,
+    b2cPageData.loading,
+    b2bPageData.loading,
+    b2cPageData.pagination.total,
+    b2bPageData.pagination.total,
+  ]);
 
   return (
     <>
@@ -1593,6 +1614,7 @@ export default function TicketPage() {
           <AdminAccordion
             multiple
             storageKey='admin:dashboard:sections'
+            forceOpenIds={searchOpenSectionIds}
             items={[
               {
                 id: 'service-areas',
@@ -1621,42 +1643,44 @@ export default function TicketPage() {
                       onStatusChange={handleB2bHasilVisitChange}
                       onFlaggingChange={handleB2bFlaggingChange}
                     />
-                    <TicketTableTabs
-                      section='b2b'
-                      accentColor='#3b82f6'
-                      mainTable={
-                        <TicketTableB2B
-                          tickets={b2bPageData.tickets}
-                          tableSummary={b2bTableSummary}
-                          flaggingFilter={b2bFlaggingFilter}
-                          loading={b2bPageData.loading}
-                          isRefreshing={b2bPageData.isRefreshing}
-                          onAssign={handleAssignClick}
-                          downloadFilters={{
-                            dept: 'b2b',
-                            ticketType: b2bTicketTypeFilter,
-                            statusUpdate: b2bHasilVisitFilter,
-                            flagging: b2bFlaggingFilter,
-                          }}
-                          pagination={{
-                            currentPage: b2bPageData.pagination.currentPage,
-                            totalPages: b2bPageData.pagination.totalPages,
-                            total: b2bPageData.pagination.total,
-                            limit: b2bPageData.pagination.limit,
-                            onPageChange: (page) => {
-                              setB2bPage(page);
-                            },
-                          }}
-                        />
-                      }
-                      tickets={b2bPageData.tickets}
-                      validasiTickets={b2bPageData.validasiTickets}
-                      totalCount={b2bPageData.pagination.total}
-                      validasiTotalCount={b2bPageData.validasiCount}
-                      loading={b2bPageData.loading}
-                      isRefreshing={b2bPageData.isRefreshing}
-                      onAssign={handleAssignClick}
-                    />
+                    <div ref={b2bTableRef} className='scroll-mt-20'>
+                      <TicketTableTabs
+                        section='b2b'
+                        accentColor='#3b82f6'
+                        mainTable={
+                          <TicketTableB2B
+                            tickets={b2bPageData.tickets}
+                            tableSummary={b2bTableSummary}
+                            flaggingFilter={b2bFlaggingFilter}
+                            loading={b2bPageData.loading}
+                            isRefreshing={b2bPageData.isRefreshing}
+                            onAssign={handleAssignClick}
+                            downloadFilters={{
+                              dept: 'b2b',
+                              ticketType: b2bTicketTypeFilter,
+                              statusUpdate: b2bHasilVisitFilter,
+                              flagging: b2bFlaggingFilter,
+                            }}
+                            pagination={{
+                              currentPage: b2bPageData.pagination.currentPage,
+                              totalPages: b2bPageData.pagination.totalPages,
+                              total: b2bPageData.pagination.total,
+                              limit: b2bPageData.pagination.limit,
+                              onPageChange: (page) => {
+                                setB2bPage(page);
+                              },
+                            }}
+                          />
+                        }
+                        tickets={b2bPageData.tickets}
+                        validasiTickets={b2bPageData.validasiTickets}
+                        totalCount={b2bPageData.pagination.total}
+                        validasiTotalCount={b2bPageData.validasiCount}
+                        loading={b2bPageData.loading}
+                        isRefreshing={b2bPageData.isRefreshing}
+                        onAssign={handleAssignClick}
+                      />
+                    </div>
                   </div>
                 ),
               },
@@ -1684,42 +1708,44 @@ export default function TicketPage() {
                       onFlaggingChange={handleB2cFlaggingChange}
                     />
 
-                    <TicketTableTabs
-                      section='b2c'
-                      accentColor='#10b981'
-                      mainTable={
-                        <TicketTable
-                          tickets={b2cPageData.tickets}
-                          tableSummary={b2cTableSummary}
-                          flaggingFilter={b2cFlaggingFilter}
-                          loading={b2cPageData.loading}
-                          isRefreshing={b2cPageData.isRefreshing}
-                          onAssign={handleAssignClick}
-                          downloadFilters={{
-                            dept: 'b2c',
-                            ticketType: b2cTicketTypeFilter,
-                            statusUpdate: b2cHasilVisitFilter,
-                            flagging: b2cFlaggingFilter,
-                          }}
-                          pagination={{
-                            currentPage: b2cPageData.pagination.currentPage,
-                            totalPages: b2cPageData.pagination.totalPages,
-                            total: b2cPageData.pagination.total,
-                            limit: b2cPageData.pagination.limit,
-                            onPageChange: (page) => {
-                              setB2cPage(page);
-                            },
-                          }}
-                        />
-                      }
-                      tickets={b2cPageData.tickets}
-                      validasiTickets={b2cPageData.validasiTickets}
-                      totalCount={b2cPageData.pagination.total}
-                      validasiTotalCount={b2cPageData.validasiCount}
-                      loading={b2cPageData.loading}
-                      isRefreshing={b2cPageData.isRefreshing}
-                      onAssign={handleAssignClick}
-                    />
+                    <div ref={b2cTableRef} className='scroll-mt-20'>
+                      <TicketTableTabs
+                        section='b2c'
+                        accentColor='#10b981'
+                        mainTable={
+                          <TicketTable
+                            tickets={b2cPageData.tickets}
+                            tableSummary={b2cTableSummary}
+                            flaggingFilter={b2cFlaggingFilter}
+                            loading={b2cPageData.loading}
+                            isRefreshing={b2cPageData.isRefreshing}
+                            onAssign={handleAssignClick}
+                            downloadFilters={{
+                              dept: 'b2c',
+                              ticketType: b2cTicketTypeFilter,
+                              statusUpdate: b2cHasilVisitFilter,
+                              flagging: b2cFlaggingFilter,
+                            }}
+                            pagination={{
+                              currentPage: b2cPageData.pagination.currentPage,
+                              totalPages: b2cPageData.pagination.totalPages,
+                              total: b2cPageData.pagination.total,
+                              limit: b2cPageData.pagination.limit,
+                              onPageChange: (page) => {
+                                setB2cPage(page);
+                              },
+                            }}
+                          />
+                        }
+                        tickets={b2cPageData.tickets}
+                        validasiTickets={b2cPageData.validasiTickets}
+                        totalCount={b2cPageData.pagination.total}
+                        validasiTotalCount={b2cPageData.validasiCount}
+                        loading={b2cPageData.loading}
+                        isRefreshing={b2cPageData.isRefreshing}
+                        onAssign={handleAssignClick}
+                      />
+                    </div>
                   </div>
                 ),
               },

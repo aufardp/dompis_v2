@@ -40,6 +40,52 @@ function normalizeStringList(value: string | string[] | undefined): string[] {
     .filter((item) => item.length > 0 && item.toLowerCase() !== 'all');
 }
 
+function normalizeSearchTerm(value: string | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 100);
+}
+
+function buildTicketSearchWhere(search: string): Record<string, any> | null {
+  const term = normalizeSearchTerm(search);
+  if (!term) return null;
+
+  const isNumericLike = /^[\d\s+().-]+$/.test(term);
+  const compactNumber = term.replace(/[^\d]/g, '');
+  const clauses: Record<string, any>[] = [
+    { incident: { equals: term } },
+    { service_no: { equals: term } },
+    { ticket_id_gamas: { equals: term } },
+  ];
+
+  if (term.length >= 3) {
+    clauses.push(
+      { incident: { startsWith: term } },
+      { service_no: { startsWith: term } },
+      { ticket_id_gamas: { startsWith: term } },
+    );
+  }
+
+  if (compactNumber.length >= 4) {
+    clauses.push(
+      { service_no: { startsWith: compactNumber } },
+      { contact_phone: { startsWith: compactNumber } },
+    );
+  }
+
+  if (isNumericLike && compactNumber.length >= 4) {
+    clauses.push({ contact_phone: { contains: compactNumber } });
+  } else if (term.length >= 3) {
+    clauses.push(
+      { contact_name: { contains: term } },
+      { customer_name: { contains: term } },
+    );
+  }
+
+  return { OR: clauses };
+}
+
 /**
  * Status filter helper
  */
@@ -317,17 +363,11 @@ export class DailyTicketService {
 
     await this.applyDailyTicketFilter(where);
 
-    if (search) {
+    const searchWhere = buildTicketSearchWhere(search);
+    if (searchWhere) {
       where.AND = [
         ...(where.AND ?? []),
-        {
-          OR: [
-            { incident: { contains: search } },
-            { contact_name: { contains: search } },
-            { service_no: { contains: search } },
-            { contact_phone: { contains: search } },
-          ],
-        },
+        searchWhere,
       ];
     }
 

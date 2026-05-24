@@ -60,8 +60,9 @@ export function useDailyTickets(
           limit: String(fetchLimit),
         });
 
-        if (search) {
-          params.append('search', search);
+        const normalizedSearch = search.trim();
+        if (normalizedSearch) {
+          params.append('search', normalizedSearch);
         }
 
         if (workzone) {

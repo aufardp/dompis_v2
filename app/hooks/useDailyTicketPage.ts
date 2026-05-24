@@ -54,7 +54,8 @@ export function useDailyTicketPage({
         sort: 'desc',
       });
 
-      if (search) params.set('search', search);
+      const normalizedSearch = search?.trim();
+      if (normalizedSearch) params.set('search', normalizedSearch);
       if (workzone) params.set('workzone', workzone);
       if (ctype && ctype !== 'all') params.set('ctype', ctype);
       for (const type of ticketType) params.append('ticketType', type);

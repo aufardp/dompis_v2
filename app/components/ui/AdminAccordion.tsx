@@ -19,6 +19,7 @@ type AdminAccordionProps = {
   storageKey?: string;
   multiple?: boolean;
   className?: string;
+  forceOpenIds?: string[];
 };
 
 function safeParseStoredIds(raw: string | null): string[] | null {
@@ -38,6 +39,7 @@ export default function AdminAccordion({
   storageKey,
   multiple = true,
   className,
+  forceOpenIds = [],
 }: AdminAccordionProps) {
   const mounted = useMounted();
   const idsKey = useMemo(() => items.map((i) => i.id).join('|'), [items]);
@@ -67,6 +69,20 @@ export default function AdminAccordion({
       localStorage.setItem(storageKey, JSON.stringify([...openIds]));
     } catch {}
   }, [mounted, openIds, storageKey]);
+
+  useEffect(() => {
+    if (forceOpenIds.length === 0) return;
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of forceOpenIds) {
+        if (!validIds.has(id) || next.has(id)) continue;
+        next.add(id);
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [forceOpenIds, validIds]);
 
   const toggle = (id: string) => {
     setOpenIds((prev) => {

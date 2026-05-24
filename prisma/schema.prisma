@@ -325,6 +325,11 @@ model ticket {
   @@index([sync_date, teknisi_user_id, status_update, rk_information, jam_expired], map: "idx_ticket_autoassign_daily")
   @@index([flagging_manja], map: "idx_ticket_flagging")
   @@index([guarantee_status], map: "idx_ticket_guarantee")
+  @@index([service_no], map: "idx_ticket_search_service_no")
+  @@index([contact_phone], map: "idx_ticket_search_contact_phone")
+  @@index([contact_name], map: "idx_ticket_search_contact_name")
+  @@index([customer_name], map: "idx_ticket_search_customer_name")
+  @@index([ticket_id_gamas], map: "idx_ticket_search_gamas")
   @@index([reported_date], map: "idx_ticket_reported")
   @@index([workzone], map: "idx_ticket_workzone")
 }

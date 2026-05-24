@@ -28,6 +28,12 @@ function buildDailyTicketCacheKey(
     return null;
   }
 
+  // Search is operator-driven and should reflect freshly projected tickets.
+  // Avoid serving 30s-old cached search results on the admin dashboard.
+  if (filterParams.get('search')?.trim()) {
+    return null;
+  }
+
   filterParams.sort();
   return `daily_tickets:${role}:${userId}:${filterParams.toString()}`;
 }
