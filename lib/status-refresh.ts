@@ -69,7 +69,23 @@ const RECENT_DURATIONS_KEY = 'status-refresh:durations';
 const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const METRICS_TTL_SECONDS = 24 * 60 * 60;
 
-const FINAL_STATUSES = ['closed', 'close', 'resolved', 'cancelled', 'canceled'];
+const FINAL_STATUS_VALUES = [
+  'closed',
+  'Closed',
+  'CLOSED',
+  'close',
+  'Close',
+  'CLOSE',
+  'resolved',
+  'Resolved',
+  'RESOLVED',
+  'cancelled',
+  'Cancelled',
+  'CANCELLED',
+  'canceled',
+  'Canceled',
+  'CANCELED',
+];
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -158,17 +174,23 @@ async function getAdaptiveBatchSize(): Promise<number> {
 }
 
 async function estimateBacklog(): Promise<number | null> {
+  if (process.env.STATUS_REFRESH_ESTIMATE_BACKLOG !== 'true') return null;
+
   try {
     const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) AS count
-      FROM ticket_raw tr
-      WHERE tr.incident IS NOT NULL
-        AND tr.sourceTable IS NOT NULL
-        AND tr.isActive = TRUE
-        AND (
-          tr.status IS NULL
-          OR LOWER(tr.status) NOT IN (${Prisma.join(FINAL_STATUSES)})
-        )
+      FROM (
+        SELECT tr.id_ticket
+        FROM ticket_raw tr
+        WHERE tr.incident IS NOT NULL
+          AND tr.sourceTable IS NOT NULL
+          AND tr.isActive = TRUE
+          AND (
+            tr.status IS NULL
+            OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
+          )
+        LIMIT 5001
+      ) x
     `;
     return Number(rows[0]?.count ?? 0);
   } catch {
@@ -196,7 +218,7 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
       AND tr.isActive = TRUE
       AND (
         tr.status IS NULL
-        OR LOWER(tr.status) NOT IN (${Prisma.join(FINAL_STATUSES)})
+        OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
       )
       AND (
         s.lastCheckedAt IS NULL
@@ -297,44 +319,42 @@ async function markChecked(
 ): Promise<void> {
   if (candidates.length === 0) return;
   const now = nowWib();
-
-  await prisma.$transaction(
-    candidates.map((candidate) => {
+  const values = candidates.map((candidate) => {
       const external = externalRowsByIncident.get(candidate.incident);
-      return prisma.$executeRaw`
-        INSERT INTO status_refresh_ticket_state
-          (
-            incident,
-            sourceTable,
-            lastCheckedAt,
-            lastStatus,
-            lastSourceHash,
-            lastBatchId,
-            missingCount,
-            updatedAt
-          )
-        VALUES
-          (
-            ${candidate.incident},
-            ${candidate.sourceTable},
-            ${now},
-            ${external?.normalizedStatus ?? candidate.status},
-            ${external?.sourceHash ?? candidate.sourceHash},
-            ${batchId},
-            ${external ? 0 : 1},
-            ${now}
-          )
-        ON DUPLICATE KEY UPDATE
-          sourceTable = VALUES(sourceTable),
-          lastCheckedAt = VALUES(lastCheckedAt),
-          lastStatus = VALUES(lastStatus),
-          lastSourceHash = VALUES(lastSourceHash),
-          lastBatchId = VALUES(lastBatchId),
-          missingCount = IF(VALUES(missingCount) = 0, 0, missingCount + 1),
-          updatedAt = VALUES(updatedAt)
-      `;
-    }),
-  );
+      return Prisma.sql`(
+        ${candidate.incident},
+        ${candidate.sourceTable},
+        ${now},
+        ${external?.normalizedStatus ?? candidate.status},
+        ${external?.sourceHash ?? candidate.sourceHash},
+        ${batchId},
+        ${external ? 0 : 1},
+        ${now}
+      )`;
+    });
+
+  await prisma.$executeRaw`
+    INSERT INTO status_refresh_ticket_state
+      (
+        incident,
+        sourceTable,
+        lastCheckedAt,
+        lastStatus,
+        lastSourceHash,
+        lastBatchId,
+        missingCount,
+        updatedAt
+      )
+    VALUES ${Prisma.join(values)}
+    ON DUPLICATE KEY UPDATE
+      sourceTable = VALUES(sourceTable),
+      lastCheckedAt = VALUES(lastCheckedAt),
+      lastStatus = VALUES(lastStatus),
+      lastSourceHash = VALUES(lastSourceHash),
+      lastBatchId = VALUES(lastBatchId),
+      missingCount = IF(VALUES(missingCount) = 0, 0, missingCount + 1),
+      updatedAt = VALUES(updatedAt)
+  `;
 }
 
 async function createRunLog(batchId: string, batchSize: number): Promise<void> {
