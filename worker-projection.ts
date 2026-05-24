@@ -47,6 +47,7 @@ const RUN_ON_START = process.env.PROJECTION_RUN_ON_START !== 'false';
 
 const state = createTaskState();
 const scheduledTasks: ScheduledTask[] = [];
+let projectionRequestSubscriber: ReturnType<typeof redis.duplicate> | null = null;
 
 async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   if (process.env.PROJECTION_ENABLED !== 'true') {
@@ -150,7 +151,11 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
 }
 
 async function subscribeProjectionRequests(): Promise<void> {
-  const subscriber = redis.duplicate();
+  const subscriber = redis.duplicate({
+    lazyConnect: true,
+    enableOfflineQueue: true,
+  });
+  projectionRequestSubscriber = subscriber;
 
   subscriber.on('error', (error) => {
     logger.error('Projection request subscriber error', error, {
@@ -167,6 +172,7 @@ async function subscribeProjectionRequests(): Promise<void> {
     void runProjectionTask('incremental');
   });
 
+  await subscriber.connect();
   await subscriber.subscribe(PROJECTION_REQUEST_CHANNEL);
   logger.info('Projection request subscriber ready', {
     worker: WORKER_NAME,
@@ -183,7 +189,11 @@ async function startWorker(): Promise<void> {
   await waitForRedisReady();
   await cleanupWorkerLock('projection', TIMEOUT_MINUTES * 60_000);
   startWorkerHeartbeat(WORKER_NAME, state);
-  await subscribeProjectionRequests();
+  await subscribeProjectionRequests().catch((error) => {
+    logger.error('Projection request subscriber disabled; interval fallback remains active', error, {
+      worker: WORKER_NAME,
+    });
+  });
 
   scheduledTasks.push(
     scheduleEveryMinutes(INTERVAL_MINUTES, () =>
@@ -205,6 +215,10 @@ async function startWorker(): Promise<void> {
 
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled rejection', reason, { worker: WORKER_NAME, promise: String(promise) });
+});
+
+process.on('exit', () => {
+  projectionRequestSubscriber?.disconnect();
 });
 
 startWorker().catch((error) => {
