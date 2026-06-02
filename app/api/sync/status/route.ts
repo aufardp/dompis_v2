@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
+import { getErrorStatus } from '@/app/libs/apiError';
 import { protectApi } from '@/app/libs/protectApi';
 import { getProjectionHealth } from '@/lib/sync-metrics/metrics';
 import { logger } from '@/lib/observability/logger';
@@ -130,6 +131,16 @@ export async function GET() {
   try {
     return await handleSyncStatus();
   } catch (error: any) {
+    const status = getErrorStatus(error, 500);
+    if (status === 401 || status === 403) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: error?.message ?? 'Unauthorized',
+        },
+        { status },
+      );
+    }
     if (isConnectionLostError(error) || isConnectionPoolError(error)) {
       logger.warn('[SyncStatus] Database connection busy/lost — serving cached or metrics snapshot');
       const cached = getCachedSyncStatusResponse();
