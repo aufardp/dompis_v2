@@ -25,8 +25,8 @@ export const pickupTicketSchema = z.object({
 
 export const closeTicketSchema = z.object({
   ticketId: positiveInt,
-  rca: optionalTrimmedString(10),
-  subRca: optionalTrimmedString(10),
+  rca: optionalTrimmedString(100),
+  subRca: optionalTrimmedString(100),
   descriptionSolutionDompis: z.string().trim().min(10).max(255),
 });
 

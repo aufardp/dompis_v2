@@ -29,11 +29,18 @@ export async function POST(req: Request) {
     });
 
     if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors as Record<string, string[] | undefined>;
+      const messages: string[] = [];
+      if (fieldErrors.ticketId) messages.push('ticketId tidak valid');
+      if (fieldErrors.descriptionSolutionDompis) messages.push('detail perbaikan minimal 10 karakter');
+      if (fieldErrors.rca) messages.push('RCA tidak valid (maks 100 karakter)');
+      if (fieldErrors.subRca) messages.push('Sub RCA tidak valid (maks 100 karakter)');
+
       return NextResponse.json(
         {
           success: false,
-          message: 'ticketId wajib valid dan detail perbaikan minimal 10 karakter',
-          errors: parsed.error.flatten().fieldErrors,
+          message: messages.join('. ') || 'Data tidak valid',
+          errors: fieldErrors,
         },
         { status: 400 },
       );

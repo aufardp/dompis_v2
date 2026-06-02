@@ -300,8 +300,8 @@ model ticket {
   status_ttr_wifi_id          String?                     @db.VarChar(10)
   pending_dompis              String?                     @db.VarChar(255)
   description_solution_dompis String?                     @db.VarChar(255)
-  rca                         String?                     @db.VarChar(10)
-  sub_rca                     String?                     @db.VarChar(10)
+  rca                         String?                     @db.VarChar(100)
+  sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
   closed_at                   DateTime?                   @db.Timestamp(0)
   sync_date                   DateTime?                   @db.Date
