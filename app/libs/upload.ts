@@ -152,7 +152,8 @@ export async function stageFiles(
 export async function commitStagedFiles(files: StagedFile[]) {
   for (const file of files) {
     await fsPromises.mkdir(path.dirname(file.finalPath), { recursive: true });
-    await fsPromises.rename(file.tempPath, file.finalPath);
+    await fsPromises.copyFile(file.tempPath, file.finalPath);
+    await fsPromises.unlink(file.tempPath);
   }
 }
 

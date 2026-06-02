@@ -128,6 +128,14 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     dbAliases: ['reseller', 'RESELLER'],
   },
   {
+    key: 'non-datin',
+    label: 'Non Datin',
+    segment: 'b2b',
+    color: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400',
+    priority: 1,
+    dbAliases: ['non-datin', 'non_datin', 'non datin', 'NON DATIN'],
+  },
+  {
     key: 'wifi-id',
     label: 'WiFi-ID',
     segment: 'b2b',
