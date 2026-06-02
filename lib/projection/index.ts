@@ -168,6 +168,7 @@ interface ExistingTicket {
   teknisi_user_id: number | null;
   description_solution_dompis: string | null;
   pending_dompis: string | null;
+  pending_reason: string | null;
   synced_at: Date | null;
   import_batch: string | null;
   status_update: string | null;
@@ -232,6 +233,7 @@ const PROJECTED_FIELDS: Record<string, string> = {
   solution: 'solution',
   tsc_result: 'tsc_result',
   scc_result: 'scc_result',
+  pending_reason: 'pending_reason',
 };
 
 const PROTECTED_FIELDS = new Set([
@@ -259,7 +261,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'sn_ont', 'tipe_ont', 'guarantee_status', 'lapul', 'gaul', 'onu_rx',
   'jenis_tiket_1', 'jenis_tiket_2', 'channel', 'classification_flag', 'classification_path',
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
-  'alamat', 'status_update', 'closed_at', 'flagging_manja',
+  'description_actual_solution', 'alamat', 'status', 'status_date', 'status_update', 'closed_at', 'flagging_manja', 'pending_reason',
 ];
 
 const LOG_BULK_COLUMNS: readonly string[] = [
@@ -626,6 +628,7 @@ async function fetchBatch(
       solution: true,
       tsc_result: true,
       scc_result: true,
+      pending_reason: true,
     },
   }) as Promise<RawSelectResult[]>;
 }
@@ -660,6 +663,7 @@ async function prepareProjectionItems(
       teknisi_user_id: true,
       description_solution_dompis: true,
       pending_dompis: true,
+      pending_reason: true,
       synced_at: true,
       import_batch: true,
       status_update: true,
@@ -1336,44 +1340,41 @@ export async function getProjectionReconciliationReport(): Promise<{
   oldestUnprojectedImportedAt: Date | null;
   checkpoint: ProjectionCheckpoint & { status?: string | null };
 }> {
-  const [
-    checkpoint,
-    activeRaw,
-    projectedRaw,
-    failedRaw,
-    tickets,
-    oldestGapRows,
-  ] =
+  const checkpoint = await prisma.ticket_projection_checkpoint.findUnique({
+    where: { name: CHECKPOINT_NAME },
+    select: {
+      lastProjectedImportedAt: true,
+      lastProjectedTicketRawId: true,
+      lastSyncBatchId: true,
+      status: true,
+      neverProjectedCount: true,
+    },
+  });
+
+  const neverProjectedRaw = checkpoint?.neverProjectedCount ?? 0;
+
+  const [activeRaw, projectedRaw, failedRaw, tickets, oldestGapRows] =
     await Promise.all([
-      prisma.ticket_projection_checkpoint.findUnique({
-        where: { name: CHECKPOINT_NAME },
-        select: {
-          lastProjectedImportedAt: true,
-          lastProjectedTicketRawId: true,
-          lastSyncBatchId: true,
-          status: true,
-          neverProjectedCount: true,
-        },
-      }),
       prisma.ticket_raw.count({ where: { isActive: true } }),
       prisma.ticket_projection_log.count({ where: { status: 'success' } }),
       prisma.ticket_projection_log.count({ where: { status: 'failed' } }),
       prisma.ticket.count(),
-      prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
-        SELECT tr.importedAt AS importedAt
-        FROM ticket_raw tr
-        WHERE tr.isActive = TRUE
-          AND tr.importedAt IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM ticket_projection_log tpl
-            WHERE tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
-          )
-        ORDER BY tr.importedAt ASC, tr.id_ticket ASC
-        LIMIT 1
-      `,
+      neverProjectedRaw > 0
+        ? prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
+          SELECT tr.importedAt AS importedAt
+          FROM ticket_raw tr
+          WHERE tr.isActive = TRUE
+            AND tr.importedAt IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_projection_log tpl
+              WHERE tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
+            )
+          ORDER BY tr.importedAt ASC, tr.id_ticket ASC
+          LIMIT 1
+        `
+        : Promise.resolve([] as Array<{ importedAt: Date | null }>),
     ]);
 
-  const neverProjectedRaw = checkpoint?.neverProjectedCount ?? 0;
   const oldestUnprojectedImportedAt = oldestGapRows[0]?.importedAt ?? null;
 
   return {
