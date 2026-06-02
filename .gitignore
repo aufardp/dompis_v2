@@ -64,3 +64,4 @@ error/logs/
 results/
 *.log
 EOF
+logs/*.log
