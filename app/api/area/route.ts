@@ -63,8 +63,9 @@ export async function POST(request: Request) {
       data: { id_area: id, nama_area: validated.nama_area },
     });
   } catch (error: any) {
-    logger.error('Route error:', error);
     const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
+    if (status >= 500) logger.error('Route error:', error);
+    else logger.warn('Route error:', { error: { name: error?.name, message: error?.message } });
     return NextResponse.json(
       {
         success: false,
@@ -101,8 +102,9 @@ export async function PUT(request: Request) {
       message: 'Area updated successfully',
     });
   } catch (error: any) {
-    logger.error('Route error:', error);
     const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
+    if (status >= 500) logger.error('Route error:', error);
+    else logger.warn('Route error:', { error: { name: error?.name, message: error?.message } });
     return NextResponse.json(
       {
         success: false,
@@ -141,7 +143,9 @@ export async function DELETE(request: Request) {
       message: 'Area deleted successfully',
     });
   } catch (error: any) {
-    logger.error('Route error:', error);
+    const status = getErrorStatus(error, 500);
+    if (status >= 500) logger.error('Route error:', error);
+    else logger.warn('Route error:', { error: { name: error?.name, message: error?.message } });
     return NextResponse.json(
       {
         success: false,

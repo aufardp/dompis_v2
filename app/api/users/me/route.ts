@@ -18,11 +18,15 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: user });
   } catch (error: unknown) {
-    logger.error('Route error:', error);
-    const message = getErrorMessage(error, 'Failed to load current user');
+    const status = getErrorStatus(error, 500);
+    if (status >= 500) {
+      logger.error('Route error:', error);
+    } else {
+      logger.warn('Route error:', { error: error instanceof Error ? { name: error.name, message: error.message } : { message: String(error) } });
+    }
     return NextResponse.json(
-      { success: false, message },
-      { status: getErrorStatus(error, 500) },
+      { success: false, message: getErrorMessage(error, 'Failed to load current user') },
+      { status },
     );
   }
 }

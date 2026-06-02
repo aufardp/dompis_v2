@@ -1048,6 +1048,7 @@ async function processTable(
                 limit: DEFAULT_CHUNK_SIZE,
                 offset: snapshotOffset,
                 orderBy: cursor.idColumn ?? cursor.columns[0]?.name ?? 'id',
+                columns: cursor.columns.map((c) => c.name),
               })
             : fetchTableRowsByCursor(tableName, {
                 limit: DEFAULT_CHUNK_SIZE,
@@ -1055,6 +1056,7 @@ async function processTable(
                 modifiedColumn: cursor.modifiedColumn,
                 lastCursorId: activeCursor.lastCursorId,
                 lastModifiedAt: activeCursor.lastModifiedAt,
+                columns: cursor.columns.map((c) => c.name),
               }),
         {
           retryMax: DEFAULT_RETRY_MAX,

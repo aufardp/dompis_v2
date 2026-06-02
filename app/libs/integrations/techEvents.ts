@@ -50,7 +50,7 @@ export async function postTechEvents(
         'x-idempotency-key': idempotencyKey,
       },
       body: rawBody,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(60_000),
     });
 
     const text = await res.text().catch(() => '');

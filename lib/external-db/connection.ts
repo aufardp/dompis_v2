@@ -297,9 +297,10 @@ export async function getExternalCursorDefinition(
   const columns = await getTableColumns(tableName);
   const names = new Set(columns.map((column) => column.name));
   const modifiedCandidates = [
+    'updated_at',
+    'created_at',
     'date_modified',
     'datemodified',
-    'updated_at',
     'modified_at',
     'last_modified',
     'status_date',
