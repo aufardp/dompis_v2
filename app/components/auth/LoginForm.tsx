@@ -30,9 +30,16 @@ export default function LoginForm() {
       if (res.ok) {
         const { role, needsAttendanceCheck } = data;
 
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(
+            'dompis:last-successful-login-at',
+            String(Date.now()),
+          );
+        }
+
         // Give the browser a moment to persist HttpOnly auth cookies before
         // navigating into protected routes.
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
         if (role === 'superadmin') {
           window.location.replace('/superadmin');

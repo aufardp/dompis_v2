@@ -7,6 +7,8 @@ function redirectToLogin() {
 
 const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
 const REFRESH_FETCH_TIMEOUT_MS = 10_000;
+const RECENT_LOGIN_WINDOW_MS = 10_000;
+const RECENT_LOGIN_RETRIES = 5;
 
 type FetchWithAuthInit = RequestInit & {
   timeoutMs?: number;
@@ -72,6 +74,33 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getRecentLoginAt(): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem('dompis:last-successful-login-at');
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function retryAfterRecentLogin(
+  doFetch: () => Promise<Response>,
+): Promise<Response | null> {
+  const loginAt = getRecentLoginAt();
+  if (!loginAt) return null;
+
+  const ageMs = Date.now() - loginAt;
+  if (ageMs > RECENT_LOGIN_WINDOW_MS) return null;
+
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < RECENT_LOGIN_RETRIES; attempt++) {
+    await delay(250 * (attempt + 1));
+    res = await doFetch();
+    if (res.status !== 401) return res;
+  }
+
+  return res;
+}
+
 export async function fetchWithAuth(
   input: RequestInfo,
   init?: FetchWithAuthInit,
@@ -82,6 +111,11 @@ export async function fetchWithAuth(
 
   // Token still valid
   if (res.status !== 401) return res;
+
+  const recentLoginRetry = await retryAfterRecentLogin(doFetch);
+  if (recentLoginRetry && recentLoginRetry.status !== 401) {
+    return recentLoginRetry;
+  }
 
   // Give the browser a short grace period in case auth cookies are still
   // propagating right after login/navigation.
