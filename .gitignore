@@ -58,9 +58,9 @@ dompis-*.json
 .qwen
 .blackboxcli/
 
-# logs
-*.log
-error/logs/
+# Runtime logs & generated results
 logs/
+error/logs/
+results/
+*.log
 EOF
-
