@@ -57,3 +57,8 @@ dompis-*.json
 .DS_Store
 .qwen
 .blackboxcli/
+
+# logs
+*.log
+error/logs/
+logs/
