@@ -87,7 +87,19 @@ async function getAdaptiveBatchSize(): Promise<number> {
   return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
 }
 
+const BACKLOG_CACHE_KEY = 'active-refresh:backlog';
+const BACKLOG_CACHE_TTL_MS = 60 * 60 * 1000; // 1 jam
+
 async function estimateBacklog(today: Date): Promise<number | null> {
+  if (isRedisReady()) {
+    try {
+      const cached = await redis.get(BACKLOG_CACHE_KEY);
+      if (cached !== null) {
+        return Number(cached);
+      }
+    } catch { /* fall through */ }
+  }
+
   try {
     const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) AS count
@@ -107,7 +119,13 @@ async function estimateBacklog(today: Date): Promise<number | null> {
           )
         )
     `;
-    return Number(rows[0]?.count ?? 0);
+    const count = Number(rows[0]?.count ?? 0);
+
+    if (isRedisReady()) {
+      redis.set(BACKLOG_CACHE_KEY, String(count), 'PX', BACKLOG_CACHE_TTL_MS).catch(() => {});
+    }
+
+    return count;
   } catch {
     return null;
   }

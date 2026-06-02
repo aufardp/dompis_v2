@@ -52,6 +52,17 @@ export async function dispatchTechEvents() {
   const now = new Date();
   const batchSize = getBatchSize();
 
+  // Hapus event lama yang sudah SENT/FAILED (>7 hari)
+  const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  await withP1017Retry(() =>
+    prisma.tech_event_outbox.deleteMany({
+      where: {
+        created_at: { lte: cutoff },
+        status: { in: ['SENT', 'FAILED'] },
+      },
+    }),
+  ).catch(() => undefined);
+
   // Reset SENDING yang stuck lebih dari 5 menit
   // (Artinya proses crash sebelum update status ke SENT/FAILED/PENDING)
   const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);

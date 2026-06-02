@@ -440,7 +440,7 @@ async function startWorker() {
   await connectDB();
   logger.info('DB connected', { component: 'worker' });
 
-  const { connectRedis } = await import('@/lib/redis');
+  const { connectRedis, isRedisReady } = await import('@/lib/redis');
   if (redis.status !== 'ready') {
     logger.info('Waiting for Redis ready...', { component: 'worker' });
     await connectRedis().catch(() => undefined);
@@ -453,19 +453,24 @@ async function startWorker() {
     });
   }
 
+  if (isRedisReady()) {
+    techEventsSubscriber = redis.duplicate();
+    techEventsSubscriber.on('message', (_channel, _message) => {
+      void runTechEvents();
+    });
+    techEventsSubscriber.subscribe('worker:tech-events:request', (err) => {
+      if (err) logger.error('Failed to subscribe to tech-events channel', err, { component: 'worker' });
+    });
+  } else {
+    techEventsSubscriber = null;
+    logger.warn('Redis not ready — skipping tech-events subscription', { component: 'worker' });
+  }
+
   const lockKeys = ['sync', 'push', 'tech_events', 'auto_assign'] as const;
   for (const lockKey of lockKeys) {
     const cfg = TASK_LOCK_CONFIGS[lockKey];
     await cleanupStaleLock(lockKey, cfg.timeout).catch(() => {});
   }
-
-  techEventsSubscriber = redis.duplicate();
-  techEventsSubscriber.on('message', (_channel, _message) => {
-    void runTechEvents();
-  });
-  techEventsSubscriber.subscribe('worker:tech-events:request', (err) => {
-    if (err) logger.error('Failed to subscribe to tech-events channel', err, { component: 'worker' });
-  });
 
   const cronEnabled = process.env.CRON_ENABLED === 'true';
   if (!cronEnabled) {

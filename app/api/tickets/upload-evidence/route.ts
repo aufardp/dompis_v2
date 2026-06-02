@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
           select: { id: true },
         });
         activityLogId = activityLog.id;
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' });
+      }, { maxWait: 10000, timeout: 15000, isolationLevel: 'ReadCommitted' });
 
       evidencePersisted = true;
       await commitStagedFiles(stagedFiles);
