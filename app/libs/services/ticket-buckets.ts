@@ -101,9 +101,8 @@ export function buildOperationalBucketWhere(
                 { source_ticket: { in: sourceVariants } },
                 {
                   OR: [
-                    { classification_flag: withVariants(['NONTECHNICAL', 'NON TECHNICAL']) },
-                    { classification_flag: withVariants(['BILLING']) },
-                    containsAny('classification_flag', ['NONTECHNICAL', 'NON TECHNICAL', 'BILLING']),
+                    containsAny('jenis_tiket_1', ['unknown']),
+                    containsAny('jenis_tiket_2', ['unknown']),
                     containsAny('jenis_tiket_1', ['permintaan', 'infracare', 'billing', 'digital_spbu', 'digital spbu', 'non numbering']),
                     containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
                   ],
@@ -116,6 +115,7 @@ export function buildOperationalBucketWhere(
                 { jenis_tiket_1: '' },
                 { jenis_tiket_1: ' ' },
                 containsAny('jenis_tiket_1', ['unknown']),
+                containsAny('jenis_tiket_2', ['unknown']),
                 containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
               ],
             },
@@ -145,9 +145,8 @@ export function buildOperationalBucketWhere(
           NOT: [
             {
               OR: [
-                { classification_flag: withVariants(['NONTECHNICAL', 'NON TECHNICAL']) },
-                { classification_flag: withVariants(['BILLING']) },
-                containsAny('classification_flag', ['NONTECHNICAL', 'NON TECHNICAL', 'BILLING']),
+                containsAny('jenis_tiket_1', ['unknown']),
+                containsAny('jenis_tiket_2', ['unknown']),
                 containsAny('jenis_tiket_1', ['permintaan', 'billing', 'digital_spbu', 'digital spbu']),
                 containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
               ],
@@ -159,14 +158,15 @@ export function buildOperationalBucketWhere(
     };
   }
 
-  const flagVariants = buildCaseVariants(definition.classificationFlag);
   const flagClauses: Prisma.ticketWhereInput[] = [];
 
-  flagClauses.push({ classification_flag: { in: flagVariants } });
-
   if (definition.classificationFlag.includes('NONTECHNICAL')) {
-    flagClauses.push({ classification_flag: { contains: 'NONTECHNICAL' } });
-    flagClauses.push({ classification_flag: { contains: 'NON TECHNICAL' } });
+    flagClauses.push({
+      OR: [
+        containsAny('jenis_tiket_1', ['permintaan', 'infracare', 'billing', 'digital_spbu', 'digital spbu', 'non numbering']),
+        containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
+      ],
+    });
   }
 
   clauses.push({ OR: flagClauses });

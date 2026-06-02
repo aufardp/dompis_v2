@@ -591,6 +591,65 @@ function parseCountValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function summarizeBucketRows(
+  rows: Array<{
+    status: string | null;
+    status_update: string | null;
+    guarantee_status: string | null;
+    ticket_id_gamas: string | null;
+    flagging_manja: string | null;
+  }>,
+): BucketSummary {
+  const summary: BucketSummary = {
+    total: rows.length,
+    open: 0,
+    assigned: 0,
+    onProgress: 0,
+    pending: 0,
+    close: 0,
+    ffgCount: 0,
+    gamasCount: 0,
+    p1Count: 0,
+    pPlusCount: 0,
+  };
+
+  for (const row of rows) {
+    const status = String(row.status ?? '').trim().toUpperCase();
+    const statusUpdate = String(row.status_update ?? '').trim().toLowerCase();
+
+    if (CLOSE_STATUS_VALUES.includes(status)) {
+      summary.close += 1;
+    } else if (statusUpdate === 'assigned') {
+      summary.assigned += 1;
+    } else if (statusUpdate === 'on_progress') {
+      summary.onProgress += 1;
+    } else if (statusUpdate === 'pending') {
+      summary.pending += 1;
+    } else {
+      summary.open += 1;
+    }
+
+    if (String(row.guarantee_status ?? '').trim().toLowerCase() === 'guarantee') {
+      summary.ffgCount += 1;
+    }
+
+    const gamas = String(row.ticket_id_gamas ?? '').trim().toLowerCase();
+    if (gamas && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(gamas)) {
+      summary.gamasCount += 1;
+    }
+
+    if (String(row.flagging_manja ?? '').trim().toUpperCase() === 'P1') {
+      summary.p1Count += 1;
+    }
+
+    if (String(row.flagging_manja ?? '').trim().toUpperCase() === 'P+') {
+      summary.pPlusCount += 1;
+    }
+  }
+
+  return summary;
+}
+
 function buildStatusCategorySql(tbl = ''): string {
   const t = tbl ? `${tbl}.` : '';
   const closeStatusesSql = CLOSE_STATUS_VALUES.map((status) =>
@@ -1633,34 +1692,46 @@ export class DailyTicketService {
         operationalBucket: undefined,
       });
 
-      const mainTableWhere = this.buildMainTableWhere(where);
-      const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
-      const selectSql = KPI_SUMMARY_BUCKETS.map((bucket) =>
-        buildBucketSummarySelect(bucket),
-      ).join(',\n');
-
-      const sqlWithIndex = `
-        SELECT
-          ${selectSql}
-        FROM ticket FORCE INDEX (idx_ticket_daily_board)
-        WHERE ${whereClause}
-      `;
-      const sqlWithoutIndex = `
-        SELECT
-          ${selectSql}
-        FROM ticket
-        WHERE ${whereClause}
-      `;
-
-      const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-        sqlWithIndex,
-        sqlWithoutIndex,
-        params,
-      );
-
-      const row = rows[0] ?? {};
       const summary = {} as BucketSummaryMap;
       for (const bucket of KPI_SUMMARY_BUCKETS) {
+        if (bucket === 'kpi_customer' || bucket === 'non_technical') {
+          const rows = await prisma.ticket.findMany({
+            where: {
+              AND: [where, buildOperationalBucketWhere(bucket)],
+            },
+            select: {
+              status: true,
+              status_update: true,
+              guarantee_status: true,
+              ticket_id_gamas: true,
+              flagging_manja: true,
+            },
+          });
+          summary[bucket] = summarizeBucketRows(rows);
+          continue;
+        }
+
+        const mainTableWhere = this.buildMainTableWhere(where);
+        const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+        const selectSql = buildBucketSummarySelect(bucket);
+        const sqlWithIndex = `
+          SELECT
+            ${selectSql}
+          FROM ticket FORCE INDEX (idx_ticket_daily_board)
+          WHERE ${whereClause}
+        `;
+        const sqlWithoutIndex = `
+          SELECT
+            ${selectSql}
+          FROM ticket
+          WHERE ${whereClause}
+        `;
+        const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+          sqlWithIndex,
+          sqlWithoutIndex,
+          params,
+        );
+        const row = rows[0] ?? {};
         summary[bucket] = normalizeBucketSummaryRow(row, bucket);
       }
 
