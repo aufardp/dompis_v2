@@ -359,9 +359,9 @@ export async function fetchTableRowsByCursor(
   if (options.modifiedColumn && options.lastModifiedAt) {
     if (options.idColumn && options.lastCursorId !== null && options.lastCursorId !== undefined) {
       clauses.push(
-        `(\`${options.modifiedColumn}\` > ? OR (\`${options.modifiedColumn}\` = ? AND \`${options.idColumn}\` > ?))`,
+        `(\`${options.modifiedColumn}\` > ? OR \`${options.idColumn}\` > ?)`,
       );
-      params.push(options.lastModifiedAt, options.lastModifiedAt, options.lastCursorId);
+      params.push(options.lastModifiedAt, options.lastCursorId);
     } else {
       clauses.push(`\`${options.modifiedColumn}\` > ?`);
       params.push(options.lastModifiedAt);
