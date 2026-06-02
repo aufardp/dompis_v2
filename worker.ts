@@ -455,12 +455,16 @@ async function startWorker() {
 
   if (isRedisReady()) {
     techEventsSubscriber = redis.duplicate();
-    techEventsSubscriber.on('message', (_channel, _message) => {
-      void runTechEvents();
-    });
-    techEventsSubscriber.subscribe('worker:tech-events:request', (err) => {
-      if (err) logger.error('Failed to subscribe to tech-events channel', err, { component: 'worker' });
-    });
+    try {
+      await techEventsSubscriber.connect();
+      techEventsSubscriber.on('message', (_channel, _message) => {
+        void runTechEvents();
+      });
+      await techEventsSubscriber.subscribe('worker:tech-events:request');
+    } catch (err) {
+      logger.error('Failed to subscribe to tech-events channel', err, { component: 'worker' });
+      techEventsSubscriber = null;
+    }
   } else {
     techEventsSubscriber = null;
     logger.warn('Redis not ready — skipping tech-events subscription', { component: 'worker' });
