@@ -8,7 +8,7 @@ module.exports = {
       instances: Number(process.env.WEB_INSTANCES || 1),
       exec_mode:
         Number(process.env.WEB_INSTANCES || 1) > 1 ? 'cluster' : 'fork',
-      max_memory_restart: '3.2G',
+      max_memory_restart: '16000M',
       node_args: '--max-old-space-size=4096',
       env: {
         NODE_ENV: 'production',
