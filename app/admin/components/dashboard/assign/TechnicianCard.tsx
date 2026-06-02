@@ -29,11 +29,23 @@ export default function TechnicianCard({
       <div className='min-w-0'>
         <p className='truncate font-medium text-gray-900'>{tech.nama || '-'}</p>
         <p className='mt-0.5 text-xs text-gray-500'>NIK: {tech.nik || '-'}</p>
-        {isCurrent && (
-          <span className='mt-1.5 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700'>
-            Currently assigned
+        <div className='mt-1.5 flex flex-wrap items-center gap-1.5'>
+          <span
+            className={
+              'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ' +
+              (tech.checked_in_today
+                ? 'bg-sky-50 text-sky-700'
+                : 'bg-slate-100 text-slate-600')
+            }
+          >
+            {tech.checked_in_today ? 'Sudah Absen' : 'Belum Absen'}
           </span>
-        )}
+          {isCurrent && (
+            <span className='inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700'>
+              Currently assigned
+            </span>
+          )}
+        </div>
       </div>
 
       <div

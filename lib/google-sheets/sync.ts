@@ -3,6 +3,7 @@ import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB, nowWIBTimestamp, todayWIB } from './helpers';
 import { formatInTimeZone } from 'date-fns-tz';
 import { sheetsQueue, sleep } from '@/lib/worker-queue';
+import { logger } from '@/lib/observability/logger';
 
 const MAX_ROWS = parseInt(process.env.SYNC_MAX_ROWS || '20000', 10);
 const RANGE = `WO_B2B_B2C!A1:HZ${MAX_ROWS}`;
@@ -51,7 +52,11 @@ function syncDateToWibString(syncDate: Date | null): string | null {
 
 /* ----------------------------- RETRY GOOGLE API ----------------------------- */
 
-async function fetchSheet(sheets: any, spreadsheetId: string, signal?: AbortSignal) {
+async function fetchSheet(
+  sheets: any,
+  spreadsheetId: string,
+  signal?: AbortSignal,
+) {
   if (signal?.aborted) throw new Error('Sync cancelled');
 
   return sheetsQueue.enqueue('sync:fetchSheet', async () => {
@@ -129,7 +134,10 @@ function buildColumnMap(header: string[]) {
     redaman: findColumnIndex(header, ['REDAMAN']),
     manja_expired: findColumnIndex(header, ['MANJA_EXPIRED']),
     alamat: findColumnIndex(header, ['ALAMAT']),
-    pending_dompis: findColumnIndex(header, ['PENDING_DOMPIS', 'PENDING_REASON']),
+    pending_dompis: findColumnIndex(header, [
+      'PENDING_DOMPIS',
+      'PENDING_REASON',
+    ]),
     guarantee_status: findColumnIndex(header, ['GUARANTE_STATUS']),
     flagging_manja: findColumnIndex(header, ['FLAGGING_MANJA']),
     lapul: findColumnIndex(header, ['LAPUL']),
@@ -243,7 +251,9 @@ function mapRow(row: string[], col: any) {
 
 /* ------------------------------- SYNC -------------------------------- */
 
-export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult> {
+export async function syncSpreadsheet(
+  signal?: AbortSignal,
+): Promise<SyncResult> {
   const result: SyncResult = {
     inserted: 0,
     updated: 0,
@@ -253,14 +263,14 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
   if (isSyncRunning) return result;
 
   if (signal?.aborted) {
-    console.log('[SYNC] Cancelled before start');
+    logger.info('[SYNC] Cancelled before start');
     return result;
   }
 
   isSyncRunning = true;
 
   try {
-    console.log('SYNC START', nowWIB());
+    logger.info('SYNC START:', { time: nowWIB() });
 
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
@@ -280,7 +290,7 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
     // Timestamp for synced_at field
     const syncedAtWIB = nowWIBTimestamp();
 
-    console.log('[SYNC] Column indices - CORE:', {
+    logger.info('[SYNC] Column indices - CORE:', {
       incident: col.incident,
       ticket_id_gamas: col.ticket_id_gamas,
       service_no: col.service_no,
@@ -302,7 +312,7 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
 
     if (mappedRows.length > 0) {
       const firstRow = mappedRows[0];
-      console.log('[SYNC] Sample mapped row (first ticket):', {
+      logger.info('[SYNC] Sample mapped row (first ticket):', {
         incident: firstRow[0],
         service_no:
           col.service_no !== -1 ? firstRow[col.service_no] : 'NOT_FOUND',
@@ -378,7 +388,7 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
         row[29] = null;
         result.inserted++;
         newRows.push([...row, todayWibStr, batchId]);
-} else if (hasAssignedTeknisi) {
+      } else if (hasAssignedTeknisi) {
         // ── PROTECT: teknisi already assigned → keep existing status_update ──
         row[29] = dbEntry!.status || null;
         result.updated++;
@@ -390,7 +400,7 @@ export async function syncSpreadsheet(signal?: AbortSignal): Promise<SyncResult>
       } else if (isDayProtected(dbEntry?.status)) {
         // ── DAY PROTECT: assigned / on_progress → reset if different day ──
         const isSameDay = dbEntry!.syncDate === todayWibStr;
-if (isSameDay) {
+        if (isSameDay) {
           result.updated++;
           protectedRows.push([...row, todayWibStr, batchId]);
         } else {
@@ -422,15 +432,16 @@ if (isSameDay) {
     if (newRows.length > 0) {
       const batches = chunkArray(newRows, BATCH_SIZE);
 
-      for (const batch of batches) {
-        const columnCount = batch[0].length;
-        const placeholders = batch
-          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
-          .join(',');
+      await prisma.$transaction(async (tx) => {
+        for (const batch of batches) {
+          const columnCount = batch[0].length;
+          const placeholders = batch
+            .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+            .join(',');
 
-        const values: any[] = batch.flat();
+          const values: any[] = batch.flat();
 
-        const query = `
+          const query = `
         INSERT INTO ticket (
         incident,summary,reported_date,owner_group,
         customer_segment,service_type,workzone,status,
@@ -512,8 +523,9 @@ if (isSameDay) {
         synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-      }
+          await tx.$executeRawUnsafe(query, ...values, syncedAtWIB);
+        }
+      });
     }
 
     /* -------------------- UPDATE SAFE (status masih open/null) -------------------- */
@@ -523,19 +535,20 @@ if (isSameDay) {
     if (safeRows.length > 0) {
       const batches = chunkArray(safeRows, BATCH_SIZE);
 
-      for (const batch of batches) {
-        if (signal?.aborted) {
-          console.log('[SYNC] Cancelled during safe update');
-          break;
-        }
-        const columnCount = batch[0].length;
-        const placeholders = batch
-          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
-          .join(',');
+      await prisma.$transaction(async (tx) => {
+        for (const batch of batches) {
+          if (signal?.aborted) {
+            logger.info('[SYNC] Cancelled during safe update');
+            break;
+          }
+          const columnCount = batch[0].length;
+          const placeholders = batch
+            .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+            .join(',');
 
-        const values: any[] = batch.flat();
+          const values: any[] = batch.flat();
 
-        const query = `
+          const query = `
         INSERT INTO ticket (
         incident,summary,reported_date,owner_group,
         customer_segment,service_type,workzone,status,
@@ -615,8 +628,9 @@ if (isSameDay) {
         synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-      }
+          await tx.$executeRawUnsafe(query, ...values, syncedAtWIB);
+        }
+      });
     }
 
     /* -------------------- UPDATE PROTECTED (status sudah di-workflow) -------------------- */
@@ -625,19 +639,20 @@ if (isSameDay) {
     if (protectedRows.length > 0) {
       const batches = chunkArray(protectedRows, BATCH_SIZE);
 
-      for (const batch of batches) {
-        if (signal?.aborted) {
-          console.log('[SYNC] Cancelled during protected update');
-          break;
-        }
-        const columnCount = batch[0].length;
-        const placeholders = batch
-          .map(() => `(${Array(columnCount).fill('?').join(',')})`)
-          .join(',');
+      await prisma.$transaction(async (tx) => {
+        for (const batch of batches) {
+          if (signal?.aborted) {
+            logger.info('[SYNC] Cancelled during protected update');
+            break;
+          }
+          const columnCount = batch[0].length;
+          const placeholders = batch
+            .map(() => `(${Array(columnCount).fill('?').join(',')})`)
+            .join(',');
 
-        const values: any[] = batch.flat();
+          const values: any[] = batch.flat();
 
-        const query = `
+          const query = `
         INSERT INTO ticket (
         incident,summary,reported_date,owner_group,
         customer_segment,service_type,workzone,status,
@@ -721,20 +736,23 @@ if (isSameDay) {
         synced_at     = ?
         `;
 
-        await prisma.$executeRawUnsafe(query, ...values, syncedAtWIB);
-      }
+          await tx.$executeRawUnsafe(query, ...values, syncedAtWIB);
+        }
+      });
     }
 
-    console.log(
-      `SYNC DONE | INSERT ${result.inserted} | UPDATE ${result.updated}` +
-        ` (safe: ${safeRows.length}, protected: ${protectedRows.length})`,
-    );
+    logger.info('SYNC DONE:', {
+      inserted: result.inserted,
+      updated: result.updated,
+      safe: safeRows.length,
+      protected: protectedRows.length,
+    });
   } catch (err: any) {
     if (err.message === 'Sync cancelled') {
-      console.log('[SYNC] Gracefully cancelled');
+      logger.info('[SYNC] Gracefully cancelled');
     } else {
       result.errors.push(err.message);
-      console.error(err);
+      logger.error('[SYNC] Error:', { error: String(err) });
     }
   } finally {
     isSyncRunning = false;

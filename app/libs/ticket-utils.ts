@@ -1,11 +1,3 @@
-/**
- * Ticket status utilities - canonical source for ticket status logic.
- * Use these functions instead of inline string comparisons.
- *
- * STATUS_UPDATE is the single source of truth for ticket workflow.
- * Valid values: 'open' | 'assigned' | 'on_progress' | 'pending' | 'close'
- */
-
 export type StatusUpdateValue =
   | 'open'
   | 'assigned'
@@ -40,11 +32,25 @@ const STATUS_COLORS: Record<string, string> = {
   close: 'bg-green-100 text-green-800',
 };
 
-/**
- * Returns true if ticket is closed — FINAL state.
- * Primary value is 'close' (from Google Sheets sync).
- * Fallback to 'closed' for legacy data compatibility.
- */
+export const CLOSE_STATUS_VALUES = [
+  'CLOSED', 'FINALCHECK', 'MEDIACARE',
+];
+
+export function getTicketCategory(
+  status: string | null | undefined,
+  statusUpdate: string | null | undefined,
+): 'open' | 'assigned' | 'on_progress' | 'pending' | 'close' {
+  const s = (status ?? '').trim().toUpperCase();
+  if (CLOSE_STATUS_VALUES.includes(s)) return 'close';
+
+  const su = (statusUpdate ?? '').trim().toLowerCase();
+  if (su === 'assigned') return 'assigned';
+  if (su === 'on_progress') return 'on_progress';
+  if (su === 'pending') return 'pending';
+
+  return 'open';
+}
+
 export function isTicketClosed(
   statusUpdate: string | null | undefined,
 ): boolean {
@@ -85,6 +91,7 @@ export function isTicketInWork(
 export function countStatusBuckets<T>(
   rows: T[],
   getStatus: (row: T) => string | null | undefined,
+  getStatusUpdate: (row: T) => string | null | undefined,
 ): StatusBucketCounts {
   const counts: StatusBucketCounts = {
     total: rows.length,
@@ -96,30 +103,23 @@ export function countStatusBuckets<T>(
   };
 
   for (const row of rows) {
-    const status = normalizeStatusUpdate(getStatus(row));
-    if (status === 'open') counts.open++;
-    else if (status === 'assigned') counts.assigned++;
-    else if (status === 'on_progress') counts.onProgress++;
-    else if (status === 'pending') counts.pending++;
-    else if (status === 'close') counts.close++;
+    const category = getTicketCategory(getStatus(row), getStatusUpdate(row));
+    if (category === 'open') counts.open++;
+    else if (category === 'assigned') counts.assigned++;
+    else if (category === 'on_progress') counts.onProgress++;
+    else if (category === 'pending') counts.pending++;
+    else if (category === 'close') counts.close++;
   }
 
   return counts;
 }
 
-/**
- * Returns true if ticket still allows actions.
- */
 export function canActOnTicket(
   statusUpdate: string | null | undefined,
 ): boolean {
   return !isTicketClosed(statusUpdate);
 }
 
-/**
- * Returns true if Google Sheets sync is allowed to override STATUS_UPDATE.
- * Only OPEN or empty values can be overridden.
- */
 export function isStatusOverridableBySheet(
   statusUpdate: string | null | undefined,
 ): boolean {
@@ -127,9 +127,6 @@ export function isStatusOverridableBySheet(
   return value === '' || value === 'open';
 }
 
-/**
- * Human readable label
- */
 export function getStatusLabel(
   statusUpdate: string | null | undefined,
 ): string {
@@ -137,9 +134,6 @@ export function getStatusLabel(
   return STATUS_LABELS[key] ?? statusUpdate ?? 'Open';
 }
 
-/**
- * Tailwind color classes
- */
 export function getStatusColor(
   statusUpdate: string | null | undefined,
 ): string {

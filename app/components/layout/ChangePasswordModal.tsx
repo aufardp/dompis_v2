@@ -1,12 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  XMarkIcon,
-  LockClosedIcon,
-  EyeIcon,
-  EyeSlashIcon,
-} from '@heroicons/react/24/outline';
+import { X, Lock, Eye, EyeOff } from 'lucide-react';
 import Button from '../ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
@@ -94,13 +89,13 @@ export default function ChangePasswordModal({ isOpen, onClose }: Props) {
       <div className='w-full max-w-md rounded-lg bg-white p-6 shadow-xl'>
         <div className='mb-4 flex items-center justify-between'>
           <div className='flex items-center gap-2'>
-            <LockClosedIcon className='h-5 w-5 text-blue-600' />
+            <Lock className='h-5 w-5 text-blue-600' />
             <h2 className='text-lg font-semibold text-slate-900'>
               Ubah Password
             </h2>
           </div>
           <button onClick={onClose} className='rounded p-1 hover:bg-slate-100'>
-            <XMarkIcon className='h-5 w-5 text-slate-500' />
+            <X className='h-5 w-5 text-slate-500' />
           </button>
         </div>
 
@@ -136,9 +131,9 @@ export default function ChangePasswordModal({ isOpen, onClose }: Props) {
                   className='absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-600'
                 >
                   {showCurrentPassword ? (
-                    <EyeSlashIcon className='h-5 w-5' />
+                    <EyeOff className='h-5 w-5' />
                   ) : (
-                    <EyeIcon className='h-5 w-5' />
+                    <Eye className='h-5 w-5' />
                   )}
                 </button>
               </div>
@@ -162,9 +157,9 @@ export default function ChangePasswordModal({ isOpen, onClose }: Props) {
                   className='absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-600'
                 >
                   {showNewPassword ? (
-                    <EyeSlashIcon className='h-5 w-5' />
+                    <EyeOff className='h-5 w-5' />
                   ) : (
-                    <EyeIcon className='h-5 w-5' />
+                    <Eye className='h-5 w-5' />
                   )}
                 </button>
               </div>
@@ -188,9 +183,9 @@ export default function ChangePasswordModal({ isOpen, onClose }: Props) {
                   className='absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-600'
                 >
                   {showConfirmPassword ? (
-                    <EyeSlashIcon className='h-5 w-5' />
+                    <EyeOff className='h-5 w-5' />
                   ) : (
-                    <EyeIcon className='h-5 w-5' />
+                    <Eye className='h-5 w-5' />
                   )}
                 </button>
               </div>

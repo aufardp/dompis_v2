@@ -6,8 +6,28 @@ import {
   AccessTokenPayload,
 } from '@/app/libs/auth';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import {
+  assertSameOriginRequest,
+  getSecureCookieOptions,
+} from '@/app/libs/request-security';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const sameOrigin = assertSameOriginRequest(request);
+  if (!sameOrigin.ok) {
+    return NextResponse.json(
+      { success: false, message: sameOrigin.reason },
+      { status: 403 },
+    );
+  }
+
+  const rateLimited = await enforceApiRateLimit(request, {
+    namespace: 'auth-refresh',
+    limit: 20,
+    windowSeconds: 60,
+  });
+  if (rateLimited) return rateLimited;
+
   const cookieStore = await cookies();
   const refreshToken = cookieStore.get('refreshToken')?.value;
 
@@ -18,7 +38,7 @@ export async function POST() {
     );
 
   try {
-    const decoded = verifyRefreshToken(refreshToken);
+    const decoded = await verifyRefreshToken(refreshToken);
 
     const today = AttendanceService.getTodayDateString();
 
@@ -38,7 +58,7 @@ export async function POST() {
         : decoded.attendance_check_in_at,
     };
 
-    const newAccessToken = signAccessToken(newPayload);
+    const newAccessToken = await signAccessToken(newPayload);
 
     const response = NextResponse.json({
       success: true,
@@ -48,11 +68,7 @@ export async function POST() {
     response.cookies.set({
       name: 'token',
       value: newAccessToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60,
-      path: '/',
+      ...getSecureCookieOptions(60 * 60),
     });
 
     return response;

@@ -7,6 +7,7 @@ import { fromZonedTime } from 'date-fns-tz';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { getCache, setCache } from '@/lib/cache';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import { logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,10 +128,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const currentUserServiceAreas = await prisma.user_sa.findMany({
-      where: { user_id: currentUserId },
-      include: { service_area: { select: { id_sa: true, nama_sa: true } } },
-    });
+    const [currentUserServiceAreas, presentTechnicianIds] = await Promise.all([
+      prisma.user_sa.findMany({
+        where: { user_id: currentUserId },
+        include: { service_area: { select: { id_sa: true, nama_sa: true } } },
+      }),
+      !includeAbsent ? AttendanceService.getTodayPresentTechnicianIds() : Promise.resolve([] as number[]),
+    ]);
 
     const currentUserSaIds: number[] = [];
     const currentUserWorkzoneNames: string[] = [];
@@ -149,34 +153,28 @@ export async function GET(request: NextRequest) {
         success: true,
         data: {
           technicians: [],
-          summary: {
-            total_active: 0,
-            total_assigned: 0,
-            overload_count: 0,
-            idle_count: 0,
-          },
+          summary: { total_active: 0, total_assigned: 0, overload_count: 0, idle_count: 0 },
           userWorkzones: [],
         },
       });
     }
 
-    const techniciansInSameArea = await prisma.user_sa.findMany({
-      where: { sa_id: { in: currentUserSaIds } },
-      select: { user_id: true },
-    });
-
-    const technicianUserIds: number[] = [];
-    for (const usa of techniciansInSameArea) {
-      if (usa.user_id !== null && usa.user_id !== undefined) {
-        technicianUserIds.push(usa.user_id);
-      }
-    }
-
-    const uniqueTechnicianIds = [...new Set(technicianUserIds)];
+    const uniqueTechnicianIds = [
+      ...new Set(
+        (
+          await prisma.user_sa.findMany({
+            where: { sa_id: { in: currentUserSaIds } },
+            select: { user_id: true },
+          })
+        )
+          .map((usa) => usa.user_id)
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    ];
 
     const technicianRoleId = 4;
 
-    const todayStr = AttendanceService.getTodayDateString(); // "2026-04-04" WIB
+    const todayStr = AttendanceService.getTodayDateString();
     const WIB = 'Asia/Jakarta';
     const today = fromZonedTime(`${todayStr}T00:00:00`, WIB);
     const todayEnd = fromZonedTime(`${todayStr}T23:59:59`, WIB);
@@ -188,37 +186,91 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       technicianWhere.OR = [
-        { nama: { contains: search } },
-        { nik: { contains: search } },
+        { nama: { startsWith: search } },
+        { nik: { startsWith: search } },
       ];
     }
 
-    const technicians = await prisma.users.findMany({
-      where: technicianWhere,
-      select: {
-        id_user: true,
-        nama: true,
-        nik: true,
-      },
-      orderBy: { nama: 'asc' },
-    });
-
-    let presentTechnicianIds: number[] = [];
-    if (!includeAbsent) {
-      presentTechnicianIds =
-        await AttendanceService.getTodayPresentTechnicianIds();
-    }
+    const [
+      technicians,
+      userServiceAreas,
+      clusterAssignments,
+      pendingTickets,
+      todayAssignedTickets,
+      closedTicketsToday,
+      closedToday,
+    ] = await Promise.all([
+      prisma.users.findMany({
+        where: technicianWhere,
+        select: { id_user: true, nama: true, nik: true },
+        orderBy: { nama: 'asc' },
+      }),
+      prisma.user_sa.findMany({
+        where: { user_id: { in: uniqueTechnicianIds } },
+        include: { service_area: { select: { id_sa: true, nama_sa: true } } },
+      }),
+      prisma.cluster_assignment.findMany({
+        where: { teknisi_id: { in: uniqueTechnicianIds }, assigned_date: todayStr, is_active: true },
+        include: { cluster: { select: { nama_cluster: true } } },
+      }),
+      prisma.ticket.findMany({
+        where: { teknisi_user_id: { in: uniqueTechnicianIds }, status_update: 'pending' },
+        select: {
+          id_ticket: true, incident: true, contact_name: true, customer_type: true,
+          service_no: true, reported_date: true, status_update: true,
+          teknisi_user_id: true, closed_at: true, workzone: true, jenis_tiket_2: true,
+        },
+        orderBy: { reported_date: 'asc' },
+        take: 500,
+      }),
+      prisma.ticket.findMany({
+        where: {
+          teknisi_user_id: { in: uniqueTechnicianIds },
+          status_update: { in: ['assigned', 'on_progress'] },
+          ticket_assignment_history: {
+            some: { assigned_at: { gte: today, lte: todayEnd }, is_active: true },
+          },
+        },
+        select: {
+          id_ticket: true, incident: true, contact_name: true, customer_type: true,
+          service_no: true, reported_date: true, status_update: true,
+          teknisi_user_id: true, closed_at: true, workzone: true, jenis_tiket_2: true,
+        },
+        orderBy: { reported_date: 'asc' },
+        take: 500,
+      }),
+      includeClosedToday
+        ? prisma.ticket.findMany({
+            where: {
+              teknisi_user_id: { in: uniqueTechnicianIds },
+              status_update: { in: ['close', 'closed'] },
+              closed_at: { gte: today, lte: todayEnd },
+            },
+            select: {
+              id_ticket: true, incident: true, contact_name: true, customer_type: true,
+              service_no: true, reported_date: true, status_update: true,
+              teknisi_user_id: true, closed_at: true, jenis_tiket_2: true,
+            },
+            orderBy: { closed_at: 'desc' },
+            take: closedTodayLimit,
+          })
+        : Promise.resolve([]),
+      prisma.ticket.groupBy({
+        by: ['teknisi_user_id'],
+        where: {
+          teknisi_user_id: { in: uniqueTechnicianIds },
+          status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+          closed_at: { gte: today, lte: todayEnd },
+        },
+        _count: true,
+      }),
+    ]);
 
     const filteredTechnicians = includeAbsent
       ? technicians
       : technicians.filter((tech: { id_user: number }) =>
           presentTechnicianIds.includes(tech.id_user),
         );
-
-    const userServiceAreas = await prisma.user_sa.findMany({
-      where: { user_id: { in: uniqueTechnicianIds } },
-      include: { service_area: { select: { id_sa: true, nama_sa: true } } },
-    });
 
     const techWorkzones = new Map<number, string[]>();
     for (const usa of userServiceAreas) {
@@ -229,112 +281,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch cluster assignments for today
-    const clusterAssignments = await prisma.cluster_assignment.findMany({
-      where: {
-        teknisi_id: { in: uniqueTechnicianIds },
-        assigned_date: todayStr,
-        is_active: true,
-      },
-      include: {
-        cluster: { select: { nama_cluster: true } },
-      },
-    });
-
     const clusterMap = new Map<number, string[]>();
     for (const ca of clusterAssignments) {
       const existing = clusterMap.get(ca.teknisi_id) || [];
       existing.push(ca.cluster.nama_cluster);
       clusterMap.set(ca.teknisi_id, existing);
     }
-
-    const pendingTickets = await prisma.ticket.findMany({
-      where: {
-        teknisi_user_id: { in: uniqueTechnicianIds },
-        status_update: 'pending',
-      },
-      select: {
-        id_ticket: true,
-        incident: true,
-        contact_name: true,
-        customer_type: true,
-        service_no: true,
-        reported_date: true,
-        status_update: true,
-        teknisi_user_id: true,
-        closed_at: true,
-        workzone: true,
-        jenis_tiket_2: true,
-      },
-      orderBy: { reported_date: 'asc' },
-    });
-
-    const todayAssignedTickets = await prisma.ticket.findMany({
-      where: {
-        teknisi_user_id: { in: uniqueTechnicianIds },
-        status_update: { in: ['assigned', 'on_progress'] },
-        ticket_assignment_history: {
-          some: {
-            assigned_at: { gte: today, lte: todayEnd },
-            is_active: true,
-          },
-        },
-      },
-      select: {
-        id_ticket: true,
-        incident: true,
-        contact_name: true,
-        customer_type: true,
-        service_no: true,
-        reported_date: true,
-        status_update: true,
-        teknisi_user_id: true,
-        closed_at: true,
-        workzone: true,
-        jenis_tiket_2: true,
-      },
-      orderBy: { reported_date: 'asc' },
-    });
-
-    const closedTicketsToday = includeClosedToday
-      ? await prisma.ticket.findMany({
-          where: {
-            teknisi_user_id: { in: uniqueTechnicianIds },
-            status_update: { in: ['close', 'closed'] },
-            closed_at: {
-              gte: today,
-              lte: todayEnd,
-            },
-          },
-          select: {
-            id_ticket: true,
-            incident: true,
-            contact_name: true,
-            customer_type: true,
-            service_no: true,
-            reported_date: true,
-            status_update: true,
-            teknisi_user_id: true,
-            closed_at: true,
-            jenis_tiket_2: true,
-          },
-          orderBy: { closed_at: 'desc' },
-          take: closedTodayLimit,
-        })
-      : [];
-
-    const closedToday = await prisma.ticket.groupBy({
-      by: ['teknisi_user_id'],
-      where: {
-        teknisi_user_id: { in: uniqueTechnicianIds },
-        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
-        closed_at: {
-          gte: today,
-          lte: todayEnd,
-        },
-      },
-      _count: true,
-    });
 
     const closedTodayMap = new Map<number, number>();
     for (const c of closedToday) {
@@ -420,7 +372,7 @@ export async function GET(request: NextRequest) {
 
         if (
           workzone &&
-          !workzoneName.toLowerCase().includes(workzone.toLowerCase())
+          workzoneName.toLowerCase().trim() !== workzone.toLowerCase().trim()
         ) {
           return null;
         }
@@ -467,12 +419,12 @@ export async function GET(request: NextRequest) {
 
     await setCache(cacheKey, responseData, TECHNICIANS_CACHE_TTL);
 
-    return NextResponse.json({
-      success: true,
-      data: responseData,
-    });
+    return NextResponse.json(
+      { success: true, data: responseData },
+      { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' } },
+    );
   } catch (error: unknown) {
-    console.error('GET /technicians error:', error);
+    logger.error('GET /technicians error:', error);
     return NextResponse.json(
       {
         success: false,

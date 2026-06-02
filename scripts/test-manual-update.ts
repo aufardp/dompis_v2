@@ -18,6 +18,7 @@ async function main() {
     select: {
       incident: true,
       channel: true,
+      classification_flag: true,
       classification_path: true,
       customer_segment: true,
       source_ticket: true,
@@ -25,6 +26,7 @@ async function main() {
       service_type: true,
       service_no: true,
       realm: true,
+      summary: true,
     },
   });
 
@@ -37,6 +39,7 @@ async function main() {
   // 2. Classify
   const result = await classifyJenisFromVlookup({
     channel: raw?.channel || null,
+    classification_flag: raw?.classification_flag || null,
     classification_path: raw?.classification_path || null,
     customer_type: raw?.customer_type || null,
     customer_segment: raw?.customer_segment || null,
@@ -44,6 +47,7 @@ async function main() {
     service_no: raw?.service_no || null,
     source_ticket: raw?.source_ticket || null,
     realm: raw?.realm || null,
+    summary: raw?.summary || null,
   });
 
   console.log(`\n── Classification result ──`);

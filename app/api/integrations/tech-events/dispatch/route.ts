@@ -4,12 +4,14 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { postTechEvents } from '@/app/libs/integrations/techEvents';
 import {
   TechEventWebhookBatch,
   WebhookEvent,
 } from '@/app/libs/integrations/techEventTypes';
+import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
 
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
@@ -33,6 +35,13 @@ export async function POST(req: NextRequest) {
 
   try {
     requireCronSecret(req);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tech-events-dispatch',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const enabled = process.env.TECH_EVENTS_WEBHOOK_ENABLED === 'true';
     const url = process.env.TECH_EVENTS_WEBHOOK_URL;
@@ -104,8 +113,11 @@ export async function POST(req: NextRequest) {
       events: events.map((e: { id: number; payload: any }) => e.payload as WebhookEvent),
     };
 
+    let res: { ok: boolean; status: number; text: string };
     try {
-      const res = await postTechEvents({ url, secret }, payload);
+      res = await withCircuitBreaker('tech-events-webhook', async () => {
+        return await postTechEvents({ url, secret }, payload);
+      }, { failureThreshold: 5, timeoutMs: 120000 });
 
       if (res.ok) {
         await prisma.tech_event_outbox.updateMany({

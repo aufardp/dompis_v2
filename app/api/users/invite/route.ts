@@ -1,23 +1,35 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { SignJWT } from 'jose';
 import { createHash } from 'crypto';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { INVITE_CONFIG } from '@/app/config/invite';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  const actor = await protectApi(['teknisi']);
-  const body = await req.json();
-  const { ticketId, incident } = body;
+  const inviteSchema = z.object({
+    ticketId: z.number(),
+    incident: z.string().min(1),
+  });
 
-  if (!ticketId || !incident) {
-    return NextResponse.json(
-      { success: false, message: 'ticketId dan incident wajib diisi' },
-      { status: 400 },
-    );
+  const actor = await protectApi(['teknisi']);
+
+  const rateLimited = await enforceApiRateLimit(req, {
+    namespace: 'users-invite',
+    limit: 20,
+    windowSeconds: 60,
+  });
+  if (rateLimited) return rateLimited;
+
+  const body = await req.json();
+  const parsed = inviteSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, message: 'Validation failed', errors: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
+  const { ticketId, incident } = parsed.data;
 
   const ticket = await prisma.ticket.findUnique({
     where: { id_ticket: Number(ticketId) },

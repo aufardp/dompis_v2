@@ -1,106 +1,94 @@
 import { createServer } from 'http';
 import { parse as parseUrl } from 'url';
 import next from 'next';
+import { logger } from '@/lib/observability/logger';
 
-console.log('[boot] 1. Loading dotenv...');
+logger.info('[boot] 1. Loading dotenv...');
 import 'dotenv/config';
 
-console.log('[boot] 2. Loading Prisma...');
+logger.info('[boot] 2. Loading Prisma...');
 import { prisma } from '@/app/libs/prisma';
 
-console.log('[boot] 3. Loading Redis...');
+logger.info('[boot] 3. Loading Redis...');
 import { closeRedis } from '@/lib/redis';
 
-console.log('[boot] 4. Loading SSE...');
+logger.info('[boot] 4. Loading SSE...');
 import { initSSERedis, closeSSERedis } from '@/app/libs/sseBroadcast';
 
-console.log('[boot] All modules loaded successfully.');
+logger.info('[boot] 5. Loading DB Health Check...');
+import { startDatabaseHealthCheck, stopDatabaseHealthCheck } from '@/app/libs/dbHealthCheck';
+
+logger.info('[boot] All modules loaded successfully.');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3000', 10);
+
+let httpServer: ReturnType<typeof createServer>;
+
+async function shutdown(signal: string) {
+  logger.info(`[Server] Received ${signal} — shutting down...`);
+
+  const shutdownTimeout = setTimeout(() => {
+    logger.warn('[Server] Force close (timeout)');
+    process.exit(1);
+  }, 10_000);
+  shutdownTimeout.unref();
+
+  try {
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    logger.info('[Server] HTTP server closed');
+  } catch (err) {
+    logger.error('[Server] HTTP close error:', { error: String(err) });
+  }
+
+  await Promise.allSettled([
+    stopDatabaseHealthCheck(),
+    closeSSERedis(),
+    prisma.$disconnect().then(() => logger.info('[Server] Prisma disconnected')),
+    closeRedis().then(() => logger.info('[Server] Redis disconnected')),
+  ]);
+  clearTimeout(shutdownTimeout);
+  logger.info('[Server] Shutdown complete');
+}
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 async function startServer() {
   await app.prepare();
-  console.log('[Next.js] App prepared');
+  logger.info('[Next.js] App prepared');
 
   if (dev) {
-    console.log('[Dev] Starting with custom server — HMR enabled');
-    const server = createServer((req, res) => {
+    logger.info('[Dev] Starting with custom server — HMR enabled');
+    httpServer = createServer((req, res) => {
       const url = parseUrl(req.url || '/', true);
       handle(req, res, url);
     });
 
-    server.listen(port, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
+    httpServer.listen(port, () => {
+      logger.info(`> Ready on http://${hostname}:${port}`);
     });
-
-    const shutdown = async (signal: string) => {
-      console.log(`[Server] Received ${signal} — shutting down...`);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.warn('[Server] Force close (timeout)');
-          resolve();
-        }, 10000);
-        server.close(() => {
-          clearTimeout(timeout);
-          console.log('[Server] HTTP server closed');
-          resolve();
-        });
-      });
-      await Promise.allSettled([
-        closeSSERedis(),
-        prisma.$disconnect().then(() => console.log('[Server] Prisma disconnected')),
-        closeRedis().then(() => console.log('[Server] Redis disconnected')),
-      ]);
-      console.log('[Server] Shutdown complete');
-      process.exit(0);
-    };
 
     process.on('SIGINT', () => void shutdown('SIGINT'));
     process.on('SIGTERM', () => void shutdown('SIGTERM'));
     process.on('SIGUSR2', () => void shutdown('SIGUSR2'));
   } else {
     await initSSERedis();
-    console.log('[SSE] Redis subscriber initialized');
+    logger.info('[SSE] Redis subscriber initialized');
 
-    const server = createServer((req, res) => {
+    // Start DB health check in production
+    startDatabaseHealthCheck(30000);
+    logger.info('[DB] Health check started');
+
+    httpServer = createServer((req, res) => {
       const url = parseUrl(req.url || '/', true);
       handle(req, res, url);
     });
 
-    server.listen(port, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
+    httpServer.listen(port, () => {
+      logger.info(`> Ready on http://${hostname}:${port}`);
     });
-
-    const shutdown = async (signal: string) => {
-      console.log(`[Server] Received ${signal} — shutting down...`);
-
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.warn('[Server] Force close (timeout)');
-          resolve();
-        }, 10000);
-
-        server.close(() => {
-          clearTimeout(timeout);
-          console.log('[Server] HTTP server closed');
-          resolve();
-        });
-      });
-
-      await Promise.allSettled([
-        closeSSERedis(),
-        prisma.$disconnect().then(() => console.log('[Server] Prisma disconnected')),
-        closeRedis().then(() => console.log('[Server] Redis disconnected')),
-      ]);
-
-      console.log('[Server] Shutdown complete');
-      process.exit(0);
-    };
 
     process.on('SIGINT', () => void shutdown('SIGINT'));
     process.on('SIGTERM', () => void shutdown('SIGTERM'));
@@ -109,6 +97,6 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start server:', err);
+  logger.error('Failed to start server:', { error: String(err), component: 'server' });
   process.exit(1);
 });

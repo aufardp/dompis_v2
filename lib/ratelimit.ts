@@ -1,18 +1,35 @@
-import redis, { isRedisReady } from '@/lib/redis';
+import redis, { ensureRedisReady, isRedisReady } from '@/lib/redis';
+import { logger } from '@/lib/observability/logger';
 
 export interface RateLimitResult {
   allowed: boolean;
   remaining: number;
   resetAt: number;
+  reason?: 'rate_limiter_unavailable';
 }
 
 export async function checkRateLimit(
   identifier: string,
   limit: number = 100,
   windowSeconds: number = 60,
+  options: { failOpen?: boolean } = {},
 ): Promise<RateLimitResult> {
+  const failOpen = options.failOpen ?? true;
+
   if (!isRedisReady()) {
-    return { allowed: true, remaining: limit, resetAt: 0 };
+    const becameReady = await ensureRedisReady();
+    if (becameReady) {
+      return checkRateLimit(identifier, limit, windowSeconds, options);
+    }
+
+    return failOpen
+      ? { allowed: true, remaining: limit, resetAt: 0 }
+      : {
+          allowed: false,
+          remaining: 0,
+          resetAt: Math.ceil(Date.now() / 1000) + windowSeconds,
+          reason: 'rate_limiter_unavailable',
+        };
   }
 
   const key = `ratelimit:${identifier}`;
@@ -48,8 +65,15 @@ export async function checkRateLimit(
       resetAt: Math.ceil(now / 1000) + windowSeconds,
     };
   } catch (error) {
-    console.error('[RateLimit] Error:', error);
-    return { allowed: true, remaining: limit, resetAt: 0 };
+    logger.error('[RateLimit] Error:', { error: String(error) });
+    return failOpen
+      ? { allowed: true, remaining: limit, resetAt: 0 }
+      : {
+          allowed: false,
+          remaining: 0,
+          resetAt: Math.ceil(Date.now() / 1000) + windowSeconds,
+          reason: 'rate_limiter_unavailable',
+        };
   }
 }
 
@@ -66,7 +90,7 @@ export async function acquireLock(
     const result = await redis.set(key, ownerId, 'EX', ttlSeconds, 'NX');
     return result === 'OK';
   } catch (error) {
-    console.error('[Lock] Error acquiring lock:', error);
+    logger.error('[Lock] Error acquiring lock:', { error: String(error) });
     return false;
   }
 }
@@ -90,7 +114,7 @@ export async function releaseLock(
     const result = await redis.eval(script, 1, key, ownerId);
     return result === 1;
   } catch (error) {
-    console.error('[Lock] Error releasing lock:', error);
+    logger.error('[Lock] Error releasing lock:', { error: String(error) });
     return false;
   }
 }
@@ -104,7 +128,7 @@ export async function isLocked(key: string): Promise<boolean> {
     const result = await redis.exists(key);
     return result === 1;
   } catch (error) {
-    console.error('[Lock] Error checking lock:', error);
+    logger.error('[Lock] Error checking lock:', { error: String(error) });
     return false;
   }
 }

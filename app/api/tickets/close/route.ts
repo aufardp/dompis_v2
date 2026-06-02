@@ -5,34 +5,48 @@ import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.servic
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { closeTicketSchema } from '@/app/libs/validations/ticket.schema';
+import { validateBody } from '@/app/libs/validations/validate';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function POST(req: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tickets-close',
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi(['teknisi']);
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    const parsed = validateBody(closeTicketSchema, {
+      ticketId: body?.ticketId,
+      rca: body?.rca,
+      subRca: body?.subRca,
+      descriptionSolutionDompis: body?.descriptionSolutionDompis,
+    });
 
-    const { ticketId, rca, subRca, descriptionSolutionDompis } = body;
-
-    if (!ticketId)
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, message: 'Ticket ID wajib diisi' },
-        { status: 400 },
-      );
-
-    if (!descriptionSolutionDompis || String(descriptionSolutionDompis).trim().length < 10) {
-      return NextResponse.json(
-        { success: false, message: 'Detail perbaikan wajib diisi minimal 10 karakter' },
+        {
+          success: false,
+          message: 'ticketId wajib valid dan detail perbaikan minimal 10 karakter',
+          errors: parsed.error.flatten().fieldErrors,
+        },
         { status: 400 },
       );
     }
 
+    const { ticketId, rca, subRca, descriptionSolutionDompis } = parsed.data;
+
     const result = (await TicketWorkflowService.closeTicket(
       Number(ticketId),
       user,
-      String(rca || ''),
-      String(subRca || ''),
-      String(descriptionSolutionDompis).trim(),
+      rca ?? '',
+      subRca ?? '',
+      descriptionSolutionDompis,
     )) as { message: string };
 
     broadcastTicketInvalidate('close');

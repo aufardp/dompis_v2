@@ -35,6 +35,13 @@ interface TicketRow {
 
 interface TicketTableValidasiProps {
   tickets: TicketRow[];
+  pagination?: {
+    currentPage: number;
+    totalPages: number;
+    total: number;
+    limit: number;
+    onPageChange: (page: number) => void;
+  };
   loading?: boolean;
   isRefreshing?: boolean;
 }
@@ -43,6 +50,7 @@ const MOBILE_PAGE_SIZE = 5;
 
 export default function TicketTableValidasi({
   tickets,
+  pagination,
   loading,
   isRefreshing,
 }: TicketTableValidasiProps) {
@@ -58,20 +66,28 @@ export default function TicketTableValidasi({
     });
   }, [tickets]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedTickets.length / PAGE_SIZE));
-  const pageTickets = sortedTickets.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
-  );
+  const isServerPaginated = Boolean(pagination);
+  const effectivePage = pagination?.currentPage ?? page;
+  const effectiveLimit = pagination?.limit ?? PAGE_SIZE;
+  const effectiveTotal = pagination?.total ?? sortedTickets.length;
+  const totalPages =
+    pagination?.totalPages ??
+    Math.max(1, Math.ceil(sortedTickets.length / PAGE_SIZE));
+  const pageTickets = isServerPaginated
+    ? sortedTickets
+    : sortedTickets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const mobileTotalPages = Math.max(
-    1,
-    Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE),
-  );
-  const mobilePageTickets = sortedTickets.slice(
-    (mobilePage - 1) * MOBILE_PAGE_SIZE,
-    mobilePage * MOBILE_PAGE_SIZE,
-  );
+  const mobileEffectivePage = pagination?.currentPage ?? mobilePage;
+  const mobileEffectiveLimit = pagination?.limit ?? MOBILE_PAGE_SIZE;
+  const mobileTotalPages =
+    pagination?.totalPages ??
+    Math.max(1, Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE));
+  const mobilePageTickets = isServerPaginated
+    ? sortedTickets
+    : sortedTickets.slice(
+        (mobilePage - 1) * MOBILE_PAGE_SIZE,
+        mobilePage * MOBILE_PAGE_SIZE,
+      );
 
   const renderTtrCountdown = (ticket: TicketRow) => {
     const ttr = computeTtrCountdown(ticket);
@@ -128,13 +144,16 @@ export default function TicketTableValidasi({
           <>
             <div className='mb-2 flex items-center justify-between px-1'>
               <p className='text-xs text-(--text-secondary)'>
-                {(mobilePage - 1) * MOBILE_PAGE_SIZE + 1}–
-                {Math.min(mobilePage * MOBILE_PAGE_SIZE, sortedTickets.length)}{' '}
-                dari {sortedTickets.length} tiket
+                {(mobileEffectivePage - 1) * mobileEffectiveLimit + 1}–
+                {Math.min(
+                  mobileEffectivePage * mobileEffectiveLimit,
+                  effectiveTotal,
+                )}{' '}
+                dari {effectiveTotal} tiket
               </p>
               {mobileTotalPages > 1 && (
                 <span className='text-xs font-semibold text-(--text-primary)'>
-                  Halaman {mobilePage}/{mobileTotalPages}
+                  Halaman {mobileEffectivePage}/{mobileTotalPages}
                 </span>
               )}
             </div>
@@ -196,7 +215,15 @@ export default function TicketTableValidasi({
                       <p>{renderAgeSLA(ticket)}</p>
                     </div>
                   </div>
-                  <div className='mt-3 flex items-center justify-end'>
+                  <div className='mt-3 flex items-center justify-between'>
+                    <div className='max-w-[50%] truncate'>
+                      <p className='text-[10px] text-(--text-secondary)'>
+                        Worklog
+                      </p>
+                      <p className='truncate text-xs text-(--text-primary)'>
+                        {ticket.worklogSummary || '-'}
+                      </p>
+                    </div>
                     <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
                       <AlertTriangle
                         size={12}
@@ -213,11 +240,11 @@ export default function TicketTableValidasi({
             {mobileTotalPages > 1 && (
               <div className='mt-3'>
                 <MobilePagination
-                  currentPage={mobilePage}
+                  currentPage={mobileEffectivePage}
                   totalPages={mobileTotalPages}
-                  total={sortedTickets.length}
-                  pageSize={MOBILE_PAGE_SIZE}
-                  onPageChange={setMobilePage}
+                  total={effectiveTotal}
+                  pageSize={mobileEffectiveLimit}
+                  onPageChange={pagination?.onPageChange ?? setMobilePage}
                 />
               </div>
             )}
@@ -231,7 +258,7 @@ export default function TicketTableValidasi({
           {/* Toolbar */}
           <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
             <p className='text-xs text-(--text-secondary)'>
-              {sortedTickets.length} tiket perlu validasi
+              {effectiveTotal} tiket perlu validasi
             </p>
             <span className='text-[10px] text-(--text-muted)'>
               status_update = close, status ≠ closed (termasuk BACKEND)
@@ -267,12 +294,16 @@ export default function TicketTableValidasi({
                         Status Insera
                       </th>
                       <th className='px-3 py-2.5 text-center'>Teknisi</th>
+                      <th className='px-3 py-2.5 text-center'>
+                        Worklog
+                      </th>
                       <th className='px-3 py-2.5 text-center'>Status</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-(--border)'>
                     {pageTickets.map((ticket, idx) => {
-                      const rowNum = (page - 1) * PAGE_SIZE + idx + 1;
+                      const rowNum =
+                        (effectivePage - 1) * effectiveLimit + idx + 1;
                       return (
                         <tr
                           key={ticket.idTicket ?? idx}
@@ -371,6 +402,11 @@ export default function TicketTableValidasi({
                             </span>
                           </td>
                           <td className='px-3 py-3 text-center'>
+                            <span className='text-xs text-(--text-secondary) max-w-[120px] truncate inline-block align-middle'>
+                              {ticket.worklogSummary || '-'}
+                            </span>
+                          </td>
+                          <td className='px-3 py-3 text-center'>
                             <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
                               <AlertTriangle
                                 size={12}
@@ -393,19 +429,19 @@ export default function TicketTableValidasi({
                   <p className='text-xs text-(--text-secondary)'>
                     Showing{' '}
                     <span className='font-semibold text-(--text-primary)'>
-                      {(page - 1) * PAGE_SIZE + 1}–
-                      {Math.min(page * PAGE_SIZE, sortedTickets.length)}
+                      {(effectivePage - 1) * effectiveLimit + 1}–
+                      {Math.min(effectivePage * effectiveLimit, effectiveTotal)}
                     </span>{' '}
                     of{' '}
                     <span className='font-semibold text-(--text-primary)'>
-                      {sortedTickets.length}
+                      {effectiveTotal}
                     </span>{' '}
                     tiket
                   </p>
                   <Pagination
-                    currentPage={page}
+                    currentPage={effectivePage}
                     totalPages={totalPages}
-                    onPageChange={setPage}
+                    onPageChange={pagination?.onPageChange ?? setPage}
                   />
                 </div>
               )}

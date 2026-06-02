@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError } from '@/app/libs/apiError';
 import * as XLSX from 'xlsx';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const ODC_COLUMN_ALIASES = [
   'odc_value', 'odcvalue', 'odc',
@@ -87,6 +88,14 @@ function parseCSV(text: string): Record<string, string>[] {
 export async function POST(req: Request, { params }: RouteParams) {
   try {
     await protectApi(['admin', 'superadmin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-nodes-parse',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const { id } = await params;
     const clusterId = Number(id);
 

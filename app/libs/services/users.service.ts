@@ -58,9 +58,9 @@ export async function getAllUsers(filters?: {
 
   if (filters?.search) {
     where.OR = [
-      { nama: { contains: filters.search } },
-      { nik: { contains: filters.search } },
-      { username: { contains: filters.search } },
+      { nama: { startsWith: filters.search } },
+      { nik: { startsWith: filters.search } },
+      { username: { startsWith: filters.search } },
     ];
   }
 
@@ -78,6 +78,7 @@ export async function getAllUsers(filters?: {
       updated_at: true,
     },
     orderBy: { id_user: 'desc' },
+    take: 1000,
   });
 
   return users;
@@ -97,7 +98,7 @@ export async function getUserById(id: number) {
     .map((us: { sa_id: number | null }) => us.sa_id)
     .filter((sa: number | null): sa is number => sa !== null);
 
-  const { password, user_sa, ...rest } = user as any;
+  const { password: _password, user_sa, ...rest } = user;
   return { ...rest, sa_ids };
 }
 
@@ -129,7 +130,7 @@ export async function getUsersByRoleId(roleId: number, search?: string) {
   };
 
   if (search) {
-    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
+    where.OR = [{ nama: { startsWith: search } }, { nik: { startsWith: search } }];
   }
 
   const users = await prisma.users.findMany({
@@ -151,7 +152,7 @@ export async function getUsersByAreaId(areaId: number, search?: string) {
   };
 
   if (search) {
-    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
+    where.OR = [{ nama: { startsWith: search } }, { nik: { startsWith: search } }];
   }
 
   const users = await prisma.users.findMany({
@@ -177,7 +178,7 @@ export async function getUsersBySaId(saId: number, search?: string) {
   };
 
   if (search) {
-    where.OR = [{ nama: { contains: search } }, { nik: { contains: search } }];
+    where.OR = [{ nama: { startsWith: search } }, { nik: { startsWith: search } }];
   }
 
   const users = await prisma.users.findMany({

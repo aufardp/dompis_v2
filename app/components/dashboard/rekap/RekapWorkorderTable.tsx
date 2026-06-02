@@ -1,4 +1,6 @@
-import { Fragment } from 'react';
+import { Fragment, useState, useCallback, useMemo } from 'react';
+import { ChevronDown } from 'lucide-react';
+import clsx from 'clsx';
 
 interface SegCount {
   open: number;
@@ -72,17 +74,13 @@ function formatCell(value: number): string {
   return value > 0 ? String(value) : '-';
 }
 
-function loadTone(open: number, teknisi: number): string {
-  if (open === 0)
-    return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300';
-  if (teknisi === 0)
-    return 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300';
+function loadToneStyle(open: number, teknisi: number): React.CSSProperties {
+  if (open === 0) return { color: '#22c55e', fontWeight: 600 };
+  if (teknisi === 0) return { color: '#ef4444', fontWeight: 700 };
   const ratio = open / teknisi;
-  if (ratio >= 6)
-    return 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300';
-  if (ratio >= 3)
-    return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300';
-  return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300';
+  if (ratio >= 6) return { color: '#ef4444', fontWeight: 700 };
+  if (ratio >= 3) return { color: '#f59e0b', fontWeight: 600 };
+  return { color: '#3b82f6' };
 }
 
 interface RekapTableProps {
@@ -91,9 +89,26 @@ interface RekapTableProps {
 }
 
 export default function RekapWorkorderTable({ rows }: RekapTableProps) {
+  const areaNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) set.add(row.area);
+    return Array.from(set);
+  }, [rows]);
+
+  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(areaNames));
+
+  const toggleArea = useCallback((name: string) => {
+    setOpenAreas((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
   if (rows.length === 0) {
     return (
-      <div className='py-12 text-center text-sm text-slate-500 dark:text-slate-400'>
+      <div className='py-12 text-center text-sm text-(--text-muted)'>
         Tidak ada data workorder
       </div>
     );
@@ -125,14 +140,24 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
     }
   }
 
+  const maxWorkzoneOpen = useMemo(() => {
+    let max = 0;
+    for (const row of rows) {
+      for (const wz of row.workzones) {
+        if (wz.totalOpen > max) max = wz.totalOpen;
+      }
+    }
+    return max;
+  }, [rows]);
+
   return (
-    <div className='overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950'>
-      <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800'>
+    <div className='overflow-hidden rounded-lg border border-(--border) bg-(--surface)'>
+      <div className='flex items-center justify-between border-b border-(--border) px-4 py-3'>
         <div>
-          <p className='text-sm font-bold text-slate-950 dark:text-slate-50'>
+          <p className='text-sm font-bold text-(--text-primary)'>
             Service Area Performance
           </p>
-          <p className='text-xs text-slate-500 dark:text-slate-400'>
+          <p className='text-xs text-(--text-secondary)'>
             Open, close, teknisi, dan distribusi segment harian
           </p>
         </div>
@@ -149,9 +174,9 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
       <div className='overflow-x-auto'>
         <table className='w-full min-w-330 border-collapse text-xs'>
           <thead>
-            <tr className='border-b border-slate-800 bg-slate-950 text-white'>
+            <tr className='border-b border-(--border) bg-(--surface-2) text-(--text-primary)'>
               <th
-                className='sticky left-0 z-30 w-55 bg-slate-950 px-3 py-3 text-left text-[11px] font-bold tracking-wide uppercase'
+                className='sticky left-0 z-30 w-55 bg-(--surface-2) px-3 py-3 text-left text-[11px] font-bold tracking-wide uppercase'
                 rowSpan={2}
               >
                 Service Area
@@ -193,19 +218,19 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
                 Close %
               </th>
               <th
-                className='bg-slate-600 px-2 py-2 text-center text-[11px] font-black tracking-wider text-white uppercase dark:bg-slate-500/20 dark:text-slate-300'
+                className='bg-blue-600 px-2 py-2 text-center text-[11px] font-black tracking-wider text-white uppercase'
                 colSpan={10}
               >
                 B2C
               </th>
               <th
-                className='bg-cyan-600 px-2 py-2 text-center text-[11px] font-black tracking-wider text-white uppercase dark:bg-cyan-500/20 dark:text-cyan-300'
+                className='bg-cyan-600 px-2 py-2 text-center text-[11px] font-black tracking-wider text-white uppercase'
                 colSpan={8}
               >
                 B2B
               </th>
             </tr>
-            <tr className='border-b border-slate-800 bg-slate-900 text-slate-200'>
+            <tr className='border-b border-(--border) text-(--text-secondary) bg-(--surface-2)'>
               {SEGMENTS.map((segment) => (
                 <th
                   key={segment.key}
@@ -216,8 +241,8 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
                 </th>
               ))}
             </tr>
-            <tr className='border-b border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400'>
-              <th className='sticky left-0 z-20 bg-slate-50 px-3 py-2 text-left dark:bg-slate-900'>
+            <tr className='border-b border-(--border) bg-(--surface-2) text-(--text-muted)'>
+              <th className='sticky left-0 z-20 bg-(--surface-2) px-3 py-2 text-left'>
                 Area / SA
               </th>
               <th colSpan={6} />
@@ -232,6 +257,7 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
 
           <tbody>
             {Array.from(areaGroups.entries()).map(([area, areaRows]) => {
+              const isOpen = openAreas.has(area);
               const areaOpen = areaRows.reduce(
                 (sum, row) => sum + row.totalOpen,
                 0,
@@ -243,86 +269,111 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
 
               return (
                 <Fragment key={area}>
-                  <tr className='border-y border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900'>
-                    <td className='sticky left-0 z-10 bg-slate-100 px-3 py-2 dark:bg-slate-900'>
-                      <span className='font-bold tracking-wide text-slate-700 uppercase dark:text-slate-200'>
-                        {area}
-                      </span>
+                  <tr
+                    className='border-y border-(--border) bg-(--surface-2) cursor-pointer select-none'
+                    onClick={() => toggleArea(area)}
+                  >
+                    <td className='sticky left-0 z-10 bg-(--surface-2) px-3 py-2'>
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='font-bold tracking-wide text-(--text-primary) uppercase'>
+                          {area}
+                        </span>
+                        <ChevronDown
+                          size={14}
+                          className={clsx(
+                            'shrink-0 text-(--text-muted) transition-transform duration-200',
+                            isOpen && 'rotate-180',
+                          )}
+                        />
+                      </div>
                     </td>
-                    <td className='px-2 py-2 text-center font-bold text-red-700 dark:text-red-300'>
-                      {areaOpen}
-                    </td>
-                    <td className='px-2 py-2 text-center font-bold text-emerald-700 dark:text-emerald-300'>
-                      {areaClose}
-                    </td>
-                    <td className='px-2 py-2 text-center font-bold text-slate-700 dark:text-slate-200'>
+                    <td className='px-2 py-2 text-center font-bold text-red-600'>{areaOpen}</td>
+                    <td className='px-2 py-2 text-center font-bold text-emerald-600'>{areaClose}</td>
+                    <td className='px-2 py-2 text-center font-bold text-(--text-primary)'>
                       {areaOpen + areaClose}
                     </td>
                     <td colSpan={3 + SEGMENTS.length * 2} />
                   </tr>
 
-                  {areaRows.map((row) => {
+                  {isOpen && areaRows.map((row) => {
                     const closeRate =
                       row.grandTotal > 0
                         ? Math.round((row.totalClose / row.grandTotal) * 100)
                         : 0;
-                    const loadClass = loadTone(row.totalOpen, row.teknisiMasuk);
 
                     return (
-                      <tr
-                        key={row.saName}
-                        className='border-b border-slate-100 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900/70'
-                      >
-                        <td className='sticky left-0 z-10 bg-white px-3 py-2.5 dark:bg-slate-950'>
-                          <div className='min-w-0'>
-                            <p
-                              className='truncate font-bold text-slate-950 dark:text-slate-50'
-                              title={row.saName}
+                      <Fragment key={row.saName}>
+                        {/* SA row */}
+                        <tr className='border-b border-(--border) bg-(--surface) hover:bg-(--surface-2)'>
+                          <td className='sticky left-0 z-10 bg-(--surface) px-3 py-2.5'>
+                            <div className='min-w-0'>
+                              <p className='truncate font-bold text-(--text-primary)' title={row.saName}>
+                                {row.saName}
+                              </p>
+                              <p className='text-[11px] text-(--text-secondary)'>
+                                {row.workzones.length} workzone
+                              </p>
+                            </div>
+                          </td>
+                          <td className='px-2 py-2.5 text-center font-mono font-bold text-red-600'>
+                            {row.totalOpen}
+                          </td>
+                          <td className='px-2 py-2.5 text-center font-mono font-bold text-emerald-600'>
+                            {row.totalClose}
+                          </td>
+                          <td className='px-2 py-2.5 text-center font-mono text-(--text-secondary)'>
+                            {row.grandTotal}
+                          </td>
+                          <td className='px-2 py-2.5 text-center font-mono text-(--text-secondary)'>
+                            {row.teknisiMasuk}
+                          </td>
+                          <td className='px-2 py-2.5 text-center'>
+                            <span
+                              className="inline-flex min-w-14 justify-center rounded px-2 py-1 font-mono font-bold"
+                              style={loadToneStyle(row.totalOpen, row.teknisiMasuk)}
                             >
-                              {row.saName}
-                            </p>
-                            <p className='text-[11px] text-slate-500 dark:text-slate-400'>
-                              {row.workzones.length} workzone
-                            </p>
-                          </div>
-                        </td>
-                        <td className='px-2 py-2.5 text-center font-mono font-bold text-red-700 dark:text-red-300'>
-                          {row.totalOpen}
-                        </td>
-                        <td className='px-2 py-2.5 text-center font-mono font-bold text-emerald-700 dark:text-emerald-300'>
-                          {row.totalClose}
-                        </td>
-                        <td className='px-2 py-2.5 text-center font-mono text-slate-700 dark:text-slate-300'>
-                          {row.grandTotal}
-                        </td>
-                        <td className='px-2 py-2.5 text-center font-mono text-slate-700 dark:text-slate-300'>
-                          {row.teknisiMasuk}
-                        </td>
-                        <td className='px-2 py-2.5 text-center'>
-                          <span
-                            className={`inline-flex min-w-14 justify-center rounded px-2 py-1 font-mono font-bold ${loadClass}`}
-                          >
-                            {row.woPerTeknisi}
-                          </span>
-                        </td>
-                        <td className='px-2 py-2.5 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-400'>
-                          {closeRate}%
-                        </td>
+                              {row.woPerTeknisi}
+                            </span>
+                          </td>
+                          <td className='px-2 py-2.5 text-center text-[11px] font-semibold text-(--text-secondary)'>
+                            {closeRate}%
+                          </td>
 
-                        {SEGMENTS.map((segment) => {
-                          const data = getSegment(row, segment);
-                          return (
-                            <Fragment key={`${row.saName}-${segment.key}`}>
-                              <td className='px-2 py-2.5 text-center font-mono text-red-700 dark:text-red-300'>
-                                {formatCell(data.open)}
-                              </td>
-                              <td className='px-2 py-2.5 text-center font-mono text-emerald-700 dark:text-emerald-300'>
-                                {formatCell(data.close)}
-                              </td>
-                            </Fragment>
-                          );
-                        })}
-                      </tr>
+                          {SEGMENTS.map((segment) => {
+                            const data = getSegment(row, segment);
+                            return (
+                              <Fragment key={`${row.saName}-${segment.key}`}>
+                                <td className='px-2 py-2.5 text-center font-mono text-red-600'>
+                                  {formatCell(data.open)}
+                                </td>
+                                <td className='px-2 py-2.5 text-center font-mono text-emerald-600'>
+                                  {formatCell(data.close)}
+                                </td>
+                              </Fragment>
+                            );
+                          })}
+                        </tr>
+
+                        {/* Workzone sub-rows with load bar */}
+                        {row.workzones.map((wz) => (
+                          <tr key={`${row.saName}-${wz.workzone}`} className='border-b border-(--border) bg-(--surface-2)/50'>
+                            <td className='sticky left-0 bg-(--surface-2) pl-8 pr-3 py-1.5'>
+                              <div className='flex items-center gap-2'>
+                                <div className='h-1 w-16 rounded-full bg-(--surface-3) overflow-hidden'>
+                                  <div
+                                    className='h-full rounded-full bg-blue-500'
+                                    style={{ width: `${Math.min((wz.totalOpen / Math.max(maxWorkzoneOpen, 1)) * 100, 100)}%` }}
+                                  />
+                                </div>
+                                <span className='text-[11px] text-(--text-secondary) truncate max-w-[120px]'>{wz.workzone}</span>
+                              </div>
+                            </td>
+                            <td className='px-2 py-1.5 text-center font-mono text-[11px] text-red-500'>{formatCell(wz.totalOpen)}</td>
+                            <td className='px-2 py-1.5 text-center font-mono text-[11px] text-emerald-500'>{formatCell(wz.totalClose)}</td>
+                            <td colSpan={5 + SEGMENTS.length * 2} />
+                          </tr>
+                        ))}
+                      </Fragment>
                     );
                   })}
                 </Fragment>
@@ -331,43 +382,26 @@ export default function RekapWorkorderTable({ rows }: RekapTableProps) {
           </tbody>
 
           <tfoot>
-            <tr className='bg-slate-950 text-white'>
-              <td className='sticky left-0 z-20 bg-slate-950 px-3 py-3 text-right font-bold tracking-wide uppercase'>
+            <tr className='bg-(--surface-2) text-(--text-primary) font-bold border-t-2 border-(--border)'>
+              <td className='sticky left-0 z-20 bg-(--surface-2) px-3 py-3 text-right tracking-wide uppercase'>
                 Total
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold text-red-300'>
-                {totals.open}
-              </td>
-              <td className='px-2 py-3 text-center font-mono font-bold text-emerald-300'>
-                {totals.close}
-              </td>
+              <td className='px-2 py-3 text-center font-mono font-bold text-red-500'>{totals.open}</td>
+              <td className='px-2 py-3 text-center font-mono font-bold text-emerald-500'>{totals.close}</td>
+              <td className='px-2 py-3 text-center font-mono font-bold'>{totals.grand}</td>
+              <td className='px-2 py-3 text-center font-mono font-bold'>{totals.teknisi}</td>
               <td className='px-2 py-3 text-center font-mono font-bold'>
-                {totals.grand}
-              </td>
-              <td className='px-2 py-3 text-center font-mono font-bold'>
-                {totals.teknisi}
-              </td>
-              <td className='px-2 py-3 text-center font-mono font-bold'>
-                {totals.teknisi > 0
-                  ? (totals.open / totals.teknisi).toFixed(1)
-                  : '0.0'}
+                {totals.teknisi > 0 ? (totals.open / totals.teknisi).toFixed(1) : '0.0'}
               </td>
               <td className='px-2 py-3 text-center text-[11px] font-bold'>
-                {totals.grand > 0
-                  ? Math.round((totals.close / totals.grand) * 100)
-                  : 0}
-                %
+                {totals.grand > 0 ? Math.round((totals.close / totals.grand) * 100) : 0}%
               </td>
               {SEGMENTS.map((segment) => {
                 const data = totals.segments.get(segment.key)!;
                 return (
                   <Fragment key={`total-${segment.key}`}>
-                    <td className='px-2 py-3 text-center font-mono font-bold text-red-300'>
-                      {data.open}
-                    </td>
-                    <td className='px-2 py-3 text-center font-mono font-bold text-emerald-300'>
-                      {data.close}
-                    </td>
+                    <td className='px-2 py-3 text-center font-mono font-bold text-red-500'>{data.open}</td>
+                    <td className='px-2 py-3 text-center font-mono font-bold text-emerald-500'>{data.close}</td>
                   </Fragment>
                 );
               })}

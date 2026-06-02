@@ -1,4 +1,5 @@
 import { redis } from '@/lib/redis';
+import { logger } from '@/lib/observability/logger';
 
 export type SyncEventType = 'start' | 'complete' | 'error';
 
@@ -16,7 +17,7 @@ export interface TicketEventData {
 
 export async function publishSyncEvent(type: SyncEventType, data?: SyncEventData) {
   if (!isRedisReady()) {
-    console.warn('[SSE-Redis] Redis not ready, skipping publish');
+    logger.warn('[SSE-Redis] Redis not ready, skipping publish');
     return;
   }
   const payload = JSON.stringify({
@@ -30,7 +31,7 @@ export async function publishSyncEvent(type: SyncEventType, data?: SyncEventData
 
 export async function publishTicketInvalidate(reason?: string) {
   if (!isRedisReady()) {
-    console.warn('[SSE-Redis] Redis not ready, skipping publish');
+    logger.warn('[SSE-Redis] Redis not ready, skipping publish');
     return;
   }
   const payload = JSON.stringify({

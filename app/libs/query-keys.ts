@@ -1,0 +1,66 @@
+export const queryKeys = {
+  tickets: {
+    all: ['tickets'] as const,
+    lists: () => [...queryKeys.tickets.all, 'list'] as const,
+    daily: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.tickets.all, 'daily', filters] as const)
+        : ([...queryKeys.tickets.all, 'daily'] as const),
+    detail: (id: number) => [...queryKeys.tickets.all, id] as const,
+    expired: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.tickets.all, 'expired', filters] as const)
+        : ([...queryKeys.tickets.all, 'expired'] as const),
+    diamond: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.tickets.all, 'alert', 'diamond', filters] as const)
+        : ([...queryKeys.tickets.all, 'alert', 'diamond'] as const),
+  },
+  dashboard: {
+    all: ['dashboard'] as const,
+    operations: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'operations', filters] as const)
+        : ([...queryKeys.dashboard.all, 'operations'] as const),
+    semestaSummary: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'semesta-summary', filters] as const)
+        : ([...queryKeys.dashboard.all, 'semesta-summary'] as const),
+    durasi: (bucket?: string) =>
+      bucket
+        ? ([...queryKeys.dashboard.all, 'durasi', bucket] as const)
+        : ([...queryKeys.dashboard.all, 'durasi'] as const),
+    rekapWorkorder: () => [...queryKeys.dashboard.all, 'rekap-workorder'] as const,
+  },
+  clustering: {
+    all: ['clustering'] as const,
+    lists: () => [...queryKeys.clustering.all, 'list'] as const,
+    detail: (id: number) => [...queryKeys.clustering.all, id] as const,
+    assignments: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.clustering.all, 'assignments', filters] as const)
+        : ([...queryKeys.clustering.all, 'assignments'] as const),
+  },
+  users: {
+    me: () => ['users', 'me'] as const,
+    managedSA: () => ['users', 'me', 'sa'] as const,
+    role: (roleId: number) => ['users', 'role', roleId] as const,
+  },
+  dropdowns: {
+    area: () => ['area'] as const,
+    serviceArea: (area?: string) => (area ? (['sa', area] as const) : (['sa'] as const)),
+    workzone: () => ['workzone'] as const,
+  },
+  sync: {
+    all: ['sync'] as const,
+    status: () => [...queryKeys.sync.all, 'status'] as const,
+  },
+  technicians: {
+    all: ['technicians'] as const,
+    lists: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.technicians.all, 'list', filters] as const)
+        : ([...queryKeys.technicians.all, 'list'] as const),
+    detail: (id: number) => [...queryKeys.technicians.all, id] as const,
+  },
+};

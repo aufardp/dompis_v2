@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getCurrentUser } from '@/app/libs/services/users.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
 
 export async function GET() {
   try {
@@ -17,7 +18,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: user });
   } catch (error: unknown) {
-    console.error(error);
+    logger.error('Route error:', error);
     const message = getErrorMessage(error, 'Failed to load current user');
     return NextResponse.json(
       { success: false, message },

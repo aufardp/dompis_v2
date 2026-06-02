@@ -6,6 +6,7 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterList } from '@/app/hooks/useClusterList';
 import { useClusterAssignment } from '@/app/hooks/useClusterAssignment';
 import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
+import { useCopyAssignments, useRemoveClusterAssignment, usePlotTeknisi, useRunAutoAssign as useRunAutoAssignMutation } from '@/app/hooks/useMutations';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -72,10 +73,11 @@ export default function ClusteringPage() {
     assignments,
     loading: assignmentsLoading,
     refresh: refreshAssignments,
-    copyFromDate,
-    plotTeknisi,
-    removeAssignment,
   } = useClusterAssignment(selectedDate);
+  const copyMutation = useCopyAssignments();
+  const removeMutation = useRemoveClusterAssignment();
+  const autoAssignMutation = useRunAutoAssignMutation();
+  const plotMutation = usePlotTeknisi();
 
   // Auto-select first SA when data loads
   useEffect(() => {
@@ -97,14 +99,15 @@ export default function ClusteringPage() {
         'yyyy-MM-dd',
       );
 
-      const result = await copyFromDate(yesterdayStr, selectedDate);
+      const result = await copyMutation.mutateAsync({
+        fromDate: yesterdayStr,
+        toDate: selectedDate,
+      });
 
       setMessage({
         type: 'success',
         text: `Berhasil menyalin ${result.copied} assignment dari ${yesterdayStr}`,
       });
-
-      refreshAssignments();
     } catch (err) {
       setMessage({
         type: 'error',
@@ -113,56 +116,40 @@ export default function ClusteringPage() {
     } finally {
       setCopyRunning(false);
     }
-  }, [selectedDate, copyFromDate, refreshAssignments]);
+  }, [selectedDate, copyMutation]);
 
   const handleRunAutoAssign = useCallback(async () => {
     setAutoAssignRunning(true);
     setMessage(null);
 
     try {
-      const res = await fetch('/api/clustering/auto-assign', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-        credentials: 'include',
-      });
+      const data = await autoAssignMutation.mutateAsync();
+      const { assigned, total, no_teknisi, no_cluster } = data;
 
-      const json = await res.json();
-
-      if (json.success) {
-        const { assigned, total, no_teknisi, no_cluster } = json.data;
-        
-        // Build detailed message
-        const messages: string[] = [];
-        if (assigned > 0) {
-          messages.push(`✅ ${assigned} tiket berhasil di-assign`);
-        }
-        if (no_teknisi > 0) {
-          messages.push(`⚠️ ${no_teknisi} tiket gagal: tidak ada teknisi hari ini`);
-        }
-        if (no_cluster > 0) {
-          messages.push(`ℹ️ ${no_cluster} tiket tidak ada cluster`);
-        }
-
-        setMessage({
-          type: assigned > 0 ? 'success' : 'error',
-          text: messages.length > 0 ? messages.join(' · ') : json.data.message,
-        });
-      } else {
-        setMessage({
-          type: 'error',
-          text: json.message,
-        });
+      const messages: string[] = [];
+      if (assigned > 0) {
+        messages.push(`✅ ${assigned} tiket berhasil di-assign`);
       }
+      if (no_teknisi > 0) {
+        messages.push(`⚠️ ${no_teknisi} tiket gagal: tidak ada teknisi hari ini`);
+      }
+      if (no_cluster > 0) {
+        messages.push(`ℹ️ ${no_cluster} tiket tidak ada cluster`);
+      }
+
+      setMessage({
+        type: assigned > 0 ? 'success' : 'error',
+        text: messages.length > 0 ? messages.join(' · ') : data.message,
+      });
     } catch (err) {
       setMessage({
         type: 'error',
-        text: 'Gagal menjalankan auto-assign',
+        text: err instanceof Error ? err.message : 'Gagal menjalankan auto-assign',
       });
     } finally {
       setAutoAssignRunning(false);
     }
-  }, []);
+  }, [autoAssignMutation]);
 
   const handleCreateCluster = useCallback(async () => {
     if (!newClusterName.trim()) {
@@ -315,30 +302,17 @@ export default function ClusteringPage() {
 
     setPlotModalLoading(true);
     try {
-      const res = await fetchWithAuth('/api/clustering/assign', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          cluster_id: plotModalCluster.id,
-          teknisi_ids: plotModalSelected,
-          assigned_date: selectedDate,
-        }),
+      const result = await plotMutation.mutateAsync({
+        clusterId: plotModalCluster.id,
+        teknisiIds: plotModalSelected,
+        assignedDate: selectedDate,
       });
 
-      if (!res || !res.ok) {
-        const body = res ? await res.json().catch(() => null) : null;
-        throw new Error(body?.message || 'Failed to save plot');
-      }
-
-      const json = await res.json();
-      if (json.success) {
-        setMessage({
-          type: 'success',
-          text: `Berhasil: ${json.data.created} teknisi di-plot, ${json.data.skipped} sudah ada`,
-        });
-        handleClosePlotModal();
-        refreshAssignments();
-      }
+      setMessage({
+        type: 'success',
+        text: `Berhasil: ${result.created} teknisi di-plot, ${result.skipped} sudah ada`,
+      });
+      handleClosePlotModal();
     } catch (err) {
       setMessage({
         type: 'error',
@@ -352,7 +326,7 @@ export default function ClusteringPage() {
     plotModalSelected,
     selectedDate,
     handleClosePlotModal,
-    refreshAssignments,
+    plotMutation,
   ]);
 
   const filteredTeknisi = useMemo(() => {
@@ -490,7 +464,7 @@ export default function ClusteringPage() {
                                 >
                                   {a.teknisi_nama}
                                   <button
-                                    onClick={() => removeAssignment(a.id)}
+                                    onClick={() => removeMutation.mutate(a.id)}
                                     className='hover:text-red-500'
                                   >
                                     ×

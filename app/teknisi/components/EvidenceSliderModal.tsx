@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 interface Props {
@@ -110,12 +111,15 @@ export default function EvidenceSliderModal({
             >
               {images.map((img, i) => (
                 <div key={`${img.src}-${i}`} className='min-w-full select-none'>
-                  <div className='flex h-[80vh] w-full items-center justify-center'>
-                    <img
+                  <div className='flex h-[80vh] w-full items-center justify-center' draggable={false}>
+                    <Image
                       src={img.src}
                       alt={img.alt || `Evidence ${i + 1}`}
-                      className='max-h-[80vh] max-w-full object-contain'
-                      draggable={false}
+                      className='!w-auto !h-auto max-h-[80vh] max-w-full object-contain'
+                      width={0}
+                      height={0}
+                      sizes='100vw'
+                      unoptimized
                     />
                   </div>
                 </div>
@@ -153,18 +157,21 @@ export default function EvidenceSliderModal({
                     key={`${img.src}-thumb-${i}`}
                     type='button'
                     onClick={() => setIndex(i)}
-                    className={`h-14 w-20 shrink-0 overflow-hidden rounded-lg border transition ${
+                    className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border transition ${
                       active
                         ? 'border-white'
                         : 'border-white/20 opacity-70 hover:opacity-100'
                     }`}
                     aria-label={`Open image ${i + 1}`}
+                    draggable={false}
                   >
-                    <img
+                    <Image
                       src={img.src}
                       alt={img.alt || `Thumbnail ${i + 1}`}
-                      className='h-full w-full object-cover'
-                      draggable={false}
+                      className='object-cover'
+                      fill
+                      sizes='80px'
+                      unoptimized
                     />
                   </button>
                 );

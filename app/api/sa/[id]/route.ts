@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceAreaById } from "@/app/libs/services/serviceArea.service";
+import { logger } from '@/lib/observability/logger';
 
 export async function GET(
    req: Request,
@@ -29,7 +30,7 @@ export async function GET(
          data,
       });
    } catch (error: any) {
-      console.error("GET BY ID ERROR:", error);
+      logger.error("GET BY ID ERROR:", error);
       return NextResponse.json(
          { success: false, message: "Internal Server Error" },
          { status: 500 },

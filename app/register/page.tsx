@@ -1,3 +1,5 @@
+export const dynamic = 'force-static';
+
 import RegisterForm from "../components/auth/RegisterForm";
 
 export default function RegisterPage() {

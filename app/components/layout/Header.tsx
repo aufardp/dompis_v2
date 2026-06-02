@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 export default function Header() {
    return (
       <header className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 p-4 flex justify-between items-center">
@@ -7,11 +9,13 @@ export default function Header() {
                Teknisi SerbaBisa
             </span>
             <span className="font-bold text-sm sm:hidden">Teknisi</span>
-            <img
-               src="/avatar.png"
-               className="w-8 h-8 md:w-10 md:h-10 rounded-full"
-               alt="profile"
-            />
+<Image
+   src="/avatar.png"
+   className="w-8 h-8 md:w-10 md:h-10 rounded-full"
+   alt="profile"
+   width={40}
+   height={40}
+/>
          </div>
       </header>
    );

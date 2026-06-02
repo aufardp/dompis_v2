@@ -1,7 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/app/libs/query-keys';
 import { Activity, CheckCircle2, Clock3, RefreshCw, Users } from 'lucide-react';
 import DataFreshnessBadge from '../DataFreshnessBadge';
 import RekapWorkorderTable from './RekapWorkorderTable';
@@ -33,6 +35,16 @@ interface SARow {
   jenisTiket: Record<string, SegCount>;
 }
 
+interface KpiSummaryCounts {
+  total: number;
+  kpiCustomer: number;
+  kpiProactive: number;
+  nonKpiUnspec: number;
+  nonTechnical: number;
+  sqmUpdate: number;
+  obsolete: number;
+}
+
 interface RekapResponse {
   title: string;
   subtitle: string;
@@ -40,8 +52,34 @@ interface RekapResponse {
   syncDate: string;
   rows: SARow[];
   totals: Record<string, number>;
+  kpiSummary?: KpiSummaryCounts;
+  selectedBucket?: string;
   error?: string;
 }
+
+const BUCKET_OPTIONS = [
+  { value: 'all', label: 'All KPI' },
+  { value: 'kpi_customer', label: 'KPI Customer' },
+  { value: 'kpi_proactive', label: 'KPI Proactive' },
+  { value: 'non_kpi_unspec', label: 'Non KPI Unspec' },
+  { value: 'non_technical', label: 'Non Technical' },
+  { value: 'sqm_update', label: 'SQM Update' },
+  { value: 'obsolete', label: 'Obsolete' },
+] as const;
+
+const toneStyles: Record<string, { border: string; text: string; icon: string }> = {
+  slate: { border: 'border-(--border)', text: 'text-(--text-primary)', icon: 'text-(--text-muted)' },
+  red: { border: 'border-red-500/20', text: 'text-red-500', icon: 'text-red-400' },
+  green: { border: 'border-emerald-500/20', text: 'text-emerald-500', icon: 'text-emerald-400' },
+  blue: { border: 'border-blue-500/20', text: 'text-blue-500', icon: 'text-blue-400' },
+};
+
+const KPI_ACCENT: Record<string, string> = {
+  'KPI Customer': '#3b82f6',
+  'KPI Proactive': '#a855f7',
+  'Non KPI Unspec': '#64748b',
+  'Non Technical': '#e11d48',
+};
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('id-ID').format(value);
@@ -64,41 +102,67 @@ function SummaryTile({
   sub,
   tone,
   icon,
+  closeRate: cr,
 }: {
   label: string;
   value: string;
   sub: string;
   tone: 'slate' | 'red' | 'green' | 'blue';
   icon: ReactNode;
+  closeRate?: number;
 }) {
-  const toneClass = {
-    slate: 'border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100',
-    red: 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100',
-    blue: 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100',
-  }[tone];
+  const t = toneStyles[tone];
 
   return (
-    <div className={`rounded-lg border px-4 py-3 ${toneClass}`}>
+    <div className={`rounded-lg border bg-(--surface) px-4 py-3 ${t.border}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-(--text-muted)">
           {label}
         </p>
-        <div className="text-slate-500 dark:text-slate-400">{icon}</div>
+        <div className={t.icon}>{icon}</div>
       </div>
       <div className="mt-2 flex items-end justify-between gap-3">
-        <p className="text-2xl font-bold leading-none">{value}</p>
-        <p className="text-right text-xs text-slate-500 dark:text-slate-400">{sub}</p>
+        <p className={`text-2xl font-bold leading-none ${t.text}`}>{value}</p>
+        <p className="text-right text-xs text-(--text-muted)">{sub}</p>
       </div>
+      {label === 'Close' && cr !== undefined && (
+        <div className="mt-2 flex items-center gap-2">
+          <div className="flex-1 h-1.5 rounded-full bg-(--surface-3) overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${cr}%`,
+                background: cr >= 80 ? '#22c55e' : cr >= 50 ? '#f59e0b' : '#ef4444',
+              }}
+            />
+          </div>
+          <span className="text-[10px] font-mono font-bold text-(--text-muted)">{cr}%</span>
+        </div>
+      )}
+      {label === 'WO/Teknisi' && (
+        <div className="mt-1 flex items-center gap-1">
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ background: Number(value) >= 6 ? '#ef4444' : Number(value) >= 3 ? '#f59e0b' : '#22c55e' }}
+          />
+          <span className="text-[10px] text-(--text-muted)">
+            {Number(value) >= 6 ? 'Overloaded' : Number(value) >= 3 ? 'Moderate' : 'Healthy'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function RekapWorkorderClient() {
+  const [selectedBucket, setSelectedBucket] = useState('all');
+
+  const queryParams = useMemo(() => new URLSearchParams({ bucket: selectedBucket }), [selectedBucket]);
+
   const { data, isLoading, isError, refetch, isFetching } = useQuery<RekapResponse>({
-    queryKey: ['dashboard-rekap-workorder'],
+    queryKey: [...queryKeys.dashboard.rekapWorkorder(), selectedBucket],
     queryFn: async () => {
-      const res = await fetch('/api/dashboard/rekap-workorder');
+      const res = await fetch(`/api/dashboard/rekap-workorder?${queryParams}`);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to fetch');
@@ -114,7 +178,7 @@ export default function RekapWorkorderClient() {
   if (isError || data?.error) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-12">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <p className="text-sm text-(--text-secondary)">
           {data?.error || 'Gagal memuat data. Klik refresh untuk mencoba lagi.'}
         </p>
         <button onClick={() => refetch()} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
@@ -127,7 +191,7 @@ export default function RekapWorkorderClient() {
   if (!data?.rows?.length) {
     return (
       <div className="flex flex-col items-center gap-3 py-12">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-(--text-muted)">
           Tidak ada Service Area yang dikonfigurasi untuk akun ini
         </p>
       </div>
@@ -135,28 +199,77 @@ export default function RekapWorkorderClient() {
   }
 
   const summary = computeSummary(data.rows);
+  const ks = data.kpiSummary;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border border-(--border) bg-(--surface) px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-950 dark:text-slate-50">{data.title}</h2>
-            <span className="rounded border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <h2 className="text-lg font-bold text-(--text-primary)">{data.title}</h2>
+            <span className="rounded border border-(--border) px-2 py-0.5 text-[11px] font-semibold text-(--text-muted)">
               {data.syncDate}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{data.subtitle}</p>
+          <p className="mt-1 text-xs text-(--text-secondary)">{data.subtitle}</p>
         </div>
-        {data.timestamp && (
-          <DataFreshnessBadge generatedAt={data.timestamp} onRefresh={() => refetch()} isRefreshing={isFetching} />
-        )}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-(--text-muted)">Filter KPI</span>
+            {BUCKET_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedBucket(opt.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium border transition-colors ${
+                  selectedBucket === opt.value
+                    ? 'bg-(--text-primary) text-(--bg) border-(--text-primary)'
+                    : 'bg-(--surface) text-(--text-secondary) border-(--border) hover:bg-(--surface-2)'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {data.timestamp && (
+            <DataFreshnessBadge generatedAt={data.timestamp} onRefresh={() => refetch()} isRefreshing={isFetching} />
+          )}
+        </div>
       </div>
+
+      {ks && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: 'linear-gradient(to right, #2563eb, #9333ea)' }}>
+            <span className="text-xs uppercase tracking-wide opacity-70">Total</span>
+            <span className="text-lg leading-none">{formatNumber(ks.total ?? 0)}</span>
+          </div>
+          {[
+            { label: 'KPI Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
+            { label: 'KPI Proactive', value: ks.kpiProactive, accent: '#a855f7' },
+            { label: 'Non KPI Unspec', value: ks.nonKpiUnspec, accent: '#64748b' },
+            { label: 'Non Technical', value: ks.nonTechnical, accent: '#e11d48' },
+            { label: 'SQM Update', value: ks.sqmUpdate, accent: '#7c3aed' },
+            { label: 'Obsolete', value: ks.obsolete, accent: '#f43f5e' },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-3 py-2"
+              style={{ borderLeftWidth: '3px', borderLeftColor: item.accent }}
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
+                {item.label}
+              </span>
+              <span className="text-base font-bold leading-none" style={{ color: item.accent }}>
+                {formatNumber(item.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <SummaryTile
           label="Total WO"
-          value={formatNumber(summary.total)}
+          value={formatNumber(ks?.total ?? 0)}
           sub={`${data.rows.length} service area`}
           tone="slate"
           icon={<Activity className="h-4 w-4" />}
@@ -174,6 +287,7 @@ export default function RekapWorkorderClient() {
           sub={`${summary.closeRate}% closure`}
           tone="green"
           icon={<CheckCircle2 className="h-4 w-4" />}
+          closeRate={summary.closeRate}
         />
         <SummaryTile
           label="Teknisi"

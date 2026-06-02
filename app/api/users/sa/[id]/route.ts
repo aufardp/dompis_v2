@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUsersBySaId } from '@/app/libs/services/users.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,7 @@ export async function GET(
       data,
     });
   } catch (error: unknown) {
-    console.error('GET USERS BY SA ERROR:', error);
+    logger.error('GET USERS BY SA ERROR:', error);
     const message = getErrorMessage(error, 'Unexpected error');
     return NextResponse.json(
       { success: false, message },

@@ -31,11 +31,9 @@ function buildWorkzoneTicketFilter(
 ): Record<string, unknown> | undefined {
   const filters: Record<string, unknown>[] = [];
   const wz = selected?.trim();
-  if (wz) {
-    filters.push({ workzone: { contains: wz } });
-  }
+  if (wz) filters.push({ workzone: wz });
   if (workzones.length > 0) {
-    filters.push({ OR: workzones.map((w) => ({ workzone: { contains: w } })) });
+    filters.push({ OR: workzones.map((w) => ({ workzone: w })) });
   }
   if (filters.length === 0) return undefined;
   return { AND: filters };
@@ -141,7 +139,7 @@ export async function GET(req: NextRequest) {
           return wzs.some((wz: string) =>
             String(wz || '')
               .toLowerCase()
-              .includes(selectedWz),
+              .trim() === selectedWz,
           );
         })
       : technicianIds;
@@ -192,13 +190,13 @@ export async function GET(req: NextRequest) {
 
     const wzConditions: any[] = [];
     if (selectedWorkzone) {
-      wzConditions.push(Prisma.sql`t.workzone LIKE ${`%${selectedWorkzone}%`}`);
+      wzConditions.push(Prisma.sql`LOWER(t.workzone) = LOWER(${selectedWorkzone})`);
     }
     if (userWorkzones.length > 0) {
       const wzList = userWorkzones.filter((wz: string) => wz && wz.trim() !== '');
       if (wzList.length > 0) {
         const orClauses: any[] = wzList.map(
-          (wz: string) => Prisma.sql`t.workzone LIKE ${`%${wz}%`}`,
+          (wz: string) => Prisma.sql`LOWER(t.workzone) = LOWER(${wz})`,
         );
         wzConditions.push(
           Prisma.sql`(${Prisma.join(orClauses, Prisma.sql` OR `)})`,

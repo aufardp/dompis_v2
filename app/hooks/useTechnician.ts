@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Teknisi } from '@/app/types/teknisi';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
@@ -32,6 +32,14 @@ export function useTechnicians() {
   const [meta, setMeta] = useState<TechnicianMeta>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
 
   const fetchTechnicians = useCallback(
     async (opts?: {
@@ -39,6 +47,9 @@ export function useTechnicians() {
       search?: string;
       saId?: number;
     }) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       setLoading(true);
       setError(null);
       setTechnicians([]);
@@ -61,7 +72,7 @@ export function useTechnicians() {
             ? `/api/users/role/4?search=${encodeURIComponent(search)}`
             : `/api/users/role/4`;
 
-        const res = await fetchWithAuth(query);
+        const res = await fetchWithAuth(query, { signal: controller.signal });
 
         if (!res || !res.ok) {
           const body = res ? await res.json().catch(() => null) : null;
@@ -97,11 +108,19 @@ export function useTechnicians() {
         setTechnicians((data as RoleApiResponse).data ?? []);
         return;
       } catch (err: any) {
+        if (controller.signal.aborted) {
+          return;
+        }
         setError(err.message || 'Failed to load technicians');
         setTechnicians([]);
         setMeta(null);
       } finally {
-        setLoading(false);
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     },
     [],

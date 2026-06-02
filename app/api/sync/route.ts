@@ -7,6 +7,8 @@ import { runProjection } from '@/lib/projection';
 import { runIngestion } from '@/lib/ingestion';
 import { publishSyncEvent, publishTicketInvalidate } from '@/lib/sse-redis';
 import { acquireLock, releaseLock } from '@/lib/distributed-lock';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     broadcastSyncEvent('error', { error: String(error) });
-    console.error('Sync error:', error);
+    logger.error('Sync error:', error);
     return NextResponse.json(
       { success: false, message: 'Sync gagal', error: String(error) },
       { status: 500 },
@@ -51,6 +53,13 @@ export async function POST(req: NextRequest) {
   try {
     await protectApi(['admin', 'superadmin', 'helpdesk']);
 
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'sync',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     broadcastSyncEvent('start');
 
     // Try ingestion first (external DB → ticket_raw), then projection (ticket_raw → ticket)
@@ -59,12 +68,12 @@ export async function POST(req: NextRequest) {
       try {
         await runIngestion();
       } catch (err) {
-        console.warn('[Sync] Ingestion skipped atau gagal (mungkin external DB tidak tersedia):', String(err));
+        logger.warn('[Sync] Ingestion skipped atau gagal (mungkin external DB tidak tersedia):', { detail: String(err) });
       } finally {
         await releaseLock('ingestion', ingestionLock.ownerId);
       }
     } else {
-      console.log('[Sync] Ingestion already in progress by worker, melewati...');
+      logger.info('[Sync] Ingestion already in progress by worker, melewati...');
     }
 
     const projectionLock = await acquireLock('projection', 300);
@@ -101,7 +110,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     broadcastSyncEvent('error', { error: String(error) });
-    console.error('Manual sync error:', error);
+    logger.error('Manual sync error:', error);
     return NextResponse.json(
       { success: false, message: 'Sync gagal', error: String(error) },
       { status: 500 },

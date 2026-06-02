@@ -203,8 +203,8 @@ export default function CustomerTypeCard({
 
       {/* Stats Integrated Rows */}
       <div className='relative z-10 mb-6 space-y-3.5'>
-        {stats.map((stat, idx) => (
-          <div key={idx} className='group/item relative'>
+        {stats.map((stat) => (
+          <div key={stat.label} className='group/item relative'>
             <div className='mb-1 flex items-center justify-between'>
               <div className='flex items-center gap-1.5'>
                 <span className='text-xs opacity-80'>{stat.icon}</span>

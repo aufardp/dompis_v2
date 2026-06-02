@@ -14,7 +14,10 @@ interface Props {
   ticketWorkzone?: string | null;
   currentTechnicianId?: number;
   currentTechnicianName?: string | null;
-  onAssign: () => Promise<void>;
+  onAssign: (result?: {
+    technicianId: number | null;
+    technicianName: string | null;
+  }) => Promise<void>;
   forceReassign?: boolean;
   selectedSaId?: number;
 }
@@ -129,7 +132,13 @@ export default function AssignTechnicianModal({
         throw new Error(data.message || 'Failed to assign ticket');
       }
 
-      await onAssign();
+      const selectedTech =
+        technicians.find((tech) => Number(tech.id_user) === Number(selectedId)) ??
+        null;
+      await onAssign({
+        technicianId: Number(selectedId),
+        technicianName: selectedTech?.nama ?? null,
+      });
       onClose();
     } catch (err: any) {
       setSubmitError(err.message || 'Failed to assign ticket');
@@ -159,7 +168,10 @@ export default function AssignTechnicianModal({
         throw new Error(data.message || 'Failed to unassign ticket');
       }
 
-      await onAssign();
+      await onAssign({
+        technicianId: null,
+        technicianName: null,
+      });
       onClose();
     } catch (err: any) {
       setSubmitError(err.message || 'Failed to unassign ticket');

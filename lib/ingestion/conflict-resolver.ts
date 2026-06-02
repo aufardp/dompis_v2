@@ -42,7 +42,12 @@ export interface ConflictResolutionResult {
   shouldUpdate: boolean;
   newStatus: string;
   newVersion: number;
-  reason: 'new_record' | 'hash_changed' | 'status_conflict' | 'no_change';
+  reason:
+    | 'new_record'
+    | 'hash_changed'
+    | 'status_conflict'
+    | 'stale_source'
+    | 'no_change';
 }
 
 export function resolveConflict(
@@ -50,9 +55,11 @@ export function resolveConflict(
     sourceHash: string | null;
     status: string | null;
     syncVersion: number;
+    sourceUpdatedAt?: Date | null;
   } | null,
   newHash: string,
-  newStatus: string
+  newStatus: string,
+  incomingSourceUpdatedAt?: Date | null,
 ): ConflictResolutionResult {
   if (!existingRecord) {
     return {
@@ -61,6 +68,20 @@ export function resolveConflict(
       newStatus: newStatus || 'UNKNOWN',
       newVersion: 1,
       reason: 'new_record',
+    };
+  }
+
+  if (
+    existingRecord.sourceUpdatedAt &&
+    incomingSourceUpdatedAt &&
+    incomingSourceUpdatedAt.getTime() < existingRecord.sourceUpdatedAt.getTime()
+  ) {
+    return {
+      shouldInsert: false,
+      shouldUpdate: false,
+      newStatus: existingRecord.status || 'UNKNOWN',
+      newVersion: existingRecord.syncVersion,
+      reason: 'stale_source',
     };
   }
 

@@ -1,8 +1,10 @@
+import { memo } from 'react';
+
 interface AgeBadgeProps {
   bookingDate: string;
 }
 
-export default function AgeBadge({ bookingDate }: AgeBadgeProps) {
+function AgeBadge({ bookingDate }: AgeBadgeProps) {
   const ms = Date.now() - new Date(bookingDate).getTime();
   const days = Math.floor(ms / (1000 * 60 * 60 * 24));
   const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -24,3 +26,5 @@ export default function AgeBadge({ bookingDate }: AgeBadgeProps) {
     </span>
   );
 }
+
+export default memo(AgeBadge);

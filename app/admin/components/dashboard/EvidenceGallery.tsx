@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
@@ -135,11 +136,15 @@ export default function EvidenceGallery({
             imgLoaded && !imgError ? 'opacity-100' : 'opacity-0'
           }`}
         >
-          <img
+          <Image
             key={current.id}
             src={imageUrl}
             alt={current.fileName}
-            className='max-h-[65vh] max-w-full rounded-lg object-contain'
+            width={0}
+            height={0}
+            sizes='100vw'
+            className='!w-auto !h-auto max-h-[65vh] max-w-full rounded-lg object-contain'
+            unoptimized
             onLoad={() => setImgLoaded(true)}
             onError={() => { setImgError(true); setImgLoaded(true); }}
           />
@@ -180,10 +185,13 @@ export default function EvidenceGallery({
                       : 'opacity-50 hover:opacity-90'
                   }`}
                 >
-                  <img
+                  <Image
                     src={url}
                     alt={item.fileName}
+                    width={80}
+                    height={56}
                     className='h-14 w-20 object-cover'
+                    unoptimized
                     onError={(el) => {
                       const img = el.target as HTMLImageElement;
                       if (!img.dataset.fallback) {

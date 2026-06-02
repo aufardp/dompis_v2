@@ -23,6 +23,10 @@ const MONTHS = [
   'November',
   'Desember',
 ];
+const DIRECT_EXPORT_MAX_ROWS = Number.parseInt(
+  process.env.TECH_PERFORMANCE_EXPORT_MAX_ROWS || '10000',
+  10,
+);
 
 export async function GET(req: NextRequest) {
   try {
@@ -122,6 +126,7 @@ export async function GET(req: NextRequest) {
         teknisi_user_id: { not: null },
         ...wzFilter,
       },
+      take: DIRECT_EXPORT_MAX_ROWS + 1,
       select: {
         id_ticket: true,
         incident: true,
@@ -140,6 +145,15 @@ export async function GET(req: NextRequest) {
       },
       orderBy: [{ teknisi_user_id: 'asc' }, { closed_at: 'asc' }],
     });
+    if (allTickets.length > DIRECT_EXPORT_MAX_ROWS) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Export terlalu besar (${allTickets.length - 1}+ row). Persempit workzone atau periode export.`,
+        },
+        { status: 413 },
+      );
+    }
 
     // Build per-technician summary
     const techMap = new Map<number, typeof allTickets>();

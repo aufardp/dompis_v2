@@ -4,11 +4,20 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
-import { saveFiles, ActionType } from '@/app/libs/upload';
+import {
+  ActionType,
+  cleanupCommittedFiles,
+  cleanupStagedFiles,
+  commitStagedFiles,
+  stageFiles,
+  validateEvidenceFiles,
+} from '@/app/libs/upload';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
 import { normalizeRoleKey, roleKeyToRoleId } from '@/app/libs/roles';
-import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { ApiError, getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 type ActivityType =
   | 'created'
@@ -38,6 +47,13 @@ export async function POST(req: NextRequest) {
       'super_admin',
     ]);
 
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tickets-upload-evidence',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     let formData: FormData;
     try {
       formData = await req.formData();
@@ -58,7 +74,9 @@ export async function POST(req: NextRequest) {
     const files = formData.getAll('files') as File[];
     const incident = formData.get('incident') as string;
     const ticketId = Number(formData.get('ticketId'));
-    const actionType = (formData.get('actionType') as ActionType) || 'pending';
+    const requestedActionType = formData.get('actionType');
+    const actionType: ActionType =
+      requestedActionType === 'close' ? 'close' : 'pending';
 
     const oversizedFiles = files.filter((f) => f.size > MAX_FILE_SIZE);
     if (oversizedFiles.length > 0) {
@@ -87,18 +105,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+      throw new ApiError(400, 'Ticket ID tidak valid');
+    }
+
+    await validateEvidenceFiles(files);
+
     const roleId = roleKeyToRoleId(normalizeRoleKey(user.role));
 
-    // Save files to local storage
-    const savedFiles = await saveFiles(files, incident, actionType);
-
-    // Save to database
-    interface SavedFile {
+    interface StagedFile {
       fileName: string;
       filePath: string;
       fileSize: number;
       mimeType: string;
+      tempPath: string;
+      finalPath: string;
     }
+
+    const stagedFiles = await stageFiles(files, incident, actionType);
+    let evidencePersisted = false;
+    let activityLogId: number | null = null;
 
     interface TicketEvidenceData {
       ticket_id: number;
@@ -117,7 +143,7 @@ export async function POST(req: NextRequest) {
       description: string;
     }
 
-    const evidenceData: TicketEvidenceData[] = savedFiles.map((file: SavedFile) => ({
+    const evidenceData: TicketEvidenceData[] = stagedFiles.map((file: StagedFile) => ({
       ticket_id: ticketId,
       incident,
       file_name: file.fileName,
@@ -131,22 +157,51 @@ export async function POST(req: NextRequest) {
       user_id: user.id_user,
       role_id: roleId,
       activity_type: 'UPLOAD_EVIDENCE',
-      description: `Uploaded ${savedFiles.length} evidence file(s)`,
+      description: `Uploaded ${stagedFiles.length} evidence file(s)`,
     };
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.ticket_evidence.createMany({
-        data: evidenceData,
-      });
+    try {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.ticket_evidence.createMany({
+          data: evidenceData,
+        });
 
-      await tx.ticket_activity_log.create({
-        data: activityLogData,
-      });
-    }, { timeout: 15000 });
+        const activityLog = await tx.ticket_activity_log.create({
+          data: activityLogData,
+          select: { id: true },
+        });
+        activityLogId = activityLog.id;
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' });
+
+      evidencePersisted = true;
+      await commitStagedFiles(stagedFiles);
+    } catch (error) {
+      await cleanupStagedFiles(stagedFiles);
+      await cleanupCommittedFiles(stagedFiles);
+
+      if (evidencePersisted) {
+        await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          await tx.ticket_evidence.deleteMany({
+            where: {
+              ticket_id: ticketId,
+              file_path: { in: evidenceData.map((file) => file.file_path) },
+            },
+          });
+
+          if (activityLogId) {
+            await tx.ticket_activity_log.delete({
+              where: { id: activityLogId },
+            });
+          }
+        }, { isolationLevel: 'ReadCommitted' }).catch(() => undefined);
+      }
+
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,
-      files: savedFiles.map((file) => ({
+      files: stagedFiles.map((file) => ({
         fileName: file.fileName,
         filePath: file.filePath,
         fileSize: file.fileSize,
@@ -155,7 +210,7 @@ export async function POST(req: NextRequest) {
       message: 'Files uploaded successfully',
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Route error:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Upload gagal') },
       { status: getErrorStatus(error, 500) },

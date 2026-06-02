@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+'use client';
+
+import { useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import { Ticket } from '../types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
+import { detectSearchType } from '@/lib/search-intent';
 
 interface PaginationInfo {
   currentPage: number;
@@ -12,15 +18,6 @@ interface PaginationInfo {
 const UI_PAGE_SIZE = 10;
 const DEFAULT_PAGE_SIZE = 10;
 
-/**
- * React hook for fetching daily tickets.
- *
- * Daily tickets are tickets that:
- * - Were synced today (sync_date = TODAY) OR
- * - Have a pending_dompis (not null and not empty)
- *
- * This creates a "working board" for daily operations.
- */
 export function useDailyTickets(
   search: string,
   page: number,
@@ -31,128 +28,88 @@ export function useDailyTickets(
   ticketType?: string,
   options?: { fetchAll?: boolean; limit?: number },
 ) {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pagination, setPagination] = useState<
-    Omit<PaginationInfo, 'currentPage'>
-  >({
-    totalPages: 1,
-    total: 0,
-    limit: UI_PAGE_SIZE,
+  const bypassCacheRef = useRef<string | null>(null);
+  const searchType = detectSearchType(search);
+  const queryKey = queryKeys.tickets.daily({
+    search,
+    searchType,
+    page,
+    workzone,
+    ctype,
+    statusUpdate,
+    dept,
+    ticketType,
+    fetchAll: options?.fetchAll,
+    limit: options?.limit ?? DEFAULT_PAGE_SIZE,
   });
 
-  const requestIdRef = useRef(0);
+  const fetchLimit = options?.limit ?? DEFAULT_PAGE_SIZE;
 
-  const fetchData = useCallback(
-    async (showLoading = true, bypassCache = false) => {
-      const requestId = ++requestIdRef.current;
-      try {
-        if (showLoading) {
-          setLoading(true);
-        } else {
-          setIsRefreshing(true);
-        }
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: String(fetchLimit) });
+      const bypassToken = bypassCacheRef.current;
+      bypassCacheRef.current = null;
 
-        const fetchAll = options?.fetchAll ?? false;
-        const fetchLimit = options?.limit ?? DEFAULT_PAGE_SIZE;
-        const params = new URLSearchParams({
-          limit: String(fetchLimit),
-        });
-
-        const normalizedSearch = search.trim();
-        if (normalizedSearch) {
-          params.append('search', normalizedSearch);
-        }
-
-        if (workzone) {
-          params.append('workzone', workzone);
-        }
-
-        if (ctype) {
-          params.append('ctype', ctype);
-        }
-
-        if (statusUpdate) {
-          params.append('statusUpdate', statusUpdate);
-        }
-
-        if (dept) {
-          params.append('dept', dept);
-        }
-
-        if (ticketType) {
-          params.append('ticketType', ticketType);
-        }
-
-        if (bypassCache) {
-          params.append('_t', String(Date.now()));
-        }
-
-        params.set('page', String(fetchAll ? 1 : page));
-        const firstRes = await fetchWithAuth(
-          `/api/tickets/daily?${params.toString()}`,
-        );
-        if (!firstRes) {
-          console.log(
-            '[useDailyTickets] No response - possibly redirecting to login',
-          );
-          return;
-        }
-
-        const firstJson = await firstRes.json();
-        if (requestId !== requestIdRef.current) return;
-
-        if (!firstRes.ok) {
-          throw new Error(firstJson.message || 'Failed fetch daily tickets');
-        }
-
-        const firstRows: Ticket[] =
-          (firstJson?.success && firstJson?.data?.data) || [];
-
-        const apiTotalPages = Number(firstJson?.data?.totalPages || 1);
-        const totalPages =
-          Number.isFinite(apiTotalPages) && apiTotalPages > 0 ? apiTotalPages : 1;
-        const total = Number(firstJson?.data?.total || firstRows.length);
-
-        setTickets(firstRows);
-        setPagination({
-          total,
-          totalPages: fetchAll
-            ? Math.max(1, Math.ceil(total / UI_PAGE_SIZE))
-            : Math.max(1, apiTotalPages),
-          limit: UI_PAGE_SIZE,
-        });
-      } catch (err) {
-        if (requestId !== requestIdRef.current) return;
-        setTickets([]);
-      } finally {
-        if (requestId !== requestIdRef.current) return;
-        if (showLoading) {
-          setLoading(false);
-        } else {
-          setIsRefreshing(false);
-        }
+      const normalizedSearch = search.trim();
+      if (normalizedSearch) {
+        params.append('search', normalizedSearch);
+        if (searchType) params.append('searchType', searchType);
       }
+      if (workzone) params.append('workzone', workzone);
+      if (ctype) params.append('ctype', ctype);
+      if (statusUpdate) params.append('statusUpdate', statusUpdate);
+      if (dept) params.append('dept', dept);
+      if (ticketType) params.append('ticketType', ticketType);
+      params.set('page', String(options?.fetchAll ? 1 : page));
+      if (bypassToken) params.set('_t', bypassToken);
+
+      const res = await fetchWithAuth(`/api/tickets/daily?${params.toString()}`);
+      if (!res) throw new Error('No response');
+
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || 'Failed to fetch daily tickets');
+      }
+
+      return json.data as {
+        data: Ticket[];
+        totalPages: number;
+        total: number;
+        limit: number;
+      };
     },
-    [search, page, workzone, ctype, statusUpdate, dept, ticketType, options?.fetchAll, options?.limit],
-  );
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const result = useMemo(() => {
+    const apiTotalPages = Number(data?.totalPages || 1);
+    const totalPages = Number.isFinite(apiTotalPages) && apiTotalPages > 0 ? apiTotalPages : 1;
+    const total = Number(data?.total || 0);
 
-  const memoizedReturn = useMemo(
-    () => ({
-      tickets,
-      loading,
-      isRefreshing,
-      pagination: { ...pagination, currentPage: page },
-      refresh: () => fetchData(true, true),
-      refreshSilent: () => fetchData(false, true),
-    }),
-    [tickets, loading, isRefreshing, pagination, page, fetchData],
-  );
+    return {
+      tickets: data?.data ?? [],
+      loading: isLoading,
+      isRefreshing: isFetching && !isLoading,
+      pagination: {
+        ...(options?.fetchAll
+          ? { total, totalPages: Math.max(1, Math.ceil(total / UI_PAGE_SIZE)), limit: UI_PAGE_SIZE }
+          : { total, totalPages, limit: UI_PAGE_SIZE }),
+        currentPage: page,
+      },
+      refresh: () => {
+        bypassCacheRef.current = String(Date.now());
+        refetch();
+      },
+      refreshSilent: () => {
+        bypassCacheRef.current = String(Date.now());
+        refetch();
+      },
+    };
+  }, [data, isLoading, isFetching, page, options?.fetchAll, refetch]);
 
-  return memoizedReturn;
+  return result;
 }

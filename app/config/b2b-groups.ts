@@ -51,6 +51,11 @@ export const B2B_GROUPS: B2BGroup[] = [
     icon: '🔢',
   },
   {
+    key: 'billing',
+    label: 'Billing',
+    icon: '💳',
+  },
+  {
     key: 'astinet',
     label: 'Astinet',
     icon: '🌐',

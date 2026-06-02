@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  UserIcon,
-  ArrowRightOnRectangleIcon,
-} from '@heroicons/react/24/outline';
+import { User, LogOut } from 'lucide-react';
 
 interface Props {
   onProfile: () => void;
@@ -18,14 +15,14 @@ export default function UserMenuDropdown({ onProfile, onLogout }: Props) {
           onClick={onProfile}
           className='hover:bg-surface-2 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--text-primary)]'
         >
-          <UserIcon className='h-4 w-4' />
+          <User className='h-4 w-4' />
           Profile
         </button>
         <button
           onClick={onLogout}
           className='flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-400 hover:bg-red-400/10'
         >
-          <ArrowRightOnRectangleIcon className='h-4 w-4' />
+          <LogOut className='h-4 w-4' />
           Logout
         </button>
       </div>

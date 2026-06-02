@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 interface StatCardProps {
   label: string;
   value: number;
@@ -28,7 +30,7 @@ const accentMap = {
   },
 };
 
-export default function StatCard({
+function StatCard({
   label,
   value,
   subInfo,
@@ -50,7 +52,7 @@ export default function StatCard({
             {label}
           </p>
           <p
-            className={`font-syne text-3xl font-extrabold tracking-tight md:text-4xl lg:text-[42px] ${accent.valueClass}`}
+            className={`text-3xl font-bold tracking-tight md:text-4xl lg:text-[42px] ${accent.valueClass}`}
           >
             {value.toLocaleString()}
           </p>
@@ -74,3 +76,5 @@ export default function StatCard({
     </div>
   );
 }
+
+export default memo(StatCard);

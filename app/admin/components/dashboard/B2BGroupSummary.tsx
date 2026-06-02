@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -88,7 +89,7 @@ function PriorityPill({
   );
 }
 
-export default function B2BGroupSummary({
+function B2BGroupSummary({
   title,
   total,
   open,
@@ -226,3 +227,5 @@ export default function B2BGroupSummary({
     </section>
   );
 }
+
+export default memo(B2BGroupSummary);

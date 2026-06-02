@@ -233,6 +233,7 @@ export default function TicketDetailModal({
     if (!isClosed && !isPending) return;
 
     let cancelled = false;
+    const evidenceScope = isPending ? 'pending' : isClosed ? 'close' : null;
 
     (async () => {
       setEvidenceLoading(true);
@@ -240,7 +241,7 @@ export default function TicketDetailModal({
 
       try {
         const res = await fetchWithAuth(
-          `/api/tickets/${ticket.idTicket}/evidence`,
+          `/api/tickets/${ticket.idTicket}/evidence${evidenceScope ? `?scope=${evidenceScope}` : ''}`,
         );
         if (!res) return;
         const data = await res.json().catch(() => null);
@@ -380,6 +381,7 @@ export default function TicketDetailModal({
       const res = await fetchWithAuth('/api/tickets/upload-evidence', {
         method: 'POST',
         body: formData,
+        timeoutMs: 120_000,
       });
 
       if (!res) {

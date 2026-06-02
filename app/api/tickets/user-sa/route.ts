@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
       data: tickets,
     });
   } catch (error: unknown) {
-    console.error(error);
+    logger.error('Route error:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Unexpected error') },
       { status: getErrorStatus(error, 500) },

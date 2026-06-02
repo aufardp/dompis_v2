@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+'use client';
+
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
 
 type AlertDiamondTicketApi = {
   idTicket?: number;
@@ -40,14 +44,16 @@ export function useOpenDiamondTickets(
   workzoneId?: string,
   opts?: { dept?: string; ticketType?: string },
 ) {
-  const [rows, setRows] = useState<AlertDiamondTicketApi[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryKey = queryKeys.tickets.diamond({
+    workzoneId,
+    dept: opts?.dept,
+    ticketType: opts?.ticketType,
+  });
 
-  const fetchOpenDiamond = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const { data, isLoading, error: queryError, refetch } = useQuery({
+    queryKey,
+    staleTime: 30_000,
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (workzoneId) params.set('workzone', workzoneId);
       if (opts?.dept && opts.dept !== 'all') params.set('dept', opts.dept);
@@ -56,52 +62,27 @@ export function useOpenDiamondTickets(
       }
       params.set('limit', '100');
 
-      console.log(
-        '🔍 Fetching Alert Diamond tickets from /api/tickets/alert/diamond',
-        params.toString(),
-      );
-
-      // Use the new alert-specific API that filters by today's sync_date only
       const res = await fetchWithAuth(
         `/api/tickets/alert/diamond?${params.toString()}`,
       );
-      if (!res) return;
+      if (!res) throw new Error('No response');
 
       const json = await res.json();
-      console.log('📦 Alert Diamond API response:', json);
-
-      if (!json?.success) {
-        setError(json?.message || 'Failed to load open Diamond tickets');
-        setRows([]);
-        return;
-      }
+      if (!json?.success) throw new Error(json?.message || 'Failed to load open Diamond tickets');
 
       const apiData = json.data;
-      const ticketsData = Array.isArray(apiData) ? apiData : [];
-      console.log('🎫 Alert Diamond tickets found:', ticketsData.length);
-
-      setRows(ticketsData as AlertDiamondTicketApi[]);
-    } catch (e: any) {
-      console.error('❌ Alert Diamond fetch error:', e);
-      setError(e?.message || 'Failed to load open Diamond tickets');
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [opts?.dept, opts?.ticketType, workzoneId]);
-
-  useEffect(() => {
-    fetchOpenDiamond();
-  }, [fetchOpenDiamond]);
+      return (Array.isArray(apiData) ? apiData : []) as AlertDiamondTicketApi[];
+    },
+  });
 
   const tickets = useMemo(() => {
+    const rows = data ?? [];
     const mapped: OpenDiamondTicket[] = [];
 
     for (const t of rows) {
       const idTicket = t.idTicket || t.id_ticket || 0;
-      const ticketId = String(t.incident || t.incident || t.ticketId || '').trim();
+      const ticketId = String(t.incident || t.ticketId || t.incident || '').trim();
 
-      // Handle reportedDate
       let reportedAt = new Date();
       const rawDate = t.reportedAt || t.REPORTED_DATE;
       if (rawDate) {
@@ -118,7 +99,6 @@ export function useOpenDiamondTickets(
       const status = String(t.status || t.status_update || 'OPEN')
         .trim()
         .toLowerCase();
-      // Skip tickets that are already closed
       if (status === 'close' || status === 'closed') continue;
 
       mapped.push({
@@ -129,21 +109,20 @@ export function useOpenDiamondTickets(
         reportedAt,
         technicianName: t.technicianName || null,
         teknisiUserId: t.teknisiUserId || t.teknisi_user_id || null,
-        workzone: t.workzone || t.workzone || null,
+        workzone: t.workzone || null,
         contactName: t.contactName || t.CONTACT_NAME || null,
         serviceNo: t.serviceNo || t.SERVICE_NO || null,
       });
     }
 
-    // Sort by reported date (oldest first - most urgent)
     mapped.sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime());
     return mapped;
-  }, [rows]);
+  }, [data]);
 
   return {
     tickets,
-    loading,
-    error,
-    refresh: fetchOpenDiamond,
+    loading: isLoading,
+    error: queryError ? (queryError as Error).message : null,
+    refresh: () => { refetch(); },
   };
 }

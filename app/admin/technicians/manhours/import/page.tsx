@@ -329,6 +329,7 @@ export default function ImportPage() {
       const res = await fetchWithAuth('/api/technicians/manhours/import/run', {
         method: 'POST',
         body: formData,
+        timeoutMs: 180_000,
       });
 
       const json = await res?.json();
@@ -699,9 +700,9 @@ export default function ImportPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {uniqueNames.map((entry, idx) => (
+                    {uniqueNames.map((entry) => (
                       <tr
-                        key={idx}
+                        key={entry.nameFromExcel}
                         className={`border-t border-slate-100 dark:border-slate-700 ${
                           entry.resolvedId === null
                             ? 'bg-yellow-50 dark:bg-yellow-900/20'
@@ -876,7 +877,7 @@ export default function ImportPage() {
                               {importResult.data.errors
                                 .slice(0, 5)
                                 .map((err, i) => (
-                                  <li key={i}>{err}</li>
+                                  <li key={`${err}-${i}`}>{err}</li>
                                 ))}
                             </ul>
                           </div>

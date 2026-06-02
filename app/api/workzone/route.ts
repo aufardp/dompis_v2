@@ -16,11 +16,12 @@ export async function GET() {
 
     if (user.role === 'super_admin' || user.role === 'superadmin') {
       const serviceAreas = await prisma.service_area.findMany({
+        select: { id_sa: true, nama_sa: true },
         orderBy: { nama_sa: 'asc' },
         distinct: ['id_sa'],
       });
 
-      const rows = serviceAreas.map((sa: { id_sa: any; nama_sa: any }) => ({
+      const rows = serviceAreas.map((sa) => ({
         value: String(sa.id_sa),
         label: sa.nama_sa,
       }));
@@ -30,22 +31,23 @@ export async function GET() {
 
     const userSas = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
-      include: { service_area: true },
+      select: {
+        sa_id: true,
+        service_area: {
+          select: { id_sa: true, nama_sa: true },
+        },
+      },
       distinct: ['sa_id'],
     });
 
-    const seen = new Set<string>();
-    const rows = userSas
-      .filter((us: { service_area: any }) => us.service_area)
-      .map((us: { service_area: any }) => ({
-        value: String(us.service_area!.id_sa),
-        label: us.service_area!.nama_sa,
-      }))
-      .filter((opt: { value: string }) => {
-        if (seen.has(opt.value)) return false;
-        seen.add(opt.value);
-        return true;
+    const rows: { value: string; label: string | null }[] = [];
+    for (const us of userSas) {
+      if (!us.service_area) continue;
+      rows.push({
+        value: String(us.service_area.id_sa),
+        label: us.service_area.nama_sa,
       });
+    }
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {

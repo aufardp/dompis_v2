@@ -4,17 +4,22 @@ import { runActiveRefresh } from '@/lib/active-refresh';
 import {
   cleanupWorkerLock,
   createTaskState,
+  forceCleanupLock,
   installShutdownHandlers,
   nowWIB,
   parsePositiveInt,
+  runWithCorrelationContext,
   scheduleEveryMinutes,
   shouldRunWithCircuitBreaker,
   startWorkerHeartbeat,
   waitForRedisReady,
+  waitStartupDelay,
   withCancellableTimeout,
   withTaskLock,
 } from '@/lib/workers/task-runner';
-import { createCorrelationId, logger } from '@/lib/observability/logger';
+import { logger } from '@/lib/observability/logger';
+import { logConfigWarnings } from '@/lib/observability/config-validator';
+import { recordRun } from '@/lib/observability/slo-tracker';
 
 const WORKER_NAME = 'active-refresh-worker';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
@@ -38,18 +43,19 @@ const LOCK_TTL_SECONDS = parsePositiveInt(
   Math.max(300, TIMEOUT_MINUTES * 60),
 );
 const RUN_ON_START = process.env.ACTIVE_REFRESH_RUN_ON_START !== 'false';
+const SCHEDULE_OFFSET = 45;
 
 const state = createTaskState();
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
 
 async function runActiveRefreshTask(): Promise<void> {
   if (process.env.ACTIVE_REFRESH_ENABLED !== 'true') {
-    console.log('[ACTIVE-REFRESH] Disabled');
+    logger.info('Active refresh disabled');
     return;
   }
 
   if (state.running) {
-    console.log('[ACTIVE-REFRESH] Skipped, previous run still in progress');
+    logger.info('Active refresh skipped, previous run still in progress');
     return;
   }
 
@@ -58,10 +64,10 @@ async function runActiveRefreshTask(): Promise<void> {
       state,
       MAX_CONSECUTIVE_ERRORS,
       CIRCUIT_RESET_MINUTES * 60_000,
+      WORKER_NAME,
     )
   ) {
     logger.warn('Active refresh circuit open', {
-      worker: WORKER_NAME,
       consecutiveErrors: state.consecutiveErrors,
       resetMinutes: CIRCUIT_RESET_MINUTES,
     });
@@ -74,7 +80,6 @@ async function runActiveRefreshTask(): Promise<void> {
     TIMEOUT_MINUTES * 60_000,
   );
   state.abortController = controller;
-  const correlationId = createCorrelationId('active-refresh');
 
   try {
     const lockResult = await withTaskLock(
@@ -86,24 +91,23 @@ async function runActiveRefreshTask(): Promise<void> {
         const result = await runActiveRefresh(signal);
         const duration = Date.now() - startTime;
 
-        console.log(
-          `[ACTIVE-REFRESH] Done | batch=${result.batchId} | scanned=${result.scanned} | updated=${result.updated} | ${nowWIB()} WIB`,
-        );
         logger.info('Active refresh task complete', {
-          worker: WORKER_NAME,
-          correlationId,
           fencingToken,
           batchId: result.batchId,
           scanned: result.scanned,
           updated: result.updated,
           durationMs: duration,
+          time: nowWIB(),
+        });
+        await recordRun(WORKER_NAME, duration, true, {
+          processed: result.scanned,
         });
 
         state.consecutiveErrors = 0;
         state.circuitOpenedAt = null;
         state.lastError = null;
       },
-      { abortController: controller, correlationId },
+      { abortController: controller },
     );
 
     if (lockResult === 'skipped') {
@@ -112,10 +116,9 @@ async function runActiveRefreshTask(): Promise<void> {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Active refresh task failed', error, {
-      worker: WORKER_NAME,
-      correlationId,
       durationMs: Date.now() - startTime,
     });
+    await recordRun(WORKER_NAME, Date.now() - startTime, false, { error: message });
     state.lastError = message;
     state.consecutiveErrors++;
     if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -130,35 +133,39 @@ async function runActiveRefreshTask(): Promise<void> {
 }
 
 async function startWorker(): Promise<void> {
-  console.log(
-    `[${WORKER_NAME}] Starting | interval=${INTERVAL_MINUTES}m timeout=${TIMEOUT_MINUTES}m lockTtl=${LOCK_TTL_SECONDS}s`,
-  );
+  logger.info('Active refresh worker starting', {
+    interval: `${INTERVAL_MINUTES}m`,
+    timeout: `${TIMEOUT_MINUTES}m`,
+    lockTtl: `${LOCK_TTL_SECONDS}s`,
+    offset: `${SCHEDULE_OFFSET}s`,
+  });
+
+  await waitStartupDelay();
+  logConfigWarnings(WORKER_NAME);
 
   await connectDB();
   await waitForRedisReady();
+  await forceCleanupLock('active_refresh');
   await cleanupWorkerLock('active_refresh', TIMEOUT_MINUTES * 60_000);
   startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
-    scheduleEveryMinutes(INTERVAL_MINUTES, () => void runActiveRefreshTask()),
+    scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => void runActiveRefreshTask()), 'active-refresh', SCHEDULE_OFFSET, { maxIntervalMinutes: 30, idleThreshold: 5 }),
   );
 
   installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
 
   if (RUN_ON_START) {
-    void runActiveRefreshTask();
+    runWithCorrelationContext(WORKER_NAME, () => void runActiveRefreshTask());
   }
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled rejection', reason, {
-    worker: WORKER_NAME,
-    promise: String(promise),
-  });
-});
-
-startWorker().catch((error) => {
-  console.error(`[${WORKER_NAME}] Fatal startup error:`, error);
+  logger.error('Unhandled rejection, exiting', reason, { promise: String(promise) });
   process.exit(1);
 });
 
+startWorker().catch((error) => {
+  logger.error('Fatal startup error', error instanceof Error ? error : new Error(String(error)));
+  process.exit(1);
+});

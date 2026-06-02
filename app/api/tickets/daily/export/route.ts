@@ -5,10 +5,15 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getCache, setCache } from '@/lib/cache';
+import { parseSearchType } from '@/lib/search-intent';
 
 export const dynamic = 'force-dynamic';
 
 const EXPORT_CACHE_TTL = 30;
+const DIRECT_EXPORT_MAX_ROWS = Number.parseInt(
+  process.env.DAILY_EXPORT_MAX_ROWS || '10000',
+  10,
+);
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -18,11 +23,22 @@ function toInt(value: string | null, fallback: number) {
 function buildExportCacheKey(
   userId: number,
   dept: string,
+  search: string,
+  searchType: string | undefined,
+  workzone: string,
+  ctype: string,
+  startDate: string,
+  endDate: string,
   ticketType: string[],
+  ticketGroup: string[],
+  operationalBucket: string[],
+  anomalyBucket: string[],
+  regulerOnly: string,
   statusUpdate: string[],
+  ticketStatus: string[],
   flagging: string[],
 ): string {
-  return `daily_export:${userId}:${dept}:${ticketType.sort().join(',')}:${statusUpdate.sort().join(',')}:${flagging.sort().join(',')}`;
+  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}`;
 }
 
 function getExportColumns() {
@@ -196,6 +212,18 @@ function filterTicketByStatus(
   });
 }
 
+function filterTicketByTicketStatus(
+  ticket: any,
+  ticketStatusFilter: string[],
+): boolean {
+  if (ticketStatusFilter.length === 0) return true;
+
+  const status = String(ticket.status ?? '').trim();
+  if (!status) return false;
+
+  return ticketStatusFilter.includes(status);
+}
+
 function filterTicketByFlagging(
   ticket: any,
   flaggingFilter: string[],
@@ -225,12 +253,15 @@ function filterTicketByFlagging(
 
 function applyFilters(tickets: any[], dept: string, filters: {
   ticketType: string[];
+  ticketGroup: string[];
   statusUpdate: string[];
+  ticketStatus: string[];
   flagging: string[];
 }): any[] {
   return tickets.filter((t) => {
     if (!filterTicketByJenis(t, filters.ticketType, dept)) return false;
     if (!filterTicketByStatus(t, filters.statusUpdate)) return false;
+    if (!filterTicketByTicketStatus(t, filters.ticketStatus)) return false;
     if (!filterTicketByFlagging(t, filters.flagging)) return false;
     return true;
   });
@@ -286,8 +317,6 @@ export async function GET(request: Request) {
   try {
     const user = await protectApi([
       'admin',
-      'teknisi',
-      'helpdesk',
       'superadmin',
       'super_admin',
     ]);
@@ -296,22 +325,49 @@ export async function GET(request: Request) {
 
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
     const dept = (searchParams.get('dept') ?? 'b2c') as 'b2b' | 'b2c';
+    const search = searchParams.get('search') ?? '';
+    const searchType = parseSearchType(searchParams.get('searchType'));
+    const workzone = searchParams.get('workzone') ?? '';
+    const ctype = searchParams.get('ctype') ?? '';
+    const startDate = searchParams.get('startDate') ?? '';
+    const endDate = searchParams.get('endDate') ?? '';
 
     const ticketTypeRaw = searchParams.getAll('ticketType');
+    const ticketGroupRaw = searchParams.getAll('ticketGroup');
+    const operationalBucketRaw = searchParams.getAll('operationalBucket');
+    const anomalyBucketRaw = searchParams.getAll('anomalyBucket');
+    const regulerOnlyRaw = searchParams.get('regulerOnly') ?? '';
     const statusUpdateRaw = searchParams.getAll('statusUpdate');
+    const ticketStatusRaw = searchParams.getAll('ticketStatus');
     const flaggingRaw = searchParams.getAll('flagging');
 
     const filters = {
       ticketType: ticketTypeRaw,
+      ticketGroup: ticketGroupRaw,
+      operationalBucket: operationalBucketRaw,
+      anomalyBucket: anomalyBucketRaw,
+      regulerOnly: regulerOnlyRaw === 'true',
       statusUpdate: statusUpdateRaw,
+      ticketStatus: ticketStatusRaw,
       flagging: flaggingRaw,
     };
 
     const cacheKey = buildExportCacheKey(
       user.id_user,
       dept,
+      search,
+      searchType,
+      workzone,
+      ctype,
+      startDate,
+      endDate,
       ticketTypeRaw,
+      ticketGroupRaw,
+      operationalBucketRaw,
+      anomalyBucketRaw,
+      regulerOnlyRaw,
       statusUpdateRaw,
+      ticketStatusRaw,
       flaggingRaw,
     );
 
@@ -321,46 +377,7 @@ export async function GET(request: Request) {
     if (cached) {
       allTickets = cached as any[];
     } else {
-      const B2C_CTYPES = ['REGULER', 'HVC_GOLD', 'HVC_PLATINUM', 'HVC_DIAMOND'];
-
-      const whereBase: Record<string, any> = {};
-
-      if (user.role === 'teknisi') {
-        whereBase.teknisi_user_id = user.id_user;
-      } else {
-        const { getWorkzonesForUser } = await import('@/app/helpers/ticket.helpers');
-        const workzones = await getWorkzonesForUser(user.id_user);
-
-        if (workzones.length === 0) {
-          return NextResponse.json(
-            { success: true, data: [], message: 'No workzone access' },
-            { status: 200 },
-          );
-        }
-
-        whereBase.workzone = { in: workzones };
-      }
-
-      await DailyTicketService.applyDailyTicketFilter(whereBase);
-
-      if (dept === 'b2c') {
-        whereBase.customer_type = { in: B2C_CTYPES };
-      } else if (dept === 'b2b') {
-        whereBase.AND = [
-          ...(whereBase.AND ?? []),
-          {
-            OR: [
-              { customer_type: { notIn: B2C_CTYPES } },
-              { customer_type: null },
-            ],
-          },
-          {
-            customer_segment: { notIn: ['PL-TSEL', 'DCS'] },
-          },
-        ];
-      }
-
-      const FETCH_PAGE_SIZE = 100;
+      const FETCH_PAGE_SIZE = 250;
       const firstRes = await DailyTicketService.getDailyTicketTable(
         user.role,
         user.id_user,
@@ -368,26 +385,76 @@ export async function GET(request: Request) {
           page: 1,
           limit: FETCH_PAGE_SIZE,
           dept,
+          search: search || undefined,
+          searchType,
+          workzone: workzone || undefined,
+          ctype: ctype || undefined,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          includeValidasi: true,
+          includeSummary: false,
+          includeOptions: false,
+          ticketGroup: ticketGroupRaw,
+          operationalBucket: operationalBucketRaw,
+          anomalyBucket: anomalyBucketRaw,
+          regulerOnly: regulerOnlyRaw === 'true',
+          ticketStatus: ticketStatusRaw,
+          statusUpdate: statusUpdateRaw,
         },
       );
 
       allTickets.push(...(firstRes.data ?? []));
+      allTickets.push(...(firstRes.validasiTickets ?? []));
 
       const totalPages = firstRes.totalPages ?? 1;
-      for (let p = 2; p <= totalPages; p++) {
+      const validasiTotalPages = firstRes.validasiTotalPages ?? 1;
+      const pageCount = Math.max(totalPages, validasiTotalPages);
+      for (let p = 2; p <= pageCount; p++) {
         const pageRes = await DailyTicketService.getDailyTicketTable(
           user.role,
           user.id_user,
-          { page: p, limit: FETCH_PAGE_SIZE, dept },
+          {
+            page: p,
+            limit: FETCH_PAGE_SIZE,
+            dept,
+            search: search || undefined,
+            searchType,
+            workzone: workzone || undefined,
+            ctype: ctype || undefined,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            validasiPage: p,
+            validasiLimit: FETCH_PAGE_SIZE,
+            includeValidasi: true,
+            includeSummary: false,
+            includeOptions: false,
+            ticketGroup: ticketGroupRaw,
+            operationalBucket: operationalBucketRaw,
+            anomalyBucket: anomalyBucketRaw,
+            regulerOnly: regulerOnlyRaw === 'true',
+            ticketStatus: ticketStatusRaw,
+            statusUpdate: statusUpdateRaw,
+          },
         );
         allTickets.push(...(pageRes.data ?? []));
-        if ((pageRes.data ?? []).length < FETCH_PAGE_SIZE) break;
+        allTickets.push(...(pageRes.validasiTickets ?? []));
       }
 
-      await setCache(cacheKey, allTickets, EXPORT_CACHE_TTL);
+      if (allTickets.length <= 500) {
+        await setCache(cacheKey, allTickets, EXPORT_CACHE_TTL);
+      }
     }
 
     const filtered = applyFilters(allTickets, dept, filters);
+    if (filtered.length > DIRECT_EXPORT_MAX_ROWS) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Export terlalu besar (${filtered.length} row). Persempit filter atau turunkan rentang data sebelum export.`,
+        },
+        { status: 413 },
+      );
+    }
 
     const columns = getExportColumns();
     const rows = filtered.map(buildTicketRow);

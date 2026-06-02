@@ -12,7 +12,7 @@ export default function NotFound() {
           Maaf, halaman yang Anda cari tidak tersedia.
         </p>
         <Link
-          href='/'
+          href='/admin'
           className='inline-block rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700'
         >
           Kembali ke Beranda

@@ -15,13 +15,13 @@ const CELL_COLORS = [
 
 export default function DurationCell({ value, bucketIndex }: DurationCellProps) {
   if (value === null || value === 0) {
-    return <td className="px-1 py-0.5 text-center border-b border-gray-100 dark:border-gray-800">&nbsp;</td>;
+    return <td className="px-2 py-1.5 text-center border-b border-(--border)">&nbsp;</td>;
   }
 
   const colorClass = CELL_COLORS[bucketIndex] ?? CELL_COLORS[CELL_COLORS.length - 1];
 
   return (
-    <td className={`px-1 py-0.5 text-center font-mono text-xs border-b border-gray-100 dark:border-gray-800 ${colorClass}`}>
+    <td className={`px-2 py-1.5 text-center font-mono text-xs border-b border-(--border) ${colorClass}`}>
       {value}
     </td>
   );

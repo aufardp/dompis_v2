@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
+import { detectSearchType } from '@/lib/search-intent';
 
 type SummaryCounts = {
   total: number;
@@ -63,15 +66,31 @@ export function useOperationsSummary({
   workzone,
   dept,
 }: OperationsSummaryFilters) {
+  const normalizedSearch = search?.trim() || undefined;
+  const searchType = detectSearchType(normalizedSearch);
+  const filters = useMemo(
+    () => ({
+      search: normalizedSearch,
+      searchType,
+      workzone: workzone || undefined,
+      dept: dept || undefined,
+      scopeVersion: 'global-v1',
+    }),
+    [dept, normalizedSearch, searchType, workzone],
+  );
+
   return useQuery({
-    queryKey: ['operations-summary', search ?? '', workzone ?? '', dept ?? 'all'],
+    queryKey: queryKeys.dashboard.operations(filters),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (workzone) params.set('workzone', workzone);
-      if (dept && dept !== 'all') params.set('dept', dept);
+      if (filters.search) {
+        params.set('search', filters.search);
+        if (searchType) params.set('searchType', searchType);
+      }
+      if (filters.workzone) params.set('workzone', filters.workzone);
+      if (filters.dept && filters.dept !== 'all') params.set('dept', filters.dept);
 
       const res = await fetchWithAuth(
         `/api/dashboard/operations-summary?${params.toString()}`,

@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+'use client';
+
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { getSlaHours } from '@/app/utils/datetime';
+import { queryKeys } from '@/app/libs/query-keys';
 
 type ExpiredTicketApiRow = {
   idTicket?: number;
@@ -39,19 +43,17 @@ export function useExpiredTickets(
   workzoneId?: string,
   opts?: { dept?: string; ticketType?: string; statusUpdate?: string },
 ) {
-  const [rows, setRows] = useState<ExpiredTicketApiRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryKey = queryKeys.tickets.expired({
+    workzoneId,
+    dept: opts?.dept,
+    ticketType: opts?.ticketType,
+    statusUpdate: opts?.statusUpdate,
+  });
 
-  const fetchExpired = useCallback(async (showLoading = true) => {
-    if (showLoading) {
-      setLoading(true);
-    } else {
-      setIsRefreshing(true);
-    }
-    setError(null);
-    try {
+  const { data, isLoading, isFetching, error: queryError, refetch } = useQuery({
+    queryKey,
+    staleTime: 30_000,
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (workzoneId) params.set('workzone', workzoneId);
       if (opts?.dept && opts.dept !== 'all') params.set('dept', opts.dept);
@@ -65,33 +67,17 @@ export function useExpiredTickets(
       const res = await fetchWithAuth(
         `/api/tickets/expired${params.toString() ? `?${params.toString()}` : ''}`,
       );
-      if (!res) return;
+      if (!res) throw new Error('No response');
 
       const json = await res.json();
-      if (!json?.success) {
-        setError(json?.message || 'Failed to load expired tickets');
-        setRows([]);
-        return;
-      }
+      if (!json?.success) throw new Error(json?.message || 'Failed to load expired tickets');
 
-      setRows((json.data || []) as ExpiredTicketApiRow[]);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load expired tickets');
-      setRows([]);
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      } else {
-        setIsRefreshing(false);
-      }
-    }
-  }, [opts?.dept, opts?.statusUpdate, opts?.ticketType, workzoneId]);
-
-  useEffect(() => {
-    fetchExpired();
-  }, [fetchExpired]);
+      return (json.data || []) as ExpiredTicketApiRow[];
+    },
+  });
 
   const tickets = useMemo(() => {
+    const rows = data ?? [];
     const mapped: ExpiredTicket[] = [];
     for (const t of rows) {
       const idTicket = t.idTicket || 0;
@@ -113,17 +99,16 @@ export function useExpiredTickets(
         serviceNo: t.serviceNo,
       });
     }
-
     mapped.sort((a, b) => b.overdueHours - a.overdueHours);
     return mapped;
-  }, [rows]);
+  }, [data]);
 
   return {
     tickets,
-    loading,
-    isRefreshing,
-    error,
-    refresh: () => fetchExpired(true),
-    refreshSilent: () => fetchExpired(false),
+    loading: isLoading,
+    isRefreshing: isFetching && !isLoading,
+    error: queryError ? (queryError as Error).message : null,
+    refresh: () => { refetch(); },
+    refreshSilent: () => { refetch(); },
   };
 }

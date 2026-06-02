@@ -817,7 +817,7 @@ export default function ClusterDetailPage() {
                         );
                         return (
                           <tr
-                            key={idx}
+                            key={row.odc_value + row.area_name + idx}
                             className='border-b border-(--border) last:border-0'
                           >
                             <td className='px-4 py-2.5 text-xs text-(--text-secondary)'>

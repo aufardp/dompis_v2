@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchWithAuth } from '@/app/libs/fetcher';
-import {
-  LockClosedIcon,
-  ArrowRightOnRectangleIcon,
-} from '@heroicons/react/24/outline';
+import { fetchWithAuth, logoutUser } from '@/app/libs/fetcher';
+import { Lock, LogOut } from 'lucide-react';
 
 interface User {
   id_user: number;
@@ -62,23 +59,9 @@ export default function UserAvatar({ onPasswordChange }: Props) {
 
   const handleLogout = async () => {
     if (!confirm('Are you sure you want to logout?')) return;
-
     setLoggingOut(true);
-    try {
-      const res = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        router.push('/login');
-        router.refresh();
-      }
-    } catch (err) {
-      console.error('Logout failed:', err);
-    } finally {
-      setLoggingOut(false);
-    }
+    await logoutUser();
+    setLoggingOut(false);
   };
 
   const handlePasswordChange = () => {
@@ -146,7 +129,7 @@ export default function UserAvatar({ onPasswordChange }: Props) {
               onClick={handlePasswordChange}
               className='flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100'
             >
-              <LockClosedIcon className='h-4 w-4' />
+              <Lock className='h-4 w-4' />
               Ubah Password
             </button>
             <button
@@ -154,7 +137,7 @@ export default function UserAvatar({ onPasswordChange }: Props) {
               disabled={loggingOut}
               className='flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50'
             >
-              <ArrowRightOnRectangleIcon className='h-4 w-4' />
+              <LogOut className='h-4 w-4' />
               {loggingOut ? 'Logging out...' : 'Logout'}
             </button>
           </div>

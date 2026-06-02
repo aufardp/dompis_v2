@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { invalidateTicketsCache } from '@/lib/cache';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const BATCH_SIZE = 50;
 
@@ -180,6 +182,13 @@ export async function POST(req: NextRequest) {
   try {
     await protectApi(['admin', 'superadmin', 'super_admin']);
 
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'manhours-import',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const body: ImportRequest = await req.json();
     const { rows, import_batch } = body;
 
@@ -216,7 +225,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    console.error('Import error:', error);
+    logger.error('Import error:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Gagal import data') },
       { status: getErrorStatus(error, 500) },

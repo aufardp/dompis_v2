@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDistanceToNow } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { queryKeys } from '@/app/libs/query-keys';
 
 interface SyncStatusData {
   lastSyncedAt: string | null;
@@ -15,111 +17,54 @@ interface SyncStatusData {
 }
 
 export function useSyncStatus(pollIntervalMs = 30_000) {
-  const [data, setData] = useState<SyncStatusData | null>(null);
-  const [tick, setTick] = useState(0);
+  const [rapidMode, setRapidMode] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false);
-  const rapidPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rapidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    try {
+  const { data, refetch } = useQuery({
+    queryKey: queryKeys.sync.status(),
+    staleTime: 0,
+    refetchInterval: rapidMode ? 2000 : pollIntervalMs,
+    queryFn: async () => {
       const res = await fetchWithAuth('/api/sync/status');
       const json = await res?.json();
-      if (json?.success) setData(json.data);
-    } catch {
-      // silently fail
-    }
-  }, []);
+      if (json?.success) return json.data as SyncStatusData;
+      return null;
+    },
+  });
 
-  // Clean up rapid poll
-  const cleanupRapidPoll = useCallback(() => {
-    if (rapidPollRef.current) {
-      clearInterval(rapidPollRef.current);
-      rapidPollRef.current = null;
-    }
-  }, []);
-
-  // Start rapid polling after trigger sync
   const startRapidPoll = useCallback(() => {
-    cleanupRapidPoll();
-    rapidPollRef.current = setInterval(() => {
-      fetchStatus();
-    }, 2000);
-    
-    // Stop rapid poll after 10 seconds
-    setTimeout(cleanupRapidPoll, 10000);
-  }, [fetchStatus, cleanupRapidPoll]);
+    setRapidMode(true);
+    if (rapidTimerRef.current) clearTimeout(rapidTimerRef.current);
+    rapidTimerRef.current = setTimeout(() => {
+      setRapidMode(false);
+      rapidTimerRef.current = null;
+    }, 10000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rapidTimerRef.current) clearTimeout(rapidTimerRef.current);
+    };
+  }, []);
 
   const triggerSync = useCallback(async () => {
     if (isTriggering) return;
     setIsTriggering(true);
     startRapidPoll();
-    
+
     try {
       const res = await fetchWithAuth('/api/sync', {
         method: 'POST',
       });
       await res?.json();
-      // Immediate refresh after triggering
-      setTimeout(fetchStatus, 1000);
+      setTimeout(() => refetch(), 1000);
     } catch (e) {
       console.error('Failed to trigger sync:', e);
     } finally {
       setTimeout(() => setIsTriggering(false), 3000);
     }
-  }, [isTriggering, startRapidPoll, fetchStatus]);
-
-  // Listen for SSE sync events to refresh status
-  useEffect(() => {
-    let es: EventSource | null = null;
-    
-    const connect = () => {
-      try {
-        es = new EventSource('/api/tickets/events');
-        es.onmessage = (e) => {
-          try {
-            const event = JSON.parse(e.data);
-            if (event.type === 'sync') {
-              if (event.syncType === 'complete') {
-                console.log('[useSyncStatus] Sync completed, refreshing status');
-                fetchStatus();
-                cleanupRapidPoll();
-              }
-            }
-          } catch {
-            // ignore
-          }
-        };
-        es.onerror = () => {
-          es?.close();
-          setTimeout(connect, 5000);
-        };
-      } catch {
-        // ignore
-      }
-    };
-    
-    connect();
-    
-    return () => {
-      es?.close();
-      cleanupRapidPoll();
-    };
-  }, [fetchStatus, cleanupRapidPoll]);
-
-  useEffect(() => {
-    fetchStatus();
-    const id = setInterval(fetchStatus, pollIntervalMs);
-    return () => clearInterval(id);
-  }, [fetchStatus, pollIntervalMs]);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    return () => cleanupRapidPoll();
-  }, [cleanupRapidPoll]);
+  }, [isTriggering, startRapidPoll, refetch]);
 
   const lastSyncLabel = data?.lastSyncedAt
     ? `Sync ${formatDistanceToNow(new Date(data.lastSyncedAt), { addSuffix: true, locale: id })}`
@@ -148,7 +93,7 @@ export function useSyncStatus(pollIntervalMs = 30_000) {
     isInProgress,
     syncError,
     data,
-    refreshNow: fetchStatus,
+    refreshNow: () => { refetch(); },
     triggerSync,
   };
 }

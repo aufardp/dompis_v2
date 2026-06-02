@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,14 @@ export async function PATCH(request: NextRequest) {
       'helpdesk',
       'superadmin',
     ]);
+
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'attendance-checkout',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const technicianId = decoded.id_user;
 
     const result = await AttendanceService.checkOut(technicianId);
@@ -31,7 +41,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    console.error('PATCH /technicians/attendance/checkout error:', error);
+    logger.error('PATCH /technicians/attendance/checkout error:', error);
     return NextResponse.json(
       {
         success: false,

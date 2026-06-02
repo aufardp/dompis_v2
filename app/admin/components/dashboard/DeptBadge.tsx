@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { cn } from '@/app/libs/utils';
 
-export default function DeptBadge({ dept }: { dept: 'b2b' | 'b2c' | string }) {
+function DeptBadge({ dept }: { dept: 'b2b' | 'b2c' | string }) {
   const isB2b = dept?.toLowerCase() === 'b2b';
 
   return (
@@ -16,3 +17,5 @@ export default function DeptBadge({ dept }: { dept: 'b2b' | 'b2c' | string }) {
     </span>
   );
 }
+
+export default memo(DeptBadge);

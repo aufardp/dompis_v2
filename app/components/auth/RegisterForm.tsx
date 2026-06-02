@@ -1,6 +1,6 @@
 "use client";
 import Label from "@/app/components/form/Label";
-import { EyeSlashIcon, EyeIcon } from "@heroicons/react/24/outline";
+import { EyeOff, Eye } from "lucide-react";
 import Link from "next/link";
 import React, { useState } from "react";
 import AreaServiceForm from "./AreaServiceForm";
@@ -174,9 +174,9 @@ export default function RegisterForm() {
                               onClick={() => setShowPassword(!showPassword)}
                               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                               {showPassword ? (
-                                 <EyeSlashIcon className="w-5 h-5" />
+                                 <EyeOff className="w-5 h-5" />
                               ) : (
-                                 <EyeIcon className="w-5 h-5" />
+                                 <Eye className="w-5 h-5" />
                               )}
                            </button>
                         </div>

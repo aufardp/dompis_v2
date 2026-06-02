@@ -28,10 +28,10 @@ export default function TicketTrendChart({
     >
       <div className='mb-3 flex items-start justify-between gap-3'>
         <div>
-          <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+          <div className='font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
             Ticket Trend
           </div>
-          <div className='mt-1 text-xs text-(--text-muted)'>
+          <div className='font-dm-sans mt-1 text-xs text-(--text-muted)'>
             {subtitle ?? 'Ticket creation over time'}
           </div>
         </div>

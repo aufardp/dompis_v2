@@ -24,7 +24,7 @@ export async function protectApi(allowedRoles: string[] = []) {
   let decoded: any;
 
   try {
-    decoded = verifyAccessToken(token);
+    decoded = await verifyAccessToken(token);
   } catch {
     throw new ApiError(401, 'Unauthorized - Invalid or expired token');
   }

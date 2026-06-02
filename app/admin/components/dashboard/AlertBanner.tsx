@@ -261,7 +261,17 @@ export function DiamondAlertBanner({
               Durasi Tertua
             </p>
             <p className='mt-1 text-xl font-black text-slate-800 dark:text-slate-200'>
-              {Math.round(oldestHours)}h
+              {(() => {
+                const totalMinutes = Math.round(oldestHours * 60);
+                const d = Math.floor(totalMinutes / 1440);
+                const h = Math.floor((totalMinutes % 1440) / 60);
+                const m = totalMinutes % 60;
+                const parts: string[] = [];
+                if (d > 0) parts.push(`${d} Hari`);
+                if (h > 0) parts.push(`${h} Jam`);
+                if (m > 0 && d === 0) parts.push(`${m} Menit`);
+                return parts.join(' ') || '< 1 Menit';
+              })()}
             </p>
           </div>
         </div>

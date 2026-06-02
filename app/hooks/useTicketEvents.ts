@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 type TicketEvent =
   | { type: 'connected'; ts: number }
@@ -25,8 +26,9 @@ export function useTicketEvents({
   onSyncError,
   enabled = true,
   debounceMs = 500,
-  fallbackPollingMs = 30_000,
+  fallbackPollingMs = 15_000,
 }: UseTicketEventsOptions) {
+  const pathname = usePathname();
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,6 +37,8 @@ export function useTicketEvents({
   const [isConnected, setIsConnected] = useState(false);
   const [syncInProgress, setSyncInProgress] = useState(false);
   const consecutiveErrorsRef = useRef(0);
+  const isPublicRoute =
+    pathname === '/' || pathname === '/login' || pathname === '/register';
 
   const onInvalidateRef = useRef(onInvalidate);
   const onSyncStartRef = useRef(onSyncStart);
@@ -58,14 +62,14 @@ export function useTicketEvents({
   }, [onSyncError]);
 
   const triggerFallbackPolling = useCallback(() => {
-    if (!enabled || !mountedRef.current) return;
+    if (!enabled || isPublicRoute || !mountedRef.current) return;
     if (fallbackTimerRef.current) return;
 
     fallbackTimerRef.current = setInterval(() => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || document.hidden) return;
       onInvalidateRef.current();
     }, fallbackPollingMs);
-  }, [enabled, fallbackPollingMs]);
+  }, [enabled, fallbackPollingMs, isPublicRoute]);
 
   const stopFallbackPolling = useCallback(() => {
     if (fallbackTimerRef.current) {
@@ -75,7 +79,7 @@ export function useTicketEvents({
   }, []);
 
   const connect = useCallback(() => {
-    if (!enabled || !mountedRef.current) return;
+    if (!enabled || isPublicRoute || !mountedRef.current || document.hidden) return;
 
     if (esRef.current) {
       esRef.current.close();
@@ -116,6 +120,7 @@ export function useTicketEvents({
         if (event.type === 'invalidate') {
           if (debounceRef.current) clearTimeout(debounceRef.current);
           debounceRef.current = setTimeout(() => {
+            if (document.hidden) return;
             onInvalidateRef.current();
           }, debounceMs);
         }
@@ -135,17 +140,57 @@ export function useTicketEvents({
       }
 
       if (mountedRef.current) {
-        reconnectTimerRef.current = setTimeout(connect, 5_000);
+        const delay = Math.min(1000 * Math.pow(2, consecutiveErrorsRef.current), 30_000);
+        reconnectTimerRef.current = setTimeout(connect, delay);
       }
     };
-  }, [enabled, debounceMs, stopFallbackPolling, triggerFallbackPolling]);
+  }, [
+    enabled,
+    isPublicRoute,
+    debounceMs,
+    stopFallbackPolling,
+    triggerFallbackPolling,
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;
+    if (isPublicRoute || !enabled) {
+      setIsConnected(false);
+      setSyncInProgress(false);
+      stopFallbackPolling();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      return () => {
+        mountedRef.current = false;
+      };
+    }
     connect();
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (esRef.current) {
+          esRef.current.close();
+          esRef.current = null;
+        }
+        stopFallbackPolling();
+        return;
+      }
+
+      onInvalidateRef.current();
+      if (!esRef.current) {
+        connect();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       mountedRef.current = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopFallbackPolling();
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -154,7 +199,7 @@ export function useTicketEvents({
         esRef.current = null;
       }
     };
-  }, [connect, stopFallbackPolling]);
+  }, [connect, enabled, isPublicRoute, stopFallbackPolling]);
 
   return { isConnected, syncInProgress };
 }

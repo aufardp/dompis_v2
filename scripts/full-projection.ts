@@ -285,6 +285,7 @@ async function main() {
         service_no: r.service_no as string | null,
         source_ticket: r.source_ticket as string | null,
         realm: r.realm as string | null,
+        summary: r.summary as string | null,
       })),
     );
 

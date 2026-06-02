@@ -6,6 +6,8 @@ import { runProjection } from '@/lib/projection';
 import { testExternalConnection, getTableNames } from '@/lib/external-db/connection';
 import { acquireLock, releaseLock } from '@/lib/distributed-lock';
 import { protectApi } from '@/app/libs/protectApi';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 async function runLockedIngestionWithProjection() {
   const ingestionLock = await acquireLock('ingestion', 300);
@@ -18,7 +20,22 @@ async function runLockedIngestionWithProjection() {
   }
 
   try {
-    const result = await runIngestion();
+    const writerLock = await acquireLock('ticket_raw_writer', 300);
+    if (!writerLock.acquired) {
+      return {
+        locked: true,
+        result: null,
+        projection: null,
+      };
+    }
+
+    let result;
+    try {
+      result = await runIngestion();
+    } finally {
+      await releaseLock('ticket_raw_writer', writerLock.ownerId);
+    }
+
     const projectionLock = await acquireLock('projection', 300);
     if (!projectionLock.acquired) {
       return {
@@ -83,7 +100,7 @@ export async function GET(req: NextRequest) {
       errors: result.errors.slice(0, 10),
     });
   } catch (error) {
-    console.error('Ingestion error:', error);
+    logger.error('Ingestion error:', error);
     return NextResponse.json(
       { success: false, message: 'Ingestion failed', error: String(error) },
       { status: 500 },
@@ -94,6 +111,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await protectApi(['admin', 'superadmin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'internal-ingestion',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const connected = await testExternalConnection();
     if (!connected) {
@@ -122,7 +146,7 @@ export async function POST(req: NextRequest) {
       errors: result.errors.slice(0, 10),
     });
   } catch (error) {
-    console.error('Manual ingestion error:', error);
+    logger.error('Manual ingestion error:', error);
     return NextResponse.json(
       { success: false, message: 'Ingestion failed', error: String(error) },
       { status: 500 },

@@ -8,6 +8,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { ApiError } from '@/app/libs/apiError';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { invalidateTicketsCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const BATCH_SIZE = 100;
 
@@ -82,6 +83,13 @@ function parseDate(raw: any): Date | null {
 export async function POST(req: Request) {
   try {
     await protectApi(['admin', 'superadmin', 'super_admin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'manhours-import-run',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

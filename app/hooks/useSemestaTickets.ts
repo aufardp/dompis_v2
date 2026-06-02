@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+'use client';
+
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import { Ticket } from '../types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
+import { detectSearchType } from '@/lib/search-intent';
 
 interface PaginationInfo {
   currentPage: number;
@@ -20,120 +26,59 @@ export function useSemestaTickets(
   startDate?: string,
   endDate?: string,
 ) {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    currentPage: 1,
-    totalPages: 1,
-    total: 0,
-    limit: 50,
-  });
-
-  const requestIdRef = useRef(0);
-
-  const fetchData = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-    try {
-      setLoading(true);
-
+  const searchType = detectSearchType(search);
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: queryKeys.tickets.daily({ search, searchType, page, workzone, ctype, statusUpdate, dept, ticketType, startDate, endDate }),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         limit: '50',
-        _t: String(Date.now()),
       });
 
       if (search) {
         params.append('search', search);
+        if (searchType) params.append('searchType', searchType);
       }
-
-      if (workzone) {
-        params.append('workzone', workzone);
-      }
-
-      if (ctype) {
-        params.append('ctype', ctype);
-      }
-
-      if (statusUpdate) {
-        params.append('statusUpdate', statusUpdate);
-      }
-
-      if (dept) {
-        params.append('dept', dept);
-      }
-
-      if (ticketType) {
-        params.append('ticketType', ticketType);
-      }
-
-      if (startDate) {
-        params.append('startDate', startDate);
-      }
-
-      if (endDate) {
-        params.append('endDate', endDate);
-      }
+      if (workzone) params.append('workzone', workzone);
+      if (ctype) params.append('ctype', ctype);
+      if (statusUpdate) params.append('statusUpdate', statusUpdate);
+      if (dept) params.append('dept', dept);
+      if (ticketType) params.append('ticketType', ticketType);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
 
       const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
 
-      if (!res) {
-        console.log(
-          '[useSemestaTickets] No response - possibly redirecting to login',
-        );
-        return;
-      }
+      if (!res) throw new Error('No response');
 
-      const data = await res.json();
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || 'Failed fetch tickets');
 
-      if (requestId !== requestIdRef.current) return;
+      return result.data as {
+        data: Ticket[];
+        page: number;
+        totalPages: number;
+        total: number;
+        limit: number;
+      };
+    },
+  });
 
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed fetch tickets');
-      }
+  const result = useMemo(() => ({
+    tickets: data?.data ?? [],
+    loading: isLoading,
+    isRefreshing: isFetching && !isLoading,
+    pagination: {
+      currentPage: data?.page ?? 1,
+      totalPages: data?.totalPages ?? 1,
+      total: data?.total ?? 0,
+      limit: data?.limit ?? 50,
+    } as PaginationInfo,
+    refresh: () => { refetch(); },
+  }), [data, isLoading, isFetching, refetch]);
 
-      if (data.success && data.data) {
-        setTickets(data.data.data ?? []);
-        setPagination({
-          currentPage: data.data.page ?? 1,
-          totalPages: data.data.totalPages ?? 1,
-          total: data.data.total ?? 0,
-          limit: data.data.limit ?? 50,
-        });
-      } else {
-        setTickets([]);
-      }
-    } catch (err) {
-      if (requestId !== requestIdRef.current) return;
-      setTickets([]);
-    } finally {
-      if (requestId !== requestIdRef.current) return;
-      setLoading(false);
-    }
-  }, [
-    search,
-    page,
-    workzone,
-    ctype,
-    statusUpdate,
-    dept,
-    ticketType,
-    startDate,
-    endDate,
-  ]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const memoizedReturn = useMemo(
-    () => ({
-      tickets,
-      loading,
-      pagination,
-      refresh: fetchData,
-    }),
-    [tickets, loading, pagination, fetchData],
-  );
-
-  return memoizedReturn;
+  return result;
 }

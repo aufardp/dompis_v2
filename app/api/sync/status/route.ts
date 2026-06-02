@@ -5,8 +5,16 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getProjectionHealth } from '@/lib/sync-metrics/metrics';
+import { logger } from '@/lib/observability/logger';
 
+const STATUS_CACHE_TTL_MS = 15_000;
 let lastSyncError: string | null = null;
+let cachedStatusResponse:
+  | {
+      payload: Record<string, unknown>;
+      expiresAt: number;
+    }
+  | null = null;
 
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
 
@@ -52,7 +60,7 @@ async function buildStatusResponse(
 
   const inProgress = checkpoint?.status === 'running';
 
-  return NextResponse.json({
+  return {
     success: true,
     data: {
       lastSyncedAt,
@@ -64,7 +72,7 @@ async function buildStatusResponse(
       degraded: options.degraded ?? false,
       source: options.source ?? 'database',
     },
-  });
+  };
 }
 
 async function handleSyncStatus() {
@@ -74,7 +82,12 @@ async function handleSyncStatus() {
     where: { name: CHECKPOINT_NAME },
   });
 
-  return buildStatusResponse(checkpoint);
+  const payload = await buildStatusResponse(checkpoint);
+  cachedStatusResponse = {
+    payload,
+    expiresAt: Date.now() + STATUS_CACHE_TTL_MS,
+  };
+  return NextResponse.json(payload);
 }
 
 async function handleSyncStatusFromMetrics() {
@@ -85,7 +98,7 @@ async function handleSyncStatusFromMetrics() {
     ? new Date(projectionHealth.lastProjectionTime)
     : null;
 
-  return buildStatusResponse(
+  const payload = await buildStatusResponse(
     {
       completedAt,
       status:
@@ -101,6 +114,16 @@ async function handleSyncStatusFromMetrics() {
     } as Awaited<ReturnType<typeof prisma.ticket_projection_checkpoint.findUnique>>,
     { degraded: true, source: 'metrics' },
   );
+  return NextResponse.json(payload);
+}
+
+function getCachedSyncStatusResponse(): Response | null {
+  if (!cachedStatusResponse) return null;
+  if (Date.now() > cachedStatusResponse.expiresAt) {
+    cachedStatusResponse = null;
+    return null;
+  }
+  return NextResponse.json(cachedStatusResponse.payload);
 }
 
 export async function GET() {
@@ -108,22 +131,12 @@ export async function GET() {
     return await handleSyncStatus();
   } catch (error: any) {
     if (isConnectionLostError(error) || isConnectionPoolError(error)) {
-      console.warn('[SyncStatus] Database connection busy/lost — retrying once after 500ms');
-      await sleep(500);
-      try {
-        return await handleSyncStatus();
-      } catch (inner: any) {
-        console.error('[SyncStatus] Retry also failed:', inner);
-        if (isConnectionPoolError(inner)) {
-          return handleSyncStatusFromMetrics();
-        }
-        return NextResponse.json(
-          { success: false, message: 'Database connection unavailable' },
-          { status: 503 },
-        );
-      }
+      logger.warn('[SyncStatus] Database connection busy/lost — serving cached or metrics snapshot');
+      const cached = getCachedSyncStatusResponse();
+      if (cached) return cached;
+      return handleSyncStatusFromMetrics();
     }
-    console.error('GET /sync/status error:', error);
+    logger.error('GET /sync/status error:', error);
     return NextResponse.json(
       { success: false, message: 'Failed to fetch sync status' },
       { status: 500 },

@@ -6,6 +6,7 @@ import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import UserMenuButton from './UserMenuButton';
 import UserMenuDropdown from './UserMenuDropdown';
 import LogoutConfirmModal from '../LogoutConfirmModal';
+import { logoutUser } from '@/app/libs/fetcher';
 
 interface Props {
   profileHref?: string;
@@ -66,21 +67,9 @@ export default function UserMenu({ profileHref }: Props) {
 
   const confirmLogout = async () => {
     setLoggingOut(true);
-    try {
-      const res = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        setShowLogoutModal(false);
-        router.push('/login');
-        router.refresh();
-      }
-    } catch (e) {
-      console.error('Logout failed:', e);
-    } finally {
-      setLoggingOut(false);
-    }
+    setShowLogoutModal(false);
+    await logoutUser();
+    setLoggingOut(false);
   };
 
   return (

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Info } from 'lucide-react';
 
 interface B2CSummaryCardProps {
@@ -51,7 +52,7 @@ function ResolutionRing({ pct }: { pct: number }) {
   );
 }
 
-export default function B2CSummaryCard({
+function B2CSummaryCard({
   total,
   open,
   assigned,
@@ -247,3 +248,5 @@ export default function B2CSummaryCard({
     </div>
   );
 }
+
+export default memo(B2CSummaryCard);

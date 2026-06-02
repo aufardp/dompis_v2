@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError } from '@/app/libs/apiError';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const TECH_COLUMN_CANDIDATES = [
   'TECHNICIAN',
@@ -54,6 +55,13 @@ function findColumn(
 export async function POST(req: Request) {
   try {
     await protectApi(['admin', 'superadmin', 'super_admin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'manhours-preview',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

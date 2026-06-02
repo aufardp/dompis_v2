@@ -151,6 +151,47 @@ export function parseDate(dateValue: string | null | undefined): Date | null {
   }
 }
 
+export interface ValidationError {
+  field: string;
+  message: string;
+  severity: 'error' | 'warn';
+}
+
+export function validateExternalRow(row: Record<string, unknown>): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (!row || typeof row !== 'object') {
+    errors.push({ field: '_row', message: 'Row is null or not an object', severity: 'error' });
+    return errors;
+  }
+
+  const incident = row.incident || row.Incident;
+  if (!incident || String(incident).trim() === '') {
+    errors.push({ field: 'incident', message: 'Missing required field: incident', severity: 'error' });
+  }
+
+  if (incident && String(incident).length > 191) {
+    errors.push({ field: 'incident', message: `incident too long (${String(incident).length} chars, max 191)`, severity: 'error' });
+  }
+
+  for (const dateField of ['reported_date', 'date_modified', 'booking_date', 'status_date', 'resolve_date']) {
+    const val = row[dateField];
+    if (val !== null && val !== undefined && val !== '') {
+      const d = new Date(String(val));
+      if (isNaN(d.getTime())) {
+        errors.push({ field: dateField, message: `Invalid date value: ${val}`, severity: 'warn' });
+      }
+    }
+  }
+
+  const workzone = row.workzone || row.Workzone || row.workzone_name;
+  if (!workzone || String(workzone).trim() === '') {
+    errors.push({ field: 'workzone', message: 'Missing workzone', severity: 'warn' });
+  }
+
+  return errors;
+}
+
 export function normalizeStatus(status: string | null | undefined): string {
   if (!status) return 'UNKNOWN';
 

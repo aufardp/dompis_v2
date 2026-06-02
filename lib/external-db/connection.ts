@@ -1,7 +1,9 @@
 import mysql, { Pool, PoolOptions, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { logger } from '@/lib/observability/logger';
 
-const DEFAULT_POOL_SIZE = 5;
+const DEFAULT_POOL_SIZE = 3;
 const DEFAULT_TIMEOUT = 15000;
+const DEFAULT_SCHEMA_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export interface ExternalDbConfig {
   host: string;
@@ -14,6 +16,19 @@ export interface ExternalDbConfig {
 }
 
 let pool: Pool | null = null;
+const tableColumnsCache = new Map<
+  string,
+  { expiresAt: number; columns: ExternalColumnInfo[] }
+>();
+const cursorDefinitionCache = new Map<
+  string,
+  { expiresAt: number; definition: ExternalCursorDefinition }
+>();
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 export function getExternalDbConfig(): ExternalDbConfig | null {
   const host = process.env.EXTERNAL_DB_HOST;
@@ -32,8 +47,14 @@ export function getExternalDbConfig(): ExternalDbConfig | null {
     user,
     password: password || '',
     database,
-    connectionLimit: DEFAULT_POOL_SIZE,
-    connectTimeout: DEFAULT_TIMEOUT,
+    connectionLimit: parsePositiveIntEnv(
+      'EXTERNAL_DB_CONNECTION_LIMIT',
+      DEFAULT_POOL_SIZE,
+    ),
+    connectTimeout: parsePositiveIntEnv(
+      'EXTERNAL_DB_CONNECT_TIMEOUT_MS',
+      DEFAULT_TIMEOUT,
+    ),
   };
 }
 
@@ -41,7 +62,7 @@ export function createExternalPool(): Pool | null {
   const config = getExternalDbConfig();
 
   if (!config) {
-    console.warn('[ExternalDB] Configuration not available - check EXTERNAL_DB_* env vars');
+    logger.warn('[ExternalDB] Configuration not available - check EXTERNAL_DB_* env vars');
     return null;
   }
 
@@ -58,16 +79,24 @@ export function createExternalPool(): Pool | null {
     connectionLimit: config.connectionLimit || DEFAULT_POOL_SIZE,
     connectTimeout: config.connectTimeout || DEFAULT_TIMEOUT,
     enableKeepAlive: true,
-    keepAliveInitialDelay: 30000,
+    keepAliveInitialDelay: 10_000,
+    waitForConnections: true,
+    queueLimit: 20,
   };
 
   pool = mysql.createPool(poolConfig);
 
-  (pool as unknown as { on: (event: string, handler: (err: Error) => void) => void }).on('error', (err: Error) => {
-    console.error('[ExternalDB] Pool error:', err.message);
+  pool.on('connection', (connection) => {
+    void connection.query('SET SESSION wait_timeout = 300');
+    void connection.query('SET SESSION net_read_timeout = 60');
+    void connection.query('SET SESSION net_write_timeout = 60');
   });
 
-  console.log('[ExternalDB] Pool created:', {
+  (pool as unknown as { on: (event: string, handler: (err: Error) => void) => void }).on('error', (err: Error) => {
+    logger.error('[ExternalDB] Pool error:', { error: err.message });
+  });
+
+  logger.info('[ExternalDB] Pool created:', {
     host: config.host,
     database: config.database,
     connectionLimit: config.connectionLimit,
@@ -87,8 +116,21 @@ export async function closeExternalPool(): Promise<void> {
   if (pool) {
     await pool.end();
     pool = null;
-    console.log('[ExternalDB] Pool closed');
+    logger.info('[ExternalDB] Pool closed');
   }
+}
+
+function invalidateExternalPool(): void {
+  const oldPool = pool;
+  pool = null;
+  oldPool?.end().catch((err) =>
+    logger.error('[ExternalDB] Error closing orphaned pool:', { error: String(err) }),
+  );
+}
+
+function handleExternalQueryError(error: unknown): never {
+  invalidateExternalPool();
+  throw error;
 }
 
 export async function testExternalConnection(): Promise<boolean> {
@@ -102,10 +144,11 @@ export async function testExternalConnection(): Promise<boolean> {
     const connection = await externalPool.getConnection();
     await connection.ping();
     connection.release();
-    console.log('[ExternalDB] Connection test: OK');
+    logger.info('[ExternalDB] Connection test: OK');
     return true;
   } catch (error) {
-    console.error('[ExternalDB] Connection test: FAILED', error);
+    invalidateExternalPool();
+    logger.error('[ExternalDB] Connection test: FAILED', { error: String(error) });
     return false;
   }
 }
@@ -117,6 +160,7 @@ export async function fetchTableRows(
     offset?: number;
     orderBy?: string;
     orderDirection?: 'ASC' | 'DESC';
+    columns?: string[];
   } = {}
 ): Promise<RowDataPacket[]> {
   const externalPool = getExternalPool();
@@ -125,12 +169,19 @@ export async function fetchTableRows(
     throw new Error('External DB pool not available');
   }
 
-  const { limit = 1000, offset = 0, orderBy = 'id', orderDirection = 'ASC' } = options;
+  const { limit = 1000, offset = 0, orderBy = 'id', orderDirection = 'ASC', columns } = options;
 
-  const query = `SELECT * FROM \`${tableName}\` ORDER BY \`${orderBy}\` ${orderDirection} LIMIT ? OFFSET ?`;
-  const [rows] = await externalPool.query<RowDataPacket[]>(query, [limit, offset]);
+  const selectClause = columns && columns.length > 0
+    ? (columns.forEach((c) => assertSafeIdentifier(c)), columns.map((c) => `\`${c}\``).join(', '))
+    : '*';
 
-  return rows;
+  const query = `SELECT ${selectClause} FROM \`${tableName}\` ORDER BY \`${orderBy}\` ${orderDirection} LIMIT ? OFFSET ?`;
+  try {
+    const [rows] = await externalPool.query<RowDataPacket[]>(query, [limit, offset]);
+    return rows;
+  } catch (error) {
+    handleExternalQueryError(error);
+  }
 }
 
 export async function fetchTableRowsAfterId(
@@ -139,6 +190,7 @@ export async function fetchTableRowsAfterId(
     limit?: number;
     lastId?: number | string | null;
     orderBy?: string;
+    columns?: string[];
   } = {}
 ): Promise<RowDataPacket[]> {
   const externalPool = getExternalPool();
@@ -147,16 +199,22 @@ export async function fetchTableRowsAfterId(
     throw new Error('External DB pool not available');
   }
 
-  const { limit = 1000, lastId = null, orderBy = 'id' } = options;
+  const { limit = 1000, lastId = null, orderBy = 'id', columns } = options;
+  const selectClause = columns && columns.length > 0
+    ? (columns.forEach((c) => assertSafeIdentifier(c)), columns.map((c) => `\`${c}\``).join(', '))
+    : '*';
 
   const query =
     lastId === null
-      ? `SELECT * FROM \`${tableName}\` ORDER BY \`${orderBy}\` ASC LIMIT ?`
-      : `SELECT * FROM \`${tableName}\` WHERE \`${orderBy}\` > ? ORDER BY \`${orderBy}\` ASC LIMIT ?`;
+      ? `SELECT ${selectClause} FROM \`${tableName}\` ORDER BY \`${orderBy}\` ASC LIMIT ?`
+      : `SELECT ${selectClause} FROM \`${tableName}\` WHERE \`${orderBy}\` > ? ORDER BY \`${orderBy}\` ASC LIMIT ?`;
   const params = lastId === null ? [limit] : [lastId, limit];
-  const [rows] = await externalPool.query<RowDataPacket[]>(query, params);
-
-  return rows;
+  try {
+    const [rows] = await externalPool.query<RowDataPacket[]>(query, params);
+    return rows;
+  } catch (error) {
+    handleExternalQueryError(error);
+  }
 }
 
 export interface ExternalColumnInfo {
@@ -180,6 +238,15 @@ function assertSafeIdentifier(identifier: string): void {
 
 export async function getTableColumns(tableName: string): Promise<ExternalColumnInfo[]> {
   assertSafeIdentifier(tableName);
+  const cacheTtl = parsePositiveIntEnv(
+    'EXTERNAL_DB_SCHEMA_CACHE_TTL_MS',
+    DEFAULT_SCHEMA_CACHE_TTL_MS,
+  );
+  const cached = tableColumnsCache.get(tableName);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.columns;
+  }
+
   const externalPool = getExternalPool();
   const config = getExternalDbConfig();
 
@@ -187,26 +254,46 @@ export async function getTableColumns(tableName: string): Promise<ExternalColumn
     throw new Error('External DB pool not available');
   }
 
-  const [rows] = await externalPool.query<RowDataPacket[]>(
-    `
-      SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, ORDINAL_POSITION AS ordinalPosition
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION ASC
-    `,
-    [config.database, tableName],
-  );
+  let rows: RowDataPacket[];
+  try {
+    [rows] = await externalPool.query<RowDataPacket[]>(
+      `
+        SELECT COLUMN_NAME AS name, DATA_TYPE AS dataType, ORDINAL_POSITION AS ordinalPosition
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+        ORDER BY ORDINAL_POSITION ASC
+      `,
+      [config.database, tableName],
+    );
+  } catch (error) {
+    handleExternalQueryError(error);
+  }
 
-  return rows.map((row) => ({
+  const columns = rows.map((row) => ({
     name: String(row.name),
     dataType: String(row.dataType),
     ordinalPosition: Number(row.ordinalPosition),
   }));
+  tableColumnsCache.set(tableName, {
+    columns,
+    expiresAt: Date.now() + cacheTtl,
+  });
+
+  return columns;
 }
 
 export async function getExternalCursorDefinition(
   tableName: string,
 ): Promise<ExternalCursorDefinition> {
+  const cacheTtl = parsePositiveIntEnv(
+    'EXTERNAL_DB_SCHEMA_CACHE_TTL_MS',
+    DEFAULT_SCHEMA_CACHE_TTL_MS,
+  );
+  const cached = cursorDefinitionCache.get(tableName);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.definition;
+  }
+
   const columns = await getTableColumns(tableName);
   const names = new Set(columns.map((column) => column.name));
   const modifiedCandidates = [
@@ -221,7 +308,7 @@ export async function getExternalCursorDefinition(
   const modifiedColumn =
     modifiedCandidates.find((candidate) => names.has(candidate)) ?? null;
 
-  return {
+  const definition: ExternalCursorDefinition = {
     idColumn,
     modifiedColumn,
     strategy:
@@ -234,6 +321,12 @@ export async function getExternalCursorDefinition(
             : 'snapshot',
     columns,
   };
+  cursorDefinitionCache.set(tableName, {
+    definition,
+    expiresAt: Date.now() + cacheTtl,
+  });
+
+  return definition;
 }
 
 export async function fetchTableRowsByCursor(
@@ -244,6 +337,7 @@ export async function fetchTableRowsByCursor(
     modifiedColumn?: string | null;
     lastCursorId?: string | null;
     lastModifiedAt?: Date | null;
+    columns?: string[];
   },
 ): Promise<RowDataPacket[]> {
   assertSafeIdentifier(tableName);
@@ -252,6 +346,10 @@ export async function fetchTableRowsByCursor(
 
   const externalPool = getExternalPool();
   if (!externalPool) throw new Error('External DB pool not available');
+
+  const selectClause = options.columns && options.columns.length > 0
+    ? (options.columns.forEach((c) => assertSafeIdentifier(c)), options.columns.map((c) => `\`${c}\``).join(', '))
+    : '*';
 
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -277,15 +375,19 @@ export async function fetchTableRowsByCursor(
   if (orderBy.length === 0) orderBy.push('1 ASC');
 
   const query = `
-    SELECT * FROM \`${tableName}\`
+    SELECT ${selectClause} FROM \`${tableName}\`
     ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
     ORDER BY ${orderBy.join(', ')}
     LIMIT ?
   `;
   params.push(options.limit);
 
-  const [rows] = await externalPool.query<RowDataPacket[]>(query, params);
-  return rows;
+  try {
+    const [rows] = await externalPool.query<RowDataPacket[]>(query, params);
+    return rows;
+  } catch (error) {
+    handleExternalQueryError(error);
+  }
 }
 
 export async function fetchTableCount(tableName: string): Promise<number> {
@@ -296,15 +398,19 @@ export async function fetchTableCount(tableName: string): Promise<number> {
   }
 
   const query = `SELECT COUNT(*) as count FROM \`${tableName}\``;
-  const [rows] = await externalPool.query<RowDataPacket[]>(query);
-  return rows[0]?.count || 0;
+  try {
+    const [rows] = await externalPool.query<RowDataPacket[]>(query);
+    return rows[0]?.count || 0;
+  } catch (error) {
+    handleExternalQueryError(error);
+  }
 }
 
 export function getTableNames(): string[] {
   const tableNamesEnv = process.env.EXTERNAL_TABLE_NAMES;
 
   if (!tableNamesEnv) {
-    console.warn('[ExternalDB] EXTERNAL_TABLE_NAMES not configured');
+    logger.warn('[ExternalDB] EXTERNAL_TABLE_NAMES not configured');
     return [];
   }
 

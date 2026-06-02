@@ -1,6 +1,7 @@
 import { prisma } from '@/app/libs/prisma';
 import type { Prisma } from '@prisma/client';
 import { nowWib } from '@/lib/timezone';
+import { logger } from '@/lib/observability/logger';
 
 function generateEventId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -50,7 +51,7 @@ export async function emitTicketRawEvent(
         event_id: eventId,
         event_type: eventType,
         event_label: `External Ingestion: ${payload.incident}`,
-        payload: JSON.parse(JSON.stringify(payload)),
+        payload: { ...payload },
         status: 'PENDING',
         attempt_count: 0,
         created_at: nowWib(),
@@ -58,7 +59,7 @@ export async function emitTicketRawEvent(
       },
     });
   } catch (error) {
-    console.error('[OutboxEmitter] Failed to emit event:', error);
+    logger.error('[OutboxEmitter] Failed to emit event:', { error: String(error) });
   }
 }
 
@@ -73,7 +74,7 @@ export async function emitIngestionCompleteEvent(
         event_id: eventId,
         event_type: IngestionEventTypes.INGESTION_COMPLETE,
         event_label: `Ingestion Complete: ${payload.tableName}`,
-        payload: JSON.parse(JSON.stringify(payload)),
+        payload: { ...payload },
         status: 'PENDING',
         attempt_count: 0,
         created_at: nowWib(),
@@ -81,7 +82,7 @@ export async function emitIngestionCompleteEvent(
       },
     });
   } catch (error) {
-    console.error('[OutboxEmitter] Failed to emit completion event:', error);
+    logger.error('[OutboxEmitter] Failed to emit completion event:', { error: String(error) });
   }
 }
 
@@ -93,12 +94,13 @@ export async function emitIngestionFailedEvent(
   const eventId = generateEventId();
 
   try {
+    await prisma.$connect().catch(() => {});
     await prisma.tech_event_outbox.create({
       data: {
         event_id: eventId,
         event_type: IngestionEventTypes.INGESTION_FAILED,
         event_label: `Ingestion Failed: ${tableName}`,
-        payload: JSON.parse(JSON.stringify({ syncBatchId, tableName, error, timestamp: nowWib().toISOString() })),
+        payload: { syncBatchId, tableName, error, timestamp: nowWib().toISOString() },
         status: 'PENDING',
         attempt_count: 0,
         created_at: nowWib(),
@@ -106,7 +108,7 @@ export async function emitIngestionFailedEvent(
       },
     });
   } catch (error) {
-    console.error('[OutboxEmitter] Failed to emit failed event:', error);
+    logger.error('[OutboxEmitter] Failed to emit failed event:', { error: String(error) });
   }
 }
 
@@ -118,8 +120,8 @@ export async function emitBulkEvents(
     event_id: generateEventId(),
     event_type: eventType,
     event_label: `External Ingestion: ${payload.incident}`,
-    payload: JSON.parse(JSON.stringify(payload)),
-    status: 'PENDING' as const,
+        payload: { ...payload },
+        status: 'PENDING' as const,
     attempt_count: 0,
     created_at: now,
     updated_at: now,
@@ -132,7 +134,7 @@ export async function emitBulkEvents(
       data: eventsToInsert,
     });
   } catch (error) {
-    console.error('[OutboxEmitter] Failed to emit bulk events:', error);
+    logger.error('[OutboxEmitter] Failed to emit bulk events:', { error: String(error) });
   }
 }
 
@@ -145,7 +147,7 @@ export async function createBulkOutboxEvents(
     event_id: generateEventId(),
     event_type: eventType,
     event_label: `External Ingestion: ${payload.incident}`,
-    payload: JSON.parse(JSON.stringify(payload)),
+    payload: { ...payload },
     status: 'PENDING',
     attempt_count: 0,
     created_at: now,

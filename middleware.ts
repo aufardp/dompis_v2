@@ -1,13 +1,12 @@
 // ==========================================
-// Middleware - Node.js Runtime (Fixed for Next.js 15)
+// Middleware — Edge Runtime
 // ==========================================
 
-// Force to Node.js runtime to avoid Edge Runtime restrictions
-export const runtime = 'nodejs';
-
 import { NextResponse, NextRequest } from 'next/server';
+import { applySecurityHeaders } from '@/app/libs/request-security';
+import { logger } from '@/lib/observability/logger';
 
-// --- JWT VERIFICATION (Web Crypto API - Node.js compatible) ---
+// --- JWT VERIFICATION (Web Crypto API, Edge-compatible) ---
 async function verifyJWT(token: string, secret: string): Promise<any> {
   const parts = token.split('.');
   if (parts.length !== 3) {
@@ -72,32 +71,40 @@ function safeRedirect(req: NextRequest, path: string): NextResponse {
   const url = req.nextUrl.clone();
   url.pathname = path;
   url.search = '';
-  return NextResponse.redirect(url);
+  return applySecurityHeaders(NextResponse.redirect(url));
 }
 
 // --- MAIN MIDDLEWARE ---
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. BYPASS — public / internal paths
+  const correlationId = crypto.randomUUID();
+  req.headers.set('x-correlation-id', correlationId);
+
+  function withCorrelation(res: NextResponse): NextResponse {
+    res.headers.set('x-correlation-id', correlationId);
+    return res;
+  }
+
+  // API routes → just correlation + security headers, skip page auth
+  if (pathname.startsWith('/api/')) {
+    return withCorrelation(applySecurityHeaders(NextResponse.next()));
+  }
+
+  // 1. BYPASS — public / internal page paths
   if (
-    pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/api/tickets/upload-evidence') ||
     pathname === '/login' ||
     pathname === '/' ||
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
   ) {
-    return NextResponse.next();
+    return withCorrelation(applySecurityHeaders(NextResponse.next()));
   }
 
   // 2. TOKEN CHECK
   const token = req.cookies.get('token')?.value;
   if (!token) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ success: false }, { status: 401 });
-    }
-    return safeRedirect(req, '/login');
+    return withCorrelation(safeRedirect(req, '/login'));
   }
 
   // 3. VERIFY AND DECODE PAYLOAD
@@ -109,11 +116,11 @@ export async function middleware(req: NextRequest) {
     }
     payload = await verifyJWT(token, jwtSecret);
   } catch (err) {
-    console.error('JWT verification failed:', err instanceof Error ? err.message : 'Unknown error');
+    logger.error('JWT verification failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
     const res = safeRedirect(req, '/login');
     res.cookies.delete('token');
     res.cookies.delete('refreshToken');
-    return res;
+    return withCorrelation(res);
   }
 
   // 4. EXPIRY CHECK
@@ -121,7 +128,7 @@ export async function middleware(req: NextRequest) {
     const res = safeRedirect(req, '/login');
     res.cookies.delete('token');
     res.cookies.delete('refreshToken');
-    return res;
+    return withCorrelation(res);
   }
 
   // 5. ROLE GUARD
@@ -133,7 +140,7 @@ export async function middleware(req: NextRequest) {
     userRole !== 'admin' &&
     userRole !== 'superadmin'
   ) {
-    return safeRedirect(req, roleHome);
+    return withCorrelation(safeRedirect(req, roleHome));
   }
 
   if (
@@ -141,26 +148,26 @@ export async function middleware(req: NextRequest) {
     userRole !== 'helpdesk' &&
     userRole !== 'superadmin'
   ) {
-    return safeRedirect(req, roleHome);
+    return withCorrelation(safeRedirect(req, roleHome));
   }
 
   if (pathname.startsWith('/superadmin') && userRole !== 'superadmin') {
-    return safeRedirect(req, roleHome);
+    return withCorrelation(safeRedirect(req, roleHome));
   }
 
   if (pathname.startsWith('/teknisi') && userRole !== 'teknisi') {
-    return safeRedirect(req, roleHome);
+    return withCorrelation(safeRedirect(req, roleHome));
   }
 
-  return NextResponse.next();
+  return withCorrelation(applySecurityHeaders(NextResponse.next()));
 }
 
 export const config = {
   matcher: [
+    '/api/:path*',
     '/admin/:path*',
     '/helpdesk/:path*',
     '/superadmin/:path*',
     '/teknisi/:path*',
-    '/api/((?!auth).*)',
   ],
 };

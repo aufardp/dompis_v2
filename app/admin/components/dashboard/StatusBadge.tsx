@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 const statusConfig = {
   // STATUS_UPDATE lowercase values (single source of truth)
   open: {
@@ -48,7 +50,7 @@ const statusConfig = {
   },
 };
 
-export default function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string }) {
   const key = (status ?? '').trim().toLowerCase();
   const config = statusConfig[key as keyof typeof statusConfig] ?? {
     label: status || '-',
@@ -65,3 +67,5 @@ export default function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+export default memo(StatusBadge);

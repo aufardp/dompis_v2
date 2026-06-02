@@ -13,6 +13,8 @@ import {
 } from '@/app/libs/autoAssignSSE';
 import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
 import prisma from '@/app/libs/prisma';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const LOCK_TTL = 600;
 
@@ -58,6 +60,13 @@ export async function POST(req: Request) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
 
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-auto-assign',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const userSAs = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       select: { sa_id: true },
@@ -77,7 +86,7 @@ export async function POST(req: Request) {
       .map((usa) => usa.sa_id)
       .filter((id): id is number => id !== null);
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[AUTO-ASSIGN API] User workzones:', saIds);
+      logger.info('[AUTO-ASSIGN API] User workzones:', { saIds });
     }
 
     ClusterAutoAssignServiceV2.setProgressCallback((data) => {

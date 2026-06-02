@@ -4,12 +4,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { toBoundedString, toPositiveInt } from '@/lib/http-query';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'ticket-technicians',
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const actor = await protectApi([
       'admin',
       'helpdesk',
@@ -27,9 +36,9 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get('search') || undefined;
+    const search = toBoundedString(searchParams.get('search'), 100);
     const saIdParam = searchParams.get('sa_id');
-    const saId = saIdParam ? Number(saIdParam) : undefined;
+    const saId = saIdParam ? toPositiveInt(saIdParam, 0) || undefined : undefined;
 
     const data = await TicketWorkflowService.getEligibleTechniciansByTicketId(
       ticketId,

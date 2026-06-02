@@ -1,8 +1,11 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs/promises';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 import nodePath from 'path';
+import { Readable } from 'stream';
+import { logger } from '@/lib/observability/logger';
 
 const UPLOADS_ROOT = nodePath.join(process.cwd(), 'public', 'uploads');
 
@@ -39,24 +42,25 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const buffer = await fs.readFile(absolutePath);
+    const fileStat = await stat(absolutePath);
 
     const ext = nodePath.extname(absolutePath).toLowerCase();
     const contentType = MIME_MAP[ext] ?? 'application/octet-stream';
+    const stream = Readable.toWeb(createReadStream(absolutePath));
 
-    return new NextResponse(buffer, {
+    return new Response(stream as ReadableStream, {
       status: 200,
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000, immutable',
-        'Content-Length': String(buffer.byteLength),
+        'Content-Length': String(fileStat.size),
       },
     });
   } catch (err: any) {
     if (err?.code === 'ENOENT') {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
-    console.error('[/api/files] error:', err?.message ?? err);
+    logger.error('[/api/files] error:', err?.message ?? err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

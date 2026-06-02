@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { postTechEvents } from '@/app/libs/integrations/techEvents';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 function computeBackoffMs(attempt: number) {
   const base = 30_000;
@@ -15,13 +16,20 @@ function computeBackoffMs(attempt: number) {
   return Math.min(max, ms);
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json(
       { success: false, message: 'Not available in production' },
       { status: 403 },
     );
   }
+
+  const rateLimited = await enforceApiRateLimit(req, {
+    namespace: 'tech-events-test',
+    limit: 10,
+    windowSeconds: 60,
+  });
+  if (rateLimited) return rateLimited;
 
   const url = process.env.TECH_EVENTS_WEBHOOK_URL;
   const secret = process.env.TECH_EVENTS_WEBHOOK_SECRET ?? '';

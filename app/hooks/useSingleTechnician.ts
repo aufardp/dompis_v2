@@ -1,5 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
 
 interface SingleTechnician {
   id_user: number;
@@ -35,52 +38,32 @@ interface UseSingleTechnicianReturn {
   technician: SingleTechnician | null;
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: () => void;
 }
 
 export function useSingleTechnician(
   technicianId: number,
 ): UseSingleTechnicianReturn {
-  const [technician, setTechnician] = useState<SingleTechnician | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    if (!technicianId) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.technicians.detail(technicianId),
+    enabled: technicianId > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
       const res = await fetchWithAuth(`/api/technicians/${technicianId}`);
       if (!res || !res.ok) {
         const body = res ? await res.json().catch(() => null) : null;
         throw new Error(body?.message || 'Failed to fetch technician');
       }
-
-      const data = await res.json();
-
-      if (!data.success) {
-        throw new Error(data.message || 'Failed to fetch technician');
-      }
-
-      setTechnician(data.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setTechnician(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [technicianId]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Failed to fetch technician');
+      return json.data as SingleTechnician;
+    },
+  });
 
   return {
-    technician,
-    loading,
-    error,
-    refresh: fetchData,
+    technician: data ?? null,
+    loading: isLoading,
+    error: error ? (error as Error).message : null,
+    refresh: () => { refetch(); },
   };
 }

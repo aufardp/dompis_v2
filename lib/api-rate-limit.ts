@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/ratelimit';
+import { buildRateLimitIdentifier } from '@/lib/rate-limit-identifiers';
 
 export async function enforceApiRateLimit(
   request: Request,
   options: { namespace: string; limit: number; windowSeconds: number },
 ): Promise<NextResponse | null> {
-  const authHeader = request.headers.get('authorization');
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  const ip = forwardedFor?.split(',')[0]?.trim() || 'unknown';
-  const identifier = authHeader?.startsWith('Bearer ')
-    ? `${options.namespace}:token:${authHeader.slice('Bearer '.length)}`
-    : `${options.namespace}:ip:${ip}`;
+  const identifier = buildRateLimitIdentifier(request, options.namespace);
 
   const result = await checkRateLimit(
     identifier,

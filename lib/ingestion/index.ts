@@ -19,6 +19,7 @@ import {
   resolveIdentityStrict,
   computeSourceHash,
   normalizeStatus,
+  validateExternalRow,
 } from './normalizer';
 import { resolveConflict } from './conflict-resolver';
 import {
@@ -27,17 +28,29 @@ import {
   createBulkOutboxEvents,
   IngestionEventTypes,
 } from './outbox-emitter';
-import { setSyncStatus } from '@/lib/sync-metrics/metrics';
+import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
+import { logger } from '@/lib/observability/logger';
+import { isRedisReady, redis } from '@/lib/redis';
+import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
+import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 
 const DEFAULT_CHUNK_SIZE = parsePositiveIntEnv('INGESTION_CHUNK_SIZE', 1000);
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('INGESTION_BATCH_SIZE', 500);
+const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
+  'INGESTION_WRITE_CHUNK_SIZE',
+  Math.min(DEFAULT_CHUNK_SIZE, 250),
+);
 const DEFAULT_CONCURRENCY = parsePositiveIntEnv('INGESTION_CONCURRENCY', 1);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv(
   'INGESTION_RETRY_MAX',
   parsePositiveIntEnv('INGESTION_MAX_RETRIES', 3),
 );
 const DEFAULT_RETRY_BASE_MS = parsePositiveIntEnv('INGESTION_RETRY_BASE_MS', 250);
+const DEFAULT_TRANSACTION_TIMEOUT_MS = parsePositiveIntEnv(
+  'INGESTION_TRANSACTION_TIMEOUT_MS',
+  120_000,
+);
 const MYSQL_MAX_PREPARED_STATEMENT_PLACEHOLDERS = 65_535;
 const MYSQL_PLACEHOLDER_SAFETY_MARGIN = 5_000;
 
@@ -265,11 +278,14 @@ interface BatchCursor {
   lastModifiedAt: Date | null;
 }
 
+type CursorScanMode = 'cursor' | 'snapshot';
+
 interface ProcessableRow {
   row: NormalizedExternalRow;
   identity: string;
   sourceHash: string;
   normalizedStatus: string;
+  sourceUpdatedAt: Date | null;
 }
 
 type TicketRawBulkColumn = (typeof TICKET_RAW_BULK_COLUMNS)[number];
@@ -297,6 +313,24 @@ function isTransientError(error: unknown): boolean {
   return TRANSIENT_ERROR_PATTERNS.some((pattern) => text.includes(pattern));
 }
 
+function classifyTransientError(error: unknown): string {
+  const text = [
+    error instanceof Error ? error.message : String(error),
+    typeof error === 'object' && error && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  if (text.includes('deadlock') || text.includes('1213')) return 'deadlock';
+  if (text.includes('lock wait timeout')) return 'lock_wait_timeout';
+  if (text.includes('p2024') || text.includes('pool timeout')) return 'pool_timeout';
+  if (text.includes('p1017') || text.includes('connection')) return 'connection';
+  if (text.includes('timeout') || text.includes('timed out')) return 'timeout';
+  return 'transient';
+}
+
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -317,7 +351,18 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 
 async function withRetry<T>(
   fn: () => Promise<T>,
-  options: { retryMax: number; signal?: AbortSignal; onRetry: () => void },
+  options: {
+    retryMax: number;
+    signal?: AbortSignal;
+    context?: Record<string, unknown>;
+    label?: string;
+    onRetry?: (details: {
+      attempt: number;
+      delayMs: number;
+      error: unknown;
+      errorType: string;
+    }) => void;
+  },
 ): Promise<T> {
   let attempt = 0;
   while (attempt <= options.retryMax) {
@@ -327,9 +372,20 @@ async function withRetry<T>(
     } catch (error) {
       if (attempt >= options.retryMax || !isTransientError(error)) throw error;
       attempt++;
-      options.onRetry();
       const jitter = Math.floor(Math.random() * DEFAULT_RETRY_BASE_MS);
-      await delay(DEFAULT_RETRY_BASE_MS * 2 ** (attempt - 1) + jitter, options.signal);
+      const delayMs = DEFAULT_RETRY_BASE_MS * 2 ** (attempt - 1) + jitter;
+      const errorType = classifyTransientError(error);
+      logger.warn('Retrying transient ingestion operation', {
+        component: 'ingestion',
+        label: options.label ?? 'unknown',
+        attempt,
+        retryMax: options.retryMax,
+        delayMs,
+        errorType,
+        ...(options.context ?? {}),
+      });
+      options.onRetry?.({ attempt, delayMs, error, errorType });
+      await delay(delayMs, options.signal);
     }
   }
   throw new Error('Retry exhausted');
@@ -350,7 +406,32 @@ async function runLimited<T>(
       }
     },
   );
-  await Promise.all(workers);
+  const results = await Promise.allSettled(workers);
+  const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  for (const r of rejected) {
+    logger.warn('[Ingestion] Worker rejected:', { error: String(r.reason) });
+  }
+}
+
+async function requestProjectionRefresh(syncBatchId?: string | null): Promise<void> {
+  if (process.env.INGESTION_TRIGGER_PROJECTION === 'false') return;
+  if (!isRedisReady()) return;
+
+  try {
+    await redis.publish(
+      PROJECTION_REQUEST_CHANNEL,
+      JSON.stringify({
+        source: 'ingestion',
+        syncBatchId,
+        requestedAt: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    logger.warn('[Ingestion] Failed to request projection refresh:', {
+      syncBatchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function parseExternalDate(value: unknown): Date | null {
@@ -384,6 +465,10 @@ function normalizeModifiedCheckpoint(cursor: ExternalCursorDefinition, value: Da
   if (!value) return null;
   if (cursor.idColumn) return value;
   return new Date(value.getTime() - 1000);
+}
+
+function resolveCursorScanMode(cursor: ExternalCursorDefinition): CursorScanMode {
+  return cursor.strategy === 'snapshot' ? 'snapshot' : 'cursor';
 }
 
 async function getOrCreateCheckpoint(
@@ -478,6 +563,12 @@ function toSqlValue(value: unknown): unknown {
   return value;
 }
 
+function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow[] {
+  return [...rows].sort((a, b) =>
+    String(a.incident ?? '').localeCompare(String(b.incident ?? '')),
+  );
+}
+
 async function bulkUpsertTicketRaw(
   tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
@@ -548,6 +639,7 @@ async function processBatch(
   rawRows: Record<string, unknown>[],
   sourceTable: string,
   batchId: string,
+  chunkStartOffset: number,
   batchCursor: BatchCursor,
   cursor: ExternalCursorDefinition,
   tableResult: ChunkResult,
@@ -564,6 +656,7 @@ async function processBatch(
     retried: 0,
     errors: [],
   };
+  const batchStartMs = Date.now();
   const now = nowWib();
   const processable: ProcessableRow[] = [];
   const quarantined: Array<{
@@ -575,8 +668,33 @@ async function processBatch(
   }> = [];
 
   for (let i = 0; i < rows.length; i++) {
+    if (i > 0 && i % 100 === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     const row = rows[i]!;
     try {
+      const validationErrors = validateExternalRow(rawRows[i] ?? row as unknown as Record<string, unknown>);
+      const fatalErrors = validationErrors.filter(e => e.severity === 'error');
+      if (fatalErrors.length > 0) {
+        quarantined.push({
+          sourceTable,
+          batchId,
+          reason: fatalErrors.map(e => e.message).join('; ').slice(0, 255),
+          rawPayload: (rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
+        });
+        result.quarantined++;
+        result.processed++;
+        continue;
+      }
+      const warningErrors = validationErrors.filter(e => e.severity === 'warn');
+      if (warningErrors.length > 0) {
+        logger.warn('Row validation warnings', {
+          component: 'ingestion',
+          incident: row.incident,
+          warnings: warningErrors.map(e => e.message),
+        });
+      }
+
       const identity = resolveIdentityStrict(row);
       const sourceHash = computeSourceHash(row);
       if (!identity.valid || !identity.primaryIdentity) {
@@ -609,6 +727,7 @@ async function processBatch(
         identity: identity.primaryIdentity,
         sourceHash,
         normalizedStatus: normalizeStatus(row.status),
+        sourceUpdatedAt,
       });
     } catch (error) {
       quarantined.push({
@@ -623,117 +742,191 @@ async function processBatch(
   }
 
   const identities = processable.map((item) => item.identity);
-  const existingRows = identities.length
-    ? await prisma.ticket_raw.findMany({
-        where: { incident: { in: identities } },
-        select: {
-          incident: true,
-          sourceHash: true,
-          status: true,
-          syncVersion: true,
-        },
-      })
-    : [];
-  const existingMap = new Map(existingRows.map((row) => [row.incident, row]));
-  const events: Array<Parameters<typeof createBulkOutboxEvents>[1][number]> = [];
-  const changedRows: TicketRawBulkRow[] = [];
-  const heartbeatRows: TicketRawBulkRow[] = [];
 
-  for (const item of processable) {
-    const existing = existingMap.get(item.identity);
-    const conflict = resolveConflict(
-      existing
-        ? {
-            sourceHash: existing.sourceHash,
-            status: existing.status,
-            syncVersion: existing.syncVersion,
-          }
-        : null,
-      item.sourceHash,
-      item.normalizedStatus,
-    );
-    const data = buildRawData(
-      item.row,
-      item.sourceHash,
-      now,
-      batchId,
-      conflict.newVersion,
-      sourceTable,
-      item.identity,
-    );
+  const {
+    changedRows,
+    heartbeatRows,
+    events,
+    inserted,
+    updated,
+    skipped,
+  } = await prisma.$transaction(async (tx) => {
+    const existingRows = identities.length
+      ? await tx.ticket_raw.findMany({
+          where: { incident: { in: identities } },
+          select: {
+            incident: true,
+            sourceHash: true,
+            status: true,
+            syncVersion: true,
+            sourceUpdatedAt: true,
+          },
+        })
+      : [];
+    const existingMap = new Map(existingRows.map((row) => [row.incident, row]));
+    const events: Array<Parameters<typeof createBulkOutboxEvents>[1][number]> = [];
+    const changedRows: TicketRawBulkRow[] = [];
+    const heartbeatRows: TicketRawBulkRow[] = [];
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
 
-    if (!existing) {
-      changedRows.push(data as TicketRawBulkRow);
-      events.push(
-        buildEvent(
-          IngestionEventTypes.TICKET_RAW_CREATED,
-          item,
-          sourceTable,
-          null,
-          conflict.newVersion,
-          batchId,
-        ),
+    for (const item of processable) {
+      const existing = existingMap.get(item.identity);
+      const conflict = resolveConflict(
+            existing
+          ? {
+              sourceHash: existing.sourceHash,
+              status: existing.status,
+              syncVersion: existing.syncVersion,
+              sourceUpdatedAt: existing.sourceUpdatedAt,
+            }
+          : null,
+        item.sourceHash,
+        item.normalizedStatus,
+        item.sourceUpdatedAt,
       );
-      result.inserted++;
-    } else if (conflict.shouldUpdate) {
-      changedRows.push(data as TicketRawBulkRow);
-      events.push(
-        buildEvent(
-          existing.status !== conflict.newStatus
-            ? IngestionEventTypes.TICKET_RAW_STATUS_CHANGED
-            : IngestionEventTypes.TICKET_RAW_UPDATED,
-          item,
-          sourceTable,
-          existing.status,
-          conflict.newVersion,
-          batchId,
-        ),
+      const data = buildRawData(
+        item.row,
+        item.sourceHash,
+        now,
+        batchId,
+        conflict.newVersion,
+        sourceTable,
+        item.identity,
       );
-      result.updated++;
-    } else {
-      heartbeatRows.push(data as TicketRawBulkRow);
-      result.skipped++;
+
+      if (!existing) {
+        changedRows.push(data as TicketRawBulkRow);
+        events.push(
+          buildEvent(
+            IngestionEventTypes.TICKET_RAW_CREATED,
+            item,
+            sourceTable,
+            null,
+            conflict.newVersion,
+            batchId,
+          ),
+        );
+        inserted++;
+      } else if (conflict.shouldUpdate) {
+        changedRows.push(data as TicketRawBulkRow);
+        events.push(
+          buildEvent(
+            existing.status !== conflict.newStatus
+              ? IngestionEventTypes.TICKET_RAW_STATUS_CHANGED
+              : IngestionEventTypes.TICKET_RAW_UPDATED,
+            item,
+            sourceTable,
+            existing.status,
+            conflict.newVersion,
+            batchId,
+          ),
+        );
+        updated++;
+      } else {
+        heartbeatRows.push(data as TicketRawBulkRow);
+        skipped++;
+      }
+      result.processed++;
     }
-    result.processed++;
+
+    const sortedChangedRows = sortTicketRawRowsByIncident(changedRows);
+    const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
+
+    assertNotAborted(signal);
+    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
+    await bulkUpsertTicketRaw(tx, sortedHeartbeatRows, [
+      'lastSeenAt',
+      'syncBatchId',
+      'importedAt',
+      'isActive',
+    ]);
+    if (quarantined.length > 0) {
+      await tx.ingestion_quarantine.createMany({ data: quarantined });
+    }
+
+    if (events.length > 0) {
+      await createBulkOutboxEvents(tx, events);
+    }
+
+    const checkpointData = {
+      lastCursorId: batchCursor.lastCursorId,
+      lastModifiedAt: normalizeModifiedCheckpoint(
+        cursor,
+        batchCursor.lastModifiedAt,
+      ),
+      lastSuccessfulBatchId: batchId,
+      status: 'running',
+      processedCount: tableResult.processed + inserted + updated + skipped,
+      insertedCount: tableResult.inserted + inserted,
+      updatedCount: tableResult.updated + updated,
+      skippedCount: tableResult.skipped + skipped,
+      failedCount: tableResult.failed + result.failed,
+      quarantinedCount: tableResult.quarantined + result.quarantined,
+      retriedCount: tableResult.retried + result.retried,
+      errorMessage: null,
+    };
+    await tx.ingestion_checkpoint.upsert({
+      where: { tableName: sourceTable },
+      create: { tableName: sourceTable, ...checkpointData },
+      update: checkpointData,
+    });
+
+    return { changedRows, heartbeatRows, events, inserted, updated, skipped };
+  }, {
+    isolationLevel: 'ReadCommitted',
+    maxWait: Math.min(DEFAULT_TRANSACTION_TIMEOUT_MS, 30_000),
+    timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
+  });
+
+  result.inserted += inserted;
+  result.updated += updated;
+  result.skipped += skipped;
+  result.processed = result.inserted + result.updated + result.skipped + result.quarantined + result.failed + result.retried;
+
+  if (inserted > 0 || updated > 0) {
+    await requestProjectionRefresh(batchId);
   }
 
-  await prisma.$transaction(
-    async (tx) => {
-      assertNotAborted(signal);
-      await bulkUpsertTicketRaw(tx, changedRows, TICKET_RAW_BULK_COLUMNS);
-      await bulkUpsertTicketRaw(tx, heartbeatRows, [
-        'lastSeenAt',
-        'syncBatchId',
-        'importedAt',
-        'isActive',
-      ]);
-      if (quarantined.length > 0) {
-        await tx.ingestion_quarantine.createMany({ data: quarantined });
-      }
-      await createBulkOutboxEvents(tx, events);
-      await tx.ingestion_checkpoint.update({
-        where: { tableName: sourceTable },
-        data: {
-          lastCursorId: batchCursor.lastCursorId,
-          lastModifiedAt: normalizeModifiedCheckpoint(
-            cursor,
-            batchCursor.lastModifiedAt,
-          ),
-          lastSuccessfulBatchId: batchId,
-          status: 'running',
-          processedCount: tableResult.processed + result.processed,
-          insertedCount: tableResult.inserted + result.inserted,
-          updatedCount: tableResult.updated + result.updated,
-          skippedCount: tableResult.skipped + result.skipped,
-          failedCount: tableResult.failed + result.failed,
-          quarantinedCount: tableResult.quarantined + result.quarantined,
-          retriedCount: tableResult.retried + result.retried,
-          errorMessage: null,
-        },
-      });
-    },
-    { isolationLevel: 'ReadCommitted', timeout: 60_000 },
-  );
+  if (result.retried > 0) {
+    logger.info('Ingestion batch completed after retry', {
+      component: 'ingestion',
+      tableName: sourceTable,
+      batchId,
+      chunkStartOffset,
+      processed: result.processed,
+      inserted: result.inserted,
+      updated: result.updated,
+      skipped: result.skipped,
+      quarantined: result.quarantined,
+      retried: result.retried,
+    });
+  }
+
+  const batchDurationMs = Date.now() - batchStartMs;
+  const rowsPerSecond = batchDurationMs > 0
+    ? Math.round(((result.processed || 0) / batchDurationMs) * 1000 * 100) / 100
+    : 0;
+  await Promise.allSettled([
+    recordSyncMetric('lastBatchDurationMs', batchDurationMs),
+    recordSyncMetric('lastBatchRowsPerSecond', rowsPerSecond),
+    recordSyncMetric('lastBatchRows', result.processed || 0),
+    setSyncStatus('running', {
+      batchDurationMs,
+      rowsPerSecond,
+      processed: result.processed,
+      inserted: result.inserted,
+      updated: result.updated,
+      skipped: result.skipped,
+      failed: result.failed,
+      quarantined: result.quarantined,
+      retried: result.retried,
+      tableName: sourceTable,
+      batchId,
+      checkpoint: `${batchCursor.lastModifiedAt?.toISOString() ?? '-'}:${batchCursor.lastCursorId ?? '-'}`,
+    }),
+  ]);
 
   assertNotAborted(signal);
   return result;
@@ -750,6 +943,28 @@ async function processTable(
   const cursor = await getExternalCursorDefinition(tableName);
   const persisted = await getOrCreateCheckpoint(tableName, cursor);
   const totalRows = await fetchTableCount(tableName);
+
+  // Cursor stale detection: if cursor is set but no records processed in 24h, reset
+  if ((persisted.lastCursorId || persisted.lastModifiedAt) && totalRows > 0) {
+    const cursorAge = persisted.lastModifiedAt
+      ? Date.now() - persisted.lastModifiedAt.getTime()
+      : null;
+    const staleThresholdMs =
+      (parseInt(process.env.INGESTION_CURSOR_STALE_HOURS || '24', 10)) * 60 * 60_000;
+    if (cursorAge !== null && cursorAge > staleThresholdMs) {
+      logger.warn('Ingestion cursor may be stale, resetting to 24h window', {
+        component: 'ingestion', tableName, cursorAge,
+        lastModifiedAt: persisted.lastModifiedAt?.toISOString(),
+      });
+      persisted.lastCursorId = null;
+      persisted.lastModifiedAt = new Date(Date.now() - staleThresholdMs);
+      await prisma.ingestion_checkpoint.update({
+        where: { tableName },
+        data: { lastCursorId: null, lastModifiedAt: persisted.lastModifiedAt },
+      });
+    }
+  }
+
   const result: ChunkResult = {
     processed: 0,
     inserted: 0,
@@ -761,19 +976,21 @@ async function processTable(
     errors: [],
   };
 
-  await prisma.ingestion_checkpoint.update({
+  const runningData = {
+    cursorStrategy: cursor.strategy,
+    idColumn: cursor.idColumn,
+    modifiedColumn: cursor.modifiedColumn,
+    status: 'running',
+    lastStartedAt: startedAt,
+    errorMessage: null,
+    ...(mode === 'initial' || mode === 'force_resync'
+      ? { lastCursorId: null, lastModifiedAt: null }
+      : {}),
+  };
+  await prisma.ingestion_checkpoint.upsert({
     where: { tableName },
-    data: {
-      cursorStrategy: cursor.strategy,
-      idColumn: cursor.idColumn,
-      modifiedColumn: cursor.modifiedColumn,
-      status: 'running',
-      lastStartedAt: startedAt,
-      errorMessage: null,
-      ...(mode === 'initial' || mode === 'force_resync'
-        ? { lastCursorId: null, lastModifiedAt: null }
-        : {}),
-    },
+    create: { tableName, ...runningData },
+    update: runningData,
   });
 
   const runLog = await prisma.ingestion_run_log.create({
@@ -788,7 +1005,7 @@ async function processTable(
   });
 
   let activeCursor: BatchCursor =
-    mode === 'initial' || mode === 'force_resync' || cursor.strategy === 'id'
+    mode === 'initial' || mode === 'force_resync'
       ? { lastCursorId: null, lastModifiedAt: null }
       : {
           lastCursorId: persisted.lastCursorId,
@@ -796,8 +1013,30 @@ async function processTable(
         };
   let hasMore = true;
   let snapshotOffset = 0;
-  const usesSnapshotScan =
-    cursor.strategy === 'snapshot' || cursor.strategy === 'id';
+  const scanMode = resolveCursorScanMode(cursor);
+  const usesSnapshotScan = scanMode === 'snapshot';
+
+  logger.info('Ingestion table run started', {
+    component: 'ingestion',
+    tableName,
+    batchId,
+    mode,
+    cursorStrategy: cursor.strategy,
+    scanMode,
+    idColumn: cursor.idColumn,
+    modifiedColumn: cursor.modifiedColumn,
+    resumeCursorId: activeCursor.lastCursorId,
+    resumeModifiedAt: activeCursor.lastModifiedAt?.toISOString() ?? null,
+  });
+
+  if (usesSnapshotScan) {
+    logger.warn('Ingestion table is using snapshot scan; row movement in source can still cause drift', {
+      component: 'ingestion',
+      tableName,
+      batchId,
+      cursorStrategy: cursor.strategy,
+    });
+  }
 
   try {
     while (hasMore) {
@@ -820,6 +1059,18 @@ async function processTable(
         {
           retryMax: DEFAULT_RETRY_MAX,
           signal,
+          label: 'fetch_external_rows',
+          context: {
+            component: 'ingestion',
+            tableName,
+            batchId,
+            cursorStrategy: cursor.strategy,
+            snapshotOffset: usesSnapshotScan ? snapshotOffset : undefined,
+            lastCursorId: usesSnapshotScan ? undefined : activeCursor.lastCursorId,
+            lastModifiedAt: usesSnapshotScan
+              ? undefined
+              : activeCursor.lastModifiedAt?.toISOString() ?? null,
+          },
           onRetry: () => {
             result.retried++;
           },
@@ -830,64 +1081,88 @@ async function processTable(
       const normalizedRows = rawRows.map((row) =>
         normalizeExternalRow(row as unknown as ExternalRow, tableName),
       );
-      const lastRaw = rawRows[rawRows.length - 1] as Record<string, unknown>;
-      const nextCursor = getRowCursor(lastRaw, cursor);
-      const chunkResult = await withRetry(
-        () =>
-          processBatch(
-            normalizedRows,
-            rawRows as unknown as Record<string, unknown>[],
-            tableName,
-            batchId,
-            nextCursor,
-            cursor,
-            result,
+      for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+        const rawWindow = rawRows.slice(
+          offset,
+          Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+        ) as Record<string, unknown>[];
+        const normalizedWindow = normalizedRows.slice(
+          offset,
+          Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+        );
+        const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
+        const nextCursor = getRowCursor(lastRaw, cursor);
+        const chunkResult = await withRetry(
+          () =>
+            processBatch(
+              normalizedWindow,
+              rawWindow,
+              tableName,
+              batchId,
+              offset,
+              nextCursor,
+              cursor,
+              result,
+              signal,
+            ),
+          {
+            retryMax: DEFAULT_RETRY_MAX,
             signal,
-          ),
-        {
-          retryMax: DEFAULT_RETRY_MAX,
-          signal,
-          onRetry: () => {
-            result.retried++;
+            label: 'process_batch',
+            context: {
+              component: 'ingestion',
+              tableName,
+              batchId,
+              chunkStartOffset: offset,
+              chunkSize: normalizedWindow.length,
+              snapshotOffset: usesSnapshotScan ? snapshotOffset : undefined,
+            },
+            onRetry: () => {
+              result.retried++;
+            },
           },
-        },
-      );
+        );
 
-      result.processed += chunkResult.processed;
-      result.inserted += chunkResult.inserted;
-      result.updated += chunkResult.updated;
-      result.skipped += chunkResult.skipped;
-      result.failed += chunkResult.failed;
-      result.quarantined += chunkResult.quarantined;
-      result.errors.push(...chunkResult.errors);
-      activeCursor = {
-        lastCursorId: nextCursor.lastCursorId,
-        lastModifiedAt: normalizeModifiedCheckpoint(cursor, nextCursor.lastModifiedAt),
-      };
+        result.processed += chunkResult.processed;
+        result.inserted += chunkResult.inserted;
+        result.updated += chunkResult.updated;
+        result.skipped += chunkResult.skipped;
+        result.failed += chunkResult.failed;
+        result.quarantined += chunkResult.quarantined;
+        result.errors.push(...chunkResult.errors);
+        if (result.errors.length > 100) result.errors.length = 100;
+        activeCursor = {
+          lastCursorId: nextCursor.lastCursorId,
+          lastModifiedAt: normalizeModifiedCheckpoint(
+            cursor,
+            nextCursor.lastModifiedAt,
+          ),
+        };
+      }
       if (usesSnapshotScan) {
         activeCursor = { lastCursorId: null, lastModifiedAt: null };
         snapshotOffset += rawRows.length;
       }
       hasMore = rawRows.length === DEFAULT_CHUNK_SIZE;
-      console.log(
-        `[Ingestion] ${tableName} ${mode} processed=${result.processed}/${totalRows} inserted=${result.inserted} updated=${result.updated} skipped=${result.skipped} quarantined=${result.quarantined}`,
-      );
+      logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
     }
 
-    await prisma.ingestion_checkpoint.update({
+    const successData = {
+      status: 'success',
+      lastFinishedAt: nowWib(),
+      processedCount: result.processed,
+      insertedCount: result.inserted,
+      updatedCount: result.updated,
+      skippedCount: result.skipped,
+      failedCount: result.failed,
+      quarantinedCount: result.quarantined,
+      retriedCount: result.retried,
+      errorMessage: null,
+    };
+    await prisma.ingestion_checkpoint.upsert({
       where: { tableName },
-      data: {
-        status: 'success',
-        lastFinishedAt: nowWib(),
-        processedCount: result.processed,
-        insertedCount: result.inserted,
-        updatedCount: result.updated,
-        skippedCount: result.skipped,
-        failedCount: result.failed,
-        quarantinedCount: result.quarantined,
-        retriedCount: result.retried,
-        errorMessage: null,
-      },
+      create: { tableName, ...successData },
+      update: successData,
     });
     await prisma.ingestion_run_log.update({
       where: { id: runLog.id },
@@ -906,15 +1181,44 @@ async function processTable(
         finishedAt: nowWib(),
       },
     });
+    logger.info('Ingestion table run completed', {
+      component: 'ingestion',
+      tableName,
+      batchId,
+      mode,
+      cursorStrategy: cursor.strategy,
+      scanMode,
+      processed: result.processed,
+      inserted: result.inserted,
+      updated: result.updated,
+      skipped: result.skipped,
+      quarantined: result.quarantined,
+      retried: result.retried,
+      checkpointCursorId: activeCursor.lastCursorId,
+      checkpointModifiedAt: activeCursor.lastModifiedAt?.toISOString() ?? null,
+      durationMs: Date.now() - startMs,
+    });
     return result;
   } catch (error) {
     const message = String(error);
     result.failed++;
     result.errors.push({ incident: 'table', error: message });
-    await prisma.ingestion_checkpoint.update({
+    const failureStatus = message.includes('Ingestion aborted') ? 'aborted' : 'failed';
+    await prisma.ingestion_checkpoint.upsert({
       where: { tableName },
-      data: {
-        status: message.includes('Ingestion aborted') ? 'aborted' : 'failed',
+      create: {
+        tableName,
+        status: failureStatus,
+        lastCursorId: activeCursor.lastCursorId,
+        lastModifiedAt: activeCursor.lastModifiedAt,
+        failedCount: result.failed,
+        errorMessage: message,
+        lastFinishedAt: nowWib(),
+      },
+      update: {
+        status: failureStatus,
+        lastCursorId: activeCursor.lastCursorId,
+        lastModifiedAt: activeCursor.lastModifiedAt,
         failedCount: result.failed,
         errorMessage: message,
         lastFinishedAt: nowWib(),
@@ -924,6 +1228,8 @@ async function processTable(
       where: { id: runLog.id },
       data: {
         status: message.includes('Ingestion aborted') ? 'aborted' : 'failed',
+        lastCursorId: activeCursor.lastCursorId,
+        lastModifiedAt: activeCursor.lastModifiedAt,
         processed: result.processed,
         inserted: result.inserted,
         updated: result.updated,
@@ -936,6 +1242,23 @@ async function processTable(
         finishedAt: nowWib(),
       },
     });
+    logger.error('Ingestion table run failed', error, {
+      component: 'ingestion',
+      tableName,
+      batchId,
+      mode,
+      cursorStrategy: cursor.strategy,
+      scanMode,
+      processed: result.processed,
+      inserted: result.inserted,
+      updated: result.updated,
+      skipped: result.skipped,
+      quarantined: result.quarantined,
+      retried: result.retried,
+      checkpointCursorId: activeCursor.lastCursorId,
+      checkpointModifiedAt: activeCursor.lastModifiedAt?.toISOString() ?? null,
+      durationMs: Date.now() - startMs,
+    });
     throw error;
   }
 }
@@ -945,6 +1268,7 @@ async function runIngestionMode(
   signal?: AbortSignal,
 ): Promise<SyncResult> {
   await setSyncStatus('running', {});
+  await setMySQLSessionTimeout(120_000);
   const start = Date.now();
   const batchId = `ingest-${Date.now()}`;
   const result: SyncResult = {
@@ -990,16 +1314,21 @@ async function runIngestionMode(
         result.errors.push(
           ...tableResult.errors.map((error) => ({ table: tableName, ...error })),
         );
+        if (result.errors.length > 100) result.errors.length = 100;
       } catch (error) {
         const message = String(error);
         result.failed++;
         result.errors.push({ table: tableName, incident: 'table', error: message });
+        if (result.errors.length > 100) result.errors.length = 100;
         await emitIngestionFailedEvent(batchId, tableName, message);
         throw error;
       }
     });
 
     const duration = Date.now() - start;
+    const rowsPerSecond = duration > 0
+      ? Math.round(((result.processed || 0) / duration) * 1000 * 100) / 100
+      : 0;
     await emitIngestionCompleteEvent({
       syncBatchId: batchId,
       tableName: 'all',
@@ -1012,6 +1341,7 @@ async function runIngestionMode(
     });
     await setSyncStatus(result.failed > 0 ? 'failed' : 'success', {
       duration,
+      rowsPerSecond,
       processed: result.processed ?? 0,
       inserted: result.inserted,
       updated: result.updated,
@@ -1027,8 +1357,10 @@ async function runIngestionMode(
     }
     return result;
   } catch (error) {
+    const duration = Date.now() - start;
     await setSyncStatus('failed', {
-      duration: Date.now() - start,
+      duration,
+      rowsPerSecond: duration > 0 ? Math.round(((result.processed || 0) / duration) * 1000 * 100) / 100 : 0,
       processed: result.processed ?? 0,
       inserted: result.inserted,
       updated: result.updated,
@@ -1048,23 +1380,104 @@ export async function runIngestion(signal?: AbortSignal): Promise<SyncResult> {
 }
 
 export async function runInitialLoad(signal?: AbortSignal): Promise<SyncResult> {
-  console.log('[Ingestion] Starting initial full load...');
+  logger.info('[Ingestion] Starting initial full load...');
   return runIngestionMode('initial', signal);
 }
 
 export async function runIncrementalSync(signal?: AbortSignal): Promise<SyncResult> {
-  console.log('[Ingestion] Starting incremental sync...');
+  logger.info('[Ingestion] Starting incremental sync...');
   return runIngestionMode('incremental', signal);
 }
 
 export async function runRecoveryIngestion(signal?: AbortSignal): Promise<SyncResult> {
-  console.log('[Ingestion] Starting recovery from checkpoints...');
+  logger.info('[Ingestion] Starting recovery from checkpoints...');
   return runIngestionMode('recovery', signal);
 }
 
 export async function runForceResync(signal?: AbortSignal): Promise<SyncResult> {
-  console.log('[Ingestion] Starting force resync without deleting data...');
+  logger.info('[Ingestion] Starting force resync without deleting data...');
   return runIngestionMode('force_resync', signal);
+}
+
+export async function retryQuarantinedItems(options?: {
+  batchSize?: number;
+  maxRetries?: number;
+}): Promise<{ processed: number; recovered: number; failed: number }> {
+  if (!isRedisReady()) return { processed: 0, recovered: 0, failed: 0 };
+
+  const batchSize = options?.batchSize ?? 50;
+  const maxRetries = options?.maxRetries ?? 3;
+  const now = nowWib();
+  const batchId = `dlq-retry-${Date.now()}`;
+
+  const quarantined = await prisma.ingestion_quarantine.findMany({
+    take: batchSize,
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const result = { processed: 0, recovered: 0, failed: 0 };
+
+  for (const item of quarantined) {
+    result.processed++;
+
+    const retryKey = `dlq:retries:${item.id}`;
+    const retryCountStr = await redis.get(retryKey).catch(() => null);
+    const retryCount = retryCountStr ? parseInt(retryCountStr, 10) : 0;
+
+    if (retryCount >= maxRetries) {
+      logger.warn('Quarantined item exceeded max retries, skipping', {
+        component: 'ingestion',
+        quarantineId: String(item.id),
+        sourceTable: item.sourceTable,
+        retryCount,
+      });
+      continue;
+    }
+
+    try {
+      const rawPayload = item.rawPayload as Record<string, unknown>;
+      const externalRow = rawPayload as unknown as ExternalRow;
+      const normalizedRow = normalizeExternalRow(externalRow, item.sourceTable);
+
+      const identity = resolveIdentityStrict(normalizedRow);
+      if (!identity.valid || !identity.primaryIdentity) {
+        await redis.setex(retryKey, 86400, String(retryCount + 1)).catch(() => {});
+        result.failed++;
+        continue;
+      }
+
+      const sourceHash = computeSourceHash(normalizedRow);
+      const data = buildRawData(
+        normalizedRow,
+        sourceHash,
+        now,
+        batchId,
+        1,
+        item.sourceTable,
+        identity.primaryIdentity,
+      );
+
+      await prisma.$transaction(async (tx) => {
+        await tx.ticket_raw.upsert({
+          where: { incident: identity.primaryIdentity ?? undefined },
+          create: data as Prisma.ticket_rawUncheckedCreateInput,
+          update: {
+            ...data as Prisma.ticket_rawUncheckedCreateInput,
+            isActive: true,
+          },
+        });
+        await tx.ingestion_quarantine.delete({ where: { id: item.id } });
+      });
+      await redis.del(retryKey).catch(() => {});
+      result.recovered++;
+    } catch (error) {
+      const newRetryCount = retryCount + 1;
+      await redis.setex(retryKey, 86400, String(newRetryCount)).catch(() => {});
+      result.failed++;
+    }
+  }
+
+  return result;
 }
 
 export async function getIngestionReconciliationReport(): Promise<{

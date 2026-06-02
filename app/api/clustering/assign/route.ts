@@ -2,11 +2,23 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { ClusterService } from '@/app/libs/services/cluster.service';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import prisma from '@/app/libs/prisma';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+
+const assignTeknisiSchema = z.object({
+  cluster_id: z.coerce
+    .number({ message: 'cluster_id is required' })
+    .positive(),
+  teknisi_id: z.coerce.number().positive().optional(),
+  teknisi_ids: z.array(z.coerce.number().positive()).optional(),
+  assigned_date: z.string().min(1, 'assigned_date is required'),
+  note: z.string().optional(),
+});
 
 // GET /api/clustering/assign?date=2026-04-03&sa_id=1
 export async function GET(req: Request) {
@@ -121,27 +133,31 @@ export async function POST(req: Request) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
 
-    const body = await req.json();
-    const { cluster_id, teknisi_id, teknisi_ids, assigned_date, note } = body;
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-assign',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
-    if (!cluster_id || !assigned_date) {
+    const body = await req.json();
+
+    const parsed = assignTeknisiSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          message: 'cluster_id and assigned_date are required',
+          message: parsed.error.issues.map((i) => i.message).join(', '),
         },
         { status: 400 },
       );
     }
 
+    const { cluster_id, teknisi_id, teknisi_ids, assigned_date, note } =
+      parsed.data;
+
     // Support both single teknisi_id and multiple teknisi_ids
-    const teknisiIdList: number[] = teknisi_ids
-      ? Array.isArray(teknisi_ids)
-        ? teknisi_ids
-        : [teknisi_ids]
-      : teknisi_id
-        ? [teknisi_id]
-        : [];
+    const teknisiIdList: number[] = teknisi_ids ?? (teknisi_id ? [teknisi_id] : []);
 
     if (teknisiIdList.length === 0) {
       return NextResponse.json(
@@ -155,7 +171,7 @@ export async function POST(req: Request) {
 
     // Verify admin has access to this cluster's SA
     const cluster = await prisma.cluster.findUnique({
-      where: { id: Number(cluster_id) },
+      where: { id: cluster_id },
       select: { sa_id: true },
     });
 
@@ -192,9 +208,9 @@ export async function POST(req: Request) {
     for (const tid of teknisiIdList) {
       try {
         await ClusterService.plotTeknisi(
-          Number(cluster_id),
-          Number(tid),
-          String(assigned_date),
+          cluster_id,
+          tid,
+          assigned_date,
           user.id_user,
           note,
         );

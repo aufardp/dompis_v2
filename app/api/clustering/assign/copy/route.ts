@@ -7,6 +7,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { ClusterService } from '@/app/libs/services/cluster.service';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import prisma from '@/app/libs/prisma';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function POST(req: Request) {
   const lockKey = 'cluster-copy-lock';
@@ -26,6 +27,13 @@ export async function POST(req: Request) {
 
   try {
     const user = await protectApi(['admin', 'superadmin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-assign-copy',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const { from_date, to_date, sa_id } = body;

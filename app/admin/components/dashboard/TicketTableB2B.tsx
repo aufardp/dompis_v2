@@ -94,8 +94,14 @@ export interface AdminTicketTableB2BProps {
   downloadFilters?: {
     dept: 'b2b' | 'b2c';
     ticketType?: string[];
+    ticketGroup?: string[];
+    operationalBucket?: string[];
+    regulerOnly?: boolean;
+    anomalyBucket?: string[];
     statusUpdate?: string[];
+    ticketStatus?: string[];
     flagging?: string[];
+    excludeSymptom?: string;
   };
 }
 
@@ -189,8 +195,26 @@ export default function TicketTableB2B({
       for (const t of downloadFilters.ticketType ?? []) {
         params.append('ticketType', t);
       }
+      for (const g of downloadFilters.ticketGroup ?? []) {
+        params.append('ticketGroup', g);
+      }
+      for (const bucket of downloadFilters.operationalBucket ?? []) {
+        params.append('operationalBucket', bucket);
+      }
+      if (typeof downloadFilters.regulerOnly === 'boolean') {
+        params.set('regulerOnly', downloadFilters.regulerOnly ? 'true' : 'false');
+      }
+      if (downloadFilters.excludeSymptom) {
+        params.set('excludeSymptom', downloadFilters.excludeSymptom);
+      }
+      for (const bucket of downloadFilters.anomalyBucket ?? []) {
+        params.append('anomalyBucket', bucket);
+      }
       for (const s of downloadFilters.statusUpdate ?? []) {
         params.append('statusUpdate', s);
+      }
+      for (const s of downloadFilters.ticketStatus ?? []) {
+        params.append('ticketStatus', s);
       }
       for (const f of downloadFilters.flagging ?? []) {
         params.append('flagging', f);
@@ -271,8 +295,18 @@ export default function TicketTableB2B({
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.statusUpdate, a.closedAt, a.status);
-        bVal = calculateAgeInHours(b.reportedDate, b.statusUpdate, b.closedAt, b.status);
+        aVal = calculateAgeInHours(
+          a.reportedDate,
+          a.statusUpdate,
+          a.closedAt,
+          a.status,
+        );
+        bVal = calculateAgeInHours(
+          b.reportedDate,
+          b.statusUpdate,
+          b.closedAt,
+          b.status,
+        );
       } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];
@@ -396,7 +430,7 @@ export default function TicketTableB2B({
                   onChange={(e) =>
                     setDownloadFormat(e.target.value as 'csv' | 'xlsx')
                   }
-                  className='rounded border border-(--border) bg-surface px-1.5 py-1 text-xs text-(--text-secondary)'
+                  className='bg-surface rounded border border-(--border) px-1.5 py-1 text-xs text-(--text-secondary)'
                   suppressHydrationWarning
                 >
                   <option value='xlsx'>XLSX</option>
@@ -435,13 +469,25 @@ export default function TicketTableB2B({
                   <th className='px-3 py-2.5 text-center'>Address</th>
                   {renderSortableHeader('Booking Date', 'bookingDate')}
                   {renderSortableHeader('Type', 'customerType')}
-                  <th className='px-3 py-2.5 text-center'>Max TTR</th>
+                  <th className='px-3 py-2.5 text-center whitespace-nowrap'>
+                    Max TTR
+                  </th>
                   {renderSortableHeader('Age / SLA', 'age')}
                   {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
                   {renderSortableHeader('Workzone', 'workzone')}
                   {renderSortableHeader('Teknisi', 'technicianName')}
-                  <th className='px-3 py-2.5 text-center' suppressHydrationWarning>Status Insera</th>
-                  <th className='px-3 py-2.5 text-center' suppressHydrationWarning>Status Dompis</th>
+                  <th
+                    className='px-3 py-2.5 text-center'
+                    suppressHydrationWarning
+                  >
+                    Status Insera
+                  </th>
+                  <th
+                    className='px-3 py-2.5 text-center'
+                    suppressHydrationWarning
+                  >
+                    Status Dompis
+                  </th>
                   {/* Action */}
                   <th className='px-3 py-2.5 text-center'>Aksi</th>
                 </tr>

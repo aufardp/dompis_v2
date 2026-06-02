@@ -11,26 +11,29 @@ import {
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET() {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const areas = await prisma.area.findMany();
+    const areas = await prisma.area.findMany({
+      select: { id_area: true, nama_area: true },
+      orderBy: { nama_area: 'asc' },
+    });
 
-    const options = areas.map((a: { id_area: number; nama_area: string; created_at: Date; updated_at: Date }) => ({
+    const options = areas.map((a) => ({
       value: a.id_area,
       label: a.nama_area,
-      created_at: a.created_at,
-      updated_at: a.updated_at,
     }));
 
-    return NextResponse.json({
-      success: true,
-      data: options,
-    });
+    return NextResponse.json(
+      { success: true, data: options },
+      { headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=600' } },
+    );
   } catch (error: any) {
-    console.error('Area fetch error:', error);
+    logger.error('Area fetch error:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Server Error') },
       { status: getErrorStatus(error, 500) },
@@ -41,6 +44,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'area',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const body = await request.json();
     const validated = createAreaSchema.parse(body);
@@ -53,7 +63,7 @@ export async function POST(request: Request) {
       data: { id_area: id, nama_area: validated.nama_area },
     });
   } catch (error: any) {
-    console.error(error);
+    logger.error('Route error:', error);
     const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
     return NextResponse.json(
       {
@@ -68,6 +78,13 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'area',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const body = await request.json();
     const validated = updateAreaSchema.parse({
@@ -84,7 +101,7 @@ export async function PUT(request: Request) {
       message: 'Area updated successfully',
     });
   } catch (error: any) {
-    console.error(error);
+    logger.error('Route error:', error);
     const status = getErrorStatus(error, error.name === 'ZodError' ? 400 : 500);
     return NextResponse.json(
       {
@@ -99,6 +116,13 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'area',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -117,7 +141,7 @@ export async function DELETE(request: Request) {
       message: 'Area deleted successfully',
     });
   } catch (error: any) {
-    console.error(error);
+    logger.error('Route error:', error);
     return NextResponse.json(
       {
         success: false,

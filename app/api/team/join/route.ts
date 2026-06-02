@@ -1,22 +1,34 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { jwtVerify } from 'jose';
 import { createHash } from 'crypto';
 import prisma from '@/app/libs/prisma';
 import { INVITE_CONFIG } from '@/app/config/invite';
 import { protectApi } from '@/app/libs/protectApi';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  const actor = await protectApi(['teknisi']);
-  const { token } = await req.json();
+  const joinSchema = z.object({
+    token: z.string().min(1),
+  });
 
-  if (!token) {
-    return NextResponse.json(
-      { success: false, message: 'Token wajib diisi' },
-      { status: 400 },
-    );
+  const actor = await protectApi(['teknisi']);
+
+  const rateLimited = await enforceApiRateLimit(req, {
+    namespace: 'team-join',
+    limit: 20,
+    windowSeconds: 60,
+  });
+  if (rateLimited) return rateLimited;
+
+  const body = await req.json();
+  const parsed = joinSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, message: 'Validation failed', errors: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
+  const { token } = parsed.data;
 
   const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
   let payload: any;

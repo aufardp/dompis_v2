@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
-import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ChevronDown } from "lucide-react";
 
 interface Option {
    value: string;
@@ -69,7 +69,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <span className={selectedOption ? "text-gray-900 dark:text-white" : "text-gray-400"}>
                {selectedOption ? selectedOption.label : placeholder}
             </span>
-            <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+            <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
          </div>
          {isOpen && (
             <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-300 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 max-h-60 overflow-auto">

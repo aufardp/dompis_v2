@@ -13,6 +13,16 @@ interface LockHandle {
 
 const activeLocks = new Map<string, LockHandle>();
 
+// Periodic cleanup every 60s to evict expired lock handles
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, handle] of activeLocks) {
+    if (handle.expiresAt < now) {
+      activeLocks.delete(key);
+    }
+  }
+}, 60_000).unref();
+
 function generateOwnerId(): string {
   return `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 }

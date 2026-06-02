@@ -1,4 +1,7 @@
 import { isRedisReady, redis } from '@/lib/redis';
+import { publishTicketInvalidate } from '@/lib/sse-redis';
+import { invalidateTicketsCache } from '@/lib/cache';
+import { logger } from '@/lib/observability/logger';
 
 interface SyncMetric {
   key: string;
@@ -9,6 +12,8 @@ interface SyncMetric {
 interface SyncHealth {
   lastSyncTime: number | null;
   lastSyncDuration: number | null;
+  lastSyncRowsPerSecond: number | null;
+  lastSyncBatchDuration: number | null;
   lastSyncStatus: 'success' | 'failed' | 'running' | 'never';
   rowsProcessed: number;
   insertedCount: number;
@@ -25,6 +30,9 @@ interface SyncHealth {
 interface ProjectionHealth {
   lastProjectionTime: number | null;
   lastProjectionDuration: number | null;
+  lastProjectionLagMs: number | null;
+  lastProjectionRowsPerSecond: number | null;
+  lastProjectionBatchDuration: number | null;
   lastProjectionStatus: 'success' | 'failed' | 'running' | 'never';
   processedRecords: number;
   insertedRecords: number;
@@ -51,7 +59,7 @@ async function safeHset(
   try {
     await redis.hset(key, values);
   } catch (error) {
-    console.warn('[SyncMetrics] Redis hset skipped:', error);
+    logger.warn('[SyncMetrics] Redis hset skipped:', { error: String(error) });
   }
 }
 
@@ -88,6 +96,8 @@ export async function getSyncHealth(): Promise<SyncHealth> {
   const key = getMetricKey(SYNC_METRICS_PREFIX, 'lastSync');
   const lastSyncTime = await safeHget(key, 'timestamp');
   const lastSyncDuration = await safeHget(key, 'duration');
+  const lastSyncRowsPerSecond = await safeHget(key, 'rowsPerSecond');
+  const lastSyncBatchDuration = await safeHget(key, 'batchDurationMs');
   const lastSyncStatus = await safeHget(key, 'status');
   const rowsProcessed = await safeHget(key, 'processed');
   const insertedCount = await safeHget(key, 'inserted');
@@ -103,6 +113,8 @@ export async function getSyncHealth(): Promise<SyncHealth> {
   return {
     lastSyncTime: lastSyncTime ? parseInt(lastSyncTime) : null,
     lastSyncDuration: lastSyncDuration ? parseInt(lastSyncDuration) : null,
+    lastSyncRowsPerSecond: lastSyncRowsPerSecond ? Number(lastSyncRowsPerSecond) : null,
+    lastSyncBatchDuration: lastSyncBatchDuration ? parseInt(lastSyncBatchDuration) : null,
     lastSyncStatus: (lastSyncStatus as SyncHealth['lastSyncStatus']) || 'never',
     rowsProcessed: rowsProcessed ? parseInt(rowsProcessed) : 0,
     insertedCount: insertedCount ? parseInt(insertedCount) : 0,
@@ -121,6 +133,9 @@ export async function getProjectionHealth(): Promise<ProjectionHealth> {
   const key = getMetricKey(PROJECTION_METRICS_PREFIX, 'lastProjection');
   const lastProjectionTime = await safeHget(key, 'timestamp');
   const lastProjectionDuration = await safeHget(key, 'duration');
+  const lastProjectionLagMs = await safeHget(key, 'lagMs');
+  const lastProjectionRowsPerSecond = await safeHget(key, 'rowsPerSecond');
+  const lastProjectionBatchDuration = await safeHget(key, 'batchDurationMs');
   const lastProjectionStatus = await safeHget(key, 'status');
   const processedRecords = await safeHget(key, 'processed');
   const insertedRecords = await safeHget(key, 'inserted');
@@ -134,6 +149,9 @@ export async function getProjectionHealth(): Promise<ProjectionHealth> {
   return {
     lastProjectionTime: lastProjectionTime ? parseInt(lastProjectionTime) : null,
     lastProjectionDuration: lastProjectionDuration ? parseInt(lastProjectionDuration) : null,
+    lastProjectionLagMs: lastProjectionLagMs ? parseInt(lastProjectionLagMs) : null,
+    lastProjectionRowsPerSecond: lastProjectionRowsPerSecond ? Number(lastProjectionRowsPerSecond) : null,
+    lastProjectionBatchDuration: lastProjectionBatchDuration ? parseInt(lastProjectionBatchDuration) : null,
     lastProjectionStatus: (lastProjectionStatus as ProjectionHealth['lastProjectionStatus']) || 'never',
     processedRecords: processedRecords ? parseInt(processedRecords) : 0,
     insertedRecords: insertedRecords ? parseInt(insertedRecords) : 0,
@@ -150,6 +168,8 @@ export async function setSyncStatus(
   status: SyncHealth['lastSyncStatus'],
   metrics?: {
     duration?: number;
+    batchDurationMs?: number;
+    rowsPerSecond?: number;
     processed?: number;
     inserted?: number;
     updated?: number;
@@ -169,6 +189,8 @@ export async function setSyncStatus(
     status,
     timestamp: String(timestamp),
     ...(metrics?.duration !== undefined && { duration: String(metrics.duration) }),
+    ...(metrics?.batchDurationMs !== undefined && { batchDurationMs: String(metrics.batchDurationMs) }),
+    ...(metrics?.rowsPerSecond !== undefined && { rowsPerSecond: String(metrics.rowsPerSecond) }),
     ...(metrics?.processed !== undefined && { processed: String(metrics.processed) }),
     ...(metrics?.inserted !== undefined && { inserted: String(metrics.inserted) }),
     ...(metrics?.updated !== undefined && { updated: String(metrics.updated) }),
@@ -186,6 +208,9 @@ export async function setProjectionStatus(
   status: ProjectionHealth['lastProjectionStatus'],
   metrics?: {
     duration?: number;
+    lagMs?: number;
+    batchDurationMs?: number;
+    rowsPerSecond?: number;
     processed?: number;
     inserted?: number;
     updated?: number;
@@ -203,6 +228,9 @@ export async function setProjectionStatus(
     status,
     timestamp: String(timestamp),
     ...(metrics?.duration !== undefined && { duration: String(metrics.duration) }),
+    ...(metrics?.lagMs !== undefined && { lagMs: String(metrics.lagMs) }),
+    ...(metrics?.batchDurationMs !== undefined && { batchDurationMs: String(metrics.batchDurationMs) }),
+    ...(metrics?.rowsPerSecond !== undefined && { rowsPerSecond: String(metrics.rowsPerSecond) }),
     ...(metrics?.processed !== undefined && { processed: String(metrics.processed) }),
     ...(metrics?.inserted !== undefined && { inserted: String(metrics.inserted) }),
     ...(metrics?.updated !== undefined && { updated: String(metrics.updated) }),
@@ -212,6 +240,13 @@ export async function setProjectionStatus(
     ...(metrics?.protected !== undefined && { protected: String(metrics.protected) }),
     ...(metrics?.checkpoint && { checkpoint: metrics.checkpoint }),
   });
+
+  if (status === 'success') {
+    await Promise.allSettled([
+      invalidateTicketsCache(),
+      publishTicketInvalidate('projection'),
+    ]);
+  }
 }
 
 export async function getSyncMetrics(): Promise<Record<string, unknown>> {

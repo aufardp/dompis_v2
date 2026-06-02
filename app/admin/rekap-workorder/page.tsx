@@ -3,13 +3,14 @@ import { verifyAccessToken } from '@/app/libs/auth';
 import { cookies } from 'next/headers';
 import RekapWorkorderClient from '@/app/components/dashboard/rekap/RekapWorkorderClient';
 import DashboardPageActions from '@/app/components/dashboard/DashboardPageActions';
+import ThemeToggleButton from '@/app/components/ui/ThemeToggleButton';
 
 async function getUser() {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('token')?.value;
     if (!token) return null;
-    return verifyAccessToken(token);
+    return await verifyAccessToken(token);
   } catch { return null; }
 }
 
@@ -20,9 +21,26 @@ export default async function RekapWorkorderPage() {
   const homeHref = user.role === 'superadmin' ? '/superadmin' : '/admin';
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-6">
-      <div className="mb-4 flex justify-end">
-        <DashboardPageActions homeHref={homeHref} />
+    <div className="min-h-screen bg-(--bg) p-4 md:p-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-5 w-1 rounded-full bg-amber-500" />
+            <span className="text-xs font-semibold uppercase tracking-widest text-(--text-muted)">
+              Workorder
+            </span>
+          </div>
+          <h1 className="text-xl font-bold text-(--text-primary) leading-tight">
+            Rekap Workorder
+          </h1>
+          <p className="text-xs text-(--text-secondary) mt-0.5">
+            Distribusi tiket per service area, segment, dan workzone
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <ThemeToggleButton />
+          <DashboardPageActions homeHref={homeHref} />
+        </div>
       </div>
       <RekapWorkorderClient />
     </div>

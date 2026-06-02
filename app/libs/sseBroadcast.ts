@@ -1,3 +1,4 @@
+import { logger } from '@/lib/observability/logger';
 import { redis, isRedisReady } from '@/lib/redis';
 
 let subClient: ReturnType<typeof redis.duplicate> | null = null;
@@ -16,7 +17,7 @@ export async function initSSERedis() {
 
   try {
     if (redis.status === 'connecting') {
-      console.log('[SSE-Redis] Waiting for main Redis to connect...');
+      logger.info('[SSE-Redis] Waiting for main Redis to connect...');
       await new Promise<void>((resolve) => {
         const check = () => {
           if (redis.status !== 'connecting') {
@@ -32,8 +33,8 @@ export async function initSSERedis() {
     subClient = redis.duplicate({ lazyConnect: true });
 
     subClient.on('error', (err: Error) => {
-      if ((err as any).code !== 'ECONNREFUSED') {
-        console.error('[SSE-Redis] Subscriber error:', err.message);
+      if ((err as NodeJS.ErrnoException).code !== 'ECONNREFUSED') {
+        logger.error('[SSE-Redis] Subscriber error:', { error: err.message });
       }
     });
 
@@ -45,9 +46,9 @@ export async function initSSERedis() {
 
     await subClient.subscribe('sse:sync', 'sse:tickets');
 
-    console.log('[SSE-Redis] Subscriber connected');
+    logger.info('[SSE-Redis] Subscriber connected');
   } catch (err) {
-    console.error('[SSE-Redis] Failed to init subscriber:', err);
+    logger.error('[SSE-Redis] Failed to init subscriber:', { error: String(err) });
   }
 }
 
@@ -80,8 +81,17 @@ export function broadcastTicketInvalidate(reason?: string) {
   }
 }
 
-export function registerSSEConnection(controller: ReadableStreamDefaultController) {
+export function registerSSEConnection(controller: ReadableStreamDefaultController, signal?: AbortSignal) {
   activeConnections.add(controller);
+  if (signal) {
+    if (signal.aborted) {
+      activeConnections.delete(controller);
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      activeConnections.delete(controller);
+    }, { once: true });
+  }
 }
 
 export function unregisterSSEConnection(controller: ReadableStreamDefaultController) {
@@ -93,6 +103,6 @@ export async function closeSSERedis() {
     await subClient.unsubscribe().catch(() => {});
     await subClient.quit().catch(() => {});
     subClient = null;
-    console.log('[SSE-Redis] Subscriber disconnected');
+    logger.info('[SSE-Redis] Subscriber disconnected');
   }
 }

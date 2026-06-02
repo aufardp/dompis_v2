@@ -34,16 +34,18 @@ async function main() {
       // Read from ticket_raw which has complete data
       const rawTickets = await prisma.ticket_raw.findMany({
         where: { isActive: true },
-        select: {
-          incident: true,
-          channel: true,
-          classification_path: true,
-          customer_type: true,
-          customer_segment: true,
+      select: {
+        incident: true,
+        channel: true,
+        classification_flag: true,
+        classification_path: true,
+        customer_type: true,
+        customer_segment: true,
           service_type: true,
           service_no: true,
           source_ticket: true,
           realm: true,
+          summary: true,
         },
         take: batchSize,
         skip,
@@ -54,6 +56,7 @@ async function main() {
 
       const inputs = rawTickets.map((t) => ({
         channel: t.channel,
+        classification_flag: t.classification_flag,
         classification_path: t.classification_path,
         customer_type: t.customer_type,
         customer_segment: t.customer_segment,
@@ -61,13 +64,12 @@ async function main() {
         service_no: t.service_no,
         source_ticket: t.source_ticket,
         realm: t.realm,
+        summary: t.summary,
       }));
 
       const results = await batchClassifyJenisFromVlookup(inputs);
 
-      // Build updates only for tickets that have non-null classification
       const updates: Prisma.PrismaPromise<{ count: number }>[] = [];
-      const incidentsToUpdate: string[] = [];
 
       for (let i = 0; i < rawTickets.length; i++) {
         const rawTicket = rawTickets[i]!;
@@ -75,21 +77,30 @@ async function main() {
 
         if (!rawTicket.incident) continue;
 
-        // Only update if classification produced a result
-        if (result.jenis_tiket_1 || result.jenis_tiket_2) {
-          updates.push(
-            prisma.ticket.updateMany({
-              where: { incident: rawTicket.incident },
-              data: {
-                jenis_tiket_1: result.jenis_tiket_1,
-                jenis_tiket_2: result.jenis_tiket_2,
-              },
-            })
-          );
-          incidentsToUpdate.push(rawTicket.incident);
-        } else {
+        const current = await prisma.ticket.findUnique({
+          where: { incident: rawTicket.incident },
+          select: { jenis_tiket_1: true, jenis_tiket_2: true },
+        });
+
+        const nextJenis1 = result.jenis_tiket_1 ?? null;
+        const nextJenis2 = result.jenis_tiket_2 ?? null;
+        const currentJenis1 = current?.jenis_tiket_1 ?? null;
+        const currentJenis2 = current?.jenis_tiket_2 ?? null;
+
+        if (nextJenis1 === currentJenis1 && nextJenis2 === currentJenis2) {
           skipped++;
+          continue;
         }
+
+        updates.push(
+          prisma.ticket.updateMany({
+            where: { incident: rawTicket.incident },
+            data: {
+              jenis_tiket_1: nextJenis1,
+              jenis_tiket_2: nextJenis2,
+            },
+          }),
+        );
       }
 
       if (updates.length > 0) {

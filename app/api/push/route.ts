@@ -2,10 +2,15 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { pushSpreadsheet } from '@/lib/google-sheets/push';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
 
 async function handlePush() {
   try {
-    const result = await pushSpreadsheet();
+    const result = await withCircuitBreaker('google-sheets', async () => {
+      return await pushSpreadsheet();
+    }, { failureThreshold: 3, timeoutMs: 60000 });
 
     if (!result) {
       return NextResponse.json(
@@ -39,15 +44,19 @@ async function handlePush() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Push API Error:', error);
+    logger.error('Push API Error:', { error: String(error) });
+
+    const isCircuitOpen = error instanceof Error && error.message.includes('Circuit breaker');
 
     return NextResponse.json(
       {
         success: false,
-        message: 'Push gagal',
+        message: isCircuitOpen 
+          ? 'Layanan Google Sheets sedang unavailable. Silakan coba lagi nanti.' 
+          : 'Push gagal',
         error: String(error),
       },
-      { status: 500 },
+      { status: isCircuitOpen ? 503 : 500 },
     );
   }
 }
@@ -56,6 +65,12 @@ export async function GET() {
   return handlePush();
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  const rateLimited = await enforceApiRateLimit(req, {
+    namespace: 'push',
+    limit: 10,
+    windowSeconds: 60,
+  });
+  if (rateLimited) return rateLimited;
   return handlePush();
 }

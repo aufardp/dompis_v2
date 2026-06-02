@@ -3,6 +3,7 @@ import { getSheetsClient, getSpreadsheetId } from './client';
 import { nowWIB } from './helpers';
 import { formatInTimeZone } from 'date-fns-tz';
 import { sheetsQueue, sleep } from '@/lib/worker-queue';
+import { logger } from '@/lib/observability/logger';
 
 const SHEET_NAME = 'Dummy_Dompis';
 const START_ROW = 6;
@@ -55,14 +56,14 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
   }
 
   if (signal?.aborted) {
-    console.log('[PUSH] Cancelled before start');
+    logger.info('[PUSH] Cancelled before start');
     return { success: false, message: 'Cancelled' };
   }
 
   isPushRunning = true;
 
   try {
-    console.log('[PUSH] START', nowWIB());
+    logger.info('[PUSH] START:', { time: nowWIB() });
 
     const sheets = getSheetsClient();
     const spreadsheetId = getSpreadsheetId();
@@ -84,7 +85,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     const incidentRows: string[][] = incidentColRes.data.values || [];
 
     if (incidentRows.length === 0) {
-      console.log('[PUSH] Sheet kosong, tidak ada incident ditemukan.');
+      logger.info('[PUSH] Sheet kosong, tidak ada incident ditemukan.');
       return { success: true, updated: 0, skipped: 0 };
     }
 
@@ -98,7 +99,9 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
       }
     });
 
-    console.log(`[PUSH] Ditemukan ${incidentToRowMap.size} incident di sheet`);
+    logger.info('[PUSH] Ditemukan incident di sheet:', {
+      count: incidentToRowMap.size,
+    });
 
     // ──────────────────────────────────────────────────────────────────────────
     // STEP 2: Baca kolom V-AH yang sudah ada di sheet untuk deteksi perubahan
@@ -171,7 +174,7 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
       allTickets.push(...tickets);
     }
 
-    console.log(`[PUSH] Data MySQL: ${allTickets.length} tiket ditemukan`);
+    logger.info('[PUSH] Data MySQL:', { ticketCount: allTickets.length });
 
     // ──────────────────────────────────────────────────────────────────────────
     // STEP 4: Bandingkan data MySQL vs sheet, buat list update
@@ -179,59 +182,65 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     //         TIDAK PERNAH insert baris baru atau sentuh kolom A-U
     // ──────────────────────────────────────────────────────────────────────────
 
+    const CHUNK_SIZE = 500;
     const updates: Array<{ range: string; values: any[][] }> = [];
     let skipped = 0;
     let notInSheet = 0;
 
-    for (const t of allTickets) {
-      const sheetRow = incidentToRowMap.get(t.incident);
+    for (let i = 0; i < allTickets.length; i += CHUNK_SIZE) {
+      const ticketChunk = allTickets.slice(i, i + CHUNK_SIZE);
+      for (const t of ticketChunk) {
+        const sheetRow = incidentToRowMap.get(t.incident);
 
-      if (!sheetRow) {
-        // Tiket ada di DB tapi tidak ada di sheet — skip, tidak bisa insert
-        notInSheet++;
-        continue;
+        if (!sheetRow) {
+          // Tiket ada di DB tapi tidak ada di sheet — skip, tidak bisa insert
+          notInSheet++;
+          continue;
+        }
+
+        const closedAtStr = formatDateWIB(t.closed_at);
+        const teknisiNama = t.users?.nama ?? '';
+        const teknisiNik = t.users?.nik ?? ''; // NIK sebagai labor code
+
+        // Build data untuk kolom V-AH (13 kolom: V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH)
+        const vahValues = [
+          t.alamat ?? '', // V  = alamat
+          teknisiNama, // W  = TEKNISI 1 (nama)
+          teknisiNik, // X  = LABOR CODE 1 (NIK teknisi)
+          '', // Y  = SEKTOR (kosong, diisi manual)
+          '', // Z  = TEKNISI 2 (kosong)
+          '', // AA = LABOR CODE 2 (kosong)
+          '', // AB = STATUS INSERA (kosong, sistem lain)
+          t.status_update ?? '', // AC = STATUS DOMPIS
+          t.pending_dompis ?? '', // AD = UPDATE_KENDALA
+          t.rca ?? '', // AE = RCA
+          t.sub_rca ?? '', // AF = SUB_RCA
+          t.description_solution_dompis ?? '', // AG = DETAIL_PERBAIKAN
+          closedAtStr, // AH = CLOSED_AT
+        ];
+
+        // Cek apakah data berubah dibanding sheet saat ini
+        const newHash = hashRow(vahValues);
+        const currentHash = sheetHashMap.get(t.incident) ?? '';
+
+        if (newHash === currentHash) {
+          skipped++;
+          continue; // Tidak ada perubahan, skip
+        }
+
+        // Ada perubahan → tambahkan ke list update
+        updates.push({
+          range: `'${SHEET_NAME}'!V${sheetRow}:AH${sheetRow}`,
+          values: [vahValues],
+        });
       }
-
-      const closedAtStr = formatDateWIB(t.closed_at);
-      const teknisiNama = t.users?.nama ?? '';
-      const teknisiNik = t.users?.nik ?? ''; // NIK sebagai labor code
-
-      // Build data untuk kolom V-AH (13 kolom: V, W, X, Y, Z, AA, AB, AC, AD, AE, AF, AG, AH)
-      const vahValues = [
-        t.alamat ?? '', // V  = alamat
-        teknisiNama, // W  = TEKNISI 1 (nama)
-        teknisiNik, // X  = LABOR CODE 1 (NIK teknisi)
-        '', // Y  = SEKTOR (kosong, diisi manual)
-        '', // Z  = TEKNISI 2 (kosong)
-        '', // AA = LABOR CODE 2 (kosong)
-        '', // AB = STATUS INSERA (kosong, sistem lain)
-        t.status_update ?? '', // AC = STATUS DOMPIS
-        t.pending_dompis ?? '', // AD = UPDATE_KENDALA
-        t.rca ?? '', // AE = RCA
-        t.sub_rca ?? '', // AF = SUB_RCA
-        t.description_solution_dompis ?? '', // AG = DETAIL_PERBAIKAN
-        closedAtStr, // AH = CLOSED_AT
-      ];
-
-      // Cek apakah data berubah dibanding sheet saat ini
-      const newHash = hashRow(vahValues);
-      const currentHash = sheetHashMap.get(t.incident) ?? '';
-
-      if (newHash === currentHash) {
-        skipped++;
-        continue; // Tidak ada perubahan, skip
-      }
-
-      // Ada perubahan → tambahkan ke list update
-      updates.push({
-        range: `'${SHEET_NAME}'!V${sheetRow}:AH${sheetRow}`,
-        values: [vahValues],
-      });
     }
 
-    console.log(
-      `[PUSH] Updates: ${updates.length} | Skipped (no change): ${skipped} | Not in sheet: ${notInSheet}`,
-    );
+    logger.info('[PUSH] Summary:', {
+      updates: updates.length,
+      skipped,
+      notInSheet,
+    });
 
     // ──────────────────────────────────────────────────────────────────────────
     // STEP 5: Eksekusi update ke Google Sheets dalam batch
@@ -239,40 +248,60 @@ export async function pushSpreadsheet(signal?: AbortSignal) {
     // ──────────────────────────────────────────────────────────────────────────
 
     if (updates.length === 0) {
-      console.log('[PUSH] Tidak ada perubahan. Sheet sudah sinkron.');
+      logger.info('[PUSH] Tidak ada perubahan. Sheet sudah sinkron.');
       return { success: true, updated: 0, skipped };
     }
 
     let totalUpdated = 0;
+    const failedBatches: number[] = [];
 
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
       if (signal?.aborted) {
-        console.log('[PUSH] Cancelled during batchUpdate');
+        logger.info('[PUSH] Cancelled during batchUpdate');
         break;
       }
 
       const chunk = updates.slice(i, i + BATCH_SIZE);
 
-      await sheetsApiCall(`push:batchUpdate[${i}..${i + chunk.length}]`, () =>
-        sheets.spreadsheets.values.batchUpdate({
-          spreadsheetId,
-          requestBody: {
-            valueInputOption: 'USER_ENTERED', // USER_ENTERED agar tanggal diparse dengan benar
-            data: chunk,
-          },
-        }),
-      );
+      try {
+        await sheetsApiCall(`push:batchUpdate[${i}..${i + chunk.length}]`, () =>
+          sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              valueInputOption: 'USER_ENTERED', // USER_ENTERED agar tanggal diparse dengan benar
+              data: chunk,
+            },
+          }),
+        );
 
-      totalUpdated += chunk.length;
-      console.log(`[PUSH] Progress: ${totalUpdated}/${updates.length}`);
+        totalUpdated += chunk.length;
+      } catch (err) {
+        logger.error('[PUSH] Batch update failed:', {
+          batch: i,
+          error: String(err),
+        });
+        failedBatches.push(i);
+      }
+      logger.info('[PUSH] Progress:', { totalUpdated, total: updates.length });
     }
 
-    console.log(
-      `[PUSH] DONE | Updated: ${totalUpdated} | Skipped: ${skipped} | ${nowWIB()}`,
-    );
-    return { success: true, updated: totalUpdated, skipped };
+    if (failedBatches.length > 0) {
+      logger.warn('[PUSH] Partial failure:', {
+        failedBatches: failedBatches.length,
+        totalBatches: Math.ceil(updates.length / BATCH_SIZE),
+        failedDetails: failedBatches,
+      });
+    }
+
+    logger.info('[PUSH] DONE:', { totalUpdated, skipped, time: nowWIB() });
+    return {
+      success: failedBatches.length === 0,
+      updated: totalUpdated,
+      skipped,
+      failedBatches,
+    };
   } catch (err: any) {
-    console.error('[PUSH] FATAL ERROR:', err?.message ?? err);
+    logger.error('[PUSH] FATAL ERROR:', { error: err?.message ?? String(err) });
     return { success: false, error: err?.message ?? 'Unknown error' };
   } finally {
     isPushRunning = false;

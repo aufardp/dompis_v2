@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logger } from '@/lib/observability/logger';
 
 const LOG_DIR = path.join(process.cwd(), 'logs');
 
@@ -46,7 +47,7 @@ function writeLog(entry: LogEntry): void {
     const logLine = JSON.stringify(entry) + '\n';
     fs.appendFileSync(AUTO_ASSIGN_LOG_FILE, logLine, 'utf-8');
   } catch (err) {
-    console.error('[AutoAssignLogger] Failed to write log:', err);
+    logger.error('[AutoAssignLogger] Failed to write log:', { error: String(err) });
   }
 }
 

@@ -1,19 +1,43 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-echo "==> Building..."
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+
+WEB_APP="dompis-server"
+WORKER_APPS=(
+  "dompis-ops-worker"
+  "dompis-ingestion-worker"
+  "dompis-projection-worker"
+  "dompis-active-refresh-worker"
+  "dompis-status-refresh-worker"
+)
+
+echo "==> Preflight: typecheck"
+npm run typecheck
+
+echo "==> Preflight: build"
 npm run build
 
-echo "==> Copying assets..."
-cp -r public .next/standalone/public
-cp -r .next/static .next/standalone/.next/static
-cp .env.production .next/standalone/.env
+echo "==> Reloading web app"
+pm2 startOrReload ecosystem.config.js --only "$WEB_APP" --update-env
 
-echo "==> Reloading web server (zero downtime)..."
-pm2 reload web --update-env
+echo "==> Restarting workers sequentially"
+for app in "${WORKER_APPS[@]}"; do
+  echo "   -> $app"
+  pm2 restart "$app" --update-env
+  sleep 2
+done
 
-echo "==> Restarting cron worker..."
-pm2 restart cron-worker --update-env
+echo "==> Saving PM2 process list"
+pm2 save
 
-echo "==> Done. Status:"
+echo "==> Status"
 pm2 status
+
+echo "==> Suggested post-deploy checks"
+echo "   pm2 logs $WEB_APP --lines 50"
+echo "   pm2 logs dompis-ingestion-worker --lines 50"
+echo "   pm2 logs dompis-projection-worker --lines 50"
+echo "   curl -f http://127.0.0.1:9005/api/health && echo 'OK'"
+echo "   curl -H 'x-cron-secret: <secret>' http://127.0.0.1:9005/api/internal/workers/health"

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { Ticket, Clock, Sun, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import UserMenu from '../components/layout/user-menu/UserMenu';
 import LogoutConfirmModal from '../components/layout/LogoutConfirmModal';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -52,11 +53,11 @@ export default function TeknisiLayout({
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
-      const res = await fetch('/api/auth/logout', {
+      await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
-      if (res.ok) router.push('/login');
+      router.push('/login');
     } catch (err) {
       console.error('Logout failed:', err);
     } finally {
@@ -83,7 +84,7 @@ export default function TeknisiLayout({
           {/* ── Brand ─────────────────────────────────────────────────── */}
           <div className='flex items-center gap-1'>
             <div className='flex h-10 w-10 items-center justify-center rounded-xl'>
-              <img src='/assets/logo.webp' alt='Dompis Logo' />
+              <Image src='/assets/logo.webp' alt='logo' width={100} height={30} />
             </div>
             <div>
               <h1 className='text-text-primary text-[17px] leading-none font-black tracking-tight'>

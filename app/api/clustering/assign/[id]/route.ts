@@ -6,6 +6,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { ClusterService } from '@/app/libs/services/cluster.service';
 import prisma from '@/app/libs/prisma';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -14,6 +15,14 @@ interface RouteParams {
 export async function DELETE(req: Request, { params }: RouteParams) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-assign-delete',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const { id } = await params;
     const assignmentId = Number(id);
 

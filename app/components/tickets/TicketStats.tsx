@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketCtype, CustomerType } from '@/app/types/ticket';
 import CustomerTypeCard from './CustomerTypeCard';
@@ -142,11 +142,9 @@ export default function TicketStats({
     [data.byCustomerType],
   );
 
-  const handleCtypeClick = (ctypeKey: TicketCtype) => {
-    if (onCtypeChange) {
-      onCtypeChange(ctypeKey);
-    }
-  };
+  const handleCtypeClick = useCallback((ctypeKey: TicketCtype) => {
+    onCtypeChange?.(ctypeKey);
+  }, [onCtypeChange]);
 
   return (
     <div className='space-y-5 sm:space-y-6'>

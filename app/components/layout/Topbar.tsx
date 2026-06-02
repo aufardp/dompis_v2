@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useDebounce } from '@/app/hooks/useOptimizations';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import {
@@ -12,6 +13,8 @@ import {
   Plus,
   Filter,
   ChevronDown,
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
 import { useTheme } from '@/app/contexts/ThemeContext';
@@ -23,6 +26,8 @@ interface Option {
 
 interface Props {
   onMenuClick: () => void;
+  onToggleSidebar?: () => void;
+  sidebarCollapsed?: boolean;
   onSearch?: (query: string) => void;
   onWorkzoneChange?: (workzone: string) => void;
   selectedWorkzone?: string;
@@ -30,11 +35,17 @@ interface Props {
 
 export default function Topbar({
   onMenuClick,
-  onSearch,
+  onToggleSidebar,
+  sidebarCollapsed = false,
+  onSearch: _onSearch,
   onWorkzoneChange,
   selectedWorkzone,
 }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchValue, setSearchValue] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchToast, setSearchToast] = useState<string | null>(null);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [workzone, setWorkzone] = useState(selectedWorkzone || '');
@@ -44,22 +55,49 @@ export default function Topbar({
     useWorkzoneOptions();
 
   useEffect(() => {
-    if (onSearch) {
-      onSearch(debouncedSearch);
+    setWorkzone(selectedWorkzone || '');
+  }, [selectedWorkzone]);
+
+  const navigateToSearch = useCallback(async (q: string) => {
+    if (!q.trim()) return;
+    setIsSearching(true);
+    setSearchToast(null);
+    try {
+      const res = await fetch(`/api/tickets/search-global?q=${encodeURIComponent(q)}`);
+      const result = await res.json();
+      if (result.found) {
+        const targetPath = result.page === 'semesta' ? '/admin/semesta' : `/${result.page}`;
+        await router.push(`${targetPath}?search=${encodeURIComponent(q)}`);
+      } else {
+        setSearchToast('Tiket tidak ditemukan');
+      }
+    } catch {
+      setSearchToast('Pencarian gagal');
     }
-  }, [debouncedSearch, onSearch]);
+    setIsSearching(false);
+  }, [router]);
+
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    if (!q) return;
+
+    const timer = setTimeout(() => {
+      navigateToSearch(q);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [debouncedSearch, navigateToSearch]);
 
   const handleSearch = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      onSearch?.(searchValue);
+      navigateToSearch(searchValue.trim());
     },
-    [onSearch, searchValue],
+    [navigateToSearch, searchValue],
   );
 
   const clearSearch = () => {
     setSearchValue('');
-    onSearch?.('');
   };
 
   const handleWorkzoneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -69,7 +107,8 @@ export default function Topbar({
   };
 
   return (
-    <header className='bg-bg/95 sticky top-0 z-30 flex flex-col border-b border-(--border) backdrop-blur-sm'>
+    <>
+      <header className='bg-bg/95 sticky top-0 z-30 flex flex-col border-b border-(--border) backdrop-blur-sm'>
       {/* Main Topbar Row */}
       <div className='flex h-14 items-center justify-between px-3 py-2 lg:px-6 lg:py-3'>
         <div className='flex items-center gap-2'>
@@ -77,17 +116,31 @@ export default function Topbar({
           <button
             onClick={onMenuClick}
             className='hover:bg-surface-2 rounded-lg p-2 lg:hidden'
+            title='Open menu'
           >
             <Menu className='h-5 w-5 text-(--text-secondary)' />
           </button>
 
+          {/* Desktop Sidebar Toggle */}
+          <button
+            onClick={onToggleSidebar}
+            className='hover:bg-surface-2 hidden rounded-lg p-2 lg:block'
+            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className='h-5 w-5 text-(--text-secondary)' />
+            ) : (
+              <Menu className='h-5 w-5 text-(--text-secondary)' />
+            )}
+          </button>
+
           {/* Page Title - Desktop */}
-          <h1 className='font-syne hidden text-lg font-bold tracking-tight text-(--text-primary) lg:block'>
+          <h1 className='hidden text-lg font-semibold tracking-tight text-(--text-primary) lg:block'>
             Ticket Management
           </h1>
 
           {/* Page Title - Mobile */}
-          <h1 className='font-syne text-base font-bold tracking-tight text-(--text-primary) lg:hidden'>
+          <h1 className='text-base font-semibold tracking-tight text-(--text-primary) lg:hidden'>
             Dompis
           </h1>
         </div>
@@ -222,7 +275,7 @@ export default function Topbar({
               )}
               <button
                 onClick={() => {
-                  onSearch?.(searchValue);
+                  navigateToSearch(searchValue.trim());
                   setShowMobileSearch(false);
                 }}
                 className='rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white'
@@ -233,6 +286,27 @@ export default function Topbar({
           </div>
         </div>
       )}
-    </header>
+
+      {/* Search loading overlay */}
+      </header>
+
+      {isSearching && (
+        <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/30'>
+          <div className='flex flex-col items-center gap-3 rounded-xl bg-white px-8 py-6 shadow-2xl dark:bg-gray-900'>
+            <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
+            <p className='text-sm font-medium text-gray-700 dark:text-gray-300'>Mencari tiket...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Search toast */}
+      {searchToast && (
+        <div className='fixed top-20 left-1/2 z-[9999] -translate-x-1/2'>
+          <div className='rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-lg'>
+            {searchToast}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

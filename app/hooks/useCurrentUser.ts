@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
 
 export interface CurrentUser {
   id_user: number;
@@ -11,38 +12,24 @@ export interface CurrentUser {
 }
 
 export function useCurrentUser() {
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
+  const { data, isLoading, error: queryError, refetch } = useQuery({
+    queryKey: queryKeys.users.me(),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
       const res = await fetchWithAuth('/api/users/me');
-      if (!res) return;
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data?.success) {
-        setUser(null);
-        setError(data?.message || 'Failed to load user');
-        return;
+      if (!res) throw new Error('No response');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || 'Failed to load user');
       }
+      return json.data as CurrentUser;
+    },
+  });
 
-      setUser(data.data);
-    } catch (e) {
-      console.error('Failed to fetch current user:', e);
-      setUser(null);
-      setError('Failed to load user');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { user, loading, error, refresh };
+  return {
+    user: data ?? null,
+    loading: isLoading,
+    error: queryError ? (queryError as Error).message : null,
+    refresh: () => { refetch(); },
+  };
 }

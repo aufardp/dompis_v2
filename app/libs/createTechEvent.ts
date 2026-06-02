@@ -3,6 +3,7 @@ import { TechEventPayload } from '@/app/libs/integrations/techEventTypes';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { formatInTimeZone } from 'date-fns-tz';
+import { redis } from '@/lib/redis';
 
 const WIB = 'Asia/Jakarta';
 
@@ -54,6 +55,8 @@ export async function createTechEvent(
       next_attempt_at: null,
     },
   });
+
+  redis.publish('worker:tech-events:request', eventId).catch(() => {});
 
   return eventId;
 }

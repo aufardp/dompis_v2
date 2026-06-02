@@ -1,0 +1,123 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "dashboard": {
+    "title": "Dompis v2 — Worker & Pipeline",
+    "tags": ["dompis", "worker", "pipeline"],
+    "timezone": "Asia/Jakarta",
+    "editable": true,
+    "refresh": "15s",
+    "time": { "from": "now-1h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "prometheus",
+          "query": "prometheus",
+          "current": { "text": "Prometheus", "value": "prometheus" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "Worker Heartbeat Age",
+        "type": "stat",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_worker_heartbeat_age_ms{worker=\"ingestion-worker\"}", "legendFormat": "Ingestion" },
+          { "expr": "dompis_worker_heartbeat_age_ms{worker=\"projection-worker\"}", "legendFormat": "Projection" },
+          { "expr": "dompis_worker_heartbeat_age_ms{worker=\"status-refresh-worker\"}", "legendFormat": "Status Refresh" },
+          { "expr": "dompis_worker_heartbeat_age_ms{worker=\"active-refresh-worker\"}", "legendFormat": "Active Refresh" },
+          { "expr": "dompis_worker_heartbeat_age_ms{worker=\"ops-worker\"}", "legendFormat": "Ops" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 15000 },
+                { "color": "red", "value": 60000 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Circuit Breaker Status",
+        "type": "stat",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_worker_circuit_open", "legendFormat": "{{worker}}" }
+        ]
+      },
+      {
+        "title": "Sync / Projection Lag",
+        "type": "graph",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_sync_lag_ms / 1000", "legendFormat": "Ingestion (seconds)" },
+          { "expr": "dompis_projection_lag_ms / 1000", "legendFormat": "Projection (seconds)" }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "s" }
+        }
+      },
+      {
+        "title": "Record Processing Rate",
+        "type": "graph",
+        "span": 12,
+        "targets": [
+          { "expr": "rate(dompis_ingestion_records_total[5m])", "legendFormat": "Ingestion {{status}}" },
+          { "expr": "rate(dompis_projection_records_total[5m])", "legendFormat": "Projection {{status}}" }
+        ]
+      },
+      {
+        "title": "Database Counts",
+        "type": "stat",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_db_ticket_raw_active", "legendFormat": "Ticket Raw (Active)" },
+          { "expr": "dompis_db_ticket_count", "legendFormat": "Tickets" },
+          { "expr": "dompis_db_outbox_pending", "legendFormat": "Outbox Pending" }
+        ]
+      },
+      {
+        "title": "Projection Backlog",
+        "type": "stat",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_projection_backlog", "legendFormat": "Never Projected" }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 100 },
+                { "color": "red", "value": 1000 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "External DB Connection",
+        "type": "stat",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_external_db_connected", "legendFormat": "Connected" }
+        ]
+      },
+      {
+        "title": "Worker SLO — Success Rate (24h)",
+        "type": "table",
+        "span": 12,
+        "targets": [
+          { "expr": "dompis_slo_success_rate", "legendFormat": "{{worker}}" }
+        ]
+      }
+    ]
+  }
+}

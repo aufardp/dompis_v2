@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { fetchWithAuth } from '@/app/libs/fetcher';
+import { fetchWithAuth, logoutUser } from '@/app/libs/fetcher';
 import { useMounted } from '@/app/hooks/useMounted';
 
 interface UserInfo {
@@ -141,11 +141,7 @@ export default function AttendancePage() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    router.push('/login');
+    await logoutUser();
   };
 
   const formatDateIndo = (date: Date | null) => {

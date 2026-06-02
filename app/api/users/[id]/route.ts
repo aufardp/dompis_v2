@@ -8,6 +8,7 @@ import {
   updateUser,
   deleteUser,
 } from '@/app/libs/services/users.service';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(
   req: NextRequest,
@@ -50,6 +51,13 @@ export async function PUT(
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'users-update',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const { id: idParam } = await params;
     const id = Number(idParam);
     if (Number.isNaN(id)) {
@@ -78,6 +86,13 @@ export async function DELETE(
 ) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'users-update',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const { id: idParam } = await params;
     const id = Number(idParam);

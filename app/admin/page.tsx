@@ -14,14 +14,11 @@ import { useExpiredTickets } from '@/app/hooks/useExpiredTickets';
 import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { TicketCtype, Ticket } from '@/app/types/ticket';
-import {
-  normalizeJenis,
-  isB2CJenis,
-  isB2BJenis,
-} from '@/app/config/jenis-tiket';
+import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
 import {
   countStatusBuckets,
+  getTicketCategory,
   isTicketClosed,
   isTicketInWork,
   isTicketOpenLike,
@@ -182,24 +179,32 @@ export default function TicketPage() {
   // B2C filter state (multi-select)
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<string[]>([]);
   const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<string[]>([]);
+  const [b2cTicketStatusFilter, setB2cTicketStatusFilter] = useState<string[]>([]);
   const [b2cFlaggingFilter, setB2cFlaggingFilter] = useState<string[]>([]);
 
   // B2B filter state (multi-select)
   const [b2bTicketTypeFilter, setB2bTicketTypeFilter] = useState<string[]>([]);
   const [b2bHasilVisitFilter, setB2bHasilVisitFilter] = useState<string[]>([]);
+  const [b2bTicketStatusFilter, setB2bTicketStatusFilter] = useState<string[]>([]);
   const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<string[]>([]);
 
   // Separate pagination state for B2C and B2B tables
   const [b2cPage, setB2cPage] = useState(1);
   const [b2bPage, setB2bPage] = useState(1);
 
-  // Read dept from URL query param
+  // Read dept and search from URL query params
   useEffect(() => {
     const dept = searchParams.get('dept');
     if (dept === 'b2b' || dept === 'b2c') {
       setDeptFilter(dept);
     } else {
       setDeptFilter('all');
+    }
+    const q = searchParams.get('search') || '';
+    if (q) {
+      setSearchQuery(q);
+      setB2cPage(1);
+      setB2bPage(1);
     }
   }, [searchParams]);
 
@@ -251,6 +256,7 @@ export default function TicketPage() {
     dept: 'b2b',
     ticketType: b2bTicketTypeFilter,
     statusUpdate: b2bHasilVisitFilter,
+    ticketStatus: b2bTicketStatusFilter,
     flagging: b2bFlaggingFilter,
     page: b2bPage,
     limit: 10,
@@ -263,6 +269,7 @@ export default function TicketPage() {
     ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
     ticketType: b2cTicketTypeFilter,
     statusUpdate: b2cHasilVisitFilter,
+    ticketStatus: b2cTicketStatusFilter,
     flagging: b2cFlaggingFilter,
     page: b2cPage,
     limit: 10,
@@ -367,17 +374,20 @@ export default function TicketPage() {
   }, [refreshSilent, refreshExpiredSilent, refetchOperationsSummary]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SEARCH TOAST + AUTO-SCROLL — uses b2cTicketTableData / b2bTicketTableData
-  // ═══════════════════════════════════════════════════════════════════════
   // Search toast + auto-scroll (depends on b2cTicketTableData and b2bTicketTableData)
 
-  // Filter B2C/B2B tickets from daily dataset - USE jenis_tiket_2 (same as backend)
+  // Filter B2C/B2B tickets from daily dataset - USE customer_segment (same as backend)
+  // B2C: DCS, PL-TSEL | B2B: all other segments
+  const B2C_CSEGMENTS = ['DCS', 'PL-TSEL'];
+
   const isB2CCustomerType = (t: Ticket) => {
-    return isB2CJenis(t.jenisTiket);
+    const seg = (t.customerSegment ?? '').toUpperCase();
+    return B2C_CSEGMENTS.includes(seg);
   };
 
   const isB2BCustomerType = (t: Ticket) => {
-    return isB2BJenis(t.jenisTiket);
+    const seg = (t.customerSegment ?? '').toUpperCase();
+    return !B2C_CSEGMENTS.includes(seg);
   };
 
   const b2cDailyTickets = useMemo(
@@ -414,14 +424,13 @@ export default function TicketPage() {
     };
 
     for (const t of b2cDailyTickets) {
-      const isClose = isTicketClosed(t.status_update);
-      const isAssigned = isTicketInWork(t.status_update);
+      const category = getTicketCategory(t.status, t.status_update);
       const jenisType = normalizeJenis(t.jenisTiket);
 
       // Status counts
-      if (isClose) {
+      if (category === 'close') {
         summary.close++;
-      } else if (isAssigned) {
+      } else if (category === 'assigned' || category === 'on_progress' || category === 'pending') {
         summary.assigned++;
       } else {
         summary.open++;
@@ -567,29 +576,6 @@ export default function TicketPage() {
     return typeMap;
   }, [b2cDailyTickets]);
 
-  const inferDept = useCallback((t: Ticket) => {
-    const seg = (t.customerSegment ?? '').toUpperCase();
-    if (seg === 'B2B') return 'b2b' as const;
-    if (seg === 'B2C' || seg === 'PL_TSEL') return 'b2c' as const;
-
-    const ct = (t.customerType ?? '').toLowerCase();
-    if (!ct) return null;
-
-    if (['reguler', 'hvc_gold', 'hvc_platinum', 'hvc_diamond'].includes(ct)) {
-      return 'b2c' as const;
-    }
-
-    if (
-      ct.startsWith('datin_') ||
-      ct.startsWith('indibiz') ||
-      ct.startsWith('reseller') ||
-      ct.startsWith('wifi')
-    ) {
-      return 'b2b' as const;
-    }
-
-    return null;
-  }, []);
 
   const normalizeCustomerType = useCallback((t: Ticket) => {
     const raw = (t.customerType || t.ctype || '').toString();
@@ -617,7 +603,7 @@ export default function TicketPage() {
     const b2cTickets = tickets.filter(isB2CCustomerType);
     const b2bTickets = tickets.filter(isB2BCustomerType);
 
-    const statusCounts = countStatusBuckets(tickets, (t) => t.status_update);
+    const statusCounts = countStatusBuckets(tickets, (t) => t.status, (t) => t.status_update);
     const total = statusCounts.total;
     const unassigned = statusCounts.open;
     const assigned =
@@ -711,6 +697,11 @@ export default function TicketPage() {
     setB2cPage(1);
   };
 
+  const handleB2cTicketStatusChange = (statuses: string[]) => {
+    setB2cTicketStatusFilter(statuses);
+    setB2cPage(1);
+  };
+
   const handleB2cFlaggingChange = (flags: string[]) => {
     setB2cFlaggingFilter(flags);
     setB2cPage(1);
@@ -723,6 +714,11 @@ export default function TicketPage() {
 
   const handleB2bHasilVisitChange = (statuses: string[]) => {
     setB2bHasilVisitFilter(statuses);
+    setB2bPage(1);
+  };
+
+  const handleB2bTicketStatusChange = (statuses: string[]) => {
+    setB2bTicketStatusFilter(statuses);
     setB2bPage(1);
   };
 
@@ -1007,11 +1003,12 @@ export default function TicketPage() {
 
   const clientB2bSummary = useMemo(() => {
     const arr = filteredTickets.filter(isB2BCustomerType);
+    const counts = countStatusBuckets(arr, (t) => t.status, (t) => t.status_update);
     return {
       total: arr.length,
-      open: arr.filter((t) => isTicketOpenLike(t.status_update)).length,
-      assigned: arr.filter((t) => isTicketInWork(t.status_update)).length,
-      close: arr.filter((t) => isTicketClosed(t.status_update)).length,
+      open: counts.open,
+      assigned: counts.assigned + counts.onProgress + counts.pending,
+      close: counts.close,
       regulerCount: 0,
       sqmCount: 0,
       ffgCount: arr.filter((t) => t.flaggingManja === 'FFG').length,
@@ -1025,12 +1022,12 @@ export default function TicketPage() {
 
   // Section summaries: use backend pagination total to match table count
   const b2bSectionSummary = useMemo(() => {
-    const breakdown = clientB2bSummary;
+    const breakdown = operationsSummary?.b2bSummary ?? clientB2bSummary;
     return {
       ...breakdown,
       total: b2bPageData.pagination.total,
     };
-  }, [clientB2bSummary, b2bPageData.pagination.total]);
+  }, [operationsSummary?.b2bSummary, clientB2bSummary, b2bPageData.pagination.total]);
 
   // ═══════════════════════════════════════════════════════════════════════
   // B2C STATS — NOW USING DAILY OPERATIONAL SCOPE (aligned with table)
@@ -1136,11 +1133,7 @@ export default function TicketPage() {
 
   const serviceAreas = operationsSummary?.serviceAreas ?? clientServiceAreas;
 
-  const isValidationTicket = (t: Ticket) => {
-    const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
-    const status = (t.status ?? '').trim().toLowerCase();
-    return statusUpdate === 'close' && status !== 'closed';
-  };
+  const isValidationTicket = (_t: Ticket) => false;
 
   // Reusable client-side filter function (matches the filter logic used for main table)
   const applyClientFilters = <
@@ -1148,18 +1141,19 @@ export default function TicketPage() {
       ctype?: string | null;
       customerType?: string | null;
       jenisTiket?: string | null;
+      status?: string;
       status_update?: string | null;
       guaranteeStatus?: string | null;
       ticketIdGamas?: string | null;
       flaggingManja?: string | null;
     },
-  >(
-    arr: T[],
-    ticketTypeFilter: string[],
-    hasilVisitFilter: string[],
-    flaggingFilter: string[],
-  ): T[] => {
-    let result = arr;
+    >(
+      arr: T[],
+      ticketTypeFilter: string[],
+      hasilVisitFilter: string[],
+      flaggingFilter: string[],
+    ): T[] => {
+      let result = arr;
 
     if (ticketTypeFilter.length > 0) {
       result = result.filter((t) => {
@@ -1391,36 +1385,37 @@ export default function TicketPage() {
 
   // ← ADDED: Helper to derive summary from ticket array
   function deriveSummary(arr: typeof ticketTableData) {
+    const counts = countStatusBuckets(arr, (t) => t.status, (t) => t.status_update);
     return {
       total: arr.length,
-      open: arr.filter((t) => {
-        return isTicketOpenLike(t.status_update);
-      }).length,
-      assigned: arr.filter((t) => {
-        return isTicketInWork(t.status_update);
-      }).length,
-      close: arr.filter((t) => {
-        return isTicketClosed(t.status_update);
-      }).length,
+      open: counts.open,
+      assigned: counts.assigned + counts.onProgress + counts.pending,
+      close: counts.close,
     };
   }
 
   // Table summaries: breakdown from full dataset, total from backend pagination
   const b2cTableSummary = useMemo(() => {
-    const breakdown = deriveSummary(b2cTicketTableData);
+    const server = b2cPageData.summary;
+    const fallback = deriveSummary(b2cTicketTableData);
     return {
-      ...breakdown,
       total: b2cPageData.pagination.total,
+      open: server?.open ?? fallback.open,
+      assigned: server?.assigned ?? fallback.assigned,
+      close: server?.close ?? fallback.close,
     };
-  }, [b2cTicketTableData, b2cPageData.pagination.total]);
+  }, [b2cPageData.summary, b2cPageData.pagination.total, b2cTicketTableData]);
 
   const b2bTableSummary = useMemo(() => {
-    const breakdown = deriveSummary(b2bTicketTableData);
+    const server = b2bPageData.summary;
+    const fallback = deriveSummary(b2bTicketTableData);
     return {
-      ...breakdown,
       total: b2bPageData.pagination.total,
+      open: server?.open ?? fallback.open,
+      assigned: server?.assigned ?? fallback.assigned,
+      close: server?.close ?? fallback.close,
     };
-  }, [b2bTicketTableData, b2bPageData.pagination.total]);
+  }, [b2bPageData.summary, b2bPageData.pagination.total, b2bTicketTableData]);
 
   // Search toast + auto-scroll
   useEffect(() => {
@@ -1430,7 +1425,7 @@ export default function TicketPage() {
       return;
     }
 
-    if (b2cPageData.loading || b2bPageData.loading) return;
+    if (b2cPageData.loading || b2bPageData.loading || b2cPageData.isRefreshing || b2bPageData.isRefreshing) return;
 
     const timer = setTimeout(() => {
       const b2cCount = b2cPageData.pagination.total;
@@ -1474,6 +1469,8 @@ export default function TicketPage() {
     deptFilter,
     b2cPageData.loading,
     b2bPageData.loading,
+    b2cPageData.isRefreshing,
+    b2bPageData.isRefreshing,
     b2cPageData.pagination.total,
     b2bPageData.pagination.total,
   ]);
@@ -1481,7 +1478,6 @@ export default function TicketPage() {
   return (
     <>
       <AdminLayout
-        onSearch={handleSearch}
         onWorkzoneChange={handleWorkzoneChange}
         selectedWorkzone={workzoneFilter}
       >
@@ -1637,10 +1633,14 @@ export default function TicketPage() {
                     />
                     <FilterBarB2B
                       ticketType={b2bTicketTypeFilter}
+                      ticketTypeOptions={b2bPageData.ticketTypeOptions}
                       statusUpdate={b2bHasilVisitFilter}
+                      ticketStatus={b2bTicketStatusFilter}
+                      ticketStatusOptions={b2bPageData.statusOptions}
                       flagging={b2bFlaggingFilter}
                       onTypeChange={handleB2bTicketTypeChange}
                       onStatusChange={handleB2bHasilVisitChange}
+                      onTicketStatusChange={handleB2bTicketStatusChange}
                       onFlaggingChange={handleB2bFlaggingChange}
                     />
                     <div ref={b2bTableRef} className='scroll-mt-20'>
@@ -1659,6 +1659,7 @@ export default function TicketPage() {
                               dept: 'b2b',
                               ticketType: b2bTicketTypeFilter,
                               statusUpdate: b2bHasilVisitFilter,
+                              ticketStatus: b2bTicketStatusFilter,
                               flagging: b2bFlaggingFilter,
                             }}
                             pagination={{
@@ -1701,10 +1702,14 @@ export default function TicketPage() {
 
                     <FilterBarB2C
                       ticketType={b2cTicketTypeFilter}
+                      ticketTypeOptions={b2cPageData.ticketTypeOptions}
                       statusUpdate={b2cHasilVisitFilter}
+                      ticketStatus={b2cTicketStatusFilter}
+                      ticketStatusOptions={b2cPageData.statusOptions}
                       flagging={b2cFlaggingFilter}
                       onTypeChange={handleB2cTicketTypeChange}
                       onStatusChange={handleB2cHasilVisitChange}
+                      onTicketStatusChange={handleB2cTicketStatusChange}
                       onFlaggingChange={handleB2cFlaggingChange}
                     />
 
@@ -1724,6 +1729,7 @@ export default function TicketPage() {
                               dept: 'b2c',
                               ticketType: b2cTicketTypeFilter,
                               statusUpdate: b2cHasilVisitFilter,
+                              ticketStatus: b2cTicketStatusFilter,
                               flagging: b2cFlaggingFilter,
                             }}
                             pagination={{

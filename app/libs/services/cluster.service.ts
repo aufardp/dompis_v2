@@ -265,12 +265,12 @@ export class ClusterService {
       throw new ApiError(404, 'Cluster tidak ditemukan');
     }
 
-    await prisma.$transaction([
-      prisma.cluster_node.deleteMany({ where: { cluster_id: clusterId } }),
-      prisma.cluster_area.deleteMany({ where: { cluster_id: clusterId } }),
-      prisma.cluster_assignment.deleteMany({ where: { cluster_id: clusterId } }),
-      prisma.cluster.delete({ where: { id: clusterId } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.cluster_node.deleteMany({ where: { cluster_id: clusterId } });
+      await tx.cluster_area.deleteMany({ where: { cluster_id: clusterId } });
+      await tx.cluster_assignment.deleteMany({ where: { cluster_id: clusterId } });
+      await tx.cluster.delete({ where: { id: clusterId } });
+    }, { isolationLevel: 'ReadCommitted' });
   }
 
   // ───────────────────────────────────────────────────────────────────────────

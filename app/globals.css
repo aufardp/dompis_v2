@@ -288,7 +288,7 @@
   }
 
   body {
-    @apply font-outfit relative z-1 font-normal;
+    @apply font-dm-sans relative z-1 font-normal;
     background-color: var(--bg);
     color: var(--text-primary);
     /* 🔧 Tambah: antialiasing untuk text lebih tajam di dark mode */

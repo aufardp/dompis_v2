@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import prisma from '@/app/libs/prisma';
+import { logger } from '@/lib/observability/logger';
 
 export async function GET() {
   try {
@@ -24,7 +25,7 @@ export async function GET() {
     
     return NextResponse.json(regions);
   } catch (error: any) {
-    console.error('Region API error:', error);
+    logger.error('Region API error:', error);
     
     if (error.status === 401 || error.status === 403) {
       return NextResponse.json({ error: error.message }, { status: error.status });

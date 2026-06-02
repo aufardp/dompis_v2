@@ -88,12 +88,19 @@ export interface AdminTicketTableProps {
     assigned: number;
     close: number;
   };
+  tableLabel?: string;
   flaggingFilter?: string[];
   downloadFilters?: {
-    dept: 'b2b' | 'b2c';
+    dept: 'all' | 'b2b' | 'b2c';
     ticketType?: string[];
+    ticketGroup?: string[];
+    operationalBucket?: string[];
+    regulerOnly?: boolean;
+    anomalyBucket?: string[];
     statusUpdate?: string[];
+    ticketStatus?: string[];
     flagging?: string[];
+    excludeSymptom?: string;
   };
 }
 
@@ -161,6 +168,7 @@ export default function TicketTable({
   onDetail,
   onBulkAssign,
   pagination,
+  tableLabel = 'B2C Tickets',
   tableSummary,
   downloadFilters,
 }: AdminTicketTableProps) {
@@ -187,8 +195,26 @@ export default function TicketTable({
       for (const t of downloadFilters.ticketType ?? []) {
         params.append('ticketType', t);
       }
+      for (const g of downloadFilters.ticketGroup ?? []) {
+        params.append('ticketGroup', g);
+      }
+      for (const bucket of downloadFilters.operationalBucket ?? []) {
+        params.append('operationalBucket', bucket);
+      }
+      if (typeof downloadFilters.regulerOnly === 'boolean') {
+        params.set('regulerOnly', downloadFilters.regulerOnly ? 'true' : 'false');
+      }
+      if (downloadFilters.excludeSymptom) {
+        params.set('excludeSymptom', downloadFilters.excludeSymptom);
+      }
+      for (const bucket of downloadFilters.anomalyBucket ?? []) {
+        params.append('anomalyBucket', bucket);
+      }
       for (const s of downloadFilters.statusUpdate ?? []) {
         params.append('statusUpdate', s);
+      }
+      for (const s of downloadFilters.ticketStatus ?? []) {
+        params.append('ticketStatus', s);
       }
       for (const f of downloadFilters.flagging ?? []) {
         params.append('flagging', f);
@@ -263,8 +289,18 @@ export default function TicketTable({
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt, a.status);
-        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt, b.status);
+        aVal = calculateAgeInHours(
+          a.reportedDate,
+          a.hasilVisit,
+          a.closedAt,
+          a.status,
+        );
+        bVal = calculateAgeInHours(
+          b.reportedDate,
+          b.hasilVisit,
+          b.closedAt,
+          b.status,
+        );
       } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];
@@ -411,7 +447,7 @@ export default function TicketTable({
 
           {/* ← ADDED: Summary bar */}
           {tableSummary && (
-            <TicketTableSummaryBar label='B2C Tickets' {...tableSummary} />
+            <TicketTableSummaryBar label={tableLabel} {...tableSummary} />
           )}
 
           <div className='overflow-x-auto'>
@@ -425,7 +461,9 @@ export default function TicketTable({
                   <th className='px-3 py-2.5 text-center'>Address</th>
                   {renderSortableHeader('Booking Date', 'bookingDate')}
                   {renderSortableHeader('Type', 'customerType')}
-                  <th className='px-3 py-2.5 text-center'>Max TTR</th>
+                  <th className='px-3 py-2.5 text-center whitespace-nowrap'>
+                    Max TTR
+                  </th>
                   {renderSortableHeader('Age / SLA', 'age')}
                   {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
                   {renderSortableHeader('Workzone', 'workzone')}

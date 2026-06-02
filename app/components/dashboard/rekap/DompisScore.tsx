@@ -4,25 +4,22 @@ interface DompisScoreProps {
   pct: number;
 }
 
+function getScoreStyle(pct: number, total: number): React.CSSProperties {
+  if (total === 0) return {};
+  if (pct === 0) return { background: '#7f1d1d', color: '#fca5a5' };
+  if (pct >= 80) return { background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' };
+  if (pct >= 50) return { background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
+  return { background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' };
+}
+
 export default function DompisScore({ ok, nok, pct }: DompisScoreProps) {
   const total = ok + nok;
   if (total === 0) {
-    return <span className="text-slate-400 dark:text-slate-500">—</span>;
-  }
-
-  let bgClass: string;
-  if (pct === 0 && total > 0) {
-    bgClass = 'bg-red-900 text-white dark:bg-red-950';
-  } else if (pct >= 80) {
-    bgClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
-  } else if (pct >= 50) {
-    bgClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
-  } else {
-    bgClass = 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
+    return <span className="text-(--text-muted)">—</span>;
   }
 
   return (
-    <div className={`inline-flex flex-col items-center rounded px-1.5 py-0.5 font-mono text-xs ${bgClass}`}>
+    <div className="inline-flex flex-col items-center rounded px-1.5 py-0.5 font-mono text-xs" style={getScoreStyle(pct, total)}>
       <span className="font-bold leading-tight">{pct.toFixed(2)}%</span>
       <span className="text-[9px] opacity-70 leading-tight">{ok}/{nok}</span>
     </div>

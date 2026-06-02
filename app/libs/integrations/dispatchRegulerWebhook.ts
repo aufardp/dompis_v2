@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { prisma } from '@/app/libs/prisma';
+import { isRedisReady, redis } from '@/lib/redis';
 import { RegulerBranchReportPayload, RegulerWebhookConfig } from './regulerWebhookTypes';
+import { logger } from '@/lib/observability/logger';
+import { quarantine } from '@/lib/dlq';
 
 const MAX_RETRY = 5;
 const BASE_BACKOFF_MS = 60 * 1000;
@@ -138,14 +141,11 @@ async function postRegulerWebhook(
   url.searchParams.set('timestamp', ts);
   url.searchParams.set('signature', signature);
 
-  console.log('[RegulerWebhook] Posting:', {
+  logger.info('[RegulerWebhook] Posting:', {
     url: url.origin + url.pathname,
     totalTickets: body.total_tickets,
     totalBranches: body.total_branches,
   });
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(url.toString(), {
@@ -158,7 +158,7 @@ async function postRegulerWebhook(
         'x-idempotency-key': body.event_id,
       },
       body: rawBody,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(30_000),
     });
 
     const text = await res.text().catch(() => '');
@@ -168,7 +168,7 @@ async function postRegulerWebhook(
       text.toLowerCase().includes('"success"') ||
       text.toLowerCase().includes('success');
 
-    console.log('[RegulerWebhook] Response:', {
+    logger.info('[RegulerWebhook] Response:', {
       status: res.status,
       ok: isSuccess,
       bodyPreview: text.slice(0, 200),
@@ -181,8 +181,6 @@ async function postRegulerWebhook(
       status: 500,
       text: err instanceof Error ? err.message : String(err),
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -206,8 +204,23 @@ export async function dispatchRegulerWebhook() {
   const payload = await buildRegulerBranchReport();
 
   if (payload.total_tickets === 0) {
-    console.log('[RegulerWebhook] No reguler tickets found — skipping dispatch');
+    logger.info('[RegulerWebhook] No reguler tickets found — skipping dispatch');
     return { skipped: true, message: 'No reguler tickets' };
+  }
+
+  // Content-hash dedup: skip if same ticket set was sent within last hour
+  const allIncidents = payload.branches
+    .flatMap((b) => b.tickets.map((t) => t.incident))
+    .sort()
+    .join(',');
+  const contentHash = crypto.createHash('sha256').update(allIncidents).digest('hex');
+  const dedupKey = `reguler-webhook:dedup:${contentHash}`;
+  if (isRedisReady()) {
+    const dedupSet = await redis.set(dedupKey, '1', 'PX', 3_600_000, 'NX');
+    if (!dedupSet) {
+      logger.info('[RegulerWebhook] Skipped — duplicate content (same ticket set within 1h)');
+      return { skipped: true, message: 'Duplicate content hash' };
+    }
   }
 
   // Create outbox record
@@ -243,7 +256,7 @@ export async function dispatchRegulerWebhook() {
         },
       });
 
-      console.log(`[RegulerWebhook] Sent: ${payload.total_tickets} tickets in ${payload.total_branches} branches`);
+      logger.info('[RegulerWebhook] Sent:', { totalTickets: payload.total_tickets, totalBranches: payload.total_branches });
       return { success: 1, failed: 0, event_id: payload.event_id };
     } else {
       throw new Error(res.text || `HTTP ${res.status}`);
@@ -264,7 +277,8 @@ export async function dispatchRegulerWebhook() {
       },
     });
 
-    console.error(`[RegulerWebhook] Failed: ${err?.message || String(err)}`);
+    logger.error('[RegulerWebhook] Failed:', { error: err?.message || String(err) });
+    await quarantine('reguler-webhook', { url, payloadSize: payload?.total_tickets }, err).catch(() => {});
     return { success: 0, failed: 1, event_id: payload.event_id };
   }
 }

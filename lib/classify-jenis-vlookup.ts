@@ -16,6 +16,8 @@
  */
 
 import { prisma } from '@/app/libs/prisma';
+import { logger } from '@/lib/observability/logger';
+import { isB2CJenis, isB2BJenis } from '@/app/config/jenis-tiket';
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
@@ -51,7 +53,18 @@ export async function refreshVlookupCache(): Promise<void> {
   if (now - vlookupCache.lastRefresh < CACHE_TTL_MS) return;
 
   try {
-    const rows = await prisma.sourceVlookup.findMany();
+    const rows = await prisma.sourceVlookup.findMany({
+      select: {
+        value_id: true,
+        description: true,
+        jenis_tiket: true,
+        customer_type_key: true,
+        jenis_tiket_2_val: true,
+        realm_b2b: true,
+        flag_1: true,
+        flag_2: true,
+      },
+    });
 
     vlookupCache.byValueId = new Map();
     vlookupCache.byCustomerTypeKey = new Map();
@@ -75,13 +88,13 @@ export async function refreshVlookupCache(): Promise<void> {
     }
 
     vlookupCache.lastRefresh = now;
-    console.log('[JenisVlookup] Cache refreshed:', {
+    logger.info('[JenisVlookup] Cache refreshed:', {
       byValueId: vlookupCache.byValueId.size,
       byCustomerTypeKey: vlookupCache.byCustomerTypeKey.size,
       byRealmB2b: vlookupCache.byRealmB2b.size,
     });
   } catch (error) {
-    console.error('[JenisVlookup] Failed to refresh cache:', error);
+    logger.error('[JenisVlookup] Failed to refresh cache:', { error: String(error) });
   }
 }
 
@@ -98,6 +111,7 @@ export function resetVlookupCache(): void {
 
 export interface JenisVlookupInput {
   channel: string | null;
+  classification_flag?: string | null;
   classification_path: string | null;
   customer_type: string | null;
   customer_segment: string | null;
@@ -105,6 +119,7 @@ export interface JenisVlookupInput {
   service_no: string | null;
   source_ticket: string | null;
   realm: string | null;
+  summary: string | null;
 }
 
 export interface JenisVlookupResult {
@@ -122,6 +137,92 @@ function isB2C(customerSegment: string | null): boolean {
 function like(str: string | null, pattern: string): boolean {
   if (!str) return false;
   return str.toUpperCase().includes(pattern.toUpperCase());
+}
+
+/**
+ * Jika service_type = SITE atau customer_segment = DWS → TSEL.
+ */
+function checkTselOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  const st = (input.service_type ?? '').trim().toUpperCase();
+  const cs = (input.customer_segment ?? '').trim().toUpperCase();
+  if (st === 'SITE' || cs === 'DWS') {
+    return { jenis_tiket_1: 'TSEL', jenis_tiket_2: 'TSEL' };
+  }
+  return null;
+}
+
+/**
+ * Summary marker [Infracare] adalah indikator langsung, tidak bergantung segmen.
+ */
+function checkInfraCareOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  if (like(input.summary, '[Infracare]')) {
+    return { jenis_tiket_1: 'INFRACARE', jenis_tiket_2: 'INFRACARE' };
+  }
+  return null;
+}
+
+/**
+ * Service type NON-NUMBERING harus keluar dari KPI Customer dan masuk Non Technical.
+ */
+function checkNonNumberingOverride(
+  input: JenisVlookupInput,
+): JenisVlookupResult | null {
+  const serviceType = (input.service_type ?? '').trim().toUpperCase();
+  if (serviceType === 'NON-NUMBERING' || serviceType === 'NON NUMBERING') {
+    return {
+      jenis_tiket_1: 'NON NUMBERING',
+      jenis_tiket_2: 'NON NUMBERING',
+    };
+  }
+
+  return null;
+}
+
+/**
+ * classification_flag = BILLING harus masuk Non Technical.
+ */
+function checkBillingOverride(
+  input: JenisVlookupInput,
+): JenisVlookupResult | null {
+  const classificationFlag = (input.classification_flag ?? '').trim().toUpperCase();
+
+  if (classificationFlag === 'BILLING') {
+    return {
+      jenis_tiket_1: 'BILLING',
+      jenis_tiket_2: 'BILLING',
+    };
+  }
+
+  return null;
+}
+
+function validateConsistency(input: JenisVlookupInput, result: JenisVlookupResult): void {
+  const isB2cInput = isB2C(input.customer_segment);
+  const expected = isB2cInput ? 'b2c' : 'b2b';
+
+  const check = (field: string, value: string | null, label: string) => {
+    if (!value) return;
+    const isB2c = isB2CJenis(value);
+    const isB2b = isB2BJenis(value);
+    if (!isB2c && !isB2b) return;
+    if (isB2c && isB2b) return; // cross-segment (e.g. permintaan), skip
+
+    const actual = isB2c ? 'b2c' : 'b2b';
+    if (actual !== expected) {
+      logger.warn('[CLASSIFY-MISMATCH]', {
+        field: label,
+        value,
+        customer_segment: input.customer_segment,
+        customer_type: input.customer_type,
+        service_type: input.service_type,
+        expected,
+        actual,
+      });
+    }
+  };
+
+  check('jenis_tiket_1', result.jenis_tiket_1, 'jenis_tiket_1');
+  check('jenis_tiket_2', result.jenis_tiket_2, 'jenis_tiket_2');
 }
 
 // ── B2C Classification ───────────────────────────────────────────────────────
@@ -167,7 +268,6 @@ function classifyB2C(input: JenisVlookupInput): JenisVlookupResult {
     }
   }
 
-  // Fallback: if classification could not determine a value, use UNKNOWN
   if (!jenis1) jenis1 = 'UNKNOWN';
   if (!jenis2) jenis2 = 'UNKNOWN';
 
@@ -289,11 +389,24 @@ export async function classifyJenisFromVlookup(
 ): Promise<JenisVlookupResult> {
   await refreshVlookupCache();
 
-  if (isB2C(input.customer_segment)) {
-    return classifyB2C(input);
-  }
+  const override = checkTselOverride(input);
+  if (override) return override;
 
-  return classifyB2B(input);
+  const infraCareOverride = checkInfraCareOverride(input);
+  if (infraCareOverride) return infraCareOverride;
+
+  const nonNumberingOverride = checkNonNumberingOverride(input);
+  if (nonNumberingOverride) return nonNumberingOverride;
+
+  const billingOverride = checkBillingOverride(input);
+  if (billingOverride) return billingOverride;
+
+  const result = isB2C(input.customer_segment)
+    ? classifyB2C(input)
+    : classifyB2B(input);
+
+  validateConsistency(input, result);
+  return result;
 }
 
 /**
@@ -305,9 +418,23 @@ export async function batchClassifyJenisFromVlookup(
   await refreshVlookupCache();
 
   return inputs.map((input) => {
-    if (isB2C(input.customer_segment)) {
-      return classifyB2C(input);
-    }
-    return classifyB2B(input);
+    const override = checkTselOverride(input);
+    if (override) return override;
+
+    const infraCareOverride = checkInfraCareOverride(input);
+    if (infraCareOverride) return infraCareOverride;
+
+    const nonNumberingOverride = checkNonNumberingOverride(input);
+    if (nonNumberingOverride) return nonNumberingOverride;
+
+    const billingOverride = checkBillingOverride(input);
+    if (billingOverride) return billingOverride;
+
+    const result = isB2C(input.customer_segment)
+      ? classifyB2C(input)
+      : classifyB2B(input);
+
+    validateConsistency(input, result);
+    return result;
   });
 }

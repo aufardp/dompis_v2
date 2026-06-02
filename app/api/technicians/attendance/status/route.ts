@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       data: status,
     });
   } catch (error: unknown) {
-    console.error('GET /technicians/attendance/status error:', error);
+    logger.error('GET /technicians/attendance/status error:', error);
     return NextResponse.json(
       {
         success: false,

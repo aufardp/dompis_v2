@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 interface TicketTableSummaryBarProps {
   total: number;
   open: number;
@@ -6,7 +8,7 @@ interface TicketTableSummaryBarProps {
   label?: string;
 }
 
-export default function TicketTableSummaryBar({
+function TicketTableSummaryBar({
   total,
   open,
   assigned,
@@ -68,3 +70,5 @@ export default function TicketTableSummaryBar({
     </div>
   );
 }
+
+export default memo(TicketTableSummaryBar);

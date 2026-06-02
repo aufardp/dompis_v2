@@ -1,16 +1,30 @@
 import prisma from '@/app/libs/prisma';
 import { postTechEvents } from './techEvents';
 import { TechEventWebhookBatch, TechEventPayload } from './techEventTypes';
+import { logger } from '@/lib/observability/logger';
 
 const MAX_RETRY = 5;
-const BASE_BACKOFF_MS = 60 * 1000; // 1 menit
-const MAX_BACKOFF_MS = 15 * 60 * 1000; // 15 menit
+const BASE_BACKOFF_MS = 60 * 1000;
+const MAX_BACKOFF_MS = 15 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 100;
 
 function computeBackoff(attempt: number) {
   const ms = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
   return Math.min(ms, MAX_BACKOFF_MS);
+}
+
+async function withP1017Retry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    if (err?.code === 'P1017') {
+      logger.warn('[TechEvents] P1017 error, retrying in 500ms...');
+      await new Promise((r) => setTimeout(r, 500));
+      return await fn();
+    }
+    throw err;
+  }
 }
 
 function getBatchSize(): number {
@@ -41,37 +55,40 @@ export async function dispatchTechEvents() {
   // Reset SENDING yang stuck lebih dari 5 menit
   // (Artinya proses crash sebelum update status ke SENT/FAILED/PENDING)
   const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);
-  await prisma.tech_event_outbox.updateMany({
-    where: {
-      status: 'SENDING',
-      updated_at: { lte: stuckCutoff },
-    },
-    data: {
-      status: 'PENDING',
-      last_error: 'Reset from stuck SENDING state',
-      next_attempt_at: null,
-    },
-  });
-
-  // Ambil event yang boleh dikirim (skip ingestion raw events)
-  const events = await prisma.tech_event_outbox.findMany({
-    where: {
-      status: 'PENDING',
-      event_type: {
-        notIn: [
-          'TICKET_RAW_CREATED',
-          'TICKET_RAW_UPDATED',
-          'TICKET_RAW_STATUS_CHANGED',
-          'TICKET_RAW_DELETED',
-          'INGESTION_COMPLETE',
-          'INGESTION_FAILED',
-        ],
+  await withP1017Retry(() =>
+    prisma.tech_event_outbox.updateMany({
+      where: {
+        status: 'SENDING',
+        updated_at: { lte: stuckCutoff },
       },
-      OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
-    },
-    orderBy: { created_at: 'asc' },
-    take: batchSize,
-  });
+      data: {
+        status: 'PENDING',
+        last_error: 'Reset from stuck SENDING state',
+        next_attempt_at: null,
+      },
+    }),
+  );
+
+  const events = await withP1017Retry(() =>
+    prisma.tech_event_outbox.findMany({
+      where: {
+        status: 'PENDING',
+        event_type: {
+          notIn: [
+            'TICKET_RAW_CREATED',
+            'TICKET_RAW_UPDATED',
+            'TICKET_RAW_STATUS_CHANGED',
+            'TICKET_RAW_DELETED',
+            'INGESTION_COMPLETE',
+            'INGESTION_FAILED',
+          ],
+        },
+        OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
+      },
+      orderBy: { created_at: 'asc' },
+      take: batchSize,
+    }),
+  );
 
   if (events.length === 0) {
     return { message: 'No pending events' };
@@ -80,57 +97,72 @@ export async function dispatchTechEvents() {
   const ids = events.map((e: { id: number }) => e.id);
 
   // Mark sebagai SENDING dulu (hindari double send)
-  await prisma.tech_event_outbox.updateMany({
-    where: { id: { in: ids }, status: 'PENDING' },
-    data: { status: 'SENDING' },
-  });
+  await withP1017Retry(() =>
+    prisma.tech_event_outbox.updateMany({
+      where: { id: { in: ids }, status: 'PENDING' },
+      data: { status: 'SENDING' },
+    }),
+  );
 
   let successCount = 0;
 
-  for (const event of events) {
-    try {
-      // Bungkus single event payload ke dalam batch format yang benar
-      const batch: TechEventWebhookBatch = {
-        events: [event.payload as TechEventPayload],
-      };
+  try {
+    const batch: TechEventWebhookBatch = {
+      events: events.map((e) => e.payload as TechEventPayload),
+    };
 
-      const res = await postTechEvents({ url, secret }, batch);
+    const res = await postTechEvents({ url, secret }, batch);
 
-      if (res.ok) {
-        await prisma.tech_event_outbox.update({
-          where: { id: event.id },
+    if (res.ok) {
+      await withP1017Retry(() =>
+        prisma.tech_event_outbox.updateMany({
+          where: { id: { in: ids }, status: 'SENDING' },
           data: {
             status: 'SENT',
             sent_at: new Date(),
             last_error: null,
           },
-        });
-
-        successCount++;
-      } else {
-        throw new Error(res.text || `HTTP ${res.status}`);
-      }
-    } catch (err: any) {
-      const newAttempt = event.attempt_count + 1;
-      const isFinal = newAttempt >= MAX_RETRY;
-
-      await prisma.tech_event_outbox.update({
-        where: { id: event.id },
-        data: {
-          attempt_count: newAttempt,
-          last_error: err?.message || String(err),
-          next_attempt_at: isFinal
-            ? null
-            : new Date(Date.now() + computeBackoff(newAttempt)),
-          status: isFinal ? 'FAILED' : 'PENDING',
-        },
-      });
+        }),
+      );
+      successCount = events.length;
+    } else {
+      throw new Error(res.text || `HTTP ${res.status}`);
     }
-  }
 
-  return {
-    processed: events.length,
-    success: successCount,
-    failed: events.length - successCount,
-  };
+    return {
+      processed: events.length,
+      success: successCount,
+      failed: events.length - successCount,
+    };
+  } catch (err: any) {
+    const batchErrorMsg = err?.message || String(err);
+    const maxAttempt = Math.max(...events.map((e) => e.attempt_count));
+    const newAttempt = maxAttempt + 1;
+    await withP1017Retry(() =>
+      prisma.tech_event_outbox.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          attempt_count: { increment: 1 },
+          last_error: batchErrorMsg,
+          status: newAttempt >= MAX_RETRY ? 'FAILED' : 'PENDING',
+          next_attempt_at:
+            newAttempt >= MAX_RETRY
+              ? null
+              : new Date(Date.now() + computeBackoff(newAttempt)),
+        },
+      }),
+    );
+
+    const dispatchError = new Error(
+      `Failed to dispatch ${events.length} tech event(s): ${batchErrorMsg}`,
+    ) as Error & {
+      processed?: number;
+      success?: number;
+      failed?: number;
+    };
+    dispatchError.processed = events.length;
+    dispatchError.success = 0;
+    dispatchError.failed = events.length;
+    throw dispatchError;
+  }
 }

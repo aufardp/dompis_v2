@@ -2,41 +2,11 @@ import { NextResponse } from 'next/server';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getCache, setCache } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { parseSearchType } from '@/lib/search-intent';
+import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
 
 export const dynamic = 'force-dynamic';
-
-// Shorter cache TTL for daily tickets (more dynamic)
-const DAILY_TICKETS_CACHE_TTL = 30;
-
-function toInt(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
-}
-
-function buildDailyTicketCacheKey(
-  params: URLSearchParams,
-  role: string,
-  userId: number,
-): string | null {
-  const filterParams = new URLSearchParams(params);
-
-  // `_t` is used by client-side refreshes after mutations/SSE events.
-  // Those refreshes must bypass Redis so the admin table reflects the latest assignment.
-  if (filterParams.has('_t')) {
-    return null;
-  }
-
-  // Search is operator-driven and should reflect freshly projected tickets.
-  // Avoid serving 30s-old cached search results on the admin dashboard.
-  if (filterParams.get('search')?.trim()) {
-    return null;
-  }
-
-  filterParams.sort();
-  return `daily_tickets:${role}:${userId}:${filterParams.toString()}`;
-}
 
 /**
  * GET /api/tickets/daily
@@ -60,8 +30,6 @@ export async function GET(request: Request) {
 
     const user = await protectApi([
       'admin',
-      'teknisi',
-      'helpdesk',
       'superadmin',
       'super_admin',
     ]);
@@ -77,41 +45,44 @@ export async function GET(request: Request) {
       ...searchParams.getAll('ticketType'),
       ...searchParams.getAll('jenisTiket'),
     ].filter(Boolean);
+    const ticketGroup = searchParams.getAll('ticketGroup').filter(Boolean);
+    const operationalBucket = searchParams.getAll('operationalBucket').filter(Boolean);
+    const anomalyBucket = searchParams.getAll('anomalyBucket').filter(Boolean);
+    const ticketStatus = searchParams.getAll('ticketStatus').filter(Boolean);
     const flagging = searchParams.getAll('flagging').filter(Boolean);
+    const regulerOnlyParam = searchParams.get('regulerOnly');
 
     const filters = {
       search: searchParams.get('search') || '',
+      symptom: searchParams.get('symptom') || '',
+      excludeSymptom: searchParams.get('excludeSymptom') || '',
+      searchType: parseSearchType(searchParams.get('searchType')),
       statusUpdate: statusUpdate.length > 0 ? statusUpdate : undefined,
-      dept,
+      ticketStatus: ticketStatus.length > 0 ? ticketStatus : undefined,
+      dept: toEnumValue(dept ?? null, ['all', 'b2b', 'b2c']),
       ticketType: ticketType.length > 0 ? ticketType : undefined,
+      ticketGroup: ticketGroup.length > 0 ? ticketGroup : undefined,
+      operationalBucket:
+        operationalBucket.length > 0 ? operationalBucket : undefined,
+      regulerOnly:
+        regulerOnlyParam === 'true'
+          ? true
+          : regulerOnlyParam === 'false'
+            ? false
+            : undefined,
+      anomalyBucket: anomalyBucket.length > 0 ? anomalyBucket : undefined,
       flagging: flagging.length > 0 ? flagging : undefined,
       workzone: searchParams.get('workzone') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
-      page: toInt(searchParams.get('page'), 1),
-      limit: toInt(searchParams.get('limit'), 50),
-      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'desc',
+      page: toPositiveInt(searchParams.get('page'), 1, 10_000),
+      limit: toPositiveInt(searchParams.get('limit'), 50, 100),
+      validasiPage: toPositiveInt(searchParams.get('validasiPage'), 1, 10_000),
+      validasiLimit: toPositiveInt(searchParams.get('validasiLimit'), 10, 50),
+      includeValidasi: searchParams.get('includeValidasi') === 'false' ? false : true,
+      sort: toSortOrder(searchParams.get('sort'), 'desc'),
     };
-
-    // Build cache key
-    const cacheKey = buildDailyTicketCacheKey(
-      searchParams,
-      user.role,
-      user.id_user,
-    );
-
-    // Try to get from cache
-    if (cacheKey) {
-      const cached = await getCache(cacheKey);
-      if (cached) {
-        return NextResponse.json({
-          success: true,
-          data: cached,
-          cached: true,
-        });
-      }
-    }
 
     // Fetch from database
     const result = await DailyTicketService.getDailyTicketTable(
@@ -120,15 +91,10 @@ export async function GET(request: Request) {
       filters,
     );
 
-    // Cache the result
-    if (cacheKey) {
-      await setCache(cacheKey, result, DAILY_TICKETS_CACHE_TTL);
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
+    return NextResponse.json(
+      { success: true, data: result },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (error: unknown) {
     return NextResponse.json(
       {

@@ -2,11 +2,19 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { ClusterService } from '@/app/libs/services/cluster.service';
 import prisma from '@/app/libs/prisma';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+
+const createClusterSchema = z.object({
+  sa_id: z.coerce.number({ message: 'sa_id is required and must be a number' }),
+  nama_cluster: z.string().min(1, 'nama_cluster is required'),
+  sort_order: z.coerce.number().optional(),
+});
 
 export async function GET(req: Request) {
   try {
@@ -108,18 +116,27 @@ export async function POST(req: Request) {
   try {
     const user = await protectApi(['admin', 'superadmin']);
 
-    const body = await req.json();
-    const { sa_id, nama_cluster, sort_order } = body;
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'clustering-create',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
-    if (!sa_id || !nama_cluster) {
+    const body = await req.json();
+
+    const parsed = createClusterSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          message: 'sa_id and nama_cluster are required',
+          message: parsed.error.issues.map((i) => i.message).join(', '),
         },
         { status: 400 },
       );
     }
+
+    const { sa_id, nama_cluster, sort_order } = parsed.data;
 
     // Verify admin has access to this SA (skip for superadmin)
     if (user.role !== 'superadmin') {
@@ -143,9 +160,9 @@ export async function POST(req: Request) {
 
     const cluster = await ClusterService.create(
       {
-        sa_id: Number(sa_id),
-        nama_cluster: String(nama_cluster),
-        sort_order: sort_order !== undefined ? Number(sort_order) : 0,
+        sa_id,
+        nama_cluster,
+        sort_order: sort_order ?? 0,
       },
       user.id_user,
     );

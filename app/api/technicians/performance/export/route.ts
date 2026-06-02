@@ -27,9 +27,9 @@ function monthRange(year: number, month: number) {
 function buildWorkzoneTicketFilter(workzones: string[], selected?: string) {
   const filters: any[] = [];
   const wz = selected?.trim();
-  if (wz) filters.push({ workzone: { contains: wz } });
+  if (wz) filters.push({ workzone: wz });
   if (workzones.length > 0) {
-    filters.push({ OR: workzones.map((w) => ({ workzone: { contains: w } })) });
+    filters.push({ OR: workzones.map((w) => ({ workzone: w })) });
   }
   if (filters.length === 0) return undefined;
   return { AND: filters };
@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
           return wzs.some((wz) =>
             String(wz || '')
               .toLowerCase()
-              .includes(selectedWz),
+              .trim() === selectedWz,
           );
         })
       : technicians;

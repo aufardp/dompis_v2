@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { AlertTicketService } from '@/app/libs/services/alert-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { toBoolean, toEnumValue, toPositiveInt } from '@/lib/http-query';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,13 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'tickets-alert-diamond',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'teknisi',
@@ -29,21 +38,26 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const workzone = searchParams.get('workzone') || undefined;
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const includeAssigned =
-      searchParams.get('includeAssigned') !== 'false';
+    const dept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']);
+    const ticketType =
+      searchParams.get('ticketType') ||
+      searchParams.get('jenisTiket') ||
+      undefined;
+    const limit = toPositiveInt(searchParams.get('limit'), 200, 500);
+    const includeAssigned = toBoolean(searchParams.get('includeAssigned'), true);
 
     const [tickets, totalCount] = await Promise.all([
       AlertTicketService.getAlertDiamondTickets(
         user.role,
         user.id_user,
         workzone,
-        { limit, includeAssigned },
+        { limit, includeAssigned, dept, ticketType },
       ),
       AlertTicketService.getAlertDiamondCount(
         user.role,
         user.id_user,
         workzone,
+        { dept, ticketType },
       ),
     ]);
 

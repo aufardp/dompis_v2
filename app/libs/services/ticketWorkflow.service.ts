@@ -17,7 +17,9 @@ import { fastTrackingUpdate } from '@/app/helpers/tracking.helpers';
 import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import { ApiError } from '@/app/libs/apiError';
 import { invalidateTicketsCache } from '@/lib/cache';
+import { AttendanceService } from './attendance.service';
 import {
   LockedTicket,
   ActorContext,
@@ -378,7 +380,12 @@ async function assertAdminHasAccessToServiceArea(
     where: { user_id: actorId, sa_id: serviceAreaId },
     select: { id: true },
   });
-  if (!access) throw new Error('Unauthorized');
+  if (!access) {
+    throw new ApiError(
+      403,
+      'Forbidden - Admin tidak memiliki akses ke service area tiket ini',
+    );
+  }
 }
 
 async function assertTechnicianEligibleForServiceArea(
@@ -719,84 +726,94 @@ export class TicketWorkflowService {
       throw new Error('Invalid ticket id');
     }
 
-    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const ticket = await tx.ticket.findUnique({
-        where: { id_ticket: ticketId },
-        select: { id_ticket: true, workzone: true },
+    const ticket = await prisma.ticket.findUnique({
+      where: { id_ticket: ticketId },
+      select: { id_ticket: true, workzone: true },
+    });
+
+    if (!ticket) throw new Error('Ticket not found');
+
+    let targetSa: { id_sa: number; nama_sa: string | null } | null = null;
+    let serviceAreaName = 'Unknown';
+
+    if (saId) {
+      const saRecord = await prisma.service_area.findUnique({
+        where: { id_sa: saId },
+        select: { id_sa: true, nama_sa: true },
       });
+      if (saRecord) {
+        targetSa = saRecord;
+        serviceAreaName = saRecord.nama_sa || `SA ${saId}`;
+      }
+    }
 
-      if (!ticket) throw new Error('Ticket not found');
+    if (!targetSa) {
+      const resolvedSa = await resolveServiceAreaForWorkzone(
+        prisma,
+        ticket.workzone,
+      );
+      if (!resolvedSa) {
+        return {
+          ticketId,
+          workzone: ticket.workzone,
+          serviceAreaId: null,
+          serviceAreaName: null,
+          technicians: [],
+        };
+      }
+      targetSa = resolvedSa;
+      serviceAreaName = resolvedSa.nama_sa || 'Unknown';
+    }
 
-      let targetSa: { id_sa: number; nama_sa: string | null } | null = null;
-      let serviceAreaName = 'Unknown';
-
-      if (saId) {
-        const saRecord = await tx.service_area.findUnique({
-          where: { id_sa: saId },
-          select: { id_sa: true, nama_sa: true },
+    if (actor && targetSa) {
+      const roleKey = normalizeRoleKey(actor.role);
+      if (roleKey === 'admin') {
+        const access = await prisma.user_sa.findFirst({
+          where: { user_id: actor.id_user, sa_id: targetSa.id_sa },
+          select: { id: true },
         });
-        if (saRecord) {
-          targetSa = saRecord;
-          serviceAreaName = saRecord.nama_sa || `SA ${saId}`;
-        }
-      }
-
-      if (!targetSa) {
-        const resolvedSa = await resolveServiceAreaForWorkzone(
-          tx,
-          ticket.workzone,
-        );
-        if (!resolvedSa) {
-          return {
-            ticketId,
-            workzone: ticket.workzone,
-            serviceAreaId: null,
-            serviceAreaName: null,
-            technicians: [],
-          };
-        }
-        targetSa = resolvedSa;
-        serviceAreaName = resolvedSa.nama_sa || 'Unknown';
-      }
-
-      if (actor && targetSa) {
-        const roleKey = normalizeRoleKey(actor.role);
-        if (roleKey === 'admin') {
-          await assertAdminHasAccessToServiceArea(
-            tx,
-            actor.id_user,
-            targetSa.id_sa,
+        if (!access) {
+          throw new ApiError(
+            403,
+            'Forbidden - Admin tidak memiliki akses ke service area tiket ini',
           );
         }
       }
+    }
 
-      const keyword = search?.trim();
+    const keyword = search?.trim();
 
-      const technicians = await tx.users.findMany({
-        where: {
-          roles: { is: { key: 'teknisi' } },
-          user_sa: { some: { sa_id: targetSa.id_sa } },
-          ...(keyword
-            ? {
-                OR: [
-                  { nama: { contains: keyword } },
-                  { nik: { contains: keyword } },
-                ],
-              }
-            : {}),
-        },
-        select: { id_user: true, nama: true, nik: true },
-        orderBy: { nama: 'asc' },
-      });
+    const technicians = await prisma.users.findMany({
+      where: {
+        roles: { is: { key: 'teknisi' } },
+        user_sa: { some: { sa_id: targetSa.id_sa } },
+        ...(keyword
+          ? {
+              OR: [
+                { nama: { startsWith: keyword } },
+                { nik: { startsWith: keyword } },
+              ],
+            }
+          : {}),
+      },
+      select: { id_user: true, nama: true, nik: true },
+      orderBy: { nama: 'asc' },
+    });
 
-      return {
-        ticketId,
-        workzone: ticket.workzone,
-        serviceAreaId: targetSa.id_sa,
-        serviceAreaName,
-        technicians,
-      };
-    }, { timeout: 15000 });
+    const presentIds = new Set(
+      await AttendanceService.getTodayPresentTechnicianIds(),
+    );
+
+    return {
+      ticketId,
+      workzone: ticket.workzone,
+      serviceAreaId: targetSa.id_sa,
+      serviceAreaName,
+      technicians: technicians.map((tech) => ({
+        ...tech,
+        checked_in_today: presentIds.has(tech.id_user),
+      })),
+    };
   }
 
   static async assignToUser(
@@ -971,7 +988,7 @@ export class TicketWorkflowService {
             ? 'Ticket reassigned successfully'
             : 'Ticket assigned successfully',
         };
-      }, { timeout: 15000 }),
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1080,7 +1097,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket unassigned successfully' };
-      }, { timeout: 15000 }),
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1176,7 +1193,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket picked up successfully' };
-      }, { timeout: 15000 }),
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1317,7 +1334,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket closed successfully' };
-      }, { timeout: 15000 }),
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1458,7 +1475,7 @@ export class TicketWorkflowService {
         if (Object.keys(ticketUpdate).length > 0) {
           await tx.ticket.update({
             where: { id_ticket: ticketId },
-            data: ticketUpdate as any,
+            data: ticketUpdate as Prisma.ticketUpdateInput,
           });
         }
 
@@ -1488,7 +1505,7 @@ export class TicketWorkflowService {
         }
 
         return { message: 'Ticket updated successfully' };
-      }, { timeout: 15000 }),
+      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

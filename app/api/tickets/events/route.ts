@@ -21,11 +21,33 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
 
   let controller: ReadableStreamDefaultController;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let cleanedUp = false;
+
+  const cleanup = (ctrl?: ReadableStreamDefaultController) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    if (controller) {
+      unregisterSSEConnection(controller);
+    }
+    const target = ctrl ?? controller;
+    if (target) {
+      try {
+        target.close();
+      } catch {
+        /* already closed */
+      }
+    }
+  };
 
   const stream = new ReadableStream({
     start(ctrl) {
       controller = ctrl;
-      registerSSEConnection(controller);
+      registerSSEConnection(controller, req.signal);
 
       // Send initial heartbeat immediately
       ctrl.enqueue(
@@ -35,7 +57,7 @@ export async function GET(req: NextRequest) {
       );
 
       // Keep-alive heartbeat every 20 seconds
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         try {
           ctrl.enqueue(
             encoder.encode(
@@ -43,24 +65,14 @@ export async function GET(req: NextRequest) {
             ),
           );
         } catch {
-          clearInterval(heartbeat);
+          cleanup(ctrl);
         }
       }, 20_000);
 
-      const cleanup = () => {
-        clearInterval(heartbeat);
-        unregisterSSEConnection(controller);
-        try {
-          ctrl.close();
-        } catch {
-          /* already closed */
-        }
-      };
-
-      req.signal.addEventListener('abort', cleanup);
+      req.signal.addEventListener('abort', () => cleanup());
     },
     cancel() {
-      unregisterSSEConnection(controller);
+      cleanup();
     },
   });
 

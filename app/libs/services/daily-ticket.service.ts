@@ -8,15 +8,75 @@ import {
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
-import { getJenisWhereClause, getB2CJenisWhereClause, getB2BJenisWhereClause } from '@/app/config/jenis-tiket';
+import {
+  getJenisWhereClause,
+  JENIS_MAP,
+} from '@/app/config/jenis-tiket';
+import {
+   type AnomalyBucketKey,
+   normalizeAnomalyBucketKey,
+   type OperationalBucketKey,
+   normalizeOperationalBucketKey,
+ } from '@/app/config/operational-buckets';
+import {
+  buildKpiBucketFilterSql,
+  type KpiBucketKey,
+} from '@/app/libs/services/kpi-bucket-sql';
+import {
+  buildAnomalyBucketWhere,
+  buildOperationalBucketWhere,
+  buildRegulerJenis1Where,
+} from './ticket-buckets';
+import { format, toZonedTime } from 'date-fns-tz';
 import { toWibString, toWibDateString, todayWibDateForDb, getTodayWibRange } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
+import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+
+type BucketSummary = {
+  total: number;
+  open: number;
+  assigned: number;
+  onProgress: number;
+  pending: number;
+  close: number;
+  ffgCount: number;
+  gamasCount: number;
+  p1Count: number;
+  pPlusCount: number;
+};
+
+type BucketSummaryMap = Record<
+  'kpi_customer' | 'kpi_proactive' | 'non_kpi_unspec' | 'non_technical' | 'sqm_update' | 'obsolete',
+  BucketSummary
+>;
+
+type BucketSummaryScope = 'all' | 'b2c' | 'b2b';
+
+type BucketSummaryMatrix = Record<BucketSummaryScope, BucketSummaryMap>;
+
+const KPI_SUMMARY_BUCKETS = [
+  'kpi_customer',
+  'kpi_proactive',
+  'non_kpi_unspec',
+  'non_technical',
+  'sqm_update',
+  'obsolete',
+] as const;
 
 type TicketFilters = {
   search?: string;
+  symptom?: string;
+  excludeSymptom?: string;
+  searchType?: SearchType;
   statusUpdate?: string | string[];
+  ticketStatus?: string | string[];
   dept?: string;
   ticketType?: string | string[];
+  ticketGroup?: string | string[];
+  operationalBucket?: string | string[];
+  regulerOnly?: boolean;
+  anomalyBucket?: string | string[];
   flagging?: string | string[];
   workzone?: number | string;
   ctype?: string;
@@ -24,7 +84,29 @@ type TicketFilters = {
   endDate?: string;
   page?: number;
   limit?: number;
+  validasiPage?: number;
+  validasiLimit?: number;
+  includeValidasi?: boolean;
+  includeSummary?: boolean;
+  includeOptions?: boolean;
+  globalScope?: boolean;
   sort?: 'asc' | 'desc';
+};
+
+type TicketTypeOption = {
+  key: string;
+  label: string;
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+};
+
+type FlaggingSummary = {
+  ffgCount: number;
+  gamasCount: number;
+  p1Count: number;
+  pPlusCount: number;
 };
 
 function normalizeStatusUpdateFilter(value: unknown): string {
@@ -40,50 +122,52 @@ function normalizeStringList(value: string | string[] | undefined): string[] {
     .filter((item) => item.length > 0 && item.toLowerCase() !== 'all');
 }
 
-function normalizeSearchTerm(value: string | undefined): string {
-  return String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .slice(0, 100);
+function normalizeTicketStatusFilter(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase();
 }
 
-function buildTicketSearchWhere(search: string): Record<string, any> | null {
-  const term = normalizeSearchTerm(search);
+function buildTicketSearchWhere(
+  search: string,
+  searchType?: SearchType,
+): Record<string, any> | null {
+  const term = normalizeSearchInput(search);
   if (!term) return null;
 
   const isNumericLike = /^[\d\s+().-]+$/.test(term);
   const compactNumber = term.replace(/[^\d]/g, '');
-  const clauses: Record<string, any>[] = [
-    { incident: { equals: term } },
-    { service_no: { equals: term } },
-    { ticket_id_gamas: { equals: term } },
-  ];
+
+  if (searchType === 'service' || (isNumericLike && compactNumber.length >= 4)) {
+    return {
+      OR: [
+        { service_no: { equals: compactNumber } },
+        { service_no: { startsWith: compactNumber } },
+        { contact_phone: { startsWith: compactNumber } },
+      ],
+    };
+  }
+
+  const isTicketCodeLike = /^[a-z0-9_-]{3,}$/i.test(term) && !term.includes(' ');
+  if (searchType === 'ticket_code' || isTicketCodeLike) {
+    return {
+      OR: [
+        { incident: { equals: term } },
+        { incident: { startsWith: term } },
+        { ticket_id_gamas: { equals: term } },
+        { ticket_id_gamas: { startsWith: term } },
+      ],
+    };
+  }
 
   if (term.length >= 3) {
-    clauses.push(
-      { incident: { startsWith: term } },
-      { service_no: { startsWith: term } },
-      { ticket_id_gamas: { startsWith: term } },
-    );
+    return {
+      OR: [
+        { contact_name: { contains: term } },
+        { customer_name: { contains: term } },
+      ],
+    };
   }
 
-  if (compactNumber.length >= 4) {
-    clauses.push(
-      { service_no: { startsWith: compactNumber } },
-      { contact_phone: { startsWith: compactNumber } },
-    );
-  }
-
-  if (isNumericLike && compactNumber.length >= 4) {
-    clauses.push({ contact_phone: { contains: compactNumber } });
-  } else if (term.length >= 3) {
-    clauses.push(
-      { contact_name: { contains: term } },
-      { customer_name: { contains: term } },
-    );
-  }
-
-  return { OR: clauses };
+  return { incident: { equals: term } };
 }
 
 /**
@@ -114,6 +198,24 @@ function applyStatusUpdateWhere(
   where.AND = [...(where.AND ?? []), { OR: clauses }];
 }
 
+function applyTicketStatusWhere(
+  where: Record<string, any>,
+  ticketStatus?: string | string[],
+) {
+  const statuses = normalizeStringList(ticketStatus).map((item) =>
+    normalizeTicketStatusFilter(item),
+  );
+
+  if (statuses.length === 0) return;
+
+  where.AND = [
+    ...(where.AND ?? []),
+    {
+      status: { in: statuses },
+    },
+  ];
+}
+
 function applyTicketTypeWhere(
   where: Record<string, any>,
   ticketType?: string | string[],
@@ -122,14 +224,64 @@ function applyTicketTypeWhere(
   if (ticketTypes.length === 0) return;
 
   const variants = new Set<string>();
+  const clauses: Record<string, any>[] = [];
   for (const type of ticketTypes) {
+    if (type === '__blank__') {
+      clauses.push({ OR: [{ jenis_tiket_2: null }, { jenis_tiket_2: '' }] });
+      continue;
+    }
+
     const clause = getJenisWhereClause(type);
     for (const value of clause.jenis_tiket_2.in) {
       variants.add(value);
     }
   }
 
-  where.jenis_tiket_2 = { in: [...variants] };
+  if (variants.size > 0) {
+    clauses.push({ jenis_tiket_2: { in: [...variants] } });
+  }
+
+  if (clauses.length === 0) return;
+
+  where.AND = [
+    ...(where.AND ?? []),
+    clauses.length === 1 ? clauses[0] : { OR: clauses },
+  ];
+}
+
+function applyTicketGroupWhere(
+  where: Record<string, any>,
+  ticketGroup?: string | string[],
+) {
+  const groupKeys = normalizeStringList(ticketGroup).map((item) =>
+    item.trim().toLowerCase(),
+  );
+  if (groupKeys.length === 0) return;
+
+  const variants = new Set<string>();
+  for (const key of groupKeys) {
+    const config = JENIS_MAP.get(key);
+    variants.add(key);
+    variants.add(key.replace(/-/g, ' '));
+    variants.add(key.replace(/-/g, '_'));
+
+    if (!config) continue;
+
+    variants.add(config.label);
+    variants.add(config.label.toLowerCase());
+    variants.add(config.label.toUpperCase());
+
+    for (const alias of config.dbAliases) {
+      variants.add(alias);
+      variants.add(String(alias).toLowerCase());
+      variants.add(String(alias).toUpperCase());
+    }
+  }
+
+  where.AND = [
+    ...(where.AND ?? []),
+    { jenis_tiket_1: { in: [...variants].filter(Boolean) } },
+  ];
 }
 
 function applyFlaggingWhere(
@@ -159,6 +311,63 @@ function applyFlaggingWhere(
     ...(where.AND ?? []),
     clauses.length === 1 ? clauses[0] : { OR: clauses },
   ];
+}
+
+function applyOperationalBucketFilterWhere(
+  where: Record<string, any>,
+  operationalBucket?: string | string[],
+) {
+  const values = normalizeStringList(operationalBucket)
+    .map((item) => normalizeOperationalBucketKey(item))
+    .filter((item): item is OperationalBucketKey => item !== '');
+
+  if (values.length === 0) return;
+
+  const clauses = values.map((value) => buildOperationalBucketWhere(value));
+
+  where.AND = [
+    ...(where.AND ?? []),
+    clauses.length === 1 ? clauses[0] : { OR: clauses },
+  ];
+}
+
+function applyRegulerOnlyWhere(
+  where: Record<string, any>,
+  regulerOnly?: boolean,
+) {
+  if (!regulerOnly) return;
+  where.AND = [...(where.AND ?? []), buildRegulerJenis1Where()];
+}
+
+function applyAnomalyBucketFilterWhere(
+  where: Record<string, any>,
+  anomalyBucket?: string | string[],
+) {
+  const values = normalizeStringList(anomalyBucket)
+    .map((item) => normalizeAnomalyBucketKey(item))
+    .filter((item): item is AnomalyBucketKey => item !== '');
+
+  if (values.length === 0) return;
+
+  const clauses = values.map((value) => buildAnomalyBucketWhere(value));
+  where.AND = [
+    ...(where.AND ?? []),
+    clauses.length === 1 ? clauses[0] : { OR: clauses },
+  ];
+}
+
+function buildDeptSegmentWhere(dept?: string): Record<string, unknown> | null {
+  if (!dept || dept === 'all') return null;
+  if (dept === 'b2c') return { customer_segment: { in: ['DCS', 'PL-TSEL'] } };
+  if (dept === 'b2b') {
+    return {
+      OR: [
+        { customer_segment: { notIn: ['DCS', 'PL-TSEL'] } },
+        { customer_segment: null },
+      ],
+    };
+  }
+  return null;
 }
 
 /**
@@ -211,6 +420,288 @@ function mapTicket(t: any) {
     syncedAt: toWibString(t.synced_at),
     importBatch: t.import_batch,
   };
+}
+
+function isMissingIndexError(error: unknown): boolean {
+  const message = String((error as { message?: string })?.message ?? '');
+  return message.includes('Code: `1176`') || /doesn't exist in table/i.test(message);
+}
+
+function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]] {
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
+    if (!node || typeof node !== 'object') return;
+
+    if (Array.isArray(node)) {
+      const childConditions = node
+        .map((item) => {
+          const localConditions: string[] = [];
+          const originalPush = conditions.push;
+          conditions.push = ((condition: string) => {
+            localConditions.push(condition);
+            return localConditions.length;
+          }) as typeof conditions.push;
+          walk(item, parentOp);
+          conditions.push = originalPush;
+          if (localConditions.length === 0) return null;
+          return localConditions.length > 1
+            ? `(${localConditions.join(` ${parentOp} `)})`
+            : localConditions[0];
+        })
+        .filter(Boolean) as string[];
+
+      if (childConditions.length > 0) {
+        conditions.push(
+          childConditions.length > 1
+            ? `(${childConditions.join(` ${parentOp} `)})`
+            : childConditions[0],
+        );
+      }
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'AND' && Array.isArray(value)) {
+        const childConditions: string[] = [];
+        const originalPush = conditions.push;
+        conditions.push = ((condition: string) => {
+          childConditions.push(condition);
+          return childConditions.length;
+        }) as typeof conditions.push;
+        for (const item of value) walk(item, 'AND');
+        conditions.push = originalPush;
+        if (childConditions.length > 0) {
+          conditions.push(`(${childConditions.join(' AND ')})`);
+        }
+        continue;
+      }
+
+      if (key === 'OR' && Array.isArray(value)) {
+        const childConditions: string[] = [];
+        const originalPush = conditions.push;
+        conditions.push = ((condition: string) => {
+          childConditions.push(condition);
+          return childConditions.length;
+        }) as typeof conditions.push;
+        for (const item of value) walk(item, 'OR');
+        conditions.push = originalPush;
+        if (childConditions.length > 0) {
+          conditions.push(`(${childConditions.join(' OR ')})`);
+        }
+        continue;
+      }
+
+      if (key === 'NOT') {
+        const values = Array.isArray(value) ? value : [value];
+        const childConditions: string[] = [];
+        const originalPush = conditions.push;
+        conditions.push = ((condition: string) => {
+          childConditions.push(condition);
+          return childConditions.length;
+        }) as typeof conditions.push;
+        for (const item of values) walk(item, 'AND');
+        conditions.push = originalPush;
+        if (childConditions.length > 0) {
+          const joined = childConditions.join(' AND ');
+          conditions.push(`NOT (${joined})`);
+        }
+        continue;
+      }
+
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value)
+      ) {
+        const operator = value as Record<string, any>;
+
+        if (operator.in !== undefined && Array.isArray(operator.in)) {
+          const placeholders = operator.in.map(() => '?');
+          conditions.push(`\`${key}\` IN (${placeholders.join(',')})`);
+          params.push(...operator.in);
+          continue;
+        }
+
+        if (operator.notIn !== undefined && Array.isArray(operator.notIn)) {
+          if (operator.notIn.length === 0) continue;
+          const placeholders = operator.notIn.map(() => '?');
+          conditions.push(`\`${key}\` NOT IN (${placeholders.join(',')})`);
+          params.push(...operator.notIn);
+          continue;
+        }
+
+        if (operator.not !== undefined) {
+          if (operator.not === null) {
+            conditions.push(`\`${key}\` IS NOT NULL`);
+          } else {
+            conditions.push(`\`${key}\` != ?`);
+            params.push(operator.not);
+          }
+          continue;
+        }
+
+        if (operator.gte !== undefined) {
+          conditions.push(`\`${key}\` >= ?`);
+          params.push(operator.gte);
+          continue;
+        }
+
+        if (operator.lte !== undefined) {
+          conditions.push(`\`${key}\` <= ?`);
+          params.push(operator.lte);
+          continue;
+        }
+
+        if (operator.contains !== undefined) {
+          conditions.push(`\`${key}\` LIKE ?`);
+          params.push(`%${operator.contains}%`);
+          continue;
+        }
+
+        if (operator.startsWith !== undefined) {
+          conditions.push(`\`${key}\` LIKE ?`);
+          params.push(`${operator.startsWith}%`);
+          continue;
+        }
+
+        if (operator.equals !== undefined) {
+          conditions.push(`\`${key}\` = ?`);
+          params.push(operator.equals);
+          continue;
+        }
+      }
+
+      if (value === null) {
+        conditions.push(`\`${key}\` IS NULL`);
+      } else {
+        conditions.push(`\`${key}\` = ?`);
+        params.push(value);
+      }
+    }
+  }
+
+  walk(baseWhere);
+  return [conditions.length > 0 ? conditions.join(' AND ') : '1=1', params];
+}
+
+function parseCountValue(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildStatusCategorySql(tbl = ''): string {
+  const t = tbl ? `${tbl}.` : '';
+  const closeStatusesSql = CLOSE_STATUS_VALUES.map((status) =>
+    `'${status.replace(/'/g, "''")}'`,
+  ).join(', ');
+
+  return `
+    CASE
+      WHEN UPPER(TRIM(COALESCE(${t}status, ''))) IN (${closeStatusesSql}) THEN 'close'
+      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'assigned' THEN 'assigned'
+      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'on_progress' THEN 'on_progress'
+      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'pending' THEN 'pending'
+      ELSE 'open'
+    END
+  `;
+}
+
+function buildBucketSummarySelect(bucket: KpiBucketKey, tbl = ''): string {
+  const t = tbl ? `${tbl}.` : '';
+  const bucketSql = buildKpiBucketFilterSql(bucket, tbl);
+  const statusCategorySql = buildStatusCategorySql(tbl);
+  const prefix = `${bucket}`;
+
+  return [
+    `SUM(CASE WHEN (${bucketSql}) THEN 1 ELSE 0 END) AS \`${prefix}__total\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${statusCategorySql} = 'open' THEN 1 ELSE 0 END) AS \`${prefix}__open\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${statusCategorySql} = 'assigned' THEN 1 ELSE 0 END) AS \`${prefix}__assigned\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${statusCategorySql} = 'on_progress' THEN 1 ELSE 0 END) AS \`${prefix}__on_progress\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${statusCategorySql} = 'pending' THEN 1 ELSE 0 END) AS \`${prefix}__pending\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${statusCategorySql} = 'close' THEN 1 ELSE 0 END) AS \`${prefix}__close\``,
+    `SUM(CASE WHEN (${bucketSql}) AND LOWER(COALESCE(${t}guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS \`${prefix}__ffg\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${t}ticket_id_gamas IS NOT NULL AND LOWER(TRIM(${t}ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS \`${prefix}__gamas\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${t}flagging_manja = 'P1' THEN 1 ELSE 0 END) AS \`${prefix}__p1\``,
+    `SUM(CASE WHEN (${bucketSql}) AND ${t}flagging_manja = 'P+' THEN 1 ELSE 0 END) AS \`${prefix}__p_plus\``,
+  ].join(',\n');
+}
+
+function normalizeBucketSummaryRow(row: Record<string, unknown> | undefined, bucket: KpiBucketKey): BucketSummary {
+  return {
+    total: parseCountValue(row?.[`${bucket}__total`]),
+    open: parseCountValue(row?.[`${bucket}__open`]),
+    assigned: parseCountValue(row?.[`${bucket}__assigned`]),
+    onProgress: parseCountValue(row?.[`${bucket}__on_progress`]),
+    pending: parseCountValue(row?.[`${bucket}__pending`]),
+    close: parseCountValue(row?.[`${bucket}__close`]),
+    ffgCount: parseCountValue(row?.[`${bucket}__ffg`]),
+    gamasCount: parseCountValue(row?.[`${bucket}__gamas`]),
+    p1Count: parseCountValue(row?.[`${bucket}__p1`]),
+    pPlusCount: parseCountValue(row?.[`${bucket}__p_plus`]),
+  };
+}
+
+async function hydrateTicketsByIds(ids: number[]) {
+  if (ids.length === 0) return [];
+
+  const tickets = await prisma.ticket.findMany({
+    where: { id_ticket: { in: ids } },
+    include: {
+      users: {
+        select: { nama: true },
+      },
+    },
+  });
+
+  const ticketMap = new Map(tickets.map((ticket) => [ticket.id_ticket, ticket]));
+  return ids
+    .map((id) => ticketMap.get(id))
+    .filter(Boolean);
+}
+
+async function queryRawWithOptionalIndex<T>(
+  sqlWithIndex: string,
+  sqlWithoutIndex: string,
+  params: unknown[],
+): Promise<T> {
+  try {
+    return await prisma.$queryRawUnsafe<T>(sqlWithIndex, ...params);
+  } catch (error) {
+    if (!isMissingIndexError(error)) throw error;
+    console.warn('[DailyTicketService] FORCE INDEX skipped:', String((error as Error)?.message ?? error));
+    return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
+  }
+}
+
+function buildMainTableOrderBySql(sort: 'asc' | 'desc', today: string): [string, any[]] {
+  const reportedDirection = sort === 'asc' ? 'ASC' : 'DESC';
+
+  return [
+    `
+      CASE
+        WHEN booking_date IS NOT NULL AND DATE(booking_date) = ? THEN 0
+        WHEN UPPER(COALESCE(flagging_manja, '')) = 'P1' THEN 1
+        ELSE 2
+      END ASC,
+      CASE
+        WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_DIAMOND', 'HVC DIAMOND', 'DIAMOND') THEN 0
+        WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_PLATINUM', 'HVC PLATINUM', 'PLATINUM') THEN 1
+        WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_GOLD', 'HVC GOLD', 'GOLD') THEN 2
+        WHEN UPPER(COALESCE(customer_type, '')) IN ('REGULER', 'REGULAR') THEN 3
+        ELSE 4
+      END ASC,
+      CASE
+        WHEN booking_date IS NULL THEN 1
+        ELSE 0
+      END ASC,
+      booking_date ASC,
+      reported_date ${reportedDirection},
+      id_ticket ASC
+    `,
+    [today],
+  ];
 }
 
 export class DailyTicketService {
@@ -297,13 +788,21 @@ export class DailyTicketService {
     userId: number,
     selectedWorkzone?: string | null,
   ): Promise<Record<string, any>> {
+    if (role === 'superadmin' || role === 'super_admin') {
+      if (selectedWorkzone) {
+        return { workzone: selectedWorkzone };
+      }
+
+      return {};
+    }
+
     if (role === 'teknisi') {
       const where: Record<string, any> = {
         teknisi_user_id: userId,
       };
 
       if (selectedWorkzone) {
-        where.workzone = { contains: selectedWorkzone };
+        where.workzone = selectedWorkzone;
       }
 
       return where;
@@ -313,12 +812,12 @@ export class DailyTicketService {
       const workzones = await getWorkzonesForUser(userId);
 
       if (workzones.length === 0) {
-        return {};
+        return { id_ticket: 0 };
       }
 
       if (selectedWorkzone) {
         return workzones.includes(selectedWorkzone)
-          ? { workzone: { contains: selectedWorkzone } }
+          ? { workzone: selectedWorkzone }
           : { id_ticket: 0 };
       }
 
@@ -347,23 +846,38 @@ export class DailyTicketService {
   ): Promise<Record<string, any>> {
     const {
       search = '',
+      symptom = '',
+      excludeSymptom = '',
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
+      ticketGroup,
+      operationalBucket,
+      regulerOnly,
+      anomalyBucket,
       flagging,
       workzone,
+      startDate,
+      endDate,
       ctype,
+      searchType,
+      globalScope,
     } = filters ?? {};
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
+    const effectiveRole =
+      globalScope && (role === 'admin' || role === 'superadmin' || role === 'super_admin')
+        ? 'superadmin'
+        : role;
 
     const where: Record<string, any> = {
-      ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
+      ...(await this.buildWorkzoneWhere(effectiveRole, userId, selectedWorkzone)),
     };
 
     await this.applyDailyTicketFilter(where);
 
-    const searchWhere = buildTicketSearchWhere(search);
+    const searchWhere = buildTicketSearchWhere(search, searchType);
     if (searchWhere) {
       where.AND = [
         ...(where.AND ?? []),
@@ -371,8 +885,66 @@ export class DailyTicketService {
       ];
     }
 
+    const normalizedSymptom = String(symptom ?? '').trim();
+    if (normalizedSymptom) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          symptom: {
+            contains: normalizedSymptom,
+          },
+        },
+      ];
+    }
+
+    const normalizedExcludeSymptom = String(excludeSymptom ?? '').trim();
+    if (normalizedExcludeSymptom) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          NOT: {
+            symptom: {
+              contains: normalizedExcludeSymptom,
+            },
+          },
+        },
+      ];
+    }
+
+    if (startDate || endDate) {
+      if (startDate && endDate) {
+        where.AND = [
+          ...(where.AND ?? []),
+          {
+            reported_date: {
+              gte: startDate,
+              lte: `${endDate} 23:59:59`,
+            },
+          },
+        ];
+      } else if (startDate) {
+        where.AND = [
+          ...(where.AND ?? []),
+          {
+            reported_date: { gte: startDate },
+          },
+        ];
+      } else if (endDate) {
+        where.AND = [
+          ...(where.AND ?? []),
+          {
+            reported_date: { lte: `${endDate} 23:59:59` },
+          },
+        ];
+      }
+    }
+
     if (statusUpdate) {
       applyStatusUpdateWhere(where, statusUpdate);
+    }
+
+    if (ticketStatus) {
+      applyTicketStatusWhere(where, ticketStatus);
     }
 
     if (ctype) {
@@ -380,17 +952,328 @@ export class DailyTicketService {
     }
 
     applyTicketTypeWhere(where, ticketType);
+    applyTicketGroupWhere(where, ticketGroup);
+    applyOperationalBucketFilterWhere(where, operationalBucket);
+    applyRegulerOnlyWhere(where, regulerOnly);
+    applyAnomalyBucketFilterWhere(where, anomalyBucket);
     applyFlaggingWhere(where, flagging);
 
-    if (dept && dept !== 'all') {
-      const jenisClause = dept === 'b2c' ? getB2CJenisWhereClause() : getB2BJenisWhereClause();
+    const deptSegmentWhere = buildDeptSegmentWhere(dept);
+    if (deptSegmentWhere) {
       where.AND = [
         ...(where.AND ?? []),
-        jenisClause,
+        deptSegmentWhere,
       ];
     }
 
     return where;
+  }
+
+  private static async fetchTicketIdsBySql(
+    where: Prisma.ticketWhereInput,
+    options: {
+      sort: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+      forceIndex: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi';
+      priorityToday?: string | null;
+    },
+  ): Promise<number[]> {
+    const [whereClause, params] = buildSqlWhereClause(where);
+    const [orderByClause, orderParams] = options.priorityToday
+      ? buildMainTableOrderBySql(options.sort, options.priorityToday)
+      : [
+          `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
+          [],
+        ];
+    const sqlWithIndex = `
+      SELECT id_ticket
+      FROM ticket FORCE INDEX (${options.forceIndex})
+      WHERE ${whereClause}
+      ORDER BY ${orderByClause}
+      LIMIT ?, ?
+    `;
+    const sqlWithoutIndex = `
+      SELECT id_ticket
+      FROM ticket
+      WHERE ${whereClause}
+      ORDER BY ${orderByClause}
+      LIMIT ?, ?
+    `;
+
+    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      [...params, ...orderParams, options.offset, options.limit],
+    );
+
+    return rows.map((row) => row.id_ticket);
+  }
+
+  private static async countTicketsBySql(
+    where: Prisma.ticketWhereInput,
+    forceIndex: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi',
+  ): Promise<number> {
+    const [whereClause, params] = buildSqlWhereClause(where);
+    const sqlWithIndex = `
+      SELECT COUNT(*) AS total
+      FROM ticket FORCE INDEX (${forceIndex})
+      WHERE ${whereClause}
+    `;
+    const sqlWithoutIndex = `
+      SELECT COUNT(*) AS total
+      FROM ticket
+      WHERE ${whereClause}
+    `;
+
+    const rows = await queryRawWithOptionalIndex<Array<{ total: bigint | number }>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      params,
+    );
+
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  private static buildValidasiBaseWhere(
+    _where: Record<string, any>,
+  ): Prisma.ticketWhereInput | null {
+    return null;
+  }
+
+  private static buildMainTableWhere(
+    where: Record<string, any>,
+  ): Prisma.ticketWhereInput {
+    return where as Prisma.ticketWhereInput;
+  }
+
+  private static withAdditionalWhere(
+    where: Prisma.ticketWhereInput,
+    ...clauses: Prisma.ticketWhereInput[]
+  ): Prisma.ticketWhereInput {
+    const activeClauses = clauses.filter((clause) => Object.keys(clause).length > 0);
+    if (activeClauses.length === 0) return where;
+    return {
+      AND: [where, ...activeClauses],
+    };
+  }
+
+  private static async countValidasiTickets(
+    validasiBaseWhere: Prisma.ticketWhereInput,
+  ): Promise<number> {
+    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
+      status_update: 'close',
+    });
+    const worklogWhere = this.withAdditionalWhere(
+      validasiBaseWhere,
+      { worklog_summary: 'Tech Closed' },
+      {
+        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
+      },
+    );
+
+    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
+    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const sqlWithIndex = `
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT id_ticket
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${worklogSql}
+      ) AS validasi_ids
+    `;
+    const sqlWithoutIndex = `
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT id_ticket
+        FROM ticket
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket
+        FROM ticket
+        WHERE ${worklogSql}
+      ) AS validasi_ids
+    `;
+
+    const rows = await queryRawWithOptionalIndex<Array<{ total: bigint | number }>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      [...closeParams, ...worklogParams],
+    );
+
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  private static normalizeFlaggingSummary(row?: Record<string, unknown>): FlaggingSummary {
+    return {
+      ffgCount: Number(row?.ffg ?? 0),
+      gamasCount: Number(row?.gamas ?? 0),
+      p1Count: Number(row?.p1 ?? 0),
+      pPlusCount: Number(row?.p_plus ?? 0),
+    };
+  }
+
+  private static async countFlaggingSummary(
+    mainTableWhere: Prisma.ticketWhereInput,
+    validasiBaseWhere?: Prisma.ticketWhereInput | null,
+  ): Promise<FlaggingSummary> {
+    const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
+    const mainWithIndex = `
+      SELECT
+        SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+        SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+        SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+        SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+      FROM ticket FORCE INDEX (idx_ticket_daily_board)
+      WHERE ${mainSql}
+    `;
+    const mainWithoutIndex = `
+      SELECT
+        SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+        SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+        SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+        SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+      FROM ticket
+      WHERE ${mainSql}
+    `;
+
+    const [mainRows, validasiRows] = await Promise.all([
+      queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+        mainWithIndex,
+        mainWithoutIndex,
+        mainParams,
+      ),
+      validasiBaseWhere
+        ? this.countValidasiFlaggingSummary(validasiBaseWhere)
+        : Promise.resolve([{ ffg: 0, gamas: 0, p1: 0, p_plus: 0 }]),
+    ]);
+
+    const main = this.normalizeFlaggingSummary(mainRows[0]);
+    const validasi = this.normalizeFlaggingSummary(validasiRows[0]);
+
+    return {
+      ffgCount: main.ffgCount + validasi.ffgCount,
+      gamasCount: main.gamasCount + validasi.gamasCount,
+      p1Count: main.p1Count + validasi.p1Count,
+      pPlusCount: main.pPlusCount + validasi.pPlusCount,
+    };
+  }
+
+  private static async countValidasiFlaggingSummary(
+    validasiBaseWhere: Prisma.ticketWhereInput,
+  ): Promise<Array<Record<string, unknown>>> {
+    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
+      status_update: 'close',
+    });
+    const worklogWhere = this.withAdditionalWhere(
+      validasiBaseWhere,
+      { worklog_summary: 'Tech Closed' },
+      {
+        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
+      },
+    );
+
+    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
+    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const sqlWithIndex = `
+      SELECT
+        SUM(CASE WHEN LOWER(COALESCE(t.guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+        SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+        SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+        SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+      FROM (
+        SELECT id_ticket
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${worklogSql}
+      ) AS validasi_ids
+      JOIN ticket t ON t.id_ticket = validasi_ids.id_ticket
+    `;
+    const sqlWithoutIndex = `
+      SELECT
+        SUM(CASE WHEN LOWER(COALESCE(t.guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+        SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+        SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+        SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+      FROM (
+        SELECT id_ticket
+        FROM ticket
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket
+        FROM ticket
+        WHERE ${worklogSql}
+      ) AS validasi_ids
+      JOIN ticket t ON t.id_ticket = validasi_ids.id_ticket
+    `;
+
+    return queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      [...closeParams, ...worklogParams],
+    );
+  }
+
+  private static async fetchValidasiTicketIds(
+    validasiBaseWhere: Prisma.ticketWhereInput,
+    options: { sort: 'asc' | 'desc'; offset: number; limit: number },
+  ): Promise<number[]> {
+    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
+      status_update: 'close',
+    });
+    const worklogWhere = this.withAdditionalWhere(
+      validasiBaseWhere,
+      { worklog_summary: 'Tech Closed' },
+      {
+        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
+      },
+    );
+
+    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
+    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const sqlWithIndex = `
+      SELECT id_ticket
+      FROM (
+        SELECT id_ticket, reported_date
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket, reported_date
+        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+        WHERE ${worklogSql}
+      ) AS validasi_rows
+      ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
+      LIMIT ?, ?
+    `;
+    const sqlWithoutIndex = `
+      SELECT id_ticket
+      FROM (
+        SELECT id_ticket, reported_date
+        FROM ticket
+        WHERE ${closeSql}
+        UNION DISTINCT
+        SELECT id_ticket, reported_date
+        FROM ticket
+        WHERE ${worklogSql}
+      ) AS validasi_rows
+      ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
+      LIMIT ?, ?
+    `;
+
+    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      [...closeParams, ...worklogParams, options.offset, options.limit],
+    );
+
+    return rows.map((row) => row.id_ticket);
   }
 
   /**
@@ -401,11 +1284,9 @@ export class DailyTicketService {
 
   static async countStatuses(where: Record<string, any>) {
     const grouped = await prisma.ticket.groupBy({
-      by: ['status_update'],
+      by: ['status', 'status_update'],
       where,
-      _count: {
-        status_update: true,
-      },
+      _count: { _all: true },
     });
 
     const stats: any = {
@@ -418,22 +1299,124 @@ export class DailyTicketService {
     };
 
     for (const g of grouped) {
-      const count = g._count.status_update;
-
+      const count = g._count._all;
       stats.total += count;
 
-      const status = (g.status_update ?? 'open').toLowerCase();
+      const statusVal = (g.status ?? '').trim().toUpperCase();
+      const su = (g.status_update ?? '').trim().toLowerCase();
 
-      if (status === 'open') stats.open += count;
-      if (status === 'assigned') stats.assigned += count;
-      if (status === 'on_progress') stats.onProgress += count;
-      if (status === 'pending') stats.pending += count;
-      if (status === 'close') stats.close += count;
+      if (CLOSE_STATUS_VALUES.includes(statusVal)) {
+        stats.close += count;
+      } else if (su === 'assigned') {
+        stats.assigned += count;
+      } else if (su === 'on_progress') {
+        stats.onProgress += count;
+      } else if (su === 'pending') {
+        stats.pending += count;
+      } else {
+        stats.open += count;
+      }
     }
 
     stats.unassigned = stats.open;
 
     return stats;
+  }
+
+  static async getTicketStatusOptions(
+    where: Prisma.ticketWhereInput,
+  ): Promise<string[]> {
+    const rows = await prisma.ticket.findMany({
+      where,
+      distinct: ['status'],
+      select: { status: true },
+      orderBy: { status: 'asc' },
+    });
+
+    return rows
+      .map((row) => String(row.status ?? '').trim())
+      .filter((status, index, arr) => status.length > 0 && arr.indexOf(status) === index);
+  }
+
+  static async getTicketTypeOptions(
+    where: Prisma.ticketWhereInput,
+    validasiBaseWhere?: Prisma.ticketWhereInput | null,
+  ): Promise<TicketTypeOption[]> {
+    const rows = await prisma.ticket.groupBy({
+      by: ['jenis_tiket_2', 'status_update'],
+      where,
+      _count: { _all: true },
+    });
+
+    const [validasiCloseRows, validasiWorklogRows] = validasiBaseWhere
+      ? await Promise.all([
+          prisma.ticket.groupBy({
+            by: ['jenis_tiket_2'],
+            where: this.withAdditionalWhere(validasiBaseWhere, {
+              status_update: 'close',
+            }),
+            _count: { _all: true },
+          }),
+          prisma.ticket.groupBy({
+            by: ['jenis_tiket_2'],
+            where: this.withAdditionalWhere(
+              validasiBaseWhere,
+              { worklog_summary: 'Tech Closed' },
+              {
+                OR: [
+                  { status_update: null },
+                  { status_update: { not: 'close' } },
+                ],
+              },
+            ),
+            _count: { _all: true },
+          }),
+        ])
+      : [[], []];
+
+    const grouped = new Map<string, TicketTypeOption>();
+
+    const ensure = (rawJenis: unknown) => {
+      const jenis = String(rawJenis ?? '').trim();
+      const key = jenis.length > 0 ? jenis : '__blank__';
+      const label = jenis.length > 0 ? jenis : 'Blank';
+      const current = grouped.get(key);
+      if (current) return current;
+
+      const next = { key, label, total: 0, open: 0, assigned: 0, close: 0 };
+      grouped.set(key, next);
+      return next;
+    };
+
+    for (const row of rows) {
+      const item = ensure(row.jenis_tiket_2);
+      const count = row._count._all;
+      const status = String(row.status_update ?? '').trim().toLowerCase();
+
+      item.total += count;
+      if (status.length === 0 || status === 'open') item.open += count;
+      if (
+        status === 'assigned' ||
+        status === 'on_progress' ||
+        status === 'pending'
+      ) {
+        item.assigned += count;
+      }
+      if (status === 'close') item.close += count;
+    }
+
+    for (const row of [...validasiCloseRows, ...validasiWorklogRows]) {
+      const item = ensure(row.jenis_tiket_2);
+      const count = row._count._all;
+      item.total += count;
+      item.close += count;
+    }
+
+    return [...grouped.values()].sort((a, b) => {
+      if (a.key === '__blank__') return 1;
+      if (b.key === '__blank__') return -1;
+      return b.total - a.total || a.label.localeCompare(b.label);
+    });
   }
 
   /**
@@ -448,64 +1431,249 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ) {
     const { page = 1, limit = 10, sort = 'desc' } = filters ?? {};
+    const includeValidasi = filters?.includeValidasi !== false;
+    const includeSummary = filters?.includeSummary !== false;
+    const includeOptions = filters?.includeOptions !== false;
     const safePage = Math.max(1, Math.floor(page));
-    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const safeLimit = Math.min(250, Math.max(1, Math.floor(limit)));
     const offset = (safePage - 1) * safeLimit;
+    const safeValidasiPage = Math.max(
+      1,
+      Math.floor(filters?.validasiPage ?? safePage),
+    );
+    const safeValidasiLimit = Math.min(
+      250,
+      Math.max(1, Math.floor(filters?.validasiLimit ?? safeLimit)),
+    );
+    const validasiOffset = (safeValidasiPage - 1) * safeValidasiLimit;
 
     const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const statusOptionsWhere = includeOptions
+      ? await this.buildDailyTicketWhere(role, userId, {
+          ...filters,
+          ticketStatus: undefined,
+        })
+      : null;
+    const ticketTypeOptionsWhere = includeOptions
+      ? await this.buildDailyTicketWhere(role, userId, {
+          ...filters,
+          ticketType: undefined,
+        })
+      : null;
 
-    // Clone where for validasi: (status_update = 'close' OR worklog_summary = 'Tech Closed') AND status != 'closed'
-    const validasiWhere = structuredClone(where);
-    if (validasiWhere.AND) {
-      validasiWhere.AND = validasiWhere.AND.filter((clause: any) => {
-        const hasStatusUpdate =
-          clause?.status_update ||
-          (clause?.OR && clause.OR.some((c: any) => c?.status_update));
-        return !hasStatusUpdate;
-      });
-    }
-    validasiWhere.AND = [
-      ...(validasiWhere.AND ?? []),
-      {
-        OR: [
-          { status_update: 'close' },
-          { worklog_summary: 'Tech Closed' },
-        ],
-      },
-      { status: { not: 'closed' } },
-    ];
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const validasiBaseWhere = includeValidasi
+      ? this.buildValidasiBaseWhere(where)
+      : null;
+    const ticketIdsPromise = this.fetchTicketIdsBySql(mainTableWhere, {
+      sort,
+      offset,
+      limit: safeLimit,
+      forceIndex: 'idx_ticket_daily_board',
+      priorityToday: toWibDateString(todayWibDateForDb()),
+    });
+    const validasiTicketIdsPromise = includeValidasi && validasiBaseWhere
+      ? this.fetchValidasiTicketIds(validasiBaseWhere, {
+          sort,
+          offset: validasiOffset,
+          limit: safeValidasiLimit,
+        })
+      : Promise.resolve([] as number[]);
+    const summaryPromise = includeSummary
+      ? this.countStatuses(where)
+      : Promise.resolve({
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+          unassigned: 0,
+        });
+    const flaggingSummaryPromise = includeSummary
+      ? this.countFlaggingSummary(where)
+      : Promise.resolve({
+          ffgCount: 0,
+          gamasCount: 0,
+          p1Count: 0,
+          pPlusCount: 0,
+        });
+    const validasiCountPromise = includeValidasi && validasiBaseWhere
+      ? this.countValidasiTickets(validasiBaseWhere)
+      : Promise.resolve(0);
+    const statusOptionsPromise = includeOptions
+      ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
+      : Promise.resolve([] as string[]);
+    const ticketTypeOptionsPromise = includeOptions
+      ? this.getTicketTypeOptions(
+          this.buildMainTableWhere(ticketTypeOptionsWhere ?? where),
+          includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
+            ? this.buildValidasiBaseWhere(ticketTypeOptionsWhere)
+            : null,
+        )
+      : Promise.resolve([] as TicketTypeOption[]);
+    const totalPromise = this.countTicketsBySql(
+      mainTableWhere,
+      'idx_ticket_daily_board',
+    );
 
-    const ticketInclude = {
-      users: {
-        select: { nama: true },
-      },
-    } as const;
+    const [
+      total,
+      summary,
+      flaggingSummary,
+      validasiCount,
+      ticketIds,
+      validasiTicketIds,
+      statusOptions,
+      ticketTypeOptions,
+    ] = await Promise.all([
+      totalPromise,
+      summaryPromise,
+      flaggingSummaryPromise,
+      validasiCountPromise,
+      ticketIdsPromise,
+      validasiTicketIdsPromise,
+      statusOptionsPromise,
+      ticketTypeOptionsPromise,
+    ]);
 
-    const [total, validasiCount, tickets, validasiTickets] = await Promise.all([
-      prisma.ticket.count({ where }),
-      prisma.ticket.count({ where: validasiWhere }),
-      prisma.ticket.findMany({
-        where,
-        include: ticketInclude,
-        orderBy: [{ reported_date: sort }, { id_ticket: 'asc' }],
-        skip: offset,
-        take: safeLimit,
-      }),
-      prisma.ticket.findMany({
-        where: validasiWhere,
-        include: ticketInclude,
-      }),
+    const [tickets, validasiTickets] = await Promise.all([
+      hydrateTicketsByIds(ticketIds),
+      hydrateTicketsByIds(validasiTicketIds),
     ]);
 
     return {
       total,
+      summary: {
+        total: summary.total,
+        open: summary.open,
+        assigned:
+          (summary.assigned ?? 0) +
+          (summary.onProgress ?? 0) +
+          (summary.pending ?? 0),
+        close: summary.close,
+        ...flaggingSummary,
+      },
       page: safePage,
       limit: safeLimit,
       totalPages: Math.ceil(total / safeLimit),
+      statusOptions,
+      ticketTypeOptions,
       data: tickets.map(mapTicket),
       validasiCount: validasiCount,
+      validasiPage: safeValidasiPage,
+      validasiLimit: safeValidasiLimit,
+      validasiTotalPages: Math.ceil(validasiCount / safeValidasiLimit),
       validasiTickets: validasiTickets.map(mapTicket),
     };
+  }
+
+  static async getDailyTicketIds(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<number[]> {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
+      `SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_daily_board) WHERE ${whereClause}`,
+      `SELECT id_ticket FROM ticket WHERE ${whereClause}`,
+      params,
+    );
+    return rows.map((row) => row.id_ticket);
+  }
+
+  static async buildDailyTicketSqlParams(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<[string, any[]]> {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    return buildSqlWhereClause(mainTableWhere);
+  }
+
+  static async getDailyTicketSummary(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ) {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+
+    const [total, summary, flaggingSummary] = await Promise.all([
+      this.countTicketsBySql(where, 'idx_ticket_daily_board'),
+      this.countStatuses(where),
+      this.countFlaggingSummary(where),
+    ]);
+
+    return {
+      total,
+      open: summary.open,
+      assigned:
+        (summary.assigned ?? 0) +
+        (summary.onProgress ?? 0) +
+        (summary.pending ?? 0),
+      close: summary.close,
+      ...flaggingSummary,
+    };
+  }
+
+  static async getKpiBucketSummaryMatrix(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<BucketSummaryMatrix> {
+    const buildScopeSummary = async (
+      dept: BucketSummaryScope,
+    ): Promise<BucketSummaryMap> => {
+      const where = await this.buildDailyTicketWhere(role, userId, {
+        ...filters,
+        dept,
+        operationalBucket: undefined,
+      });
+
+      const mainTableWhere = this.buildMainTableWhere(where);
+      const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+      const selectSql = KPI_SUMMARY_BUCKETS.map((bucket) =>
+        buildBucketSummarySelect(bucket),
+      ).join(',\n');
+
+      const sqlWithIndex = `
+        SELECT
+          ${selectSql}
+        FROM ticket FORCE INDEX (idx_ticket_daily_board)
+        WHERE ${whereClause}
+      `;
+      const sqlWithoutIndex = `
+        SELECT
+          ${selectSql}
+        FROM ticket
+        WHERE ${whereClause}
+      `;
+
+      const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+        sqlWithIndex,
+        sqlWithoutIndex,
+        params,
+      );
+
+      const row = rows[0] ?? {};
+      const summary = {} as BucketSummaryMap;
+      for (const bucket of KPI_SUMMARY_BUCKETS) {
+        summary[bucket] = normalizeBucketSummaryRow(row, bucket);
+      }
+
+      return summary;
+    };
+
+    const [all, b2c, b2b] = await Promise.all([
+      buildScopeSummary('all'),
+      buildScopeSummary('b2c'),
+      buildScopeSummary('b2b'),
+    ]);
+
+    return { all, b2c, b2b };
   }
 
   /**
@@ -529,11 +1697,11 @@ export class DailyTicketService {
     await this.applyDailyTicketFilter(where);
 
     // Apply dept filter (B2B/B2C)
-    if (p0?.dept && p0.dept !== 'all') {
-      const jenisClause = p0.dept === 'b2c' ? getB2CJenisWhereClause() : getB2BJenisWhereClause();
+    const deptSegmentWhere = buildDeptSegmentWhere(p0?.dept);
+    if (deptSegmentWhere) {
       where.AND = [
         ...(where.AND ?? []),
-        jenisClause,
+        deptSegmentWhere,
       ];
     }
 
@@ -590,47 +1758,98 @@ export class DailyTicketService {
 
     if (serviceAreas.length === 0) return [];
 
-    const results = await Promise.all(
-      serviceAreas.map(
-        async (sa: { id_sa: number; nama_sa: string | null }) => {
-          const where: Record<string, any> = {
-            workzone: { contains: sa.nama_sa },
-          };
+    // Build base WHERE with common filters (shared across all SAs)
+    const baseWhere: Record<string, any> = {};
+    await this.applyDailyTicketFilter(baseWhere);
 
-          await this.applyDailyTicketFilter(where);
+    if (options?.statusUpdate && options.statusUpdate !== 'all') {
+      applyStatusUpdateWhere(baseWhere, options.statusUpdate);
+    }
 
-          if (options?.statusUpdate && options.statusUpdate !== 'all') {
-            applyStatusUpdateWhere(where, options.statusUpdate);
-          }
+    if (options?.dept && options.dept !== 'all') {
+      let clause: Record<string, any> | null = null;
+      if (options.dept === 'b2c' || options.dept === 'b2b') {
+        clause = buildDeptSegmentWhere(options.dept) as Record<string, any>;
+      } else {
+        clause = getJenisWhereClause(options.dept);
+      }
+      if (clause) {
+        baseWhere.AND = [...(baseWhere.AND ?? []), clause];
+      }
+    }
 
-          if (options?.dept && options.dept !== 'all') {
-            const { getJenisWhereClause } = await import('@/app/config/jenis-tiket');
-            const jenisClause = getJenisWhereClause(options.dept);
-            Object.assign(where, jenisClause);
-          }
+    if (options?.ticketType && options.ticketType !== 'all') {
+      baseWhere.AND = [
+        ...(baseWhere.AND ?? []),
+        getJenisWhereClause(options.ticketType),
+      ];
+    }
 
-          if (options?.ticketType && options.ticketType !== 'all') {
-            const { getJenisWhereClause } = await import('@/app/config/jenis-tiket');
-            const jenisClause = getJenisWhereClause(options.ticketType);
-            Object.assign(where, jenisClause);
-          }
+    // Single groupBy with workzone + status_update
+    const workzoneNames = serviceAreas
+      .map((sa) => sa.nama_sa)
+      .filter((name): name is string => Boolean(name && name.trim()));
 
-          const statusCounts = await this.countStatuses(where);
+    const fullWhere: Record<string, any> = {
+      ...baseWhere,
+      AND: [
+        ...(baseWhere.AND ?? []),
+        { workzone: { in: workzoneNames } },
+      ],
+    };
 
-          return {
-            id_sa: sa.id_sa,
-            nama_sa: sa.nama_sa ?? '',
-            total: statusCounts.total,
-            unassigned: statusCounts.unassigned,
-            open: statusCounts.open,
-            assigned: statusCounts.assigned,
-            onProgress: statusCounts.onProgress ?? 0,
-            pending: statusCounts.pending ?? 0,
-            close: statusCounts.close,
-          };
-        },
-      ),
-    );
+    const grouped = await prisma.ticket.groupBy({
+      by: ['workzone', 'status_update'],
+      where: fullWhere,
+      _count: { _all: true },
+    });
+
+    // Aggregate by workzone
+    const statsByWorkzone = new Map<string, { total: number; open: number; assigned: number; onProgress: number; pending: number; close: number }>();
+    for (const g of grouped) {
+      const wz = g.workzone ?? '';
+      if (!statsByWorkzone.has(wz)) {
+        statsByWorkzone.set(wz, { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 });
+      }
+      const stats = statsByWorkzone.get(wz)!;
+      const count = g._count._all;
+      stats.total += count;
+      const status = String(g.status_update ?? '')
+        .trim()
+        .toLowerCase() || 'open';
+      if (status === 'open') stats.open += count;
+      else if (status === 'assigned') stats.assigned += count;
+      else if (status === 'on_progress') stats.onProgress += count;
+      else if (status === 'pending') stats.pending += count;
+      else if (status === 'close') stats.close += count;
+    }
+
+    // Map to service areas
+    const results = serviceAreas.map(sa => {
+      let total = 0, open = 0, assigned = 0, onProgress = 0, pending = 0, close = 0;
+      const saName = (sa.nama_sa ?? '').toLowerCase();
+      for (const [wz, stats] of statsByWorkzone) {
+        if (wz.toLowerCase() === saName) {
+          total += stats.total;
+          open += stats.open;
+          assigned += stats.assigned;
+          onProgress += stats.onProgress;
+          pending += stats.pending;
+          close += stats.close;
+        }
+      }
+      return {
+        id_sa: sa.id_sa,
+        nama_sa: sa.nama_sa ?? '',
+        total,
+        unassigned: open,
+        open,
+        assigned,
+        onProgress,
+        pending,
+        close,
+      };
+    });
 
     return results.sort((a, b) => b.total - a.total);
   }
@@ -679,5 +1898,89 @@ export class DailyTicketService {
       subRca,
       descriptionSolutionDompis,
     );
+  }
+
+  static async getHourlyTicketCounts(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<Array<{ hour: number; count: number }>> {
+    const selectedWorkzone = await this.resolveSelectedWorkzone(filters?.workzone);
+    const scopedWhere: Record<string, any> = {
+      ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
+    };
+
+    const deptSegmentWhere = buildDeptSegmentWhere(filters?.dept);
+    if (deptSegmentWhere) {
+      scopedWhere.AND = [...(scopedWhere.AND ?? []), deptSegmentWhere];
+    }
+
+    const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
+    const todayWib = format(wibNow, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
+    const currentHourWib = Number(format(wibNow, 'H', { timeZone: 'Asia/Jakarta' }));
+
+    const fetchRows = (where: Record<string, any>) =>
+      prisma.ticket.findMany({
+        where: {
+          ...where,
+          reported_date: {
+            not: null,
+            startsWith: todayWib,
+          },
+        },
+        select: {
+          reported_date: true,
+        },
+      });
+
+    let rows = await fetchRows(scopedWhere);
+    if (rows.length === 0) {
+      rows = await fetchRows({});
+    }
+
+    const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
+
+    for (const row of rows) {
+      const rawReportedDate = row.reported_date?.trim();
+      if (!rawReportedDate) continue;
+
+      const datePart = rawReportedDate.slice(0, 10);
+      if (datePart !== todayWib) continue;
+
+      const hour = Number(rawReportedDate.slice(11, 13));
+      if (!Number.isFinite(hour) || hour < 0 || hour > currentHourWib) continue;
+
+      counts[hour].count += 1;
+    }
+
+    return counts;
+  }
+
+  static async getTopSymptoms(
+    role: string,
+    userId: number,
+    limit = 10,
+    filters?: TicketFilters,
+  ): Promise<Array<{ symptom: string; count: number }>> {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const [sqlWhere, params] = buildSqlWhereClause(where);
+    const sql = `
+      SELECT
+        symptom_clean,
+        COUNT(*) AS count
+      FROM (
+        SELECT
+          REGEXP_REPLACE(TRIM(symptom), '\\\\s+', ' ') AS symptom_clean
+        FROM ticket
+        WHERE ${sqlWhere}
+          AND symptom IS NOT NULL
+          AND symptom != ''
+      ) AS cleaned
+      GROUP BY symptom_clean
+      ORDER BY count DESC, symptom_clean ASC
+      LIMIT ${limit}
+    `;
+    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params);
+    return rows.map((r) => ({ symptom: r.symptom_clean, count: Number(r.count) }));
   }
 }

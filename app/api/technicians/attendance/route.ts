@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { AttendanceCheckInInput } from '@/app/types/attendance';
 import prisma from '@/app/libs/prisma';
 import { signAccessToken } from '@/app/libs/auth';
+import { getSecureCookieOptions } from '@/app/libs/request-security';
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +20,26 @@ export async function POST(request: NextRequest) {
       'helpdesk',
       'superadmin',
     ]);
+
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'attendance-checkin',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const technicianId = decoded.id_user;
 
-    const body: AttendanceCheckInInput = await request.json();
+    const attendanceSchema = z.object({
+      workzone_id: z.number(),
+    });
 
-    if (!body.workzone_id) {
-      return NextResponse.json(
-        { success: false, message: 'workzone_id wajib diisi' },
-        { status: 400 },
-      );
+    const body = await request.json();
+    const parsed = attendanceSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ success: false, message: 'Validation failed', errors: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
+    const { workzone_id } = parsed.data;
 
     const result = await AttendanceService.checkIn(
       technicianId,
@@ -42,7 +56,7 @@ export async function POST(request: NextRequest) {
     // ─── Refresh JWT token after successful check-in ───────────────
     // Update attendance claims so middleware reads fresh data immediately.
     const today = AttendanceService.getTodayDateString();
-    const newAccessToken = signAccessToken({
+    const newAccessToken = await signAccessToken({
       id_user: decoded.id_user,
       role: decoded.role,
       role_id: decoded.role_id,
@@ -65,16 +79,12 @@ export async function POST(request: NextRequest) {
     response.cookies.set({
       name: 'token',
       value: newAccessToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60, // 1 hour
-      path: '/',
+      ...getSecureCookieOptions(60 * 60),
     });
 
     return response;
   } catch (error: unknown) {
-    console.error('POST /technicians/attendance error:', error);
+    logger.error('POST /technicians/attendance error:', error);
     return NextResponse.json(
       {
         success: false,
@@ -162,7 +172,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    console.error('GET /technicians/attendance error:', error);
+    logger.error('GET /technicians/attendance error:', error);
     return NextResponse.json(
       {
         success: false,

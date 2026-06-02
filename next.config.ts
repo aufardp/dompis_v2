@@ -1,89 +1,16 @@
 import type { NextConfig } from 'next';
+import bundleAnalyzer from '@next/bundle-analyzer';
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  trailingSlash: false,
-  compress: true,
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**.googleusercontent.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'drive.google.com',
-      },
-    ],
-  },
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '25mb',
-    },
-    optimizePackageImports: [
-      '@heroicons/react',
-      '@tanstack/react-query',
-      'lucide-react',
-    ],
-  },
-  async headers() {
-    const allowedOrigins = [
-      process.env.NEXT_PUBLIC_URL || 'http://localhost:3000',
-      'https://dompis.telkomakses-area3.id',
-    ].filter(Boolean);
+  eslint: { ignoreDuringBuilds: true },
 
-    return [
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-        ],
-      },
-      {
-        source: '/api/:path*',
-        headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: allowedOrigins[0] || '*',
-          },
-          { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET,POST,PUT,DELETE,OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value:
-              'Content-Type, Authorization, x-cron-secret, x-signature, x-timestamp, x-source',
-          },
-          {
-            key: 'Access-Control-Expose-Headers',
-            value: 'Content-Length, Retry-After',
-          },
-          { key: 'Vary', value: 'Origin' },
-          { key: 'Cache-Control', value: 'no-store, no-cache' },
-        ],
-      },
-      {
-        source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-        ],
-      },
-    ];
+  experimental: {
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react'],
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

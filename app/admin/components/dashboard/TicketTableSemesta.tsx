@@ -14,6 +14,8 @@ import {
   Clock3,
   Phone,
   Eye,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import {
   calculateAgeInHours,
@@ -32,6 +34,7 @@ import { formatDate } from '../../../components/tickets/helpers';
 import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
 import TableLoadingSkeleton from './TableLoadingSkeleton';
 import MaxTtrCell from './MaxTtrCell';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 
 export type SortField =
   | 'ticket'
@@ -57,6 +60,16 @@ export interface AdminTicketTableSemestaProps {
     total: number;
     limit?: number;
     onPageChange: (page: number) => void;
+  };
+  downloadFilters?: {
+    dept: 'all' | 'b2b' | 'b2c';
+    search?: string;
+    workzone?: string;
+    ctype?: string;
+    ticketType?: string;
+    statusUpdate?: string;
+    startDate?: string;
+    endDate?: string;
   };
 }
 
@@ -183,6 +196,7 @@ export default function TicketTableSemesta({
   tickets = [],
   loading = false,
   pagination,
+  downloadFilters,
 }: AdminTicketTableSemestaProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'reportedDate',
@@ -193,6 +207,8 @@ export default function TicketTableSemesta({
     useState<Record<ColKey, boolean>>(DEFAULT_COLS);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTicket, setDrawerTicket] = useState<DrawerTicket>(null);
+  const [downloadFormat, setDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
+  const [downloading, setDownloading] = useState(false);
 
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
@@ -239,6 +255,49 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
 
   const currentPage = pagination?.currentPage ?? 1;
   const pageSize = pagination?.limit ?? 50;
+  const hasDownload = Boolean(downloadFilters);
+
+  const handleDownload = useCallback(async () => {
+    if (!downloadFilters) return;
+    setDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('format', downloadFormat);
+      params.set('dept', downloadFilters.dept);
+
+      if (downloadFilters.search) params.set('search', downloadFilters.search);
+      if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.ctype) params.set('ctype', downloadFilters.ctype);
+      if (downloadFilters.ticketType) params.set('ticketType', downloadFilters.ticketType);
+      if (downloadFilters.statusUpdate) params.set('statusUpdate', downloadFilters.statusUpdate);
+      if (downloadFilters.startDate) params.set('startDate', downloadFilters.startDate);
+      if (downloadFilters.endDate) params.set('endDate', downloadFilters.endDate);
+
+      const res = await fetchWithAuth(`/api/tickets/export?${params.toString()}`, {
+        timeoutMs: 120_000,
+      });
+      if (!res) {
+        alert('Export gagal: session expired');
+        return;
+      }
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.message ?? 'Export gagal');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Tiket_SEMESTA_${downloadFormat}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message ?? 'Export gagal');
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloadFilters, downloadFormat]);
 
   const pageTickets = tickets;
 
@@ -420,10 +479,38 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       <div className='hidden lg:block'>
         <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
           {/* Table toolbar */}
-          <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
-            <p className='text-xs text-(--text-secondary)'>
+          <div className='bg-surface-2 flex flex-col gap-3 border-b border-(--border) px-4 py-3 lg:flex-row lg:items-center lg:justify-between'>
+            <p className='font-dm-sans text-xs text-(--text-secondary)'>
               {pagination?.total ?? sortedTickets.length} tiket (Database Bank)
             </p>
+
+            {hasDownload && (
+              <div className='flex flex-wrap items-center gap-2'>
+                <select
+                  value={downloadFormat}
+                  onChange={(e) =>
+                    setDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                  }
+                  className='bg-surface h-9 rounded-lg border border-(--border) px-3 text-xs font-semibold text-(--text-primary) outline-none'
+                >
+                  <option value='csv'>CSV</option>
+                  <option value='xlsx'>XLSX</option>
+                </select>
+                <button
+                  type='button'
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className='inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60'
+                >
+                  {downloading ? (
+                    <Loader2 className='h-3.5 w-3.5 animate-spin' />
+                  ) : (
+                    <Download className='h-3.5 w-3.5' />
+                  )}
+                  Download
+                </button>
+              </div>
+            )}
           </div>
 
           <div className='overflow-x-auto'>

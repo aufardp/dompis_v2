@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { X } from 'lucide-react';
 
 interface Props {
@@ -30,10 +31,13 @@ export default function ImagePreviewModal({
           <X size={18} />
         </button>
 
-        <img
+        <Image
           src={imageUrl}
           alt='Preview'
+          width={800}
+          height={600}
           className='max-h-[80vh] max-w-[80vw] rounded-lg object-contain'
+          unoptimized
         />
       </div>
     </div>

@@ -13,6 +13,18 @@
       "skillPath": "skills/database-schema-designer/SKILL.md",
       "computedHash": "6a26ca15216bb4bfee66ebf813edcb1e31a8002f3f641f16f550df814b522217"
     },
+    "devops-engineer": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "skillPath": "skills/devops-engineer/SKILL.md",
+      "computedHash": "6de5e562151fe9c227234e81bdc1e647066d6b1822463eadf296a5344b47e35a"
+    },
+    "devops-rollout-plan": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/devops-rollout-plan/SKILL.md",
+      "computedHash": "9c71bc5839febec1c42fdd6f5aed3beb3fa9df399460f0d20310124abd77cc31"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",

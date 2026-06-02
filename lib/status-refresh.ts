@@ -1,14 +1,22 @@
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isRedisReady, redis } from '@/lib/redis';
-import { getExternalPool } from '@/lib/external-db/connection';
+import {
+  getExternalCursorDefinition,
+  getExternalPool,
+} from '@/lib/external-db/connection';
 import { ExternalRow, NormalizedExternalRow } from '@/lib/external-db/types';
 import {
-  computeSourceHash,
   normalizeExternalRow,
   normalizeStatus,
 } from '@/lib/ingestion/normalizer';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
+import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { invalidateTicketsCache } from '@/lib/cache';
+import { withPrismaReconnect, setMySQLSessionTimeout } from '@/lib/workers/task-runner';
+import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
+import { logger } from '@/lib/observability/logger';
+import { quarantine } from '@/lib/dlq';
 
 export interface StatusRefreshResult {
   batchId: string;
@@ -42,9 +50,7 @@ type ExternalStatusRow = {
   dateModified: string | null;
   worklogSummary: string | null;
   lastUpdateWorklog: string | null;
-  sourceHash: string;
   sourceUpdatedAt: Date;
-  rawPayload: Prisma.InputJsonValue;
 };
 
 const CONFIGURED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_BATCH_SIZE', 300);
@@ -60,14 +66,13 @@ const SLOW_RUN_THRESHOLD_MS = parsePositiveIntEnv(
 );
 const TIMEOUT_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_TIMEOUT_MINUTES', 5);
 const RECHECK_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_RECHECK_MINUTES', 2);
-const SEED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_SEED_BATCH_SIZE', 500);
+const SEED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_SEED_BATCH_SIZE', 150);
 const RUN_BUDGET_MS = parsePositiveIntEnv(
   'STATUS_REFRESH_RUN_BUDGET_MS',
   Math.max(5_000, Math.floor(TIMEOUT_MINUTES * 60_000 * 0.8)),
 );
 const METRICS_KEY = 'status-refresh:metrics';
 const RECENT_DURATIONS_KEY = 'status-refresh:durations';
-const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const METRICS_TTL_SECONDS = 24 * 60 * 60;
 const UPDATE_CHUNK_SIZE = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_CHUNK_SIZE', 50);
 const UPDATE_RETRY_MAX = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_RETRY_MAX', 3);
@@ -115,6 +120,61 @@ function shouldStopForBudget(start: number): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withStatusRefreshRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    label: string;
+    retries?: number;
+    baseDelayMs?: number;
+    failOpen?: boolean;
+  },
+): Promise<T | null> {
+  const retries = options.retries ?? 2;
+  const baseDelayMs = options.baseDelayMs ?? 150;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      const retryable =
+        text.includes('deadlock') ||
+        text.includes('lock wait timeout') ||
+        text.includes('timeout') ||
+        text.includes('p2034') ||
+        text.includes('p2024') ||
+        text.includes('server has closed the connection') ||
+        text.includes('connection pool');
+
+      if (!retryable || attempt >= retries) {
+        if (options.failOpen) {
+          logger.warn('[StatusRefresh] Fail-open after retry exhaustion', {
+            label: options.label,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        }
+        throw error;
+      }
+
+      const delayMs = baseDelayMs * 2 ** attempt + Math.floor(Math.random() * baseDelayMs);
+      logger.warn('[StatusRefresh] Retrying transient query', {
+        label: options.label,
+        attempt: attempt + 1,
+        retries,
+        delayMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await sleep(delayMs);
+    }
+  }
+
+  if (options.failOpen) return null;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function isTransientWriteError(error: unknown): boolean {
@@ -169,30 +229,32 @@ function isChanged(candidate: CandidateRow, external: ExternalStatusRow): boolea
     candidate.status_date !== external.statusDate ||
     candidate.date_modified !== external.dateModified ||
     candidate.worklog_summary !== external.worklogSummary ||
-    candidate.last_update_worklog !== external.lastUpdateWorklog ||
-    candidate.sourceHash !== external.sourceHash
+    candidate.last_update_worklog !== external.lastUpdateWorklog
   );
 }
 
-async function getAdaptiveBatchSize(): Promise<number> {
+    async function getAdaptiveBatchSize(): Promise<number> {
   if (!isRedisReady()) return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
 
   try {
-    const [lastDurationRaw, lastStatus] = await Promise.all([
+    const [lastDurationRaw, lastStatus, lastEffectiveRaw] = await Promise.all([
       redis.hget(METRICS_KEY, 'lastDurationMs'),
       redis.hget(METRICS_KEY, 'lastStatus'),
+      redis.hget(METRICS_KEY, 'lastEffectiveBatchSize'),
     ]);
     const lastDuration = Number.parseInt(lastDurationRaw ?? '', 10);
+    const currentBase = lastEffectiveRaw ? Number.parseInt(lastEffectiveRaw, 10) : CONFIGURED_BATCH_SIZE;
     if (!Number.isFinite(lastDuration) || lastStatus !== 'success') {
       return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
     if (lastDuration < FAST_RUN_THRESHOLD_MS) {
-      return clamp(Math.ceil(CONFIGURED_BATCH_SIZE * 1.25), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+      return clamp(Math.ceil(currentBase * 1.25), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
     if (lastDuration > SLOW_RUN_THRESHOLD_MS) {
-      return clamp(Math.floor(CONFIGURED_BATCH_SIZE * 0.5), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+      return clamp(Math.floor(currentBase * 0.5), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
-  } catch {
+  } catch (error) {
+    logger.warn('[StatusRefresh] Adaptive batch size fallback:', { error: String(error) });
     return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
   }
 
@@ -226,7 +288,8 @@ async function estimateBacklog(): Promise<number | null> {
 
 async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
   const recheckBefore = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000);
-  return prisma.$queryRaw<CandidateRow[]>`
+  const rows = await withStatusRefreshRetry(
+    () => prisma.$queryRaw<CandidateRow[]>`
     SELECT
       tr.id_ticket,
       tr.incident,
@@ -251,45 +314,58 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
         tr.status IS NULL
         OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
       )
-  `;
+  `,
+    { label: 'fetchCandidates', retries: 2, baseDelayMs: 200, failOpen: false },
+  );
+  return rows ?? [];
 }
 
 async function seedRefreshState(limit: number): Promise<void> {
-  const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 2_000);
+  const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 200);
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
+  const FINAL_STATUS_SET = new Set(FINAL_STATUS_VALUES.map(s => s.toLowerCase()));
 
-  await prisma.$executeRaw`
-    INSERT IGNORE INTO status_refresh_ticket_state
-      (
-        incident,
-        sourceTable,
-        lastCheckedAt,
-        lastStatus,
-        lastSourceHash,
-        lastBatchId,
-        missingCount,
-        updatedAt
-      )
-    SELECT
-      tr.incident,
-      tr.sourceTable,
-      ${dueAt},
-      tr.status,
-      tr.sourceHash,
-      'seed',
-      0,
-      ${nowWib()}
-    FROM ticket_raw tr FORCE INDEX (idx_ticket_raw_status_refresh)
-    WHERE tr.incident IS NOT NULL
+  const candidates = await withStatusRefreshRetry(
+    () => prisma.$queryRaw<Array<{ incident: string; sourceTable: string; status: string | null; sourceHash: string | null }>>`
+    SELECT tr.incident, tr.sourceTable, tr.status, tr.sourceHash
+    FROM ticket_raw tr
+    LEFT JOIN status_refresh_ticket_state s
+      ON s.incident = tr.incident
+      AND s.lastCheckedAt > ${dueAt}
+    WHERE tr.isActive = TRUE
+      AND tr.incident IS NOT NULL
       AND tr.sourceTable IS NOT NULL
-      AND tr.isActive = TRUE
-      AND (
-        tr.status IS NULL
-        OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
-      )
-    ORDER BY tr.synced_at DESC
+      AND s.incident IS NULL
     LIMIT ${seedLimit}
-  `;
+  `,
+    { label: 'seedRefreshState.select', retries: 1, baseDelayMs: 250, failOpen: true },
+  );
+  if (!candidates) return;
+
+  const toSeed = candidates.filter(
+    c => !c.status || !FINAL_STATUS_SET.has(c.status.toLowerCase())
+  );
+
+  if (toSeed.length === 0) return;
+
+  const now = nowWib();
+  const rows = toSeed.map(c =>
+    Prisma.sql`(${c.incident}, ${c.sourceTable}, ${dueAt}, ${c.status ?? null}, ${c.sourceHash ?? null}, 'seed', 0, ${now})`
+  );
+
+  const inserted = await withStatusRefreshRetry(
+    () => prisma.$executeRaw`
+    INSERT IGNORE INTO status_refresh_ticket_state
+      (incident, sourceTable, lastCheckedAt, lastStatus, lastSourceHash, lastBatchId, missingCount, updatedAt)
+    VALUES ${Prisma.join(rows)}
+  `,
+    { label: 'seedRefreshState.insert', retries: 1, baseDelayMs: 250, failOpen: true },
+  );
+  if (inserted === null) {
+    logger.warn('[StatusRefresh] Seed refresh state skipped after transient failures', {
+      seedLimit,
+    });
+  }
 }
 
 async function fetchExternalRows(
@@ -301,9 +377,35 @@ async function fetchExternalRows(
   const externalPool = getExternalPool();
   if (!externalPool) throw new Error('External DB pool not available');
 
+  const cursorDefinition = await getExternalCursorDefinition(sourceTable);
+  const availableColumns = new Set(
+    cursorDefinition.columns.map((column) => column.name),
+  );
+  const selectedColumns = [
+    'incident',
+    'status',
+    'status_date',
+    'worklog_summary',
+    'last_update_worklog',
+  ].filter((column) => availableColumns.has(column));
+  const modifiedColumn =
+    ['date_modified', 'datemodified', cursorDefinition.modifiedColumn]
+      .filter((column): column is string => Boolean(column))
+      .find((column) => availableColumns.has(column)) ?? null;
+  if (!selectedColumns.includes('incident')) {
+    throw new Error(`External table ${sourceTable} has no incident column`);
+  }
+  if (modifiedColumn && !selectedColumns.includes(modifiedColumn)) {
+    selectedColumns.push(modifiedColumn);
+  }
+  for (const column of selectedColumns) assertSafeIdentifier(column);
+
   const placeholders = incidents.map(() => '?').join(',');
+  const projection = selectedColumns
+    .map((column) => `\`${column}\``)
+    .join(', ');
   const [rows] = await externalPool.query(
-    `SELECT * FROM \`${sourceTable}\` WHERE \`incident\` IN (${placeholders})`,
+    `SELECT ${projection} FROM \`${sourceTable}\` WHERE \`incident\` IN (${placeholders})`,
     incidents,
   );
 
@@ -324,9 +426,7 @@ async function fetchExternalRows(
       dateModified: trimTo(normalized.date_modified, 50),
       worklogSummary: trimTo(normalized.worklog_summary, 100),
       lastUpdateWorklog: trimTo(normalized.last_update_worklog, 100),
-      sourceHash: computeSourceHash(normalized),
       sourceUpdatedAt: parseExternalDate(normalized.date_modified) ?? nowWib(),
-      rawPayload: normalized._rawPayload as Prisma.InputJsonValue,
     });
   }
 
@@ -356,9 +456,7 @@ async function updateChangedRows(
             ${row.dateModified},
             ${row.worklogSummary},
             ${row.lastUpdateWorklog},
-            ${row.sourceHash},
             ${row.sourceUpdatedAt},
-            ${row.rawPayload},
             ${now},
             ${now},
             ${batchId},
@@ -368,7 +466,8 @@ async function updateChangedRows(
           )`,
         );
 
-        await prisma.$executeRaw`
+        const updatedCount = await withStatusRefreshRetry(
+          () => prisma.$executeRaw`
           INSERT INTO ticket_raw
             (
               incident,
@@ -377,9 +476,7 @@ async function updateChangedRows(
               date_modified,
               worklog_summary,
               last_update_worklog,
-              sourceHash,
               sourceUpdatedAt,
-              rawPayload,
               lastSeenAt,
               importedAt,
               syncBatchId,
@@ -394,9 +491,7 @@ async function updateChangedRows(
             date_modified = VALUES(date_modified),
             worklog_summary = VALUES(worklog_summary),
             last_update_worklog = VALUES(last_update_worklog),
-            sourceHash = VALUES(sourceHash),
             sourceUpdatedAt = VALUES(sourceUpdatedAt),
-            rawPayload = VALUES(rawPayload),
             lastSeenAt = VALUES(lastSeenAt),
             importedAt = VALUES(importedAt),
             syncBatchId = VALUES(syncBatchId),
@@ -405,7 +500,10 @@ async function updateChangedRows(
             sync_date = VALUES(sync_date),
             synced_at = VALUES(synced_at),
             import_batch = VALUES(import_batch)
-        `;
+        `,
+          { label: 'updateChangedRows', retries: 2, baseDelayMs: 150, failOpen: false },
+        );
+        if (updatedCount === null) throw new Error('Status refresh update skipped after retries');
         updated += chunk.length;
         break;
       } catch (error) {
@@ -434,14 +532,15 @@ async function markChecked(
         ${candidate.sourceTable},
         ${now},
         ${external?.normalizedStatus ?? candidate.status},
-        ${external?.sourceHash ?? candidate.sourceHash},
+        ${candidate.sourceHash},
         ${batchId},
         ${external ? 0 : 1},
         ${now}
       )`;
     });
 
-  await prisma.$executeRaw`
+  const writeResult = await withStatusRefreshRetry(
+    () => prisma.$executeRaw`
     INSERT INTO status_refresh_ticket_state
       (
         incident,
@@ -462,16 +561,21 @@ async function markChecked(
       lastBatchId = VALUES(lastBatchId),
       missingCount = IF(VALUES(missingCount) = 0, 0, missingCount + 1),
       updatedAt = VALUES(updatedAt)
-  `;
+  `,
+    { label: 'markChecked', retries: 2, baseDelayMs: 150, failOpen: false },
+  );
+  if (writeResult === null) throw new Error('Status refresh state update skipped after retries');
 }
 
 async function createRunLog(batchId: string, batchSize: number): Promise<void> {
-  await prisma.$executeRaw`
+  await withStatusRefreshRetry(() => prisma.$executeRaw`
     INSERT INTO status_refresh_run_log
       (batchId, status, batchSize, startedAt)
     VALUES
       (${batchId}, 'running', ${batchSize}, ${nowWib()})
-  `;
+  `,
+    { label: 'createRunLog', retries: 2, baseDelayMs: 200, failOpen: false },
+  );
 }
 
 async function finishRunLog(
@@ -483,7 +587,7 @@ async function finishRunLog(
   >,
   errorMessage?: string,
 ): Promise<void> {
-  await prisma.$executeRaw`
+  await withStatusRefreshRetry(() => prisma.$executeRaw`
     UPDATE status_refresh_run_log
     SET
       status = ${status},
@@ -496,7 +600,9 @@ async function finishRunLog(
       errorMessage = ${errorMessage?.slice(0, 1000) ?? null},
       finishedAt = ${nowWib()}
     WHERE batchId = ${batchId}
-  `;
+  `,
+    { label: 'finishRunLog', retries: 2, baseDelayMs: 200, failOpen: true },
+  );
 }
 
 async function recordMetrics(
@@ -592,7 +698,8 @@ export async function runStatusRefresh(
   }
 
   result.backlogEstimate = await estimateBacklog();
-  await createRunLog(batchId, effectiveBatchSize);
+  await setMySQLSessionTimeout(25_000);
+  await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
     assertNotAborted(signal);
@@ -605,7 +712,11 @@ export async function runStatusRefresh(
 
     let candidates = await fetchCandidates(effectiveBatchSize);
     if (candidates.length === 0 && !shouldStopForBudget(start)) {
-      await seedRefreshState(effectiveBatchSize);
+      await seedRefreshState(effectiveBatchSize).catch((error) =>
+        logger.warn('[StatusRefresh] Seed skipped', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
       candidates = await fetchCandidates(effectiveBatchSize);
     }
     result.scanned = candidates.length;
@@ -648,14 +759,21 @@ export async function runStatusRefresh(
     await finishRunLog(batchId, 'success', result);
     await recordMetrics('success', result);
     if (result.changed > 0) {
-      await requestImmediateProjection(batchId).catch(() => undefined);
+      await requestImmediateProjection(batchId).catch((err) =>
+        logger.warn('Failed to request immediate projection', { component: 'status-refresh', batchId, error: err instanceof Error ? err.message : String(err) }),
+      );
+      await invalidateTicketsCache();
+      broadcastTicketInvalidate('status-refresh');
     }
     return result;
   } catch (error) {
     result.durationMs = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
     const status = message.includes('Status refresh aborted') ? 'aborted' : 'failed';
-    await finishRunLog(batchId, status, result, message).catch(() => undefined);
+    await quarantine('status-refresh', { batchId }, error).catch(() => {});
+    await finishRunLog(batchId, status, result, message).catch((err) =>
+      logger.warn('Failed to finalize run log after error', { component: 'status-refresh', batchId, status, error: err instanceof Error ? err.message : String(err) }),
+    );
     await recordMetrics(status, result, message);
     throw error;
   }

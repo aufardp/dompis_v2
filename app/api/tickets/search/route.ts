@@ -3,6 +3,7 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { toBoundedString, toEnumValue } from '@/lib/http-query';
 
 export async function GET(req: Request) {
   try {
@@ -21,8 +22,13 @@ export async function GET(req: Request) {
     ]);
 
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get('q');
-    const type = searchParams.get('type') || 'incident';
+    const q = toBoundedString(searchParams.get('q'), 100);
+    const type =
+      toEnumValue(searchParams.get('type'), [
+        'incident',
+        'contact',
+        'service',
+      ]) ?? 'incident';
 
     if (!q) {
       return NextResponse.json(

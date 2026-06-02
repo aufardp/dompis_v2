@@ -12,6 +12,11 @@ import type { ReactNode } from 'react';
 import clsx from 'clsx';
 import { Ticket } from '@/app/types/ticket';
 import { JENIS_LABELS, normalizeJenis } from '@/app/config/jenis-tiket';
+import {
+  isTicketClosed,
+  isTicketInWork,
+  isTicketOpenLike,
+} from '@/app/libs/ticket-utils';
 
 type GroupSummary = {
   total: number;
@@ -105,18 +110,14 @@ export default function B2BGroupCard({
   const total = summary?.total ?? tickets.length;
   const openCount =
     summary?.open ??
-    tickets.filter((t) => !t.status_update || t.status_update === 'open')
+    tickets.filter((t) => isTicketOpenLike(t.status_update))
       .length;
   const assignedCount =
     summary?.assigned ??
-    tickets.filter((t) =>
-      ['assigned', 'on_progress', 'pending'].includes(
-        String(t.status_update ?? '').toLowerCase(),
-      ),
-    ).length;
+    tickets.filter((t) => isTicketInWork(t.status_update)).length;
   const closeCount =
     summary?.close ??
-    tickets.filter((t) => t.status_update === 'close').length;
+    tickets.filter((t) => isTicketClosed(t.status_update)).length;
   const activeCount = openCount + assignedCount;
   const closeRate = pct(closeCount, total);
   const openRate = pct(openCount, total);

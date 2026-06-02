@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -16,19 +16,40 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import clsx from 'clsx';
+import dynamic from 'next/dynamic';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import AdminAccordion from '@/app/components/ui/AdminAccordion';
-import TicketDetailDrawer from '@/app/admin/components/dashboard/TicketDetailDrawer';
-import AllTicketsModal from '@/app/admin/components/technician/AllTicketsModal';
-import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
-import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
-import { useAutoRefresh } from '@/app/hooks/useAutoRefresh';
 import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
 import { TechnicianStatus, Technician } from '@/app/types/technician';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+
+const TicketDetailDrawer = dynamic(
+  () => import('@/app/admin/components/dashboard/TicketDetailDrawer'),
+  { ssr: false, loading: () => null },
+);
+
+const AllTicketsModal = dynamic(
+  () => import('@/app/admin/components/technician/AllTicketsModal'),
+  { ssr: false, loading: () => null },
+);
+
+const TechnicianSummaryTable = dynamic(
+  () => import('@/app/admin/components/technician/TechnicianSummaryTable'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='h-64 animate-pulse rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800' />
+    ),
+  },
+);
+
+const AssignTechnicianModal = dynamic(
+  () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
+  { ssr: false, loading: () => null },
+);
 
 function stringToColor(str: string): string {
   const colors = [
@@ -221,7 +242,6 @@ function TechnicianCard({
   onDetail,
   onShowAll,
   onReassign,
-  externalFilter,
 }: {
   technician: Technician;
   onDetail: (ticketId: number) => void;
@@ -233,18 +253,10 @@ function TechnicianCard({
     currentTechnicianId: number;
     currentTechnicianName: string;
   }) => void;
-  externalFilter?: 'all' | 'assigned' | 'on_progress' | 'pending' | 'closed';
 }) {
   const [localFilter, setLocalFilter] = useState<
     'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
   >('all');
-
-  // Sync localFilter dengan externalFilter saat berubah dari luar
-  useEffect(() => {
-    if (externalFilter !== undefined) {
-      setLocalFilter(externalFilter);
-    }
-  }, [externalFilter]);
 
   const status = getTechnicianStatusValue(technician.total_assigned);
   const statusConfig = STATUS_CONFIG[status];
@@ -554,9 +566,6 @@ export default function TechniciansPage() {
   const [statusFilter, setStatusFilter] = useState<TechnicianStatus | 'all'>(
     'all',
   );
-  const [globalTicketFilter, setGlobalTicketFilter] = useState<
-    'all' | 'assigned' | 'on_progress' | 'pending' | 'closed'
-  >('all');
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTicket, setDetailTicket] = useState<any>(null);
@@ -661,7 +670,6 @@ export default function TechniciansPage() {
     setSearch('');
     setWorkzoneFilter('');
     setStatusFilter('all');
-    setGlobalTicketFilter('all');
   }, []);
 
   const handleTicketDetail = useCallback(async (ticketId: number) => {
@@ -972,7 +980,6 @@ export default function TechniciansPage() {
                           onDetail={handleTicketDetail}
                           onShowAll={handleShowAllTickets}
                           onReassign={handleReassign}
-                          externalFilter={globalTicketFilter}
                         />
                       ))}
                     </div>

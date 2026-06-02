@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         status_update: { in: ['close', 'closed'] },
         closed_at: { gte: start, lt: end },
       },
+      take: 1000,
       select: {
         id_ticket: true,
         incident: true,

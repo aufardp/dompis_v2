@@ -78,6 +78,7 @@ export default function TicketUpdateModal({
       const res = await fetchWithAuth('/api/tickets/upload-evidence', {
         method: 'POST',
         body: formData,
+        timeoutMs: 120_000,
       });
 
       if (!res) {

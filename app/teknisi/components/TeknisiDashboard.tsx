@@ -4,10 +4,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Ticket } from '@/app/types/ticket';
-import TicketDetailModal from './TicketDetailModal';
-import TicketUpdateModal from './TicketUpdateModal';
-import ToastNotification from './ToastNotification';
 import { useToast } from './hooks/useToast';
 
 import {
@@ -22,6 +20,21 @@ import {
   PullToRefresh,
 } from './TeknisiDashboard/components';
 import { TicketFilter } from './TeknisiDashboard/constants/ticket';
+
+const TicketDetailModal = dynamic(() => import('./TicketDetailModal'), {
+  ssr: false,
+  loading: () => null,
+});
+
+const TicketUpdateModal = dynamic(() => import('./TicketUpdateModal'), {
+  ssr: false,
+  loading: () => null,
+});
+
+const ToastNotification = dynamic(() => import('./ToastNotification'), {
+  ssr: false,
+  loading: () => null,
+});
 
 interface SearchBarProps {
   value: string;
@@ -198,6 +211,7 @@ export default function TeknisiDashboard() {
   });
 
   const handleSelectTicket = useCallback((ticket: Ticket) => {
+    setShowUpdateModal(false);
     setSelectedTicket(ticket);
     setShowDetailModal(true);
   }, []);
@@ -205,6 +219,7 @@ export default function TeknisiDashboard() {
   const handleTicketUpdated = useCallback(
     (type?: 'close' | 'pickup' | 'resume') => {
       void refresh();
+      setShowUpdateModal(false);
       setSelectedTicket(null);
       setShowDetailModal(false);
       if (type === 'close') {
@@ -228,6 +243,7 @@ export default function TeknisiDashboard() {
   );
 
   const handleCloseDetail = useCallback(() => {
+    setShowUpdateModal(false);
     setShowDetailModal(false);
     setSelectedTicket(null);
   }, []);

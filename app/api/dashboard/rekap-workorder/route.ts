@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCache } from '@/lib/cache';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWibDateString } from '@/lib/timezone';
-import { isB2CJenis, isB2BJenis, normalizeJenis } from '@/app/config/jenis-tiket';
-
-function toWIB(date: Date): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }).format(date);
-}
+import { normalizeJenis } from '@/app/config/jenis-tiket';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
+import { logger } from '@/lib/observability/logger';
 
 interface RekapTicketRow {
   area: string;
   sa_name: string;
   workzone: string | null;
   customer_type: string | null;
+  customer_segment: string | null;
   jenis_tiket: string | null;
-  guarante_status: string | null;
+  guarantee_status: string | null;
+  status: string;
   status_update: string;
   jam_expired: string | null;
   jam_expired_gold: string | null;
@@ -55,6 +54,16 @@ interface SARow {
   jenisTiket: Record<string, SegCount>;
 }
 
+interface KpiSummaryCounts {
+  total: number;
+  kpiCustomer: number;
+  kpiProactive: number;
+  nonKpiUnspec: number;
+  nonTechnical: number;
+  sqmUpdate: number;
+  obsolete: number;
+}
+
 interface RekapResponse {
   title: string;
   subtitle: string;
@@ -62,22 +71,22 @@ interface RekapResponse {
   syncDate: string;
   rows: SARow[];
   totals: Record<string, number>;
+  kpiSummary: KpiSummaryCounts;
+  selectedBucket: string;
 }
 
 function isOpen(status: string): boolean {
-  const s = status.toLowerCase();
-  return s !== 'close' && s !== 'closed' && s !== 'cancelled';
+  return !CLOSE_STATUS_VALUES.includes(status.trim().toUpperCase());
 }
 
 function isClose(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === 'close' || s === 'closed';
+  return CLOSE_STATUS_VALUES.includes(status.trim().toUpperCase());
 }
 
 function classifySegment(row: RekapTicketRow): { segment: string | null; isB2c: boolean; isB2b: boolean } {
   const jenis = row.jenis_tiket;
-  const isB2c = isB2CJenis(jenis);
-  const isB2b = isB2BJenis(jenis);
+  const seg = (row.customer_segment ?? '').toUpperCase();
+  const isB2c = seg === 'DCS' || seg === 'PL-TSEL';
 
   if (isB2c) {
       const ct = (row.customer_type ?? '').toUpperCase();
@@ -89,15 +98,11 @@ function classifySegment(row: RekapTicketRow): { segment: string | null; isB2c: 
       return { segment: 'reg', isB2c: true, isB2b: false };
   }
 
-  if (isB2b) {
-    const normalized = normalizeJenis(jenis);
-    if (normalized === 'datin' || normalized === 'vpn-ip') return { segment: 'datin', isB2c: false, isB2b: true };
-    if (normalized === 'sqm-ccan') return { segment: 'sqmB2b', isB2c: false, isB2b: true };
-    if (normalized === 'tsel') return { segment: 'tsel', isB2c: false, isB2b: true };
-    return { segment: 'nonDatin', isB2c: false, isB2b: true };
-  }
-
-  return { segment: null, isB2c: false, isB2b: false };
+  const normalized = normalizeJenis(jenis);
+  if (normalized === 'datin' || normalized === 'vpn-ip') return { segment: 'datin', isB2c: false, isB2b: true };
+  if (normalized === 'sqm-ccan') return { segment: 'sqmB2b', isB2c: false, isB2b: true };
+  if (normalized === 'tsel') return { segment: 'tsel', isB2c: false, isB2b: true };
+  return { segment: 'nonDatin', isB2c: false, isB2b: true };
 }
 
 function emptyB2c(): SARow['b2c'] {
@@ -134,6 +139,8 @@ function buildRekapResponse(
   ticketRows: RekapTicketRow[],
   teknisiRows: { sa_name: string; cnt: bigint }[],
   syncDate: string,
+  kpiSummary: KpiSummaryCounts,
+  bucket: string,
 ): RekapResponse {
   const teknisiMap = new Map(teknisiRows.map((r) => [r.sa_name, Number(r.cnt)]));
 
@@ -161,8 +168,8 @@ function buildRekapResponse(
     const { segment, isB2c, isB2b } = classifySegment(row);
     if (!segment) continue;
     const cnt = Number(row.cnt);
-    const open = isOpen(row.status_update) ? cnt : 0;
-    const close = isClose(row.status_update) ? cnt : 0;
+    const open = isOpen(row.status) ? cnt : 0;
+    const close = isClose(row.status) ? cnt : 0;
 
     const jtKey = (row.jenis_tiket ?? 'UNKNOWN').toUpperCase();
     if (!sa.jenisTiket[jtKey]) sa.jenisTiket[jtKey] = { open: 0, close: 0 };
@@ -226,7 +233,90 @@ function buildRekapResponse(
     syncDate,
     rows,
     totals: {},
+    kpiSummary,
+    selectedBucket: bucket,
   };
+}
+
+const BUCKET_FILTERS: Record<KpiBucketKey, any[]> = {
+  kpi_customer: [
+    { dept: 'all', operationalBucket: ['kpi_customer'] },
+    { dept: 'all', regulerOnly: true },
+  ],
+  kpi_proactive: [
+    { dept: 'all', operationalBucket: ['kpi_proactive'] },
+  ],
+  non_kpi_unspec: [
+    { dept: 'all', operationalBucket: ['non_kpi_unspec'] },
+  ],
+  non_technical: [
+    { dept: 'all', operationalBucket: ['non_technical'] },
+  ],
+  sqm_update: [
+    { dept: 'all', operationalBucket: ['sqm_update'] },
+  ],
+  obsolete: [
+    { dept: 'all', operationalBucket: ['obsolete'] },
+  ],
+  all: [
+    { dept: 'all', operationalBucket: ['kpi_customer'] },
+    { dept: 'all', operationalBucket: ['kpi_proactive'] },
+    { dept: 'all', operationalBucket: ['non_kpi_unspec'] },
+    { dept: 'all', operationalBucket: ['non_technical'] },
+    { dept: 'all', operationalBucket: ['sqm_update'] },
+    { dept: 'all', operationalBucket: ['obsolete'] },
+  ],
+};
+
+async function getFilteredRekapTickets(
+  role: string,
+  userId: number,
+  bucket: KpiBucketKey,
+): Promise<RekapTicketRow[]> {
+  const filtersList = BUCKET_FILTERS[bucket];
+  const parts: string[] = [];
+  const allParams: any[] = [];
+
+  for (const filters of filtersList) {
+    const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
+    parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
+    allParams.push(...params);
+  }
+
+  if (parts.length === 0) return [];
+
+  const unionSql = parts.join(' UNION ALL ');
+  const fullSql = `
+    SELECT
+      a.nama_area                     AS area,
+      sa.nama_sa                      AS sa_name,
+      t.workzone,
+      t.customer_type,
+      t.customer_segment,
+      COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
+      t.guarantee_status              AS guarante_status,
+      t.status,
+      LOWER(COALESCE(t.status_update, 'open')) AS status_update,
+      t.jam_expired,
+      t.status_ttr_12_gold            AS jam_expired_gold,
+      t.status_ttr_3_diamond          AS jam_expired_diamond,
+      t.status_ttr_6_platinum         AS jam_expired_platinum,
+      t.closed_at,
+      COUNT(*) AS cnt
+    FROM (${unionSql}) AS ids
+    JOIN ticket t ON t.id_ticket = ids.id_ticket
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a          ON a.id_area = sa.area_id
+    LEFT JOIN branch b   ON b.id_branch = a.branch_id
+    GROUP BY a.nama_area, sa.nama_sa, t.workzone, t.customer_type, t.customer_segment,
+             COALESCE(t.jenis_tiket_2, t.jenis_tiket_1),
+             t.guarantee_status, t.status, LOWER(COALESCE(t.status_update, 'open')),
+             t.jam_expired, t.status_ttr_12_gold,
+             t.status_ttr_3_diamond, t.status_ttr_6_platinum, t.closed_at
+    ORDER BY a.nama_area, sa.nama_sa, t.workzone
+  `;
+
+  return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...allParams);
 }
 
 export async function GET(request: NextRequest) {
@@ -236,65 +326,68 @@ export async function GET(request: NextRequest) {
 
     const workzones = isSuperAdmin ? null : await getWorkzonesForUser(decoded.id_user);
     const today = toWibDateString(new Date())!;
+    const requestedBucket = request.nextUrl.searchParams.get('bucket') ?? 'all';
+    const bucket: KpiBucketKey = requestedBucket in BUCKET_FILTERS
+      ? (requestedBucket as KpiBucketKey)
+      : 'all';
 
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
-      return NextResponse.json({ rows: [], totals: {}, timestamp: new Date().toISOString(), syncDate: today, title: 'REKAP WORKORDER ASSURANCE', subtitle: '[REGULER - HVC - SQM]' });
+      return NextResponse.json({
+        rows: [], totals: {}, timestamp: new Date().toISOString(), syncDate: today,
+        title: 'REKAP WORKORDER ASSURANCE', subtitle: '[REGULER - HVC - SQM]',
+        kpiSummary: { total: 0, kpiCustomer: 0, kpiProactive: 0, nonKpiUnspec: 0, nonTechnical: 0, sqmUpdate: 0, obsolete: 0 },
+        selectedBucket: bucket,
+      });
     }
 
-    const cacheKey = `dashboard:rekap:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}`;
+    const cacheKey = `dashboard:rekap:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const whereWz = workzones && workzones.length > 0
-        ? Prisma.sql`AND t.workzone IN (${Prisma.join(workzones)})`
-        : Prisma.sql``;
+      const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
+        decoded.role,
+        decoded.id_user,
+      );
 
-      const ticketRows = await prisma.$queryRaw<RekapTicketRow[]>`
-        SELECT
-          a.nama_area                     AS area,
-          sa.nama_sa                      AS sa_name,
-          t.workzone,
-          t.customer_type,
-          COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
-          t.guarantee_status              AS guarante_status,
-          LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-          t.jam_expired,
-          t.status_ttr_12_gold            AS jam_expired_gold,
-          t.status_ttr_3_diamond          AS jam_expired_diamond,
-          t.status_ttr_6_platinum         AS jam_expired_platinum,
-          t.closed_at,
-          COUNT(*) AS cnt
-        FROM ticket t
-        JOIN service_area sa ON sa.nama_sa = t.workzone
-        JOIN area a          ON a.id_area = sa.area_id
-        LEFT JOIN branch b   ON b.id_branch = a.branch_id
-        WHERE t.sync_date = ${today}
-          ${whereWz}
-        GROUP BY a.nama_area, sa.nama_sa, t.workzone, t.customer_type,
-                 COALESCE(t.jenis_tiket_2, t.jenis_tiket_1),
-                 t.guarantee_status, LOWER(COALESCE(t.status_update, 'open')),
-                 t.jam_expired, t.status_ttr_12_gold,
-                 t.status_ttr_3_diamond, t.status_ttr_6_platinum, t.closed_at
-        ORDER BY a.nama_area, sa.nama_sa, t.workzone
-      `;
+      const all = summaryMatrix.all;
 
-      const teknisiRows = await prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
-        SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
-        FROM technician_attendance a
-        JOIN service_area sa ON sa.id_sa = a.workzone_id
-        JOIN users u ON u.id_user = a.technician_id
-        JOIN roles ro ON ro.id_role = u.role_id
-        WHERE a.date = ${today}
-          AND ro.key = 'teknisi'
-          ${workzones && workzones.length > 0 ? Prisma.sql`AND sa.nama_sa IN (${Prisma.join(workzones)})` : Prisma.sql``}
-        GROUP BY sa.nama_sa
-      `;
+      const kpiCustomerTotal = all.kpi_customer.total;
+      const kpiProactiveTotal = all.kpi_proactive.total;
+      const nonKpiUnspecTotal = all.non_kpi_unspec.total;
+      const nonTechnicalTotal = all.non_technical.total;
+      const sqmUpdateTotal = all.sqm_update.total;
+      const obsoleteTotal = all.obsolete.total;
 
-      return buildRekapResponse(ticketRows, teknisiRows, today);
+      const kpiSummary = {
+        total: kpiCustomerTotal + kpiProactiveTotal + nonKpiUnspecTotal + nonTechnicalTotal + sqmUpdateTotal + obsoleteTotal,
+        kpiCustomer: kpiCustomerTotal,
+        kpiProactive: kpiProactiveTotal,
+        nonKpiUnspec: nonKpiUnspecTotal,
+        nonTechnical: nonTechnicalTotal,
+        sqmUpdate: sqmUpdateTotal,
+        obsolete: obsoleteTotal,
+      };
+
+      const [ticketRows, teknisiRows] = await Promise.all([
+        getFilteredRekapTickets(decoded.role, decoded.id_user, bucket),
+        prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
+          SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
+          FROM technician_attendance a
+          JOIN service_area sa ON sa.id_sa = a.workzone_id
+          JOIN users u ON u.id_user = a.technician_id
+          JOIN roles ro ON ro.id_role = u.role_id
+          WHERE a.date = ${today}
+            AND ro.key = 'teknisi'
+            ${workzones && workzones.length > 0 ? Prisma.sql`AND sa.nama_sa IN (${Prisma.join(workzones)})` : Prisma.sql``}
+          GROUP BY sa.nama_sa
+        `,
+      ]);
+
+      return buildRekapResponse(ticketRows, teknisiRows, today, kpiSummary, bucket);
     }, 120);
 
     return NextResponse.json(data);
   } catch (error: unknown) {
-    console.error('Rekap workorder error:', error);
+    logger.error('Rekap workorder error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

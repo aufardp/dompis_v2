@@ -35,8 +35,12 @@ export default function DateRangePicker({
 }) {
   const hasRange = Boolean(value?.from && value?.to);
 
-  const setQuick = (kind: '7d' | '30d' | 'ytd') => {
+  const setQuick = (kind: 'today' | '7d' | '30d' | 'month') => {
     const now = new Date();
+    if (kind === 'today') {
+      onChange({ from: startOfDay(now), to: endOfDay(now) });
+      return;
+    }
     if (kind === '7d') {
       onChange({ from: startOfDay(subDays(now, 6)), to: endOfDay(now) });
       return;
@@ -45,9 +49,9 @@ export default function DateRangePicker({
       onChange({ from: startOfDay(subDays(now, 29)), to: endOfDay(now) });
       return;
     }
-    // ytd
+    // month
     onChange({
-      from: startOfDay(new Date(now.getFullYear(), 0, 1)),
+      from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)),
       to: endOfDay(now),
     });
   };
@@ -69,14 +73,22 @@ export default function DateRangePicker({
           </Button>
         </PopoverTrigger>
         <PopoverContent align='start' className='p-2'>
-          <div className='flex flex-wrap gap-2 px-2 pb-2'>
+          <div className='flex flex-wrap gap-1.5 px-2 pb-2'>
+            <Button
+              type='button'
+              size='sm'
+              variant='ghost'
+              onClick={() => setQuick('today')}
+            >
+              Hari Ini
+            </Button>
             <Button
               type='button'
               size='sm'
               variant='ghost'
               onClick={() => setQuick('7d')}
             >
-              Last 7 days
+              7 Hari
             </Button>
             <Button
               type='button'
@@ -84,15 +96,15 @@ export default function DateRangePicker({
               variant='ghost'
               onClick={() => setQuick('30d')}
             >
-              Last month
+              30 Hari
             </Button>
             <Button
               type='button'
               size='sm'
               variant='ghost'
-              onClick={() => setQuick('ytd')}
+              onClick={() => setQuick('month')}
             >
-              Year to date
+              Bulan Ini
             </Button>
           </div>
           <Calendar

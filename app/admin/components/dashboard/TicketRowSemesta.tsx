@@ -8,6 +8,7 @@ import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import { getJenisStyle } from '@/app/config/jenis-tiket';
 import TtrCountdownBadge from './TtrCountdownBadge';
 import MaxTtrCell from './MaxTtrCell';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
@@ -64,12 +65,6 @@ const SLA_STYLES = {
     badge: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400',
     dot: 'bg-red-500',
   },
-};
-
-const JENIS_STYLES: Record<string, string> = {
-  SQM: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
-  Reguler:
-    'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
 };
 
 export default function TicketRowSemesta({
@@ -251,8 +246,7 @@ export default function TicketRowSemesta({
             <span
               className={clsx(
                 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-                JENIS_STYLES[ticket.jenisTiket] ??
-                  'bg-slate-100 text-slate-500',
+                getJenisStyle(ticket.jenisTiket),
               )}
             >
               {ticket.jenisTiket}

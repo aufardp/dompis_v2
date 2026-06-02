@@ -1,5 +1,3 @@
-'use client';
-
 export default function DashboardSkeleton() {
   return (
     <div className='space-y-6'>

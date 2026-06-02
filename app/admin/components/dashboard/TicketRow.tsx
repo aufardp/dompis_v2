@@ -1,4 +1,7 @@
-import { ChevronDown, ChevronUp } from 'lucide-react';
+'use client';
+
+import { ChevronDown, ChevronUp, Eye, RefreshCw, Tag, UserPlus, X } from 'lucide-react';
+import { useState } from 'react';
 import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
@@ -9,10 +12,9 @@ import { getJenisStyle } from '@/app/config/jenis-tiket';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
-import TtrCountdownBadge from './TtrCountdownBadge';
-import MaxTtrCell from './MaxTtrCell';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
-import TicketActionButtons from '@/app/components/ui/TicketActionButtons';
+import TtrCountdownBadge from './TtrCountdownBadge';
+import SqmUpdateModal from './SqmUpdateModal';
 
 export interface TicketRowProps {
   ticket: {
@@ -28,6 +30,7 @@ export interface TicketRowProps {
     customerType?: string;
     summary?: string;
     jenisTiket?: string;
+    jenisTiket1?: string | null;
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
@@ -73,6 +76,53 @@ const SLA_STYLES = {
   },
 };
 
+function formatStackedDateParts(dateValue: string | null | undefined) {
+  if (!dateValue) {
+    return { dayMonth: '-', year: '', time: '' };
+  }
+
+  const formatted = formatDateTimeFullWIB(dateValue);
+  const [datePart = '', timePart = ''] = formatted.split(', ');
+  const dateTokens = datePart.trim().split(/\s+/);
+
+  if (dateTokens.length >= 3) {
+    return {
+      dayMonth: `${dateTokens[0]} ${dateTokens[1]}`,
+      year: dateTokens.slice(2).join(' '),
+      time: timePart,
+    };
+  }
+
+  return {
+    dayMonth: datePart || '-',
+    year: '',
+    time: timePart,
+  };
+}
+
+function formatStackedLabelParts(labelValue: string | null | undefined) {
+  if (!labelValue) {
+    return { dayMonth: '-', year: '', time: '' };
+  }
+
+  const [datePart = '', timePart = ''] = labelValue.split(', ');
+  const dateTokens = datePart.trim().split(/\s+/);
+
+  if (dateTokens.length >= 3) {
+    return {
+      dayMonth: `${dateTokens[0]} ${dateTokens[1]}`,
+      year: dateTokens.slice(2).join(' '),
+      time: timePart,
+    };
+  }
+
+  return {
+    dayMonth: datePart || '-',
+    year: '',
+    time: timePart,
+  };
+}
+
 export default function TicketRow({
   ticket,
   onAssign,
@@ -103,12 +153,14 @@ export default function TicketRow({
       gamasId.toLowerCase(),
     );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
+  const bookingDateParts = formatStackedDateParts(ticket.bookingDate);
+
+  const isSqmTicket = (ticket.jenisTiket1 ?? '').toLowerCase().includes('sqm');
+  const hasSqmUpdate = (ticket.summary ?? '').startsWith('[SQM-UPDATE]');
 
   // Perbaikan Max TTR Label: Memisahkan Tanggal dan Jam
   const maxTtrFullLabel = getEffectiveMaxTtrLabel(ticket);
-  const [maxTtrDate, maxTtrTime] = maxTtrFullLabel
-    ? maxTtrFullLabel.split(', ')
-    : [null, null];
+  const maxTtrParts = formatStackedLabelParts(maxTtrFullLabel);
 
   const handleAssignClick = () => {
     onAssign(ticket.idTicket ?? '');
@@ -122,12 +174,37 @@ export default function TicketRow({
     }
   };
 
+  const [sqmModalOpen, setSqmModalOpen] = useState(false);
+
+  const handleSqmConfirm = async (reason: string) => {
+    const currentSummary = ticket.summary ?? '';
+    try {
+      const res = await fetch('/api/tickets/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticketId: ticket.idTicket,
+          patch: { summary: `[SQM-UPDATE][${reason}] ${currentSummary}` },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('SQM Update failed:', err);
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      console.error('SQM Update error:', e);
+    }
+  };
+
   return (
+    <>
     <tr
       className={clsx(
-        'group transition-colors duration-100 hover:bg-(--surface-2)',
-        'border-l-4 px-3 py-2.5',
+        'group border-l-4 transition-colors duration-100',
         severityStyles.border,
+        'hover:bg-(--surface-2)',
       )}
     >
       {/* Rank */}
@@ -171,6 +248,11 @@ export default function TicketRow({
           <span className='font-mono text-xs text-(--text-primary)'>
             {ticket.serviceNo ?? '-'}
           </span>
+          {hasSqmUpdate && (
+            <span className='rounded-md border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/20 dark:text-violet-300'>
+              SQM-UPDATE
+            </span>
+          )}
           {isGuarantee && (
             <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/15 dark:text-rose-400'>
               FFG
@@ -209,14 +291,13 @@ export default function TicketRow({
       <td className='px-4 py-3 text-center'>
         <div className='inline-flex flex-col items-center justify-center'>
           <span className='text-xs text-(--text-secondary)'>
-            {ticket.bookingDate
-              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[0]
-              : '-'}
+            {bookingDateParts.dayMonth}
           </span>
           <span className='text-[10px] text-(--text-secondary) opacity-80'>
-            {ticket.bookingDate
-              ? formatDateTimeFullWIB(ticket.bookingDate).split(', ')[1]
-              : ''}
+            {bookingDateParts.year}
+          </span>
+          <span className='text-[10px] text-(--text-secondary) opacity-80'>
+            {bookingDateParts.time}
           </span>
           {flagLabel && (
             <span
@@ -239,21 +320,19 @@ export default function TicketRow({
         <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
       </td>
 
-      {/* Max TTR - FIXED RAPIH */}
       <td className='px-4 py-3 text-center align-middle'>
         {maxTtrFullLabel ? (
-          <div className='flex flex-col items-center gap-1 leading-none'>
-            {/* Tanggal Utama */}
+          <div className='flex flex-col items-center gap-1 leading-none whitespace-nowrap'>
             <span className='text-xs font-semibold text-(--text-primary)'>
-              {maxTtrDate}
+              {maxTtrParts.dayMonth}
             </span>
-
-            {/* Jam dengan font angka tetap (tabular) */}
+            <span className='text-[10px] text-(--text-secondary) opacity-80'>
+              {maxTtrParts.year}
+            </span>
             <span className='text-[10px] text-(--text-secondary) tabular-nums'>
-              {maxTtrTime}
+              {maxTtrParts.time}
             </span>
 
-            {/* Label Booking yang telah dirapikan menjadi Badge */}
             {ticket.bookingDate && (
               <span className='mt-0.5 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold tracking-wider text-blue-600 uppercase ring-1 ring-blue-500/20 ring-inset'>
                 Booking
@@ -364,14 +443,82 @@ export default function TicketRow({
 
       {/* Action Button */}
       <td className='px-3 py-3 text-center'>
-        <TicketActionButtons
-          hasAssignee={!!ticket.teknisiUserId}
-          isClosed={isClosed}
-          onDetail={handleDetailClick}
-          onAssign={handleAssignClick}
-          size='sm'
-        />
+        {isClosed ? (
+          <button
+            onClick={handleDetailClick}
+            title='Lihat Detail'
+            className='bg-surface inline-flex items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
+          >
+            <Eye size={13} />
+          </button>
+        ) : (
+          <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
+            {isSqmTicket && !hasSqmUpdate && (
+              <button
+                onClick={() => setSqmModalOpen(true)}
+                className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-violet-600 transition hover:bg-violet-50 hover:text-violet-700 dark:text-violet-400 dark:hover:bg-violet-500/15 dark:hover:text-violet-300'
+                title='Tandai sebagai SQM Update'
+              >
+                <Tag size={13} />
+              </button>
+            )}
+            {isSqmTicket && hasSqmUpdate && (
+              <button
+                onClick={async () => {
+                  const currentSummary = ticket.summary ?? '';
+                  try {
+                    const res = await fetch('/api/tickets/update', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        ticketId: ticket.idTicket,
+                        patch: { summary: currentSummary.replace(/^\[SQM-UPDATE\]\[.*?\]\s*/, '').replace(/^\[SQM-UPDATE\]\s*/, '') },
+                      }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json();
+                      console.error('SQM Update cancel failed:', err);
+                      return;
+                    }
+                    window.location.reload();
+                  } catch (e) {
+                    console.error('SQM Update cancel error:', e);
+                  }
+                }}
+                className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/15 dark:hover:text-rose-300'
+                title='Batalkan SQM Update'
+              >
+                <X size={13} />
+              </button>
+            )}
+            <button
+              onClick={handleDetailClick}
+              title='Lihat Detail'
+              className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
+            >
+              <Eye size={13} />
+            </button>
+            <button
+              onClick={handleAssignClick}
+              title={ticket.teknisiUserId ? 'Reassign Teknisi' : 'Assign Teknisi'}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white transition',
+                ticket.teknisiUserId
+                  ? 'bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500'
+                  : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600',
+              )}
+            >
+              {ticket.teknisiUserId ? <RefreshCw size={13} /> : <UserPlus size={13} />}
+            </button>
+          </div>
+        )}
       </td>
     </tr>
+    <SqmUpdateModal
+      open={sqmModalOpen}
+      onClose={() => setSqmModalOpen(false)}
+      onConfirm={handleSqmConfirm}
+    />
+  </>
   );
 }

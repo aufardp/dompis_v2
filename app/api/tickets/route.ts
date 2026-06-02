@@ -2,16 +2,11 @@ import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getCache, setCache } from '@/lib/cache';
+import { getCache, setCache, TICKETS_CACHE_TTL } from '@/lib/cache';
+import { parseSearchType } from '@/lib/search-intent';
+import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
 
 export const dynamic = 'force-dynamic';
-
-const TICKETS_CACHE_TTL = 30;
-
-function toInt(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
-}
 
 function buildTicketCacheKey(
   params: URLSearchParams,
@@ -50,8 +45,9 @@ export async function GET(request: Request) {
 
     const filters = {
       search: searchParams.get('search') || '',
+      searchType: parseSearchType(searchParams.get('searchType')),
       statusUpdate,
-      dept: searchParams.get('dept') || undefined,
+      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
       ticketType:
         searchParams.get('ticketType') ||
         searchParams.get('jenisTiket') ||
@@ -60,9 +56,9 @@ export async function GET(request: Request) {
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
-      page: toInt(searchParams.get('page'), 1),
-      limit: toInt(searchParams.get('limit'), 50),
-      sort: (searchParams.get('sort') as 'asc' | 'desc') || 'asc',
+      page: toPositiveInt(searchParams.get('page'), 1, 10_000),
+      limit: toPositiveInt(searchParams.get('limit'), 50, 100),
+      sort: toSortOrder(searchParams.get('sort'), 'desc'),
     };
 
     const cacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);

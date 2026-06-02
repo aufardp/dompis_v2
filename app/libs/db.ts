@@ -1,4 +1,5 @@
 import mysql, { Pool, PoolOptions } from 'mysql2/promise';
+import { logger } from '@/lib/observability/logger';
 
 /**
  * @deprecated Gunakan Prisma client dari app/libs/prisma.ts
@@ -30,7 +31,7 @@ const pool: Pool = mysql.createPool(poolConfig);
   pool as unknown as {
     on: (event: string, handler: (err: Error) => void) => void;
   }
-).on('error', (err: Error) => console.error('[mysql2 pool]', err.message));
+).on('error', (err: Error) => logger.error('[mysql2 pool]', { error: err.message }));
 
 export async function closePool(): Promise<void> {
   await pool.end();

@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "declaration": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": "dist-workers",
+    "rootDir": ".",
+    "sourceMap": true,
+    "target": "ES2023"
+  },
+  "include": [
+    "worker*.ts",
+    "lib/**/*.ts",
+    "app/helpers/**/*.ts",
+    "app/libs/**/*.ts",
+    "app/config/**/*.ts",
+    "app/types/**/*.ts",
+    "app/utils/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next", "dist-workers"]
+}

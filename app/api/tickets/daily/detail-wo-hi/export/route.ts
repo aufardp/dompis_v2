@@ -1,0 +1,255 @@
+import { NextResponse } from 'next/server';
+import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
+import prisma from '@/app/libs/prisma';
+import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { parseSearchType } from '@/lib/search-intent';
+import { getCache, setCache } from '@/lib/cache';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
+
+export const dynamic = 'force-dynamic';
+
+const EXPORT_CACHE_TTL = 30;
+const DIRECT_EXPORT_MAX_ROWS = Number.parseInt(
+  process.env.DAILY_EXPORT_MAX_ROWS || '10000', 10,
+);
+
+const DETAIL_COLUMNS = [
+  'DURASI OPEN', 'INCIDENT', 'SUMMARY', 'REPORTED DATE',
+  'OWNER GROUP', 'SERVICE TYPE', 'WORKZONE', 'CONTACT PHONE',
+  'CONTACT NAME', 'CUSTOMER TYPE', 'CUSTOMER NAME', 'SERVICE NO',
+  'SYMPTOM', 'DEVICE NAME', 'STATUS UPDATE', 'TYPE TIKET',
+  'JENIS TIKET2', 'STATUS GAUL', 'DURASI TIKET', 'STATUS CLOSING',
+  'TTR', 'ALAMAT', 'TEKNISI 1', 'LABOR CODE 1', 'HASIL VISIT',
+  'LAPORAN TEKNISI', 'RCA', 'SUB_RCA', 'Tanggal Order',
+  'BOOKING TIME', 'Tanggal Close', 'Tanggal Open',
+];
+
+function computeAge(reportedDate: string | null | undefined): string {
+  if (!reportedDate) return '';
+  try {
+    const d = new Date(reportedDate);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    const remainingHours = diffHours % 24;
+    if (diffDays > 0) return `${diffDays}d ${remainingHours}h`;
+    return `${diffHours}h`;
+  } catch { return ''; }
+}
+
+function getMaxTtr(ticket: Record<string, any>, jenisRaw: string | null | undefined): string {
+  const ctype = (ticket.customer_type ?? '').toUpperCase();
+  if (ctype === 'HVC_GOLD' || jenisRaw?.toUpperCase().includes('GOLD')) return ticket.status_ttr_12_gold ?? '';
+  if (ctype === 'HVC_PLATINUM' || jenisRaw?.toUpperCase().includes('PLATINUM')) return ticket.status_ttr_6_platinum ?? '';
+  if (ctype === 'HVC_DIAMOND' || jenisRaw?.toUpperCase().includes('DIAMOND')) return ticket.status_ttr_3_diamond ?? '';
+  return ticket.status_ttr_24_reguler ?? '';
+}
+
+function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch { return ''; }
+}
+
+function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  } catch { return ''; }
+}
+
+function buildDetailRow(ticket: any, latestStatus: string, assignmentDate: Date | null) {
+  const jenisRaw = ticket.jenis_tiket_2 ?? '';
+  return [
+    computeAge(ticket.reported_date),
+    ticket.incident ?? '',
+    ticket.summary ?? '',
+    ticket.reported_date ?? '',
+    ticket.owner_group ?? '',
+    ticket.service_type ?? '',
+    ticket.workzone ?? '',
+    ticket.contact_phone ?? '',
+    ticket.contact_name ?? '',
+    ticket.customer_type ?? '',
+    ticket.customer_name ?? '',
+    ticket.service_no ?? '',
+    ticket.symptom ?? '',
+    ticket.device_name ?? '',
+    latestStatus,
+    ticket.jenis_tiket_1 ?? '',
+    ticket.jenis_tiket_2 ?? '',
+    ticket.gaul ?? '',
+    ticket.durasi_ticket ?? '',
+    ticket.status === 'closed' ? 'CLOSE' : 'OPEN',
+    getMaxTtr(ticket, jenisRaw),
+    ticket.alamat ?? '',
+    ticket.users?.nama ?? '',
+    ticket.users?.username ?? '',
+    ticket.status_update ?? '',
+    ticket.description_solution_dompis ?? '',
+    ticket.rca ?? '',
+    ticket.sub_rca ?? '',
+    formatDate(assignmentDate),
+    formatDate(ticket.booking_date),
+    formatDateTime(ticket.closed_at),
+    ticket.reported_date ?? '',
+  ];
+}
+
+function arrayToCsv(rows: string[][]): string {
+  return rows
+    .map((row) =>
+      row.map((cell) => {
+        const str = String(cell ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) return `"${str.replace(/"/g, '""')}"`;
+        return str;
+      }).join(','),
+    )
+    .join('\n');
+}
+
+async function buildXlsx(data: string[][], columns: string[], filename: string) {
+  const XLSX = await import('xlsx');
+  const ws = XLSX.utils.aoa_to_sheet([columns, ...data]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detail WO HI');
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+  return new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+}
+
+export async function GET(request: Request) {
+  try {
+    const user = await protectApi(['admin', 'superadmin', 'super_admin']);
+    const { searchParams } = new URL(request.url);
+
+    const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
+    const dept = (searchParams.get('dept') ?? 'all') as string;
+    const search = searchParams.get('search') ?? '';
+    const searchType = parseSearchType(searchParams.get('searchType'));
+    const workzone = searchParams.get('workzone') ?? '';
+    const ctype = searchParams.get('ctype') ?? '';
+    const startDate = searchParams.get('startDate') ?? '';
+    const endDate = searchParams.get('endDate') ?? '';
+
+    const baseWhere = await DailyTicketService.buildDailyTicketWhere(
+      user.role, user.id_user, {
+        dept: dept === 'all' ? undefined : dept,
+        search: search || undefined,
+        searchType,
+        workzone: workzone || undefined,
+        ctype: ctype || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      },
+    );
+
+    const total = await prisma.ticket.count({ where: baseWhere });
+
+    if (total > DIRECT_EXPORT_MAX_ROWS) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Export terlalu besar (${total} row). Persempit filter sebelum export.`,
+        },
+        { status: 413 },
+      );
+    }
+
+    if (total === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Tidak ada data untuk diexport.',
+        },
+        { status: 404 },
+      );
+    }
+
+    const orderedTickets = await prisma.ticket.findMany({
+      where: baseWhere,
+      orderBy: { booking_date: 'desc' },
+      include: { users: { select: { nama: true, username: true } } },
+    });
+
+    // Latest status per ticket
+    const statusHistories = await prisma.ticket_status_history.findMany({
+      where: { ticket_id: { in: orderedTickets.map(t => t.id_ticket) } },
+      orderBy: { changed_at: 'desc' },
+      select: { ticket_id: true, new_status: true },
+    });
+
+    const latestStatusPerTicket = new Map<number, string>();
+    for (const h of statusHistories) {
+      if (!latestStatusPerTicket.has(h.ticket_id)) {
+        latestStatusPerTicket.set(h.ticket_id, h.new_status);
+      }
+    }
+
+    // Earliest assignment per ticket
+    const ticketIds = orderedTickets.map(t => t.id_ticket);
+    const assignments = await prisma.ticket_assignment_history.findMany({
+      where: { ticket_id: { in: ticketIds }, is_active: true },
+      orderBy: { assigned_at: 'asc' },
+      select: { ticket_id: true, assigned_at: true },
+    });
+
+    const earliestAssignmentPerTicket = new Map<number, Date>();
+    for (const a of assignments) {
+      if (!earliestAssignmentPerTicket.has(a.ticket_id)) {
+        earliestAssignmentPerTicket.set(a.ticket_id, a.assigned_at);
+      }
+    }
+
+    const rows = orderedTickets.map((t: any) => {
+      const latestStatus = latestStatusPerTicket.get(t.id_ticket) ?? '';
+      const assignmentDate = earliestAssignmentPerTicket.get(t.id_ticket) ?? null;
+      return buildDetailRow(t, latestStatus, assignmentDate);
+    });
+
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const filenameBase = `Detail_WO_HI_${dateStr}`;
+
+    if (format === 'csv') {
+      const csvContent = arrayToCsv([DETAIL_COLUMNS, ...rows]);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      return new Response(blob, {
+        headers: {
+          'Content-Disposition': `attachment; filename="${filenameBase}.csv"`,
+          'Content-Type': 'text/csv;charset=utf-8',
+        },
+      });
+    }
+
+    const blob = await buildXlsx(rows, DETAIL_COLUMNS, filenameBase);
+    return new Response(blob, {
+      headers: {
+        'Content-Disposition': `attachment; filename="${filenameBase}.xlsx"`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, message: getErrorMessage(error, 'Export gagal') },
+      { status: getErrorStatus(error, 500) },
+    );
+  }
+}

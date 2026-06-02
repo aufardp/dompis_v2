@@ -2,6 +2,7 @@ import prisma from '@/app/libs/prisma';
 import { todayWibDateForDb } from '@/lib/timezone';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getJenisWhereClause } from '@/app/config/jenis-tiket';
 
 export type AlertDiamondTicket = {
   idTicket: number;
@@ -35,13 +36,20 @@ export class AlertTicketService {
     options?: {
       limit?: number;
       includeAssigned?: boolean;
+      dept?: string;
+      ticketType?: string;
     },
   ): Promise<AlertDiamondTicket[]> {
-    const { limit = 50, includeAssigned = true } = options ?? {};
+    const {
+      limit = 500,
+      includeAssigned = true,
+      dept,
+      ticketType,
+    } = options ?? {};
 
-    console.log(
-      `[AlertDiamond] getAlertDiamondTickets — role: ${role}, userId: ${userId}, forcedWorkzone: ${forcedWorkzoneId}`,
-    );
+    if (dept === 'b2b') {
+      return [];
+    }
 
     // Get today's date in WIB for sync_date filter
     const todayWib = todayWibDateForDb();
@@ -67,6 +75,10 @@ export class AlertTicketService {
       status_update: statusFilter,
       ...workzoneWhere,
     };
+
+    if (ticketType && ticketType !== 'all') {
+      Object.assign(where, getJenisWhereClause(ticketType));
+    }
 
     const tickets = await prisma.ticket.findMany({
       where,
@@ -113,7 +125,15 @@ export class AlertTicketService {
     role: string,
     userId: number,
     forcedWorkzoneId?: string,
+    options?: {
+      dept?: string;
+      ticketType?: string;
+    },
   ): Promise<number> {
+    if (options?.dept === 'b2b') {
+      return 0;
+    }
+
     const todayWib = todayWibDateForDb();
 
     const workzoneWhere = await this.buildWorkzoneWhere(
@@ -129,6 +149,10 @@ export class AlertTicketService {
       ...workzoneWhere,
     };
 
+    if (options?.ticketType && options.ticketType !== 'all') {
+      Object.assign(where, getJenisWhereClause(options.ticketType));
+    }
+
     return prisma.ticket.count({ where });
   }
 
@@ -143,11 +167,16 @@ export class AlertTicketService {
     userId: number,
     forcedWorkzoneId?: string,
   ): Promise<Record<string, any>> {
+    if (role === 'superadmin' || role === 'super_admin') {
+      if (forcedWorkzoneId) {
+        return { workzone: forcedWorkzoneId };
+      }
+
+      return {};
+    }
+
     // Check teknisi FIRST (before isAdminRole narrows the type)
     if (role === 'teknisi') {
-      console.log(
-        `[AlertDiamond] Teknisi ${userId} — filtering by teknisi_user_id`,
-      );
       return {
         AND: [
           { workzone: { not: null } },
@@ -158,33 +187,18 @@ export class AlertTicketService {
 
     // Admin forced selector — only admins can override
     if (forcedWorkzoneId && isAdminRole(role)) {
-      console.log(
-        `[AlertDiamond] Admin override workzone: ${forcedWorkzoneId}`,
-      );
-      return { workzone: { contains: forcedWorkzoneId } };
+      return { workzone: forcedWorkzoneId };
     }
 
     // Admin/other roles — filter by user's assigned workzones
     if (isAdminRole(role)) {
       const workzones = await getWorkzonesForUser(userId);
-      console.log(
-        `[AlertDiamond] Admin ${userId} (role: ${role}) workzones:`,
-        workzones,
-      );
       if (workzones.length === 0) {
-        // No workzones assigned — return impossible filter
-        console.log(
-          `[AlertDiamond] No workzones for admin ${userId}, returning empty result`,
-        );
         return { id_ticket: 0 };
       }
       return { workzone: { in: workzones } };
     }
 
-    // Default — no filter
-    console.log(
-      `[AlertDiamond] Unknown role "${role}" for user ${userId}, no workzone filter`,
-    );
     return {};
   }
 }

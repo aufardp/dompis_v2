@@ -1,10 +1,11 @@
-import jwt, { JwtPayload } from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest } from 'next/server';
 
 const ACCESS_EXPIRY = '4h';
 const REFRESH_EXPIRY = '7d';
+type TokenType = 'access' | 'refresh';
 
-export interface AccessTokenPayload extends JwtPayload {
+export interface AccessTokenPayload {
   id_user: number;
   role: string;
   role_id: number;
@@ -15,20 +16,25 @@ export interface AccessTokenPayload extends JwtPayload {
   attendance_check_in_at: string | null;
 }
 
-/* =====================================================
-   SIGN TOKEN
-===================================================== */
+type VerifiedTokenPayload = AccessTokenPayload & {
+  token_type?: TokenType;
+};
+
+const getAccessSecret = () => new TextEncoder().encode(process.env.JWT_ACCESS_SECRET!);
+const getRefreshSecret = () => new TextEncoder().encode(process.env.JWT_REFRESH_SECRET!);
 
 export function signAccessToken(payload: AccessTokenPayload) {
-  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET!, {
-    expiresIn: ACCESS_EXPIRY,
-  });
+  return new SignJWT({ ...payload, token_type: 'access' satisfies TokenType })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime(ACCESS_EXPIRY)
+    .sign(getAccessSecret());
 }
 
 export function signRefreshToken(payload: AccessTokenPayload) {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
-    expiresIn: REFRESH_EXPIRY,
-  });
+  return new SignJWT({ ...payload, token_type: 'refresh' satisfies TokenType })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime(REFRESH_EXPIRY)
+    .sign(getRefreshSecret());
 }
 
 export function createDefaultAttendancePayload(): Pick<
@@ -46,50 +52,47 @@ export function createDefaultAttendancePayload(): Pick<
   };
 }
 
-/* =====================================================
-   VERIFY TOKEN (SAFE)
-===================================================== */
+async function verifyTokenWithSecret(
+  token: string,
+  secret: Uint8Array,
+): Promise<VerifiedTokenPayload> {
+  const { payload } = await jwtVerify(token, secret);
+  return payload as unknown as VerifiedTokenPayload;
+}
 
-export function verifyAccessToken(token: string): AccessTokenPayload {
-  const accessSecret = process.env.JWT_ACCESS_SECRET;
-  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+function assertTokenType(
+  payload: VerifiedTokenPayload,
+  expected: TokenType,
+  fallbackError: string,
+) {
+  if (payload.token_type && payload.token_type !== expected) {
+    throw new Error(fallbackError);
+  }
+}
 
+export async function verifyAccessToken(token: string): Promise<AccessTokenPayload> {
   try {
-    return jwt.verify(token, accessSecret!) as AccessTokenPayload;
+    const payload = await verifyTokenWithSecret(token, getAccessSecret());
+    assertTokenType(payload, 'access', 'Invalid token type for access token');
+    return payload;
   } catch (error: any) {
-    // Fallback sementara: beberapa environment dev menjalankan middleware
-    // dengan secret refresh (mismatch proses). Coba verifikasi dengan refresh secret.
-    // Tetap aman karena kedua secret dikontrol server.
-    if (refreshSecret && accessSecret && refreshSecret !== accessSecret) {
-      try {
-        return jwt.verify(token, refreshSecret) as AccessTokenPayload;
-      } catch {
-        // ignore fallback failure, throw canonical error below
-      }
-    }
-
     throw new Error(
       `Invalid or expired access token (${error?.name || 'UnknownError'})`,
     );
   }
 }
 
-export function verifyRefreshToken(token: string): AccessTokenPayload {
+export async function verifyRefreshToken(token: string): Promise<AccessTokenPayload> {
   try {
-    return jwt.verify(
-      token,
-      process.env.JWT_REFRESH_SECRET!,
-    ) as AccessTokenPayload;
+    const payload = await verifyTokenWithSecret(token, getRefreshSecret());
+    assertTokenType(payload, 'refresh', 'Invalid token type for refresh token');
+    return payload;
   } catch (error) {
     throw new Error('Invalid or expired refresh token');
   }
 }
 
-/* =====================================================
-   GET USER FROM REQUEST
-===================================================== */
-
-export function getUserFromRequest(req: NextRequest): AccessTokenPayload {
+export async function getUserFromRequest(req: NextRequest): Promise<AccessTokenPayload> {
   const authHeader = req.headers.get('authorization');
 
   const token = authHeader?.startsWith('Bearer ')

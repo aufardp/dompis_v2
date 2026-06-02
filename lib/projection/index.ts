@@ -7,11 +7,15 @@ import {
   resetVlookupCache,
   refreshVlookupCache,
 } from '@/lib/classify-jenis-vlookup';
-import { setProjectionStatus } from '@/lib/sync-metrics/metrics';
+import { recordProjectionMetric, setProjectionStatus } from '@/lib/sync-metrics/metrics';
+import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 import { isTicketClosed, normalizeStatusUpdate } from '@/app/libs/ticket-utils';
+import { logger } from '@/lib/observability/logger';
+import { quarantine } from '@/lib/dlq';
 
 const TIMEZONE = 'Asia/Jakarta';
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
+let consecutiveZeroProcessed = 0;
 
 const PROTECTED_STATES = new Set([
   'assigned',
@@ -22,8 +26,16 @@ const PROTECTED_STATES = new Set([
 ]);
 
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('PROJECTION_BATCH_SIZE', 500);
-const DEFAULT_CONCURRENCY = parsePositiveIntEnv('PROJECTION_CONCURRENCY', 5);
+const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
+  'PROJECTION_WRITE_CHUNK_SIZE',
+  Math.min(DEFAULT_BATCH_SIZE, 100),
+);
+const DEFAULT_CONCURRENCY = parsePositiveIntEnv('PROJECTION_CONCURRENCY', 2);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv('PROJECTION_RETRY_MAX', 3);
+const DEFAULT_TRANSACTION_TIMEOUT_MS = parsePositiveIntEnv(
+  'PROJECTION_TRANSACTION_TIMEOUT_MS',
+  30_000,
+);
 const RETRY_BASE_DELAY_MS = parsePositiveIntEnv(
   'PROJECTION_RETRY_BASE_DELAY_MS',
   250,
@@ -128,6 +140,7 @@ interface ProjectionOptions {
   since?: Date;
   syncBatchId?: string;
   mode?: 'incremental' | 'full' | 'batch';
+  preserveCheckpointCursor?: boolean;
 }
 
 interface ProjectionCheckpoint {
@@ -162,6 +175,13 @@ interface ExistingTicket {
   sub_rca: string | null;
   status_manja: string | null;
   alamat: string | null;
+}
+
+interface ExistingProjectionLog {
+  ticketRawId: string;
+  sourceHash: string | null;
+  syncVersion: number | null;
+  status: string;
 }
 
 interface ProjectionItem {
@@ -205,6 +225,7 @@ const PROJECTED_FIELDS: Record<string, string> = {
   onu_rx: 'onu_rx',
   street_address: 'alamat',
   channel: 'channel',
+  classification_flag: 'classification_flag',
   classification_path: 'classification_path',
   incident_domain: 'incident_domain',
   solution: 'solution',
@@ -313,7 +334,19 @@ async function runLimited<T>(
       }
     },
   );
-  await Promise.all(workers);
+  const results = await Promise.allSettled(workers);
+  const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  for (const r of rejected) {
+    logger.warn('[Projection] Worker rejected:', { error: String(r.reason) });
+  }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 async function getOrCreateCheckpoint(): Promise<ProjectionCheckpoint> {
@@ -372,6 +405,7 @@ function buildProjectionUpsert(
     jenis_tiket_1: jenisTiket1,
     jenis_tiket_2: jenisTiket2,
     channel: raw.channel,
+    classification_flag: raw.classification_flag,
     classification_path: raw.classification_path,
   };
 
@@ -431,10 +465,19 @@ function buildProjectionUpsert(
   };
 }
 
-function shouldSkipProjection(
+export function shouldSkipProjection(
   raw: RawSelectResult,
   existing: ExistingTicket | undefined,
+  projectionLog: ExistingProjectionLog | undefined,
 ): boolean {
+  if (
+    projectionLog?.status === 'success' &&
+    projectionLog.sourceHash === raw.sourceHash &&
+    projectionLog.syncVersion === raw.syncVersion
+  ) {
+    return true;
+  }
+
   return Boolean(
     existing?.synced_at &&
       raw.importedAt &&
@@ -510,6 +553,7 @@ async function fetchBatch(
       onu_rx: true,
       street_address: true,
       channel: true,
+      classification_flag: true,
       classification_path: true,
       incident_domain: true,
       solution: true,
@@ -528,6 +572,7 @@ async function prepareProjectionItems(
   const jenisResults = await batchClassifyJenisFromVlookup(
     validRawRecords.map((r) => ({
       channel: r.channel as string | null,
+      classification_flag: r.classification_flag as string | null,
       classification_path: r.classification_path as string | null,
       customer_type: r.customer_type as string | null,
       customer_segment: r.customer_segment as string | null,
@@ -535,6 +580,7 @@ async function prepareProjectionItems(
       service_no: r.service_no as string | null,
       source_ticket: r.source_ticket as string | null,
       realm: r.realm as string | null,
+      summary: r.summary as string | null,
     })),
   );
 
@@ -558,29 +604,49 @@ async function prepareProjectionItems(
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
+  const projectionLogs = await prisma.ticket_projection_log.findMany({
+    where: {
+      ticketRawId: { in: validRawRecords.map((r) => r.id_ticket) },
+    },
+    select: {
+      ticketRawId: true,
+      sourceHash: true,
+      syncVersion: true,
+      status: true,
+    },
+  });
+  const projectionLogMap = new Map(
+    projectionLogs.map((log) => [log.ticketRawId, log as ExistingProjectionLog]),
+  );
 
   const now = nowWib();
   const syncDate = todayWibDateForDb();
-  return validRawRecords.map((raw, index) => {
+  const items: ProjectionItem[] = [];
+  for (let i = 0; i < validRawRecords.length; i++) {
+    if (i > 0 && i % 100 === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const raw = validRawRecords[i]!;
     const existing = existingMap.get(raw.incident!);
     const projection = buildProjectionUpsert(
       raw,
       existing,
-      jenisResults[index]?.jenis_tiket_1 ?? null,
-      jenisResults[index]?.jenis_tiket_2 ?? null,
+      jenisResults[i]?.jenis_tiket_1 ?? null,
+      jenisResults[i]?.jenis_tiket_2 ?? null,
       now,
       syncDate,
     );
-    return {
+    items.push({
       raw,
       ...projection,
       action: !existing
         ? 'inserted'
-        : shouldSkipProjection(raw, existing)
+        : shouldSkipProjection(raw, existing, projectionLogMap.get(raw.id_ticket))
           ? 'skipped'
           : 'updated',
-    };
-  });
+    });
+  }
+  return items;
 }
 
 async function projectOneItemInTransaction(
@@ -654,6 +720,10 @@ async function advanceCheckpoint(
   lastRecord: RawSelectResult,
   result: ProjectionResult,
   syncBatchId: string | null,
+  options: {
+    preserveCursor: boolean;
+    preservedCheckpoint: ProjectionCheckpoint;
+  },
 ): Promise<void> {
   if (!lastRecord.importedAt) {
     throw new Error('Projection cursor requires importedAt on ticket_raw');
@@ -661,9 +731,15 @@ async function advanceCheckpoint(
   await tx.ticket_projection_checkpoint.update({
     where: { name: CHECKPOINT_NAME },
     data: {
-      lastProjectedImportedAt: lastRecord.importedAt,
-      lastProjectedTicketRawId: lastRecord.id_ticket,
-      lastSyncBatchId: syncBatchId,
+      lastProjectedImportedAt: options.preserveCursor
+        ? options.preservedCheckpoint.lastProjectedImportedAt
+        : lastRecord.importedAt,
+      lastProjectedTicketRawId: options.preserveCursor
+        ? options.preservedCheckpoint.lastProjectedTicketRawId
+        : lastRecord.id_ticket,
+      lastSyncBatchId: options.preserveCursor
+        ? options.preservedCheckpoint.lastSyncBatchId
+        : syncBatchId,
       status: 'success',
       processed: result.processed,
       inserted: result.inserted,
@@ -677,33 +753,63 @@ async function advanceCheckpoint(
     },
   });
   result.checkpoint = {
-    lastProjectedImportedAt: lastRecord.importedAt,
-    lastProjectedTicketRawId: lastRecord.id_ticket,
-    syncBatchId,
+    lastProjectedImportedAt: options.preserveCursor
+      ? options.preservedCheckpoint.lastProjectedImportedAt
+      : lastRecord.importedAt,
+    lastProjectedTicketRawId: options.preserveCursor
+      ? options.preservedCheckpoint.lastProjectedTicketRawId
+      : lastRecord.id_ticket,
+    syncBatchId: options.preserveCursor
+      ? options.preservedCheckpoint.lastSyncBatchId
+      : syncBatchId,
   };
 }
 
-async function projectBatchAtomically(
+async function withTransactionRetry<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  maxRetries = 3,
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: 'ReadCommitted',
+        maxWait: 10_000,
+        timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isRetryable = /1205|lock wait timeout|deadlock|1213/i.test(msg);
+      if (!isRetryable || attempt >= maxRetries) throw err;
+      const delay = 500 * Math.pow(2, attempt);
+      logger.warn('[Projection] Transaction retry:', { attempt: attempt + 1, maxRetries, delayMs: delay, error: msg.slice(0, 80) });
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error('Transaction retry exhausted');
+}
+
+async function projectSubBatchAtomically(
   items: ProjectionItem[],
   lastRecord: RawSelectResult,
   result: ProjectionResult,
   options: {
-    concurrency: number;
     attempts: number;
     syncBatchId: string | null;
+    preserveCheckpointCursor: boolean;
+    preservedCheckpoint: ProjectionCheckpoint;
     signal?: AbortSignal;
   },
 ): Promise<void> {
-  await prisma.$transaction(
-    async (tx) => {
-      await runLimited(items, options.concurrency, async (item) => {
-        assertNotAborted(options.signal);
-        await projectOneItemInTransaction(tx, item, options.attempts);
-      });
-      await advanceCheckpoint(tx, lastRecord, result, options.syncBatchId);
-    },
-    { isolationLevel: 'ReadCommitted', timeout: 60_000 },
-  );
+  await withTransactionRetry(async (tx) => {
+    for (const item of items) {
+      assertNotAborted(options.signal);
+      await projectOneItemInTransaction(tx, item, options.attempts);
+    }
+    await advanceCheckpoint(tx, lastRecord, result, options.syncBatchId, {
+      preserveCursor: options.preserveCheckpointCursor,
+      preservedCheckpoint: options.preservedCheckpoint,
+    });
+  });
 }
 
 async function projectRecords(
@@ -711,6 +817,10 @@ async function projectRecords(
   options: ProjectionOptions = {},
 ): Promise<ProjectionResult> {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+  const writeChunkSize = Math.max(
+    1,
+    Math.min(options.batchSize ?? DEFAULT_BATCH_SIZE, DEFAULT_WRITE_CHUNK_SIZE),
+  );
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const retryMax = options.retryMax ?? DEFAULT_RETRY_MAX;
   let metadataRetries = 0;
@@ -746,11 +856,17 @@ async function projectRecords(
     data: { status: 'running', startedAt: nowWib(), lastError: null },
   });
 
+  await setMySQLSessionTimeout(30_000);
+
   try {
     resetVlookupCache();
     await refreshVlookupCache();
   } catch (error) {
-    console.warn('[Projection] Failed to warm up jenis_vlookup cache:', error);
+    logger.warn('[Projection] Failed to warm up jenis_vlookup cache:', { error: String(error) });
+  }
+
+  if (concurrency > 1) {
+    logger.info('[Projection] Projection concurrency ignored for transactional writes');
   }
 
   let hasMore = true;
@@ -761,7 +877,15 @@ async function projectRecords(
           lastProjectedTicketRawId: null,
           lastSyncBatchId: options.syncBatchId,
         }
+      : options.preserveCheckpointCursor
+        ? {
+            lastProjectedImportedAt: null,
+            lastProjectedTicketRawId: null,
+            lastSyncBatchId: checkpoint.lastSyncBatchId,
+          }
       : checkpoint;
+
+  logger.info('[Projection] Starting:', { mode: options.mode ?? 'incremental', batchSize, writeChunkSize, cursor: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}` });
 
   while (hasMore) {
     assertNotAborted(signal);
@@ -784,64 +908,117 @@ async function projectRecords(
 
     const lastRecord = rawRecords[rawRecords.length - 1]!;
     try {
+    const itemChunks = chunkArray(items, writeChunkSize);
+    for (const itemChunk of itemChunks) {
+      const chunkLastRecord = itemChunk[itemChunk.length - 1]!.raw;
+      const chunkStartMs = Date.now();
       let batchRetries = 0;
       const nextResult: ProjectionResult = {
-        ...result,
-        processed: result.processed + items.length,
-        inserted:
-          result.inserted +
-          items.filter((item) => item.action === 'inserted').length,
-        updated:
-          result.updated +
-          items.filter((item) => item.action === 'updated').length,
-        skipped:
-          result.skipped +
-          items.filter((item) => item.action === 'skipped').length,
-        protected:
-          result.protected + items.filter((item) => item.protected).length,
-        setToOpen:
-          result.setToOpen +
-          items.filter((item) => item.statusResolution?.statusUpdate === 'open')
-            .length,
-        setToClose:
-          result.setToClose +
-          items.filter((item) => item.statusResolution?.statusUpdate === 'close')
-            .length,
-      };
-      await withRetry(
-        () =>
-          projectBatchAtomically(items, lastRecord, nextResult, {
-            concurrency,
-            attempts: batchRetries + 1,
-            syncBatchId: options.syncBatchId ?? lastRecord.syncBatchId,
+          ...result,
+          processed: result.processed + itemChunk.length,
+          inserted:
+            result.inserted +
+            itemChunk.filter((item) => item.action === 'inserted').length,
+          updated:
+            result.updated +
+            itemChunk.filter((item) => item.action === 'updated').length,
+          skipped:
+            result.skipped +
+            itemChunk.filter((item) => item.action === 'skipped').length,
+          protected:
+            result.protected + itemChunk.filter((item) => item.protected).length,
+          setToOpen:
+            result.setToOpen +
+            itemChunk.filter((item) => item.statusResolution?.statusUpdate === 'open')
+              .length,
+          setToClose:
+            result.setToClose +
+            itemChunk.filter((item) => item.statusResolution?.statusUpdate === 'close')
+              .length,
+        };
+
+        await withRetry(
+          () =>
+            projectSubBatchAtomically(itemChunk, chunkLastRecord, nextResult, {
+              attempts: batchRetries + 1,
+              syncBatchId: options.syncBatchId ?? chunkLastRecord.syncBatchId,
+              preserveCheckpointCursor:
+                options.preserveCheckpointCursor === true,
+              preservedCheckpoint: checkpoint,
+              signal,
+            }),
+          {
+            retryMax,
             signal,
-          }),
-        {
-          retryMax,
-          signal,
-          onRetry: () => {
-            batchRetries++;
-            nextResult.retried += items.length;
+            onRetry: () => {
+              batchRetries++;
+              nextResult.retried += itemChunk.length;
+            },
           },
-        },
-      );
-      result.processed = nextResult.processed;
-      result.inserted = nextResult.inserted;
-      result.updated = nextResult.updated;
-      result.skipped = nextResult.skipped;
-      result.protected = nextResult.protected;
-      result.setToOpen = nextResult.setToOpen;
-      result.setToClose = nextResult.setToClose;
-      result.retried = nextResult.retried;
-      result.checkpoint = nextResult.checkpoint;
+        );
+
+        logger.info('[Projection] Sub-batch success:', { size: itemChunk.length, checkpoint: `${chunkLastRecord.importedAt?.toISOString() ?? '-'}:${chunkLastRecord.id_ticket}` });
+        const batchDurationMs = Date.now() - chunkStartMs;
+        const rowsPerSecond = batchDurationMs > 0
+          ? Math.round((itemChunk.length / batchDurationMs) * 1000 * 100) / 100
+          : 0;
+        const chunkLagMs = chunkLastRecord.importedAt
+          ? Date.now() - chunkLastRecord.importedAt.getTime()
+          : null;
+
+        await Promise.allSettled([
+          recordProjectionMetric('lastBatchDurationMs', batchDurationMs),
+          recordProjectionMetric('lastBatchRowsPerSecond', rowsPerSecond),
+          recordProjectionMetric('lastBatchRows', itemChunk.length),
+          chunkLagMs !== null
+            ? recordProjectionMetric('pipelineLagMs', chunkLagMs)
+            : Promise.resolve(),
+          setProjectionStatus('running', {
+            batchDurationMs,
+            rowsPerSecond,
+            lagMs: chunkLagMs ?? undefined,
+            processed: nextResult.processed,
+            inserted: nextResult.inserted,
+            updated: nextResult.updated,
+            skipped: nextResult.skipped,
+            failed: nextResult.failed,
+            retried: nextResult.retried,
+            protected: nextResult.protected,
+            checkpoint: `${chunkLastRecord.importedAt?.toISOString() ?? '-'}:${chunkLastRecord.id_ticket}`,
+          }),
+        ]);
+
+        result.processed = nextResult.processed;
+        result.inserted = nextResult.inserted;
+        result.updated = nextResult.updated;
+        result.skipped = nextResult.skipped;
+        result.protected = nextResult.protected;
+        result.setToOpen = nextResult.setToOpen;
+        result.setToClose = nextResult.setToClose;
+        result.retried = nextResult.retried;
+        result.checkpoint = nextResult.checkpoint;
+      }
     } catch (error) {
-      for (const item of items) {
+      const failedItems = items.filter((item) => {
+        const checkpointImportedAt = result.checkpoint.lastProjectedImportedAt;
+        const checkpointId = result.checkpoint.lastProjectedTicketRawId;
+        if (!checkpointImportedAt || !checkpointId || !item.raw.importedAt) {
+          return true;
+        }
+        return (
+          item.raw.importedAt.getTime() > checkpointImportedAt.getTime() ||
+          (item.raw.importedAt.getTime() === checkpointImportedAt.getTime() &&
+            item.raw.id_ticket > checkpointId)
+        );
+      });
+      for (const item of failedItems) {
         result.failed++;
         result.errors.push({
           incident: item.raw.incident ?? 'unknown',
           error: String(error),
         });
         await markProjectionFailure(item, error, retryMax + 1);
+        await quarantine('projection', { itemId: item.raw.id_ticket, incident: item.raw.incident }, error).catch(() => {});
       }
       await prisma.ticket_projection_checkpoint.update({
         where: { name: CHECKPOINT_NAME },
@@ -853,20 +1030,24 @@ async function projectRecords(
         },
       });
       throw new Error(
-        `Projection batch failed with ${items.length} failed record(s); checkpoint not advanced`,
+        `Projection batch failed with ${failedItems.length} failed record(s); checkpoint advanced only for successful sub-batches`,
       );
     }
 
     assertNotAborted(signal);
-    activeCheckpoint = {
-      lastProjectedImportedAt: lastRecord.importedAt,
-      lastProjectedTicketRawId: lastRecord.id_ticket,
-      lastSyncBatchId: options.syncBatchId ?? lastRecord.syncBatchId,
-    };
+    activeCheckpoint = options.preserveCheckpointCursor
+      ? {
+          lastProjectedImportedAt: lastRecord.importedAt,
+          lastProjectedTicketRawId: lastRecord.id_ticket,
+          lastSyncBatchId: checkpoint.lastSyncBatchId,
+        }
+      : {
+          lastProjectedImportedAt: lastRecord.importedAt,
+          lastProjectedTicketRawId: lastRecord.id_ticket,
+          lastSyncBatchId: options.syncBatchId ?? lastRecord.syncBatchId,
+        };
     hasMore = rawRecords.length === batchSize;
-    console.log(
-      `[Projection] checkpoint=${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'} processed=${result.processed} inserted=${result.inserted} updated=${result.updated} skipped=${result.skipped} failed=${result.failed}`,
-    );
+    logger.info('[Projection] Batch result:', { checkpoint: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}`, processed: result.processed, inserted: result.inserted, updated: result.updated, skipped: result.skipped, failed: result.failed });
     assertNotAborted(signal);
   }
 
@@ -905,7 +1086,7 @@ export async function runProjection(
   const start = Date.now();
 
   if (process.env.PROJECTION_ENABLED !== 'true') {
-    console.log('[Projection] Disabled');
+    logger.info('[Projection] Disabled');
     await setProjectionStatus('success', { duration: Date.now() - start });
     return emptyProjectionResult();
   }
@@ -914,8 +1095,26 @@ export async function runProjection(
     assertNotAborted(signal);
     const result = await projectRecords(signal, options);
     result.duration = Date.now() - start;
+    const endToEndLagMs = result.checkpoint.lastProjectedImportedAt
+      ? Date.now() - result.checkpoint.lastProjectedImportedAt.getTime()
+      : null;
+    const rowsPerSecond = result.duration > 0
+      ? Math.round((result.processed / result.duration) * 1000 * 100) / 100
+      : 0;
+    await Promise.allSettled([
+      recordProjectionMetric('lastRunDurationMs', result.duration),
+      recordProjectionMetric('lastRunRowsPerSecond', rowsPerSecond),
+      endToEndLagMs !== null
+        ? recordProjectionMetric('pipelineLagMs', endToEndLagMs)
+        : Promise.resolve(),
+    ]);
+    const reconciliation = await getProjectionReconciliationReport().catch(
+      () => null,
+    );
     await setProjectionStatus('success', {
       duration: result.duration,
+      lagMs: endToEndLagMs ?? undefined,
+      rowsPerSecond,
       processed: result.processed,
       inserted: result.inserted,
       updated: result.updated,
@@ -923,8 +1122,23 @@ export async function runProjection(
       failed: result.failed,
       retried: result.retried,
       protected: result.protected,
-      checkpoint: `${result.checkpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${result.checkpoint.lastProjectedTicketRawId ?? '-'}`,
+      checkpoint:
+        `${result.checkpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${result.checkpoint.lastProjectedTicketRawId ?? '-'}` +
+        (reconciliation
+          ? `|neverProjected=${reconciliation.neverProjectedRaw}|oldestPending=${reconciliation.oldestUnprojectedImportedAt?.toISOString() ?? '-'}`
+          : ''),
     });
+
+    if (result.processed === 0) {
+      consecutiveZeroProcessed++;
+      if (consecutiveZeroProcessed >= 3) {
+        logger.warn('[Projection] Drift detected:', { consecutiveZeroProcessed });
+        consecutiveZeroProcessed = 0;
+      }
+    } else {
+      consecutiveZeroProcessed = 0;
+    }
+
     return result;
   } catch (err) {
     const duration = Date.now() - start;
@@ -952,7 +1166,7 @@ export async function runProjection(
 export async function runInitialProjection(
   signal?: AbortSignal,
 ): Promise<ProjectionResult> {
-  console.log('[Projection] Starting initial projection (full)...');
+  logger.info('[Projection] Starting initial projection (full)...');
   await prisma.ticket_projection_checkpoint.upsert({
     where: { name: CHECKPOINT_NAME },
     create: { name: CHECKPOINT_NAME, status: 'idle' },
@@ -968,14 +1182,18 @@ export async function runInitialProjection(
 export async function runFullScanProjection(
   signal?: AbortSignal,
 ): Promise<ProjectionResult> {
-  console.log('[Projection] Starting full scan without resetting checkpoint...');
-  return runProjection(signal, { mode: 'full', since: new Date(0) });
+  logger.info('[Projection] Starting full scan without resetting checkpoint...');
+  return runProjection(signal, {
+    mode: 'full',
+    since: new Date(0),
+    preserveCheckpointCursor: true,
+  });
 }
 
 export async function runIncrementalProjection(
   signal?: AbortSignal,
 ): Promise<ProjectionResult> {
-  console.log('[Projection] Starting incremental projection from checkpoint...');
+  logger.info('[Projection] Starting incremental projection from checkpoint...');
   return runProjection(signal, { mode: 'incremental' });
 }
 
@@ -985,9 +1203,18 @@ export async function getProjectionReconciliationReport(): Promise<{
   neverProjectedRaw: number;
   failedRaw: number;
   tickets: number;
+  oldestUnprojectedImportedAt: Date | null;
   checkpoint: ProjectionCheckpoint & { status?: string | null };
 }> {
-  const [checkpoint, activeRaw, projectedRaw, failedRaw, tickets, gapRows] =
+  const [
+    checkpoint,
+    activeRaw,
+    projectedRaw,
+    failedRaw,
+    tickets,
+    gapRows,
+    oldestGapRows,
+  ] =
     await Promise.all([
       prisma.ticket_projection_checkpoint.findUnique({
         where: { name: CHECKPOINT_NAME },
@@ -1010,9 +1237,21 @@ export async function getProjectionReconciliationReport(): Promise<{
         WHERE tr.isActive = TRUE
           AND tpl.id IS NULL
       `,
+      prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
+        SELECT tr.importedAt AS importedAt
+        FROM ticket_raw tr
+        LEFT JOIN ticket_projection_log tpl
+          ON tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
+        WHERE tr.isActive = TRUE
+          AND tpl.id IS NULL
+          AND tr.importedAt IS NOT NULL
+        ORDER BY tr.importedAt ASC, tr.id_ticket ASC
+        LIMIT 1
+      `,
     ]);
 
   const neverProjectedRaw = Number(gapRows[0]?.count ?? 0);
+  const oldestUnprojectedImportedAt = oldestGapRows[0]?.importedAt ?? null;
 
   return {
     activeRaw,
@@ -1020,6 +1259,7 @@ export async function getProjectionReconciliationReport(): Promise<{
     neverProjectedRaw,
     failedRaw,
     tickets,
+    oldestUnprojectedImportedAt,
     checkpoint: checkpoint ?? {
       lastProjectedImportedAt: null,
       lastProjectedTicketRawId: null,
@@ -1032,7 +1272,7 @@ export async function getProjectionReconciliationReport(): Promise<{
 export async function backfillJenisTiket(
   batchSize: number = 100,
 ): Promise<{ processed: number; updated: number; errors: number }> {
-  console.log('[Backfill] Starting jenis_tiket vlookup backfill...');
+  logger.info('[Backfill] Starting jenis_tiket vlookup backfill...');
   resetVlookupCache();
   await refreshVlookupCache();
 
@@ -1054,6 +1294,7 @@ export async function backfillJenisTiket(
         service_no: true,
         source_ticket: true,
         realm: true,
+        summary: true,
       },
       take: batchSize,
       skip,
@@ -1069,6 +1310,7 @@ export async function backfillJenisTiket(
       service_no: t.service_no,
       source_ticket: t.source_ticket,
       realm: t.realm,
+      summary: t.summary,
     }));
 
     const results = await batchClassifyJenisFromVlookup(inputs);
@@ -1088,10 +1330,7 @@ export async function backfillJenisTiket(
         }
         result.processed++;
       } catch (error) {
-        console.error(
-          `[Backfill] Error processing ${tickets[i]?.incident}:`,
-          error,
-        );
+        logger.error('[Backfill] Error processing:', { incident: tickets[i]?.incident, error: String(error) });
         result.errors++;
       }
     }
@@ -1099,8 +1338,6 @@ export async function backfillJenisTiket(
     hasMore = tickets.length === batchSize;
   }
 
-  console.log(
-    `[Backfill] Complete: ${result.processed} processed, ${result.updated} updated, ${result.errors} errors`,
-  );
+  logger.info('[Backfill] Complete:', { processed: result.processed, updated: result.updated, errors: result.errors });
   return result;
 }

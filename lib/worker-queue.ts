@@ -1,3 +1,5 @@
+import { logger } from '@/lib/observability/logger';
+
 type QueuedJob<T> = {
   fn: () => Promise<T>;
   resolve: (value: T) => void;
@@ -22,7 +24,7 @@ class SheetsApiQueue {
 
     while (this.queue.length > 0) {
       const job = this.queue.shift()!;
-      console.log(`[SheetsQueue] Starting: ${job.label} (queue remaining: ${this.queue.length})`);
+      logger.info('[SheetsQueue] Starting:', { label: job.label, remaining: this.queue.length });
       try {
         const result = await job.fn();
         job.resolve(result);

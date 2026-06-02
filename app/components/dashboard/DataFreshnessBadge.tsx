@@ -59,7 +59,7 @@ export default function DataFreshnessBadge({ generatedAt, onRefresh, isRefreshin
           <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${freshness.color}`} />
           <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${freshness.color}`} />
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-(--text-muted)">
           {toWIB(generatedAt)} WIB
         </span>
         {freshness.warning && (
@@ -72,7 +72,7 @@ export default function DataFreshnessBadge({ generatedAt, onRefresh, isRefreshin
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface) px-2 py-1 text-xs font-medium text-(--text-secondary) hover:bg-(--surface-2) disabled:opacity-50"
         >
           <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
           Refresh

@@ -2,8 +2,20 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { fetchWithAuth } from '@/app/libs/fetcher';
-import { Scanner } from '@yudiel/react-qr-scanner';
+
+const Scanner = dynamic(
+  () => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='flex h-full min-h-[420px] items-center justify-center bg-slate-200 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400'>
+        Menyiapkan kamera...
+      </div>
+    ),
+  },
+);
 
 interface JoinResult {
   success: boolean;

@@ -4,6 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { differenceInMinutes } from 'date-fns';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
+import { logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -246,7 +247,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('GET Technician Error:', error);
+    logger.error('GET Technician Error:', error);
     return NextResponse.json(
       {
         success: false,

@@ -20,11 +20,12 @@ export default function TicketListTech({ limit }: Props) {
   useEffect(() => {
     const fetchTickets = async () => {
       try {
-        const res = await fetchWithAuth('/api/tickets?limit=100');
+        const fetchLimit = limit ?? 10;
+        const res = await fetchWithAuth(`/api/tickets?limit=${fetchLimit}`);
         if (!res) return;
         const data = await res.json();
         if (data.success && data.data?.data) {
-          setTickets(limit ? data.data.data.slice(0, limit) : data.data.data);
+          setTickets(data.data.data);
         } else {
           setError(data.message || 'Failed to fetch tickets');
         }

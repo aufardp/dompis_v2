@@ -11,6 +11,7 @@
  */
 
 import Redis from 'ioredis';
+import { logger } from '@/lib/observability/logger';
 
 const REDIS_URL = (() => {
   const port = process.env.REDIS_PORT;
@@ -22,10 +23,17 @@ const REDIS_URL = (() => {
 // ── Singleton holder ──────────────────────────────────────────────────────────
 let instance: Redis | null = null;
 
+function shouldSkipRedisConnect(): boolean {
+  return (
+    process.env.SKIP_REDIS_CONNECT === 'true' ||
+    process.env.NEXT_PHASE === 'phase-production-build'
+  );
+}
+
 function createRedisClient(): Redis {
   const client = new Redis(REDIS_URL, {
     // Connection
-    lazyConnect: false,
+    lazyConnect: true,
     connectTimeout: 5_000,
     commandTimeout: 3_000,
 
@@ -34,7 +42,7 @@ function createRedisClient(): Redis {
     retryStrategy: (times: number) => {
       if (times > 3) {
         // Setelah 3 retry reconnect, log dan berhenti mencoba sebentar
-        console.error(`[Redis] Reconnect attempt ${times} — backing off`);
+        logger.error(`[Redis] Reconnect attempt ${times} — backing off`);
         return null; // ioredis: null = stop retrying (akan reconnect otomatis nanti)
       }
       // Backoff: 200ms, 400ms, 800ms
@@ -54,22 +62,22 @@ function createRedisClient(): Redis {
 
   // ── Event listeners ─────────────────────────────────────────────────────────
   client.on('connect', () => {
-    console.log('[Redis] Connected');
+    logger.info('[Redis] Connected');
   });
 
   client.on('ready', () => {
-    console.log('[Redis] Ready');
+    logger.info('[Redis] Ready');
   });
 
   client.on('error', (err: Error) => {
     // Jangan spam log untuk connection refused (normal saat Redis restart)
     if ((err as any).code !== 'ECONNREFUSED') {
-      console.error('[Redis] Error:', err.message);
+      logger.error('[Redis] Error:', { error: err.message });
     }
   });
 
   client.on('close', () => {
-    console.log('[Redis] Connection closed');
+    logger.info('[Redis] Connection closed');
   });
 
   return client;
@@ -83,7 +91,21 @@ function getInstance(): Redis {
   return instance;
 }
 
-export const redis = getInstance();
+function shouldBindRedisMember(value: unknown): value is (...args: unknown[]) => unknown {
+  return typeof value === 'function';
+}
+
+export const redis = new Proxy({} as Redis, {
+  get(_target, prop, receiver) {
+    const client = getInstance();
+    const value = Reflect.get(client, prop, receiver);
+    return shouldBindRedisMember(value) ? value.bind(client) : value;
+  },
+  set(_target, prop, value, receiver) {
+    const client = getInstance();
+    return Reflect.set(client, prop, value, receiver);
+  },
+}) as Redis;
 
 /**
  * Returns true only if Redis is fully connected and ready.
@@ -97,6 +119,37 @@ export function getRedisStatus(): string {
   return instance?.status ?? 'null';
 }
 
+export async function connectRedis(): Promise<void> {
+  if (shouldSkipRedisConnect()) return;
+  const client = getInstance();
+  if (client.status === 'ready' || client.status === 'connecting') return;
+  await client.connect();
+}
+
+let lastConnectionAttempt = 0;
+const REDIS_RETRY_COOLDOWN_MS = 10_000;
+
+export async function ensureRedisReady(): Promise<boolean> {
+  if (isRedisReady()) {
+    lastConnectionAttempt = 0;
+    return true;
+  }
+  if (shouldSkipRedisConnect()) return false;
+
+  const now = Date.now();
+  if (lastConnectionAttempt > 0 && now - lastConnectionAttempt < REDIS_RETRY_COOLDOWN_MS) {
+    return false;
+  }
+
+  lastConnectionAttempt = now;
+  try {
+    await connectRedis();
+    return isRedisReady();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Graceful shutdown — panggil saat server.ts shutdown.
  */
@@ -104,7 +157,7 @@ export async function closeRedis(): Promise<void> {
   if (instance) {
     await instance.quit().catch(() => instance?.disconnect());
     instance = null;
-    console.log('[Redis] Disconnected gracefully');
+    logger.info('[Redis] Disconnected gracefully');
   }
 }
 

@@ -22,8 +22,28 @@ function buildFileUrl(filePath: string): string {
   return `/api/files/${normalized}`;
 }
 
+type EvidenceScope = 'pending' | 'close' | null;
+
+function getEvidenceScope(req: NextRequest): EvidenceScope {
+  const raw = req.nextUrl.searchParams.get('scope');
+  if (raw === 'pending' || raw === 'close') return raw;
+  return null;
+}
+
+function matchesEvidenceScope(
+  fileName: string,
+  filePath: string,
+  scope: Exclude<EvidenceScope, null>,
+): boolean {
+  const name = String(fileName || '').toLowerCase();
+  const path = String(filePath || '').toLowerCase();
+  const prefix = `${scope}_`;
+
+  return name.startsWith(prefix) || path.includes(`/${prefix}`);
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -66,6 +86,8 @@ export async function GET(
       }
     }
 
+    const scope = getEvidenceScope(req);
+
     const rows = await prisma.ticket_evidence.findMany({
       where: { ticket_id: ticketId },
       orderBy: { id: 'asc' },
@@ -80,7 +102,19 @@ export async function GET(
       },
     });
 
-    const data = rows.map(
+    const filteredRows =
+      scope === null
+        ? rows
+        : rows.filter((row) =>
+            matchesEvidenceScope(row.file_name, row.file_path, scope),
+          );
+
+    const finalRows =
+      scope !== null && filteredRows.length === 0 && rows.length > 0
+        ? rows
+        : filteredRows;
+
+    const data = finalRows.map(
       (r: {
         file_path: string;
         id: any;

@@ -14,6 +14,7 @@ async function main() {
     {
       incident: 'INC47423550',
       channel: '21',
+      classification_flag: 'BILLING',
       classification_path: 'Z_PERMINTAAN_031',
       customer_segment: 'PL-TSEL',
       source_ticket: 'CUSTOMER',
@@ -21,6 +22,7 @@ async function main() {
       service_type: 'INTERNET',
       service_no: '152702328611',
       realm: 'telkom.net',
+      summary: '',
     },
     {
       incident: 'INC47448887',
@@ -32,6 +34,7 @@ async function main() {
       service_type: 'INTERNET',
       service_no: '152644203966',
       realm: 'telkom.net',
+      summary: '',
     },
   ];
 
@@ -46,6 +49,7 @@ async function main() {
 
     const result = await classifyJenisFromVlookup({
       channel: tc.channel,
+      classification_flag: tc.classification_flag ?? null,
       classification_path: tc.classification_path,
       customer_type: tc.customer_type,
       customer_segment: tc.customer_segment,
@@ -53,6 +57,7 @@ async function main() {
       service_no: tc.service_no,
       source_ticket: tc.source_ticket,
       realm: tc.realm,
+      summary: tc.summary ?? '',
     });
 
     console.log(`  Result: jenis_tiket_1="${result.jenis_tiket_1}", jenis_tiket_2="${result.jenis_tiket_2}"`);

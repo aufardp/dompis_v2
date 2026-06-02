@@ -1,5 +1,6 @@
 'use client';
-import { EyeSlashIcon, EyeIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
+import { EyeOff, Eye } from 'lucide-react';
 import React, { useState } from 'react';
 
 export default function LoginForm() {
@@ -68,10 +69,12 @@ export default function LoginForm() {
 
         {/* Konten di atas overlay */}
         <div className='relative z-10 flex items-center gap-2'>
-          <img
+          <Image
             src='/assets/logo.webp'
             alt='Dompis Logo'
             className='h-10 w-auto'
+            width={40}
+            height={40}
           />
           <h1 className='text-3xl font-bold'>Dompis</h1>
         </div>
@@ -95,10 +98,12 @@ export default function LoginForm() {
         <div className='w-full max-w-md'>
           <div className='rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800'>
             <div className='mb-2 flex justify-center'>
-              <img
+              <Image
                 src='/assets/logo.webp'
                 alt='Dompis Logo'
                 className='h-16 w-auto'
+                width={64}
+                height={64}
               />
             </div>
             <div className='mb-8 text-center'>
@@ -150,9 +155,9 @@ export default function LoginForm() {
                     className='absolute top-1/2 right-4 -translate-y-1/2 text-gray-400 hover:text-gray-600'
                   >
                     {showPassword ? (
-                      <EyeSlashIcon className='h-5 w-5' />
+                      <EyeOff className='h-5 w-5' />
                     ) : (
-                      <EyeIcon className='h-5 w-5' />
+                      <Eye className='h-5 w-5' />
                     )}
                   </button>
                 </div>

@@ -4,10 +4,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { changePassword } from '@/app/libs/services/users.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function PATCH(req: NextRequest) {
   try {
     const decoded = await protectApi();
+
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'users-change-password',
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
 

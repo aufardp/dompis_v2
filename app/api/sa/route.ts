@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import prisma from '@/app/libs/prisma';
 import {
   createServiceArea,
@@ -10,6 +11,18 @@ import {
 import { createServiceAreaSchema } from '@/app/libs/validations/serviceArea.schema';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+
+const updateServiceAreaSchema = z.object({
+  id_sa: z.union([z.string().min(1, 'id_sa is required'), z.number().positive()]),
+  nama_sa: z
+    .string()
+    .min(2, 'Nama minimal 2 karakter')
+    .max(50, 'Nama maksimal 50 karakter')
+    .optional(),
+  area_id: z.union([z.string().min(1), z.number().positive()]).optional(),
+});
+import { logger } from '@/lib/observability/logger';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +83,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error: any) {
-    console.error('SA ERROR:', error);
+    logger.error('SA ERROR:', error);
     return NextResponse.json(
       { success: false, message: getErrorMessage(error, 'Server Error') },
       { status: getErrorStatus(error, 500) },
@@ -80,6 +93,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'sa',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const body = await req.json();
     const validated = createServiceAreaSchema.parse({
       ...body,
@@ -94,7 +114,7 @@ export async function POST(req: Request) {
       data: { id_sa: insertId, nama_sa: validated.nama_sa },
     });
   } catch (error: any) {
-    console.error('POST ERROR:', error);
+    logger.error('POST ERROR:', error);
     const status = error.name === 'ZodError' ? 400 : 500;
     return NextResponse.json(
       { success: false, message: error.message },
@@ -105,19 +125,31 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const body = await req.json();
-    const { id_sa, nama_sa, area_id } = body;
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'sa',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
 
-    if (!id_sa) {
+    const body = await req.json();
+
+    const parsed = updateServiceAreaSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, message: 'id_sa is required' },
+        {
+          success: false,
+          message: parsed.error.issues.map((i) => i.message).join(', '),
+        },
         { status: 400 },
       );
     }
 
+    const { id_sa, nama_sa, area_id } = parsed.data;
+
     await updateServiceArea(String(id_sa), {
       nama_sa,
-      area_id: area_id ? String(area_id) : undefined,
+      area_id: area_id !== undefined ? String(area_id) : undefined,
     });
 
     return NextResponse.json({
@@ -125,7 +157,7 @@ export async function PUT(req: Request) {
       message: 'Service Area updated successfully',
     });
   } catch (error: any) {
-    console.error('PUT ERROR:', error);
+    logger.error('PUT ERROR:', error);
     return NextResponse.json(
       { success: false, message: error.message },
       { status: 500 },
@@ -135,6 +167,13 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'sa',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -152,7 +191,7 @@ export async function DELETE(req: Request) {
       message: 'Service Area deleted successfully',
     });
   } catch (error: any) {
-    console.error('DELETE ERROR:', error);
+    logger.error('DELETE ERROR:', error);
     return NextResponse.json(
       { success: false, message: error.message },
       { status: 500 },

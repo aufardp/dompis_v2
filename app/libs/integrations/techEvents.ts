@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { TechEventWebhookBatch } from './techEventTypes';
+import { logger } from '@/lib/observability/logger';
 
 export type TechEventWebhookConfig = {
   url: string;
@@ -21,32 +22,35 @@ export async function postTechEvents(
   const rawBody = JSON.stringify(body);
   const signature = signPayload(cfg.secret, ts, rawBody);
 
+  // Batch-level idempotency key: hash of all event IDs in the batch
+  const idempotencyKey = body.events.length > 0
+    ? crypto.createHash('sha256').update(body.events.map(e => e.event_id).join(',')).digest('hex')
+    : crypto.randomUUID();
+
   const url = new URL(cfg.url);
   url.searchParams.set('timestamp', ts);
   url.searchParams.set('signature', signature);
 
-  console.log('[TechEvents] Posting webhook:', {
+  logger.info('[TechEvents] Posting webhook:', {
     url: url.origin + url.pathname,
     eventCount: body.events.length,
     secretPrefix: cfg.secret.slice(0, 3) + '***',
     ts,
+    idempotencyKey: idempotencyKey.slice(0, 12) + '...',
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-
-try {
+  try {
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-source': 'dompis',
         'x-cron-secret': cfg.secret,
-        'x-event-id': body.events[0]?.event_id ?? '',
-        'x-idempotency-key': body.events[0]?.event_id ?? '',
+        'x-event-id': idempotencyKey,
+        'x-idempotency-key': idempotencyKey,
       },
       body: rawBody,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(30_000),
     });
 
     const text = await res.text().catch(() => '');
@@ -57,7 +61,7 @@ try {
       text.toLowerCase().includes('"success"') ||
       text.toLowerCase().includes('success');
 
-    console.log('[TechEvents] Webhook response:', {
+    logger.info('[TechEvents] Webhook response:', {
       status: res.status,
       ok: isSuccess,
       bodyPreview: text.slice(0, 200),
@@ -74,7 +78,5 @@ try {
       status: 500,
       text: err instanceof Error ? err.message : String(err),
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }

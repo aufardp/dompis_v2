@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Image from 'next/image';
 
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
@@ -112,7 +113,7 @@ export default function EvidenceUploader({
       };
 
       return new Promise((resolve, reject) => {
-        const img = new Image();
+        const img = new window.Image();
         const url = URL.createObjectURL(file);
 
         img.onload = () => {
@@ -256,8 +257,8 @@ export default function EvidenceUploader({
         }`}
       >
         <ol className='list-decimal space-y-1 pl-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400'>
-          {(instructions ?? DEFAULT_INSTRUCTIONS).map((text, i) => (
-            <li key={i}>{text}</li>
+          {(instructions ?? DEFAULT_INSTRUCTIONS).map((text) => (
+            <li key={text}>{text}</li>
           ))}
         </ol>
         <input
@@ -283,8 +284,8 @@ export default function EvidenceUploader({
             ⛔ File ditolak — ukuran tidak wajar (bukan foto valid)
           </p>
           <ul className='mt-1 space-y-0.5'>
-            {oversizedFiles.map((f, idx) => (
-              <li key={idx} className='text-xs text-red-600 dark:text-red-400'>
+            {oversizedFiles.map((f) => (
+              <li key={f.name + f.size} className='text-xs text-red-600 dark:text-red-400'>
                 • {f.name} ({formatMB(f.size)})
               </li>
             ))}
@@ -295,25 +296,26 @@ export default function EvidenceUploader({
       {/* Preview Grid */}
       {previewUrls.length > 0 && (
         <div className='grid grid-cols-3 gap-2 sm:grid-cols-3'>
-          {previewUrls.map((url, index) => (
-            <div key={index} className='relative aspect-square'>
-              <img
+          {previewUrls.map((url, idx) => (
+            <div key={url} className='relative aspect-square'>
+              <Image
                 src={url}
-                alt={`Preview ${index + 1}`}
-                loading='lazy'
-                decoding='async'
-                className='h-full w-full rounded-lg border object-cover dark:border-slate-700'
+                alt={`Preview ${idx + 1}`}
+                fill
+                sizes='(max-width: 640px) 33vw, 25vw'
+                unoptimized
+                className='rounded-lg border object-cover dark:border-slate-700'
               />
               <button
                 type='button'
-                onClick={() => onRemoveImage(index)}
+                onClick={() => onRemoveImage(idx)}
                 className='absolute top-0.5 right-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white sm:top-1 sm:right-1 sm:px-2 sm:text-xs'
               >
                 ✕
               </button>
               {/* Index badge */}
               <span className='absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] font-black text-white'>
-                {index + 1}
+                {idx + 1}
               </span>
             </div>
           ))}

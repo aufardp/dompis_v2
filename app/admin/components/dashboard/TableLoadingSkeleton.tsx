@@ -1,11 +1,11 @@
-'use client';
+import { memo } from 'react';
 
 interface TableLoadingSkeletonProps {
   rows?: number;
   cols?: number;
 }
 
-export default function TableLoadingSkeleton({
+function TableLoadingSkeleton({
   rows = 8,
   cols = 10,
 }: TableLoadingSkeletonProps) {
@@ -33,3 +33,5 @@ export default function TableLoadingSkeleton({
     </div>
   );
 }
+
+export default memo(TableLoadingSkeleton);

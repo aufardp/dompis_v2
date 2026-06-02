@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { Prisma } from '@prisma/client';
 import { getOrSetCache } from '@/lib/cache';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWibDateString } from '@/lib/timezone';
+import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
+import { logger } from '@/lib/observability/logger';
 
 const STANDARD_BUCKETS = ['0-3J', '3-6J', '6-12J', '12-24J', '24-36J', '>36J'];
 const MANJA_BUCKETS = ['0-1d', '1-2d', '2-3d', 'EXPIRED'];
@@ -19,6 +21,7 @@ interface RawDurasiRow {
   jenis_tiket: string | null;
   flagging_manja: string | null;
   manja_expired: string | null;
+  summary: string | null;
 }
 
 interface PanelArea {
@@ -36,17 +39,22 @@ interface PanelData {
   grandTotal?: number;
 }
 
+interface KpiSummaryCounts {
+  total: number;
+  kpiCustomer: number;
+  kpiProactive: number;
+  nonKpiUnspec: number;
+  nonTechnical: number;
+  sqmUpdate: number;
+  obsolete: number;
+}
+
 interface DashboardDurasiResponse {
   syncDate: string;
   generatedAt: string;
   panels: PanelData[];
-}
-
-function toWIB(date: Date): string {
-  return new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }).format(date);
+  kpiSummary: KpiSummaryCounts;
+  selectedBucket: string;
 }
 
 function calculateHours(reportedDate: string | null): number | null {
@@ -92,51 +100,163 @@ const PANEL_CONFIGS = [
   { type: 'HVC_GOLD', label: 'HVC GOLD', filter: (t: RawDurasiRow) => t.customer_type === 'HVC_GOLD', bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
   { type: 'MANJA', label: 'MANJA', filter: (t: RawDurasiRow) => !!t.flagging_manja || t.jenis_tiket?.toLowerCase().includes('manja'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
   { type: 'FFG', label: 'FFG', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('ffg'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
+  { type: 'SQM_UPDATE', label: 'SQM UPDATE', filter: (t: RawDurasiRow) => (t.summary ?? '').startsWith('[SQM-UPDATE]'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
   { type: 'SQM', label: 'SQM', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('sqm'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
   { type: 'ANAK_GAMAS', label: 'ANAK GAMAS', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('anak_gamas'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
   { type: 'HSI', label: 'HSI', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('hsi'), bucketFn: (t: RawDurasiRow) => bucketHSI(calculateHours(t.reported_date)), buckets: HSI_BUCKETS },
 ];
 
-function buildPanel(type: string, label: string, tickets: RawDurasiRow[], buckets: string[], bucketFn: (t: RawDurasiRow) => number, showTotal: boolean = false): PanelData {
-  const areaMap = new Map<string, { region: string; saMap: Map<string, number[]> }>();
-  const totals = new Array(buckets.length).fill(0);
-  let grandTotal = 0;
+type PanelAccumulator = {
+  type: string;
+  label: string;
+  buckets: string[];
+  areaMap: Map<string, { region: string; saMap: Map<string, number[]> }>;
+  totals: number[];
+  grandTotal: number;
+  showTotal: boolean;
+};
 
-  for (const t of tickets) {
-    const area = t.area ?? 'UNKNOWN';
-    const region = t.region ?? 'UNKNOWN';
-    const sa = t.sa_name ?? 'UNKNOWN';
-    const bucket = bucketFn(t);
-    if (bucket < 0 || bucket >= buckets.length) continue;
+function createAccumulator(config: (typeof PANEL_CONFIGS)[number]): PanelAccumulator {
+  return {
+    type: config.type,
+    label: config.label,
+    buckets: config.buckets,
+    areaMap: new Map(),
+    totals: new Array(config.buckets.length).fill(0),
+    grandTotal: 0,
+    showTotal: config.showTotal ?? false,
+  };
+}
 
-    if (!areaMap.has(area)) areaMap.set(area, { region, saMap: new Map() });
-    const areaData = areaMap.get(area)!;
-    if (!areaData.saMap.has(sa)) areaData.saMap.set(sa, new Array(buckets.length).fill(0));
-    const saCounts = areaData.saMap.get(sa)!;
-    saCounts[bucket]++;
-    totals[bucket]++;
-    grandTotal++;
+function addToAccumulator(
+  acc: PanelAccumulator,
+  row: RawDurasiRow,
+  bucket: number,
+) {
+  if (bucket < 0 || bucket >= acc.buckets.length) return;
+
+  const area = row.area ?? 'UNKNOWN';
+  const region = row.region ?? 'UNKNOWN';
+  const sa = row.sa_name ?? 'UNKNOWN';
+
+  if (!acc.areaMap.has(area)) {
+    acc.areaMap.set(area, { region, saMap: new Map() });
   }
+  const areaData = acc.areaMap.get(area)!;
+  if (!areaData.saMap.has(sa)) {
+    areaData.saMap.set(sa, new Array(acc.buckets.length).fill(0));
+  }
+  const saCounts = areaData.saMap.get(sa)!;
+  saCounts[bucket] += 1;
+  acc.totals[bucket] += 1;
+  acc.grandTotal += 1;
+}
 
+function finalizePanel(acc: PanelAccumulator): PanelData {
   const areas: PanelArea[] = [];
-  for (const [areaName, data] of areaMap) {
+  for (const [areaName, data] of acc.areaMap) {
     const sas = Array.from(data.saMap.entries()).map(([name, counts]) => ({ name, counts })).sort((a, b) => a.name.localeCompare(b.name));
     areas.push({ name: areaName, region: data.region, sas });
   }
   areas.sort((a, b) => a.name.localeCompare(b.name));
 
-  return { type, label, buckets, areas, totals, ...(showTotal ? { grandTotal } : {}) };
+  return {
+    type: acc.type,
+    label: acc.label,
+    buckets: acc.buckets,
+    areas,
+    totals: acc.totals,
+    ...(acc.showTotal ? { grandTotal: acc.grandTotal } : {}),
+  };
 }
 
 function buildAllPanels(
   tickets: RawDurasiRow[],
   syncDate: string,
-): DashboardDurasiResponse {
-  const panels = PANEL_CONFIGS.map((cfg) => {
-    const filtered = tickets.filter(cfg.filter);
-    return buildPanel(cfg.type, cfg.label, filtered, cfg.buckets, cfg.bucketFn, cfg.showTotal ?? false);
-  });
+): Omit<DashboardDurasiResponse, 'kpiSummary' | 'selectedBucket'> {
+  const accumulators = PANEL_CONFIGS.map(createAccumulator);
+
+  for (const ticket of tickets) {
+    for (let i = 0; i < PANEL_CONFIGS.length; i++) {
+      const config = PANEL_CONFIGS[i];
+      if (!config.filter(ticket)) continue;
+      addToAccumulator(accumulators[i], ticket, config.bucketFn(ticket));
+    }
+  }
+
+  const panels = accumulators.map(finalizePanel);
   return { syncDate, generatedAt: new Date().toISOString(), panels };
+}
+
+const BUCKET_FILTERS: Record<KpiBucketKey, any[]> = {
+  kpi_customer: [
+    { dept: 'all', operationalBucket: ['kpi_customer'] },
+    { dept: 'all', regulerOnly: true },
+  ],
+  kpi_proactive: [
+    { dept: 'all', operationalBucket: ['kpi_proactive'] },
+  ],
+  non_kpi_unspec: [
+    { dept: 'all', operationalBucket: ['non_kpi_unspec'] },
+  ],
+  non_technical: [
+    { dept: 'all', operationalBucket: ['non_technical'] },
+  ],
+  sqm_update: [
+    { dept: 'all', operationalBucket: ['sqm_update'] },
+  ],
+  obsolete: [
+    { dept: 'all', operationalBucket: ['obsolete'] },
+  ],
+  all: [
+    { dept: 'all', operationalBucket: ['kpi_customer'] },
+    { dept: 'all', operationalBucket: ['kpi_proactive'] },
+    { dept: 'all', operationalBucket: ['non_kpi_unspec'] },
+    { dept: 'all', operationalBucket: ['non_technical'] },
+    { dept: 'all', operationalBucket: ['sqm_update'] },
+    { dept: 'all', operationalBucket: ['obsolete'] },
+  ],
+};
+
+async function getFilteredTickets(
+  role: string,
+  userId: number,
+  bucket: KpiBucketKey,
+): Promise<RawDurasiRow[]> {
+  const filtersList = BUCKET_FILTERS[bucket];
+  const parts: string[] = [];
+  const allParams: any[] = [];
+
+  for (const filters of filtersList) {
+    const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
+    parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
+    allParams.push(...params);
+  }
+
+  if (parts.length === 0) return [];
+
+  const unionSql = parts.join(' UNION ALL ');
+  const fullSql = `
+    SELECT
+      COALESCE(r.nama_region, 'UNKNOWN') AS region,
+      COALESCE(a.nama_area, 'UNKNOWN')   AS area,
+      COALESCE(sa.nama_sa, 'UNKNOWN')    AS sa_name,
+      t.reported_date,
+      t.customer_type,
+      CONCAT_WS(' ', t.jenis_tiket_1, t.jenis_tiket_2) AS jenis_tiket,
+      t.flagging_manja,
+      t.manja_expired,
+      t.summary
+    FROM (${unionSql}) AS ids
+    JOIN ticket t ON t.id_ticket = ids.id_ticket
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a          ON a.id_area = sa.area_id
+    LEFT JOIN branch b   ON b.id_branch = a.branch_id
+    LEFT JOIN region r   ON r.id_region = b.region_id
+    ORDER BY a.nama_area, sa.nama_sa
+  `;
+
+  return prisma.$queryRawUnsafe<RawDurasiRow[]>(fullSql, ...allParams);
 }
 
 export async function GET(request: NextRequest) {
@@ -146,49 +266,61 @@ export async function GET(request: NextRequest) {
 
     const workzones = isSuperAdmin ? null : await getWorkzonesForUser(decoded.id_user);
     const today = toWibDateString(new Date())!;
+    const requestedBucket = request.nextUrl.searchParams.get('bucket') ?? 'all';
+    const bucket: KpiBucketKey = requestedBucket in BUCKET_FILTERS
+      ? (requestedBucket as KpiBucketKey)
+      : 'all';
 
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
       return NextResponse.json({
         error: 'Tidak ada Service Area yang dikonfigurasi untuk akun ini',
         panels: [], syncDate: today, generatedAt: new Date().toISOString(),
+        kpiSummary: { total: 0, kpiCustomer: 0, kpiProactive: 0, nonKpiUnspec: 0, nonTechnical: 0, sqmUpdate: 0, obsolete: 0 },
+        selectedBucket: bucket,
       });
     }
 
-    const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}`;
+    const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const whereWorkzone = workzones && workzones.length > 0
-        ? Prisma.sql`AND t.workzone IN (${Prisma.join(workzones)})`
-        : Prisma.sql``;
+      const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
+        decoded.role,
+        decoded.id_user,
+      );
 
-      const tickets = await prisma.$queryRaw<RawDurasiRow[]>`
-        SELECT
-          COALESCE(r.nama_region, 'UNKNOWN') AS region,
-          COALESCE(a.nama_area, 'UNKNOWN')   AS area,
-          COALESCE(sa.nama_sa, 'UNKNOWN')    AS sa_name,
-          t.reported_date,
-          t.customer_type,
-          CONCAT_WS(' ', t.jenis_tiket_1, t.jenis_tiket_2) AS jenis_tiket,
-          t.flagging_manja,
-          t.manja_expired
-        FROM ticket t
-        JOIN service_area sa ON sa.nama_sa = t.workzone
-        JOIN area a          ON a.id_area = sa.area_id
-        LEFT JOIN branch b   ON b.id_branch = a.branch_id
-        LEFT JOIN region r   ON r.id_region = b.region_id
-        WHERE t.sync_date = ${today}
-          ${whereWorkzone}
-        ORDER BY a.nama_area, sa.nama_sa
-      `;
+      const all = summaryMatrix.all;
 
-      return buildAllPanels(tickets, today);
+      const kpiCustomerTotal = all.kpi_customer.total;
+      const kpiProactiveTotal = all.kpi_proactive.total;
+      const nonKpiUnspecTotal = all.non_kpi_unspec.total;
+      const nonTechnicalTotal = all.non_technical.total;
+      const sqmUpdateTotal = all.sqm_update.total;
+      const obsoleteTotal = all.obsolete.total;
+
+      const kpiSummary = {
+        total: kpiCustomerTotal + kpiProactiveTotal + nonKpiUnspecTotal + nonTechnicalTotal + sqmUpdateTotal + obsoleteTotal,
+        kpiCustomer: kpiCustomerTotal,
+        kpiProactive: kpiProactiveTotal,
+        nonKpiUnspec: nonKpiUnspecTotal,
+        nonTechnical: nonTechnicalTotal,
+        sqmUpdate: sqmUpdateTotal,
+        obsolete: obsoleteTotal,
+      };
+
+      const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket);
+
+      return {
+        ...buildAllPanels(tickets, today),
+        kpiSummary,
+        selectedBucket: bucket,
+      };
     }, 60);
 
     return NextResponse.json(data, {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
     });
   } catch (error: any) {
-    console.error('Dashboard durasi error:', error);
+    logger.error('Dashboard durasi error:', error);
     if (error.status === 401 || error.status === 403) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

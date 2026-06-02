@@ -261,6 +261,7 @@ model ticket {
   description_actual_solution String?                     @db.Text
   device_name                 String?                     @db.VarChar(100)
   worklog_summary             String?                     @db.VarChar(100)
+  classification_flag         String?                     @db.VarChar(20)
   realm                       String?                     @db.VarChar(100)
   tsc_result                  String?                     @db.VarChar(100)
   scc_result                  String?                     @db.VarChar(100)
@@ -319,8 +320,10 @@ model ticket {
   @@index([pending_reason, sync_date], map: "idx_pending_sync")
   @@index([status_update], map: "idx_status_update")
   @@index([sync_date], map: "idx_sync_date")
+  @@index([sync_date, status, reported_date], map: "idx_ticket_daily_sync_status_reported")
   @@index([sync_date, status_update], map: "idx_sync_status")
   @@index([sync_date, workzone], map: "idx_sync_workzone")
+  @@index([status_update, status, reported_date], map: "idx_ticket_validasi_status_reported")
   @@index([teknisi_user_id, status_update], map: "idx_tech_status")
   @@index([sync_date, teknisi_user_id, status_update, rk_information, jam_expired], map: "idx_ticket_autoassign_daily")
   @@index([flagging_manja], map: "idx_ticket_flagging")
@@ -332,6 +335,15 @@ model ticket {
   @@index([ticket_id_gamas], map: "idx_ticket_search_gamas")
   @@index([reported_date], map: "idx_ticket_reported")
   @@index([workzone], map: "idx_ticket_workzone")
+  @@index([worklog_summary, status, reported_date], map: "idx_ticket_validasi_worklog_reported")
+  @@index([status], map: "idx_ticket_status")
+  @@index([witel], map: "idx_ticket_witel")
+  @@index([sync_date, jenis_tiket_1], map: "idx_sync_date_jenis1")
+  @@index([sync_date, customer_type, status_update], map: "idx_ops_sync_ctype_status")
+  @@index([sync_date, customer_type, jenis_tiket_2], map: "idx_ops_sync_ctype_jenis2")
+  @@index([workzone, status_update], map: "idx_ticket_sync_workzone_statusupdate")
+  @@index([sync_date, status_update, booking_date, customer_type], map: "idx_ticket_daily_board")
+  @@index([sync_date, status_update, reported_date, customer_type], map: "idx_ticket_daily_validasi")
 }
 
 model ticket_activity_log {

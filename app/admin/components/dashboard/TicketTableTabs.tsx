@@ -43,6 +43,13 @@ interface TicketTableTabsProps {
   validasiTickets?: TicketTableRow[];
   totalCount?: number;
   validasiTotalCount?: number;
+  validasiPagination?: {
+    currentPage: number;
+    totalPages: number;
+    total: number;
+    limit: number;
+    onPageChange: (page: number) => void;
+  };
   loading?: boolean;
   isRefreshing?: boolean;
   onAssign?: (ticketId: number | string) => void;
@@ -56,6 +63,7 @@ export default function TicketTableTabs({
   validasiTickets = [],
   totalCount,
   validasiTotalCount,
+  validasiPagination,
   loading,
   isRefreshing,
   onAssign,
@@ -151,6 +159,7 @@ export default function TicketTableTabs({
           <div className='animate-in fade-in duration-200'>
             <TicketTableValidasi
               tickets={validasiTickets}
+              pagination={validasiPagination}
               loading={loading}
               isRefreshing={isRefreshing}
             />

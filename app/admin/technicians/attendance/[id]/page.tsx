@@ -422,7 +422,7 @@ export default function TechnicianAttendanceDetailPage() {
           <div className='grid grid-cols-7 gap-px bg-slate-200'>
             {calendarData.flat().map((cell, idx) => {
               if (cell.status === 'EMPTY') {
-                return <div key={idx} className='min-h-[60px] bg-white p-2' />;
+                return <div key={`empty-${idx}`} className='min-h-[60px] bg-white p-2' />;
               }
 
               const colors = getStatusColor(
@@ -436,7 +436,7 @@ export default function TechnicianAttendanceDetailPage() {
 
               return (
                 <div
-                  key={idx}
+                  key={cell.date ? `${cell.date}-${cell.day}` : `cal-${idx}`}
                   className={`flex min-h-[60px] flex-col items-center justify-center p-2 ${colors.bg} ${colors.border} border`}
                 >
                   <span className={`text-sm font-medium ${colors.text}`}>

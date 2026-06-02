@@ -6,6 +6,8 @@ import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.servic
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { TicketUpdatePatch, TicketUpdateWorkflow } from '@/app/types/ticket';
+import { updateTicketSchema } from '@/app/libs/validations/ticket.schema';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -19,6 +21,13 @@ function toPositiveInt(value: unknown): number | null {
 
 export async function POST(req: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tickets-update',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'helpdesk',
@@ -35,17 +44,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const ticketId =
-      toPositiveInt(body.ticketId) ??
-      toPositiveInt(body.idTicket) ??
-      toPositiveInt(body.id_ticket);
+    const parsed = updateTicketSchema.safeParse({
+      ...body,
+      ticketId: body.ticketId ?? body.idTicket ?? body.id_ticket,
+    });
 
-    if (!ticketId) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, message: 'ticketId is required' },
+        { success: false, message: 'ticketId wajib valid' },
         { status: 400 },
       );
     }
+
+    const ticketId = parsed.data.ticketId;
 
     const roleKey = String((user as any)?.role ?? '')
       .trim()
@@ -55,7 +66,7 @@ export async function POST(req: Request) {
        🔵 HANDLE RESUME (PENDING → ON_PROGRESS)
     ===================================================== */
 
-    if (body.resume === true) {
+    if (parsed.data.resume === true) {
       const workflow: TicketUpdateWorkflow = {
         status: 'ON_PROGRESS',
         note: 'Resume work',
@@ -76,11 +87,8 @@ export async function POST(req: Request) {
 
     if (roleKey === 'teknisi') {
       const reasonRaw =
-        typeof body.pendingDompis === 'string'
-          ? body.pendingDompis
-          : typeof body.description === 'string'
-            ? body.description
-            : undefined;
+        parsed.data.pendingDompis ??
+        parsed.data.description;
 
       if (typeof reasonRaw === 'string') {
         const reason = reasonRaw.trim();
@@ -116,48 +124,46 @@ export async function POST(req: Request) {
        🔵 GENERIC PATCH (ADMIN / HELPDESK SUPPORT)
     ===================================================== */
 
-    const patchSrc = isRecord(body.patch) ? body.patch : body;
+    const patchSrc = (isRecord(parsed.data.patch) ? parsed.data.patch : parsed.data) as Record<string, string | undefined>;
 
     const patch: TicketUpdatePatch = {
-      summary: patchSrc.summary as any,
-      ownerGroup: (patchSrc.ownerGroup ?? patchSrc.owner_group) as any,
-      status: patchSrc.status as any,
-      workzone: patchSrc.workzone as any,
-      serviceType: (patchSrc.serviceType ?? patchSrc.service_type) as any,
-      customerSegment: (patchSrc.customerSegment ??
-        patchSrc.customer_segment) as any,
-      customerType: (patchSrc.customerType ?? patchSrc.customer_type) as any,
-      serviceNo: (patchSrc.serviceNo ?? patchSrc.service_no) as any,
-      contactName: (patchSrc.contactName ?? patchSrc.contact_name) as any,
-      contactPhone: (patchSrc.contactPhone ?? patchSrc.contact_phone) as any,
-      deviceName: (patchSrc.deviceName ?? patchSrc.device_name) as any,
-      symptom: patchSrc.symptom as any,
-      alamat: patchSrc.alamat as any,
-      pendingDompis: (patchSrc.pendingDompis) as any,
-      descriptionSolutionDompis: (patchSrc.descriptionSolutionDompis ??
-        patchSrc.description_solution_dompis) as any,
+      summary: patchSrc.summary,
+      ownerGroup: patchSrc.ownerGroup ?? patchSrc.owner_group,
+      status: patchSrc.status,
+      workzone: patchSrc.workzone,
+      serviceType: patchSrc.serviceType ?? patchSrc.service_type,
+      customerSegment: patchSrc.customerSegment ?? patchSrc.customer_segment,
+      customerType: patchSrc.customerType ?? patchSrc.customer_type,
+      serviceNo: patchSrc.serviceNo ?? patchSrc.service_no,
+      contactName: patchSrc.contactName ?? patchSrc.contact_name,
+      contactPhone: patchSrc.contactPhone ?? patchSrc.contact_phone,
+      deviceName: patchSrc.deviceName ?? patchSrc.device_name,
+      symptom: patchSrc.symptom,
+      alamat: patchSrc.alamat,
+      pendingDompis: patchSrc.pendingDompis,
+      descriptionSolutionDompis: patchSrc.descriptionSolutionDompis ?? patchSrc.description_solution_dompis,
     };
 
-    const wfSrc = isRecord(body.workflow) ? body.workflow : body;
+    const wfSrc = (isRecord(parsed.data.workflow) ? parsed.data.workflow : parsed.data) as Record<string, string | undefined>;
 
     let workflow: TicketUpdateWorkflow | undefined;
 
     const rawWorkflowStatus =
-      (wfSrc.status as any) ??
-      (wfSrc.statusUpdate as any) ??
-      (wfSrc.hasilVisit as any) ??
-      (wfSrc.hasil_visit as any) ??
-      (wfSrc.newStatus as any);
+      wfSrc.status ??
+      wfSrc.statusUpdate ??
+      wfSrc.hasilVisit ??
+      wfSrc.hasil_visit ??
+      wfSrc.newStatus;
 
     if (typeof rawWorkflowStatus === 'string') {
       let pendingDompis: string | undefined;
-      if (typeof (wfSrc as any).pendingDompis === 'string') {
-        pendingDompis = String((wfSrc as any).pendingDompis);
+      if (typeof wfSrc.pendingDompis === 'string') {
+        pendingDompis = String(wfSrc.pendingDompis);
       }
 
       let note: string | undefined;
-      if (typeof (wfSrc as any).note === 'string') {
-        note = String((wfSrc as any).note);
+      if (typeof wfSrc.note === 'string') {
+        note = String(wfSrc.note);
       }
 
       workflow = { status: rawWorkflowStatus, pendingDompis, note };

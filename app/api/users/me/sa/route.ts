@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { logger } from '@/lib/observability/logger';
 
 export async function GET() {
   try {
@@ -31,7 +32,7 @@ export async function GET() {
       data: serviceAreas,
     });
   } catch (error: unknown) {
-    console.error('GET /users/me/sa error:', error);
+    logger.error('GET /users/me/sa error:', error);
     return NextResponse.json(
       {
         success: false,

@@ -1,34 +1,52 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSyncHealth, getProjectionHealth, checkSyncHealth } from '@/lib/sync-metrics/metrics';
 import { testExternalConnection } from '@/lib/external-db/connection';
+import { authorizeInternalRoute } from '@/app/libs/internalRouteAuth';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { getMetricAgeMs, parseProjectionCheckpointMeta } from '@/lib/observability/worker-health';
 
-export async function GET() {
-  const health: Record<string, unknown> = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-  };
-
+export async function GET(req: NextRequest) {
   try {
+    await authorizeInternalRoute(req);
+
+    const health: Record<string, unknown> = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+
     const syncHealth = await getSyncHealth();
     const projectionHealth = await getProjectionHealth();
     const healthCheck = await checkSyncHealth();
     const externalDbStatus = await testExternalConnection();
+    const syncAgeMs = getMetricAgeMs(syncHealth.lastSyncTime);
+    const projectionAgeMs = getMetricAgeMs(projectionHealth.lastProjectionTime);
+    const projectionBacklog = parseProjectionCheckpointMeta(
+      projectionHealth.checkpoint,
+    );
 
     health.sync = syncHealth;
     health.projection = projectionHealth;
     health.externalDb = externalDbStatus ? 'connected' : 'disconnected';
     health.healthy = healthCheck.healthy;
     health.issues = healthCheck.issues;
+    health.lag = {
+      syncAgeMs,
+      projectionAgeMs,
+      projectionNeverProjected: projectionBacklog.neverProjected,
+      projectionOldestPendingAgeMs: projectionBacklog.oldestPendingAgeMs,
+    };
 
     if (!healthCheck.healthy || !externalDbStatus) {
       health.status = 'warning';
     }
 
-    const syncAge = syncHealth.lastSyncTime ? Date.now() - syncHealth.lastSyncTime : null;
+    const syncAge = syncAgeMs;
     const maxAllowedAge = 15 * 60 * 1000;
+    const maxAllowedProjectionAge = 15 * 60 * 1000;
+    const maxAllowedProjectionPendingAge = 20 * 60 * 1000;
 
     if (syncAge && syncAge > maxAllowedAge) {
       health.status = 'warning';
@@ -37,11 +55,37 @@ export async function GET() {
       health.issues = issues;
     }
 
+    if (projectionAgeMs && projectionAgeMs > maxAllowedProjectionAge) {
+      health.status = 'warning';
+      const issues: string[] = Array.isArray(health.issues) ? [...(health.issues as string[])] : [];
+      issues.push(
+        `Last projection was ${Math.round(projectionAgeMs / 60000)} minutes ago`,
+      );
+      health.issues = issues;
+    }
+
+    if (
+      projectionBacklog.oldestPendingAgeMs &&
+      projectionBacklog.oldestPendingAgeMs > maxAllowedProjectionPendingAge
+    ) {
+      health.status = 'warning';
+      const issues: string[] = Array.isArray(health.issues) ? [...(health.issues as string[])] : [];
+      issues.push(
+        `Oldest unprojected raw row is ${Math.round(
+          projectionBacklog.oldestPendingAgeMs / 60000,
+        )} minutes old`,
+      );
+      health.issues = issues;
+    }
+
     return NextResponse.json(health);
   } catch (error) {
-    health.status = 'error';
-    health.error = String(error);
-
-    return NextResponse.json(health, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: getErrorMessage(error, 'Failed to fetch sync health'),
+      },
+      { status: getErrorStatus(error, 500) },
+    );
   }
 }

@@ -26,10 +26,10 @@ export default function TicketTypeChart({
     >
       <div className='mb-3 flex items-start justify-between gap-3'>
         <div>
-          <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+          <div className='font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
             Ticket by Type
           </div>
-          <div className='mt-1 text-xs text-(--text-muted)'>
+          <div className='font-dm-sans mt-1 text-xs text-(--text-muted)'>
             B2C by customer type, B2B by jenis tiket
           </div>
         </div>

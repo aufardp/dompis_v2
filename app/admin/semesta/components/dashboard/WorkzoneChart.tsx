@@ -26,10 +26,10 @@ export default function WorkzoneChart({
     >
       <div className='mb-3 flex items-start justify-between gap-3'>
         <div>
-          <div className='text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
+          <div className='font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase'>
             Ticket by Workzone
           </div>
-          <div className='mt-1 text-xs text-(--text-muted)'>
+          <div className='font-dm-sans mt-1 text-xs text-(--text-muted)'>
             Workload distribution across workzones
           </div>
         </div>

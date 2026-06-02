@@ -1,21 +1,25 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   format,
-  startOfDay,
   endOfDay,
   differenceInCalendarDays,
-  startOfMonth,
+  startOfDay,
+  subDays,
 } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import AdminLayout from '@/app/components/layout/AdminLayout';
-import TicketTableSemesta from '@/app/admin/components/dashboard/TicketTableSemesta';
 import { useSemestaTickets } from '@/app/hooks/useSemestaTickets';
 import { TicketCtype } from '@/app/types/ticket';
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { useTicketAnalytics } from './hooks/useTicketAnalytics';
+import { useSemestaAnalyticsV2 } from './hooks/useSemestaAnalyticsV2';
+import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
+import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 
 const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
   ssr: false,
@@ -54,23 +58,103 @@ const TicketTrendChart = dynamic(
 
 const DashboardSkeleton = dynamic(
   () => import('./components/dashboard/DashboardSkeleton'),
+  { ssr: false },
+);
+
+const TicketTableSemesta = dynamic(
+  () => import('@/app/admin/components/dashboard/TicketTableSemesta'),
   {
     ssr: false,
+    loading: () => (
+      <div className='bg-surface-2 h-[420px] animate-pulse rounded-xl' />
+    ),
   },
 );
-import DateRangePicker from './components/filters/DateRangePicker';
-import { useTickets } from '@/app/hooks/useTickets';
-import type { Ticket } from '@/app/types/ticket';
-import { isTicketClosed } from '@/app/libs/ticket-utils';
-import {
-  classifyTicket,
-} from '@/app/libs/tickets/jenis';
-import {
-  normalizeJenis,
-  JENIS_LABELS,
-  type JenisKey,
-} from '@/app/config/jenis-tiket';
 
+const DateRangePicker = dynamic(
+  () => import('./components/filters/DateRangePicker'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface-2 h-10 w-[220px] animate-pulse rounded-lg' />
+    ),
+  },
+);
+
+// --- New V2 analytics components ---
+const KpiStrip = dynamic(
+  () => import('./components/analytics/KpiStrip'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='flex gap-3 overflow-x-auto pb-2'>
+        {Array.from({ length: 8 }, (_, i) => (
+          <div
+            key={i}
+            className='bg-surface h-[104px] w-[180px] shrink-0 animate-pulse rounded-xl border border-(--border)'
+          />
+        ))}
+      </div>
+    ),
+  },
+);
+
+const TrendByJenisChart = dynamic(
+  () => import('./components/analytics/TrendByJenisChart'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface h-[340px] animate-pulse rounded-xl border border-(--border)' />
+    ),
+  },
+);
+
+const B2cB2bTrendChart = dynamic(
+  () => import('./components/analytics/B2cB2bTrendChart'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface h-[340px] animate-pulse rounded-xl border border-(--border)' />
+    ),
+  },
+);
+
+const WorkzoneAnalysisTable = dynamic(
+  () => import('./components/analytics/WorkzoneAnalysisTable'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface h-[320px] animate-pulse rounded-xl border border-(--border)' />
+    ),
+  },
+);
+
+const TopGaulList = dynamic(
+  () => import('./components/analytics/TopGaulList'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface h-[260px] animate-pulse rounded-xl border border-(--border)' />
+    ),
+  },
+);
+
+const TopLapulList = dynamic(
+  () => import('./components/analytics/TopLapulList'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='bg-surface h-[260px] animate-pulse rounded-xl border border-(--border)' />
+    ),
+  },
+);
+
+const AnalyticsSkeleton = dynamic(
+  () => import('./components/analytics/AnalyticsSkeleton'),
+  { ssr: false },
+);
+
+// --- Old analytics (keep for backward compat with ticket table) ---
 type Dept = 'all' | 'b2b' | 'b2c';
 type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
 type StatusFilter =
@@ -88,6 +172,20 @@ const DEPT_OPTIONS = [
   { key: 'b2c', label: 'B2C' },
 ];
 
+const TYPE_OPTIONS = [
+  { key: 'all', label: 'Semua' },
+  { key: 'reguler', label: 'Customer' },
+  { key: 'sqm', label: 'SQM' },
+  { key: 'unspec', label: 'Unspec' },
+];
+
+const PRESET_OPTIONS = [
+  { key: '7d', label: '7 Hari' },
+  { key: '30d', label: '30 Hari' },
+  { key: 'month', label: 'Bulan Ini' },
+] as const;
+
+// --- Legacy types kept for ticket table ---
 const CTYPE_OPTIONS = [
   { key: 'all', label: 'Semua' },
   { key: 'REGULER', label: 'Reguler' },
@@ -102,13 +200,6 @@ const CTYPE_OPTIONS = [
   { key: 'reseller_6', label: 'Reseller 6' },
   { key: 'reseller_36', label: 'Reseller 36' },
   { key: 'wifi_24', label: 'WiFi 24' },
-];
-
-const TYPE_OPTIONS = [
-  { key: 'all', label: 'Semua' },
-  { key: 'reguler', label: 'Customer' },
-  { key: 'sqm', label: 'SQM' },
-  { key: 'unspec', label: 'Unspec' },
 ];
 
 const STATUS_OPTIONS = [
@@ -162,149 +253,29 @@ function Dropdown({
   );
 }
 
-function toISODateInput(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 function toYmd(date: Date) {
   return format(date, 'yyyy-MM-dd');
 }
 
-function toLower(value: unknown) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase();
-}
-
-function isOpenLike(statusUpdate: string | null | undefined) {
-  const s = toLower(statusUpdate);
-  return s === '' || s === 'open';
-}
-
-function isInProgressLike(statusUpdate: string | null | undefined) {
-  const s = toLower(statusUpdate);
-  return (
-    s === 'assigned' ||
-    s === 'on_progress' ||
-    s === 'pending' ||
-    s === 'escalated'
-  );
-}
-
-function formatDayLabel(isoDay: string) {
-  const d = new Date(`${isoDay}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return isoDay;
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return days[d.getDay()] ?? isoDay;
-}
-
-function formatMonthLabel(ym: string) {
-  const d = new Date(`${ym}-01T00:00:00`);
-  if (Number.isNaN(d.getTime())) return ym;
-  return format(d, 'MMM yyyy');
-}
-
-function getMonthKey(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
-
-function buildTrendKeys(from: Date, to: Date, granularity: 'day' | 'month') {
-  if (granularity === 'month') {
-    const keys: string[] = [];
-    const cursor = startOfMonth(from);
-    const endMonth = startOfMonth(to);
-    while (cursor <= endMonth) {
-      keys.push(getMonthKey(cursor));
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-    return keys;
-  }
-
-  const keys: string[] = [];
-  const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  const endDay = new Date(to);
-  endDay.setHours(0, 0, 0, 0);
-  while (cursor <= endDay) {
-    keys.push(toISODateInput(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
-}
-
-function bucketType(ticket: Ticket): { key: string; label: string } {
-  const dept = classifyTicket({
-    jenisTiket: ticket.jenisTiket,
-    customerSegment: ticket.customerSegment,
-    customerType: ticket.customerType,
-  });
-
-  if (dept === 'b2b') {
-    const normalized = normalizeJenis(ticket.jenisTiket);
-    const allowed: JenisKey[] = [
-      'sqm-ccan',
-      'indibiz',
-      'datin',
-      'reseller',
-      'wifi-id',
-    ];
-    if (normalized && (allowed as string[]).includes(normalized)) {
-      return { key: normalized, label: JENIS_LABELS[normalized] ?? normalized };
-    }
-    return { key: 'other-b2b', label: 'Other (B2B)' };
-  }
-
-  const ctype = (ticket.ctype ?? ticket.customerType ?? '') as
-    | TicketCtype
-    | string;
-  const key = String(ctype).trim().toUpperCase();
-  if (key === 'REGULER') return { key: 'REG', label: 'REG' };
-  if (key === 'HVC_GOLD') return { key: 'GOLD', label: 'GOLD' };
-  if (key === 'HVC_PLATINUM') return { key: 'PLATINUM', label: 'PLATINUM' };
-  if (key === 'HVC_DIAMOND') return { key: 'DIAMOND', label: 'DIAMOND' };
-  return { key: 'other-b2c', label: 'OTHER' };
-}
-
 export default function SemestaPage() {
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [ctypeFilter, setCtypeFilter] = useState<TicketCtype | 'all'>('all');
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
-  const [ticketTypeFilter, setTicketTypeFilter] = useState<
-    | 'all'
-    | 'reguler'
-    | 'sqm'
-    | 'hvc'
-    | 'unspec'
-    | 'sqm-ccan'
-    | 'indibiz'
-    | 'datin'
-    | 'reseller'
-    | 'wifi-id'
-  >('all');
-  const [hasilVisitFilter, setHasilVisitFilter] = useState<
-    | 'all'
-    | 'open'
-    | 'assigned'
-    | 'on_progress'
-    | 'pending'
-    | 'escalated'
-    | 'closed'
-  >('all');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [ticketTypeFilter, setTicketTypeFilter] = useState<string>('all');
+  const [hasilVisitFilter, setHasilVisitFilter] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfDay(subDays(new Date(), 29)),
+    to: endOfDay(new Date()),
+  });
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [searchToast, setSearchToast] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const dateFilterActive = Boolean(dateRange?.from && dateRange?.to);
   const startDate =
@@ -312,9 +283,39 @@ export default function SemestaPage() {
   const endDate =
     dateFilterActive && dateRange?.to ? toYmd(dateRange.to) : undefined;
 
+  // --- V2 analytics filters (simplified: no status/ctype) ---
+  const analyticsFilters: SemestaAnalyticsV2Filters = useMemo(
+    () => ({
+      startDate,
+      endDate,
+      workzone: workzoneFilter || undefined,
+      dept: deptFilter !== 'all' ? deptFilter : undefined,
+      ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+    }),
+    [startDate, endDate, workzoneFilter, deptFilter, ticketTypeFilter],
+  );
+
+  // --- V1 analytics (kept for backward compat with ticket table filters) ---
+  const { data: analyticsData, loading: analyticsLoading } = useTicketAnalytics({
+    search: searchQuery || undefined,
+    workzone: workzoneFilter || undefined,
+    ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
+    dept: deptFilter !== 'all' ? deptFilter : undefined,
+    ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+    statusUpdate: hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
+    startDate,
+    endDate,
+  });
+
+  // --- V2 analytics hook ---
+  const { data: analyticsV2, loading: analyticsV2Loading } =
+    useSemestaAnalyticsV2(analyticsFilters);
+
+  // --- Ticket table (kept unchanged) ---
   const {
     tickets,
     loading: ticketsLoading,
+    isRefreshing: ticketsRefreshing,
     pagination,
   } = useSemestaTickets(
     searchQuery,
@@ -328,21 +329,38 @@ export default function SemestaPage() {
     endDate,
   );
 
-  const {
-    tickets: ticketsForAnalytics,
-    loading: analyticsLoading,
-    error: analyticsError,
-    truncated: analyticsTruncated,
-  } = useTickets({
-    search: searchQuery || undefined,
-    workzone: workzoneFilter || undefined,
-    ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
-    dept: deptFilter !== 'all' ? deptFilter : undefined,
-    ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-    statusUpdate: hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
-    startDate,
-    endDate,
-  });
+  const metrics = analyticsData?.metrics;
+  const byType = analyticsData?.byType ?? [];
+  const byWorkzone = analyticsData?.byWorkzone ?? [];
+  const trend = analyticsData?.trend ?? [];
+
+  // Read search from URL on mount
+  useEffect(() => {
+    const q = searchParams.get('search') || '';
+    if (q) {
+      setSearchQuery(q);
+      setCurrentPage(1);
+    }
+  }, [searchParams]);
+
+  // Auto-scroll to ticket table when search results load + show toast
+  useEffect(() => {
+    if (!searchQuery.trim() || ticketsLoading || ticketsRefreshing) {
+      if (!searchQuery.trim()) {
+        setSearchToast(null);
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (pagination.total > 0) {
+        setSearchToast({ message: `${pagination.total} tiket ditemukan`, type: 'success' });
+        tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, ticketsLoading, ticketsRefreshing, pagination.total]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -360,29 +378,25 @@ export default function SemestaPage() {
   };
 
   const handleTicketTypeChange = (type: string) => {
-    setTicketTypeFilter(
-      type as
-        | 'all'
-        | 'reguler'
-        | 'sqm'
-        | 'hvc'
-        | 'unspec'
-        | 'sqm-ccan'
-        | 'indibiz'
-        | 'datin'
-        | 'reseller'
-        | 'wifi-id',
-    );
+    setTicketTypeFilter(type);
     setCurrentPage(1);
   };
 
   const handleHasilVisitChange = (status: string) => {
-    setHasilVisitFilter(status as StatusFilter);
+    setHasilVisitFilter(status);
     setCurrentPage(1);
   };
 
   const handleCtypeChange = (ctype: string) => {
     setCtypeFilter(ctype as TicketCtype | 'all');
+    setCurrentPage(1);
+  };
+
+  const handlePreset = (days: number, label: string) => {
+    setDateRange({
+      from: startOfDay(subDays(new Date(), days - 1)),
+      to: endOfDay(new Date()),
+    });
     setCurrentPage(1);
   };
 
@@ -404,98 +418,6 @@ export default function SemestaPage() {
     (ctypeFilter !== 'all' ? 1 : 0) +
     (workzoneFilter ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
-
-  const metrics = useMemo(() => {
-    const m = { total: 0, open: 0, onProgress: 0, closed: 0 };
-    const list = ticketsForAnalytics;
-    m.total = list.length;
-    for (const t of list) {
-      const su = t.status_update as any as string | null | undefined;
-      if (isTicketClosed(su)) m.closed += 1;
-      else if (isOpenLike(su)) m.open += 1;
-      else if (isInProgressLike(su)) m.onProgress += 1;
-      else m.onProgress += 1;
-    }
-    return m;
-  }, [ticketsForAnalytics]);
-
-  const byType = useMemo(() => {
-    const map = new Map<
-      string,
-      { key: string; label: string; count: number }
-    >();
-    for (const t of ticketsForAnalytics) {
-      const b = bucketType(t);
-      const prev = map.get(b.key);
-      if (prev) prev.count += 1;
-      else map.set(b.key, { key: b.key, label: b.label, count: 1 });
-    }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [ticketsForAnalytics]);
-
-  const byWorkzone = useMemo(() => {
-    const wzMap = new Map<string, number>();
-    for (const t of ticketsForAnalytics) {
-      const wz = String(t.workzone ?? '').trim() || 'Unknown';
-      wzMap.set(wz, (wzMap.get(wz) ?? 0) + 1);
-    }
-    const rows = Array.from(wzMap.entries())
-      .map(([workzone, count]) => ({ workzone, count }))
-      .sort((a, b) => b.count - a.count);
-
-    const topN = 8;
-    const top = rows.slice(0, topN);
-    const rest = rows.slice(topN);
-    const restCount = rest.reduce((acc, r) => acc + r.count, 0);
-    return restCount > 0
-      ? [...top, { workzone: 'Others', count: restCount }]
-      : top;
-  }, [ticketsForAnalytics]);
-
-  const trend = useMemo(() => {
-    const now = new Date();
-    const rangeFrom =
-      dateFilterActive && dateRange?.from && dateRange?.to
-        ? startOfDay(dateRange.from)
-        : startOfDay(addDays(now, -6));
-    const rangeTo =
-      dateFilterActive && dateRange?.from && dateRange?.to
-        ? endOfDay(dateRange.to)
-        : endOfDay(now);
-
-    const spanDays = Math.max(
-      1,
-      differenceInCalendarDays(rangeTo, rangeFrom) + 1,
-    );
-    const granularity: 'day' | 'month' =
-      dateFilterActive && spanDays > 31 ? 'month' : 'day';
-
-    const keys = buildTrendKeys(rangeFrom, rangeTo, granularity);
-    const counts = new Map<string, number>(keys.map((k) => [k, 0]));
-
-    for (const t of ticketsForAnalytics) {
-      const raw = t.reportedDate;
-      if (!raw) continue;
-      const d = new Date(raw);
-      if (Number.isNaN(d.getTime())) continue;
-
-      if (d < rangeFrom || d > rangeTo) continue;
-      const k = granularity === 'month' ? getMonthKey(d) : toISODateInput(d);
-      if (!counts.has(k)) continue;
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-
-    return keys.map((k) => ({
-      key: k,
-      label:
-        granularity === 'month'
-          ? formatMonthLabel(k)
-          : dateFilterActive
-            ? format(new Date(`${k}T00:00:00`), 'MMM dd')
-            : formatDayLabel(k),
-      count: counts.get(k) ?? 0,
-    }));
-  }, [ticketsForAnalytics, dateFilterActive, dateRange?.from, dateRange?.to]);
 
   const ticketTableData = tickets.map((t) => ({
     idTicket: t.idTicket,
@@ -525,7 +447,7 @@ export default function SemestaPage() {
 
   const trendSubtitle = useMemo(() => {
     if (!dateFilterActive || !dateRange?.from || !dateRange?.to) {
-      return 'Last 7 days';
+      return 'Last 30 days';
     }
     const days =
       differenceInCalendarDays(
@@ -541,39 +463,35 @@ export default function SemestaPage() {
 
   return (
     <AdminLayout
-      onSearch={handleSearch}
       onWorkzoneChange={handleWorkzoneChange}
       selectedWorkzone={workzoneFilter}
     >
-      <div className='flex flex-col gap-6'>
+      <div className='flex flex-col gap-6 font-dm-sans text-[13px] leading-5'>
+        {/* Page Header */}
         <div className='bg-surface overflow-hidden rounded-2xl border border-(--border)'>
-          <div className='bg-surface-2 px-4 py-4 md:px-5'>
-            <div className='flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+          <div className='bg-surface-2 px-5 py-5 md:px-6'>
+            <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
               <div>
-                <div className='font-syne text-xl font-extrabold tracking-tight text-(--text-primary) md:text-2xl'>
-                  Dompis Analytics
-                </div>
-                <div className='mt-1 text-xs text-(--text-muted)'>
-                  Unified view of tickets, workload, and trend.
-                </div>
-              </div>
-              <div className='flex items-center gap-2'>
-                {analyticsTruncated && (
-                  <div className='rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200'>
-                    Analytics truncated (showing first 5,000 tickets). Refine
-                    filters for full accuracy.
-                  </div>
-                )}
+                <h1 className='font-dm-sans text-2xl font-bold tracking-[-0.3px] text-(--text-primary) md:text-3xl'>
+                  Analytics
+                </h1>
+                <p className='mt-1 font-dm-sans text-sm text-(--text-muted)'>
+                  {workzoneFilter
+                    ? `Workzone: ${workzoneFilter}`
+                    : 'Semua Workzone'}
+                  {' · '}Ticket health, repeat patterns &amp; workzone load
+                </p>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Filter Bar */}
         <div className='space-y-2'>
           <div className='flex items-center justify-between lg:hidden'>
             <button
               onClick={() => setShowMobileFilters((v) => !v)}
-              className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
+              className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 font-dm-sans text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
             >
               <SlidersHorizontal size={14} />
               Filters
@@ -586,7 +504,7 @@ export default function SemestaPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={resetAllFilters}
-                className='flex items-center gap-1 text-xs font-semibold text-red-400 hover:text-red-500'
+                className='flex items-center gap-1 font-dm-sans text-xs font-semibold text-red-400 hover:text-red-500'
               >
                 <X size={12} /> Reset
               </button>
@@ -601,8 +519,9 @@ export default function SemestaPage() {
             )}
           >
             <div className='flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center'>
+              {/* Date */}
               <div className='flex items-center gap-2'>
-                <span className='w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+                <span className='font-outfit w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
                   Tanggal
                 </span>
                 <DateRangePicker
@@ -616,6 +535,26 @@ export default function SemestaPage() {
                     setCurrentPage(1);
                   }}
                 />
+              </div>
+
+              {/* Preset chips */}
+              <div className='flex items-center gap-1.5'>
+                {PRESET_OPTIONS.map((p) => {
+                  const days = p.key === '7d' ? 7 : p.key === '30d' ? 30 : 0;
+                  return (
+                    <button
+                      key={p.key}
+                      onClick={() => handlePreset(days || 30, p.label)}
+                      className={cn(
+                        'rounded-lg px-3 py-1.5 text-[11px] font-semibold transition',
+                        'border border-(--border)',
+                        'hover:border-blue-400/40 hover:text-blue-400',
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
               </div>
 
               <Dropdown
@@ -632,6 +571,7 @@ export default function SemestaPage() {
                 onChange={handleTicketTypeChange}
               />
 
+              {/* Status & Customer — moved to table scope, kept for ticket table filter */}
               <Dropdown
                 label='Status'
                 value={hasilVisitFilter}
@@ -650,7 +590,7 @@ export default function SemestaPage() {
                 <button
                   onClick={resetAllFilters}
                   className={cn(
-                    'flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
+                    'flex items-center gap-1 rounded-lg px-3 py-2 font-dm-sans text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
                     'lg:ml-auto',
                   )}
                 >
@@ -665,42 +605,89 @@ export default function SemestaPage() {
           </div>
         </div>
 
-        {analyticsLoading ? (
-          <DashboardSkeleton />
-        ) : (
-          <>
-            {analyticsError && (
-              <div className='rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200'>
-                {analyticsError}
-              </div>
-            )}
+        {/* V2 Analytics Section */}
+        {analyticsV2Loading ? (
+          <AnalyticsSkeleton />
+        ) : analyticsV2 ? (
+          <div className='flex flex-col gap-5'>
+            {/* KPI Strip */}
+            <KpiStrip kpi={analyticsV2.kpi} loading={false} />
 
-            {!analyticsError && ticketsForAnalytics.length === 0 && (
-              <div className='bg-surface rounded-xl border border-slate-400/20 px-4 py-3 text-sm text-(--text-secondary)'>
+            {/* Trend Charts */}
+            <div className='grid gap-5 lg:grid-cols-2'>
+              <TrendByJenisChart
+                data={analyticsV2.trendByJenis}
+                loading={false}
+              />
+              <B2cB2bTrendChart
+                data={analyticsV2.trendByDept}
+                loading={false}
+              />
+            </div>
+
+            {/* Workzone Analysis Table */}
+            <WorkzoneAnalysisTable
+              data={analyticsV2.byWorkzone}
+              loading={false}
+            />
+
+            {/* GAUL + LAPUL detail lists */}
+            <div className='grid gap-5 lg:grid-cols-2'>
+              <TopGaulList
+                data={analyticsV2.topGaulServices}
+                loading={false}
+              />
+              <TopLapulList
+                data={analyticsV2.topLapulIncidents}
+                loading={false}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Fallback: show old V1 charts if V2 fails to load */
+          <>
+            {analyticsLoading ? (
+              <DashboardSkeleton />
+            ) : (metrics?.total ?? 0) === 0 ? (
+              <div className='bg-surface rounded-xl border border-slate-400/20 px-4 py-3 font-dm-sans text-sm text-(--text-secondary)'>
                 {dateFilterActive
                   ? 'No tickets found for the selected date range and filters.'
                   : 'No tickets found.'}
               </div>
+            ) : (
+              <>
+                <StatsCards metrics={metrics} loading={analyticsLoading} />
+                <div className='grid gap-6 lg:grid-cols-2'>
+                  <TicketTypeChart data={byType} loading={analyticsLoading} />
+                  <WorkzoneChart data={byWorkzone} loading={analyticsLoading} />
+                </div>
+                <TicketTrendChart
+                  data={trend}
+                  loading={analyticsLoading}
+                  subtitle={trendSubtitle}
+                />
+              </>
             )}
-
-            <StatsCards metrics={metrics} loading={analyticsLoading} />
-
-            <div className='grid gap-6 lg:grid-cols-2'>
-              <TicketTypeChart data={byType} loading={analyticsLoading} />
-              <WorkzoneChart data={byWorkzone} loading={analyticsLoading} />
-            </div>
-
-            <TicketTrendChart
-              data={trend}
-              loading={analyticsLoading}
-              subtitle={trendSubtitle}
-            />
           </>
         )}
 
+        {/* Ticket Table — unchanged, separate hook */}
+        <div ref={tableRef} className="scroll-mt-20">
         <TicketTableSemesta
           tickets={ticketTableData}
           loading={ticketsLoading}
+          downloadFilters={{
+            dept: deptFilter,
+            search: searchQuery.trim() || undefined,
+            workzone: workzoneFilter || undefined,
+            ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
+            ticketType:
+              ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+            statusUpdate:
+              hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
+            startDate,
+            endDate,
+          }}
           pagination={{
             currentPage: pagination.currentPage,
             totalPages: pagination.totalPages,
@@ -709,7 +696,14 @@ export default function SemestaPage() {
             onPageChange: setCurrentPage,
           }}
         />
+        </div>
       </div>
+
+      <SearchToast
+        message={searchToast?.message ?? null}
+        type={searchToast?.type ?? 'idle'}
+        onDismiss={() => setSearchToast(null)}
+      />
     </AdminLayout>
   );
 }

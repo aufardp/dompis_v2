@@ -1,4 +1,6 @@
-import { useCallback, useState, useEffect } from 'react';
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
 import {
   Technician,
   TechnicianSummary,
@@ -6,6 +8,7 @@ import {
   TechnicianApiResponse,
 } from '@/app/types/technician';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
 
 interface UseTechnicianTicketsReturn {
   technicians: Technician[];
@@ -14,32 +17,27 @@ interface UseTechnicianTicketsReturn {
   loading: boolean;
   error: string | null;
   lastUpdated: Date | null;
-  refresh: () => Promise<void>;
+  refresh: () => void;
 }
 
 export function useTechnicianTickets(
   filters: TechnicianFilters,
-  autoRefreshSeconds = 180,  // 3 menit — SSE menangani real-time, polling hanya safety net
+  autoRefreshSeconds = 180,
   includeAbsent = false,
   opts?: { includeClosedToday?: boolean; closedTodayLimit?: number },
 ): UseTechnicianTicketsReturn {
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [summary, setSummary] = useState<TechnicianSummary>({
-    total_active: 0,
-    total_assigned: 0,
-    overload_count: 0,
-    idle_count: 0,
+  const queryKey = queryKeys.technicians.lists({
+    ...filters,
+    includeAbsent,
+    includeClosedToday: opts?.includeClosedToday,
+    closedTodayLimit: opts?.closedTodayLimit,
   });
-  const [userWorkzones, setUserWorkzones] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
+  const { data, isLoading, error: queryError, dataUpdatedAt, refetch } = useQuery({
+    queryKey,
+    staleTime: 30_000,
+    refetchInterval: autoRefreshSeconds > 0 ? autoRefreshSeconds * 1000 : false,
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
       if (filters.workzone) params.append('workzone', filters.workzone);
@@ -49,7 +47,6 @@ export function useTechnicianTickets(
       if (includeAbsent) {
         params.append('include_absent', 'true');
       }
-
       if (opts?.includeClosedToday) {
         params.append('include_closed_today', 'true');
         if (opts.closedTodayLimit != null) {
@@ -63,52 +60,29 @@ export function useTechnicianTickets(
         throw new Error(body?.message || 'Failed to fetch technicians');
       }
 
-      const data: TechnicianApiResponse = await res.json();
+      const result: TechnicianApiResponse = await res.json();
 
-      if (!data.success) {
-        throw new Error(data.message || 'Failed to fetch technicians');
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to fetch technicians');
       }
 
-      setTechnicians(data.data?.technicians ?? []);
-      setSummary(
-        data.data?.summary ?? {
-          total_active: 0,
-          total_assigned: 0,
-          overload_count: 0,
-          idle_count: 0,
-        },
-      );
-      setUserWorkzones(data.data?.userWorkzones ?? []);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setTechnicians([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.search, filters.workzone, filters.status, includeAbsent]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (autoRefreshSeconds <= 0) return;
-
-    const interval = setInterval(() => {
-      fetchData();
-    }, autoRefreshSeconds * 1000);
-
-    return () => clearInterval(interval);
-  }, [autoRefreshSeconds, fetchData]);
+      if (!result.data) throw new Error('No data in response');
+      return result.data;
+    },
+  });
 
   return {
-    technicians,
-    summary,
-    userWorkzones,
-    loading,
-    error,
-    lastUpdated,
-    refresh: fetchData,
+    technicians: data?.technicians ?? [],
+    summary: data?.summary ?? {
+      total_active: 0,
+      total_assigned: 0,
+      overload_count: 0,
+      idle_count: 0,
+    },
+    userWorkzones: data?.userWorkzones ?? [],
+    loading: isLoading,
+    error: queryError ? (queryError as Error).message : null,
+    lastUpdated: dataUpdatedAt ? new Date(dataUpdatedAt) : null,
+    refresh: () => { refetch(); },
   };
 }

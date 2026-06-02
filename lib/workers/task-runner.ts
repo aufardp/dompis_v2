@@ -1,6 +1,5 @@
-import cron, { ScheduledTask } from 'node-cron';
 import { prisma } from '@/app/libs/prisma';
-import { redis } from '@/lib/redis';
+import { connectRedis, redis } from '@/lib/redis';
 import {
   acquireLock,
   cleanupStaleLock,
@@ -8,7 +7,7 @@ import {
   releaseLock,
 } from '@/lib/distributed-lock';
 import { closeExternalPool } from '@/lib/external-db/connection';
-import { createCorrelationId, logger } from '@/lib/observability/logger';
+import { correlationStorage, createCorrelationId, logger } from '@/lib/observability/logger';
 
 export interface WorkerTaskState {
   running: boolean;
@@ -60,7 +59,7 @@ export function withCancellableTimeout(ms: number): {
 } {
   const controller = new AbortController();
   const timer = setTimeout(() => {
-    console.log(`[Worker] Timeout after ${ms}ms, aborting task`);
+    logger.warn(`[Worker] Timeout after ${ms}ms, aborting task`);
     controller.abort();
   }, ms);
 
@@ -125,7 +124,7 @@ export async function withTaskLock(
   } finally {
     clearInterval(refreshTimer);
     await releaseLock(lockKey, ownerId).catch((error) =>
-      console.error(`[Worker] ${lockKey}: failed to release lock`, error),
+      logger.error('[Worker] Failed to release lock:', { lockKey, error: String(error) }),
     );
   }
 }
@@ -136,6 +135,7 @@ export async function waitForRedisReady(
   if (redis.status === 'ready') return;
 
   logger.info('Waiting for Redis ready', { component: 'worker', redisStatus: redis.status });
+  await connectRedis().catch(() => undefined);
   await new Promise<void>((resolve) => {
     const timeout = setTimeout(resolve, timeoutMs);
     redis.once('ready', () => {
@@ -150,20 +150,38 @@ export async function cleanupWorkerLock(
   maxAgeMs: number,
 ): Promise<void> {
   await cleanupStaleLock(lockKey, maxAgeMs).catch((error) =>
-    console.error(`[Worker] Failed to cleanup ${lockKey} lock`, error),
+    logger.error('[Worker] Failed to cleanup lock:', { lockKey, error: String(error) }),
   );
+}
+
+export async function forceCleanupLock(lockKey: string): Promise<void> {
+  if (!redis?.status || redis.status !== 'ready') return;
+  try {
+    await redis.del(`lock:${lockKey}`, `lock:${lockKey}:meta`);
+  } catch (error) {
+    logger.error('[Worker] Failed to force-cleanup lock:', { lockKey, error: String(error) });
+  }
 }
 
 export function installShutdownHandlers(
   workerName: string,
-  scheduledTasks: ScheduledTask[],
+  scheduledTasks: ScheduledTaskHandle[],
   stateOrIsRunning: WorkerTaskState | (() => boolean),
+  onShutdown?: () => Promise<void>,
 ): void {
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.warn('Worker received shutdown signal', { worker: workerName, signal });
+    import('@/lib/observability/audit-trail').then(({ recordAuditEvent }) =>
+      recordAuditEvent({
+        ts: Date.now(),
+        worker: workerName,
+        action: 'shutdown',
+        detail: `Received ${signal}`,
+      }),
+    );
     scheduledTasks.forEach((task) => task.stop());
     const isRunning =
       typeof stateOrIsRunning === 'function'
@@ -175,6 +193,7 @@ export function installShutdownHandlers(
         : stateOrIsRunning.abortController;
 
     abortController?.abort();
+    await onShutdown?.();
 
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && isRunning()) {
@@ -199,21 +218,131 @@ export function installShutdownHandlers(
   process.on('SIGUSR2', () => void shutdown('SIGUSR2'));
 }
 
+export interface ScheduledTaskHandle {
+  stop: () => void;
+  setIntervalOverride?: (minutes: number) => void;
+  pendingRunsSinceReset?: number;
+}
+
 export function scheduleEveryMinutes(
   minutes: number,
-  task: () => void,
-): ScheduledTask {
-  return cron.schedule(`*/${minutes} * * * *`, task);
+  task: () => (void | Promise<void>),
+  taskName?: string,
+  offsetSeconds?: number,
+  adaptiveBackoff?: {
+    maxIntervalMinutes: number;
+    idleThreshold: number;
+  },
+): ScheduledTaskHandle {
+  let running = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  let consecutiveIdle = 0;
+  let currentIntervalMs = minutes * 60 * 1000;
+  let pendingRunsSinceReset = 0;
+
+  const scheduleNext = () => {
+    if (stopped) return;
+    timer = setTimeout(execute, currentIntervalMs);
+  };
+
+  const execute = async () => {
+    if (running || stopped) { scheduleNext(); return; }
+    running = true;
+    const start = Date.now();
+    try {
+      await Promise.resolve(task());
+      const elapsed = Date.now() - start;
+      if (adaptiveBackoff && elapsed < adaptiveBackoff.idleThreshold * 1000) {
+        consecutiveIdle++;
+        const multiplier = Math.min(consecutiveIdle, 4);
+        currentIntervalMs = Math.min(
+          minutes * 60 * 1000 * (multiplier + 1),
+          adaptiveBackoff.maxIntervalMinutes * 60 * 1000,
+        );
+      } else if (adaptiveBackoff) {
+        consecutiveIdle = 0;
+        currentIntervalMs = minutes * 60 * 1000;
+        pendingRunsSinceReset = 0;
+      }
+      pendingRunsSinceReset++;
+    } catch (error) {
+      logger.error('Scheduled task execution failed', error, {
+        component: 'worker',
+        task: taskName ?? 'unknown',
+        intervalMinutes: minutes,
+      });
+      if (adaptiveBackoff) {
+        consecutiveIdle = Math.min(consecutiveIdle + 1, 4);
+        currentIntervalMs = Math.min(
+          minutes * 60 * 1000 * (consecutiveIdle + 1),
+          adaptiveBackoff.maxIntervalMinutes * 60 * 1000,
+        );
+      }
+    } finally {
+      running = false;
+      scheduleNext();
+    }
+  };
+
+  const start = () => {
+    const delayMs = (offsetSeconds ?? 0) * 1000;
+    setTimeout(() => {
+      if (stopped) return;
+      void execute();
+    }, delayMs);
+  };
+
+  start();
+
+  return {
+    stop: () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+    setIntervalOverride: (newMinutes: number) => {
+      currentIntervalMs = newMinutes * 60 * 1000;
+    },
+    pendingRunsSinceReset,
+  };
+}
+
+export function runWithCorrelationContext<T>(
+  workerName: string,
+  fn: () => T,
+): T {
+  const correlationId = createCorrelationId(workerName);
+  return correlationStorage.run({ correlationId, workerName }, fn);
 }
 
 export function shouldRunWithCircuitBreaker(
   state: WorkerTaskState,
   maxConsecutiveErrors: number,
   resetAfterMs: number,
+  workerName?: string,
 ): boolean {
   if (state.consecutiveErrors < maxConsecutiveErrors) return true;
   if (!state.circuitOpenedAt) {
     state.circuitOpenedAt = new Date();
+    if (workerName) {
+      import('@/lib/observability/notifier').then(({ sendCriticalAlert }) =>
+        sendCriticalAlert(
+          `🔴 Circuit Breaker Opened: ${workerName}`,
+          `${state.consecutiveErrors} consecutive errors. Auto-reset in ${resetAfterMs / 60000}m.`,
+          { worker: workerName, consecutiveErrors: state.consecutiveErrors, lastError: state.lastError ?? '' },
+        ),
+      );
+      import('@/lib/observability/audit-trail').then(({ recordAuditEvent }) =>
+        recordAuditEvent({
+          ts: Date.now(),
+          worker: workerName,
+          action: 'circuit_breaker.open',
+          detail: `Opened after ${state.consecutiveErrors} consecutive errors. Resets in ${resetAfterMs / 60000}m.`,
+          durationMs: resetAfterMs,
+          meta: { consecutiveErrors: state.consecutiveErrors, lastError: state.lastError ?? '' },
+        }),
+      );
+    }
     return false;
   }
   if (Date.now() - state.circuitOpenedAt.getTime() >= resetAfterMs) {
@@ -227,6 +356,38 @@ export function shouldRunWithCircuitBreaker(
     return true;
   }
   return false;
+}
+
+export async function waitStartupDelay(): Promise<void> {
+  const delayMs = parseInt(process.env.WORKER_STARTUP_DELAY_MS || '0', 10);
+  if (delayMs > 0) {
+    logger.info('[Worker] Startup delay:', { delayMs });
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+}
+
+export async function withPrismaReconnect<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isConnection = /P1017|P1001|server has closed|connection refused|econnreset/i.test(msg);
+    if (!isConnection) throw err;
+
+    logger.warn('[Prisma] Connection error, reconnecting...', { error: msg.slice(0, 100) });
+    await prisma.$disconnect().catch((error) => { logger.warn('[Prisma] Reconnect error:', { error: String(error) }); });
+    await new Promise(r => setTimeout(r, 1000));
+    await prisma.$connect().catch((error) => { logger.warn('[Prisma] Reconnect error:', { error: String(error) }); });
+    return await fn();
+  }
+}
+
+export async function setMySQLSessionTimeout(ms: number): Promise<void> {
+  try {
+    await prisma.$executeRaw`SET SESSION MAX_EXECUTION_TIME = ${ms}`;
+  } catch {
+    // Non-fatal: older MySQL versions may not support this
+  }
 }
 
 export function startWorkerHeartbeat(

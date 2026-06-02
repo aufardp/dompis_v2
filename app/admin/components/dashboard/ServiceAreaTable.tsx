@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 interface ServiceArea {
   name: string;
   dept?: 'b2b' | 'b2c';
@@ -8,7 +10,7 @@ interface ServiceArea {
   unassigned: number;
 }
 
-export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
+function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
   return (
     <div className='bg-surface overflow-hidden rounded-xl border border-(--border)'>
       {/* Header - scrollable on mobile */}
@@ -74,3 +76,5 @@ export default function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
     </div>
   );
 }
+
+export default memo(ServiceAreaTable);

@@ -226,7 +226,7 @@ export function sortByPriority<T extends TicketBase>(tickets: T[]): T[] {
       return 0;
     });
   } catch (error) {
-    console.error('sortByPriority error:', error);
+    console.warn('sortByPriority error:', error);
     return tickets;
   }
 }
@@ -257,7 +257,7 @@ export function sortByB2CPriority<T extends TicketBase>(tickets: T[]): T[] {
       return ageB - ageA;
     });
   } catch (error) {
-    console.error('sortByB2CPriority error:', error);
+    console.warn('sortByB2CPriority error:', error);
     return tickets;
   }
 }

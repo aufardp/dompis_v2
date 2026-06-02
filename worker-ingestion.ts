@@ -2,24 +2,30 @@ import 'dotenv/config';
 import { connectDB } from '@/app/libs/prisma';
 import { runIngestion } from '@/lib/ingestion';
 import { isRedisReady, redis } from '@/lib/redis';
+import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setSyncStatus } from '@/lib/sync-metrics/metrics';
 import {
   cleanupWorkerLock,
   createTaskState,
+  forceCleanupLock,
   installShutdownHandlers,
   nowWIB,
   parsePositiveInt,
+  runWithCorrelationContext,
   scheduleEveryMinutes,
   shouldRunWithCircuitBreaker,
   startWorkerHeartbeat,
   waitForRedisReady,
+  waitStartupDelay,
   withCancellableTimeout,
   withTaskLock,
 } from '@/lib/workers/task-runner';
-import { createCorrelationId, logger } from '@/lib/observability/logger';
+import { logger } from '@/lib/observability/logger';
+import { logConfigWarnings } from '@/lib/observability/config-validator';
+import { recordRun } from '@/lib/observability/slo-tracker';
+import { testExternalConnection } from '@/lib/external-db/connection';
 
 const WORKER_NAME = 'ingestion-worker';
-const PROJECTION_REQUEST_CHANNEL = 'worker:projection:request';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
   process.env.INGESTION_MAX_CONSECUTIVE_ERRORS,
   5,
@@ -41,6 +47,8 @@ const LOCK_TTL_SECONDS = parsePositiveInt(
   Math.max(300, TIMEOUT_MINUTES * 60),
 );
 const RUN_ON_START = process.env.INGESTION_RUN_ON_START !== 'false';
+const TICKET_RAW_WRITER_LOCK_KEY = 'ticket_raw_writer';
+const SCHEDULE_OFFSET = 0;
 
 const state = createTaskState();
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
@@ -49,7 +57,6 @@ async function requestImmediateProjection(syncBatchId?: string | null): Promise<
   if (process.env.INGESTION_TRIGGER_PROJECTION === 'false') return;
   if (!isRedisReady()) {
     logger.warn('Projection trigger skipped because Redis is not ready', {
-      worker: WORKER_NAME,
       batchId: syncBatchId,
     });
     return;
@@ -66,7 +73,6 @@ async function requestImmediateProjection(syncBatchId?: string | null): Promise<
     );
   } catch (error) {
     logger.warn('Projection trigger publish failed', {
-      worker: WORKER_NAME,
       batchId: syncBatchId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -75,12 +81,12 @@ async function requestImmediateProjection(syncBatchId?: string | null): Promise<
 
 async function runIngestionTask(): Promise<void> {
   if (process.env.INGESTION_ENABLED !== 'true') {
-    console.log('[INGESTION] Disabled');
+    logger.info('Ingestion disabled');
     return;
   }
 
   if (state.running) {
-    console.log('[INGESTION] Skipped, previous run still in progress');
+    logger.info('Ingestion skipped, previous run still in progress');
     return;
   }
 
@@ -89,10 +95,10 @@ async function runIngestionTask(): Promise<void> {
       state,
       MAX_CONSECUTIVE_ERRORS,
       CIRCUIT_RESET_MINUTES * 60_000,
+      WORKER_NAME,
     )
   ) {
     logger.warn('Ingestion circuit open', {
-      worker: WORKER_NAME,
       consecutiveErrors: state.consecutiveErrors,
       resetMinutes: CIRCUIT_RESET_MINUTES,
     });
@@ -103,7 +109,6 @@ async function runIngestionTask(): Promise<void> {
   const startTime = Date.now();
   const { controller, signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
   state.abortController = controller;
-  const correlationId = createCorrelationId('ingestion');
 
   try {
     const lockResult = await withTaskLock(
@@ -111,39 +116,53 @@ async function runIngestionTask(): Promise<void> {
       LOCK_TTL_SECONDS,
       async ({ fencingToken }) => {
         if (signal.aborted) return;
+        const writerLockResult = await withTaskLock(
+          TICKET_RAW_WRITER_LOCK_KEY,
+          LOCK_TTL_SECONDS,
+          async () => {
+            const result = await runIngestion(signal);
+            const duration = Date.now() - startTime;
 
-        const result = await runIngestion(signal);
+            if (signal.aborted) {
+              await setSyncStatus('failed', { duration });
+              return;
+            }
+
+            logger.info('Ingestion task complete', {
+              fencingToken,
+              batchId: result.syncBatchId,
+              processed: result.processed,
+              inserted: result.inserted,
+              updated: result.updated,
+              skipped: result.skipped,
+              failed: result.failed,
+              quarantined: result.quarantined,
+              retried: result.retried,
+              durationMs: duration,
+              time: nowWIB(),
+            });
+            await requestImmediateProjection(result.syncBatchId);
+            await recordRun(WORKER_NAME, duration, true, {
+              processed: result.processed,
+              quarantined: result.quarantined,
+            });
+
+            state.consecutiveErrors = 0;
+            state.circuitOpenedAt = null;
+            state.lastError = null;
+          },
+          { abortController: controller },
+        );
         const duration = Date.now() - startTime;
 
-        if (signal.aborted) {
-          await setSyncStatus('failed', { duration });
+        if (writerLockResult === 'skipped') {
+          logger.info('Ingestion skipped because ticket_raw writer lock is held', {
+            durationMs: duration,
+          });
           return;
         }
-
-        console.log(
-          `[INGESTION] Done | batch=${result.syncBatchId ?? '-'} | inserted=${result.inserted} | updated=${result.updated} | skipped=${result.skipped} | failed=${result.failed} | ${nowWIB()} WIB`,
-        );
-        await requestImmediateProjection(result.syncBatchId);
-        logger.info('Ingestion task complete', {
-          worker: WORKER_NAME,
-          correlationId,
-          fencingToken,
-          batchId: result.syncBatchId,
-          processed: result.processed,
-          inserted: result.inserted,
-          updated: result.updated,
-          skipped: result.skipped,
-          failed: result.failed,
-          quarantined: result.quarantined,
-          retried: result.retried,
-          durationMs: duration,
-        });
-
-        state.consecutiveErrors = 0;
-        state.circuitOpenedAt = null;
-        state.lastError = null;
       },
-      { abortController: controller, correlationId },
+      { abortController: controller },
     );
 
     if (lockResult === 'skipped') {
@@ -152,11 +171,10 @@ async function runIngestionTask(): Promise<void> {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Ingestion task failed', error, {
-      worker: WORKER_NAME,
-      correlationId,
       durationMs: Date.now() - startTime,
     });
     await setSyncStatus('failed', { duration: Date.now() - startTime });
+    await recordRun(WORKER_NAME, Date.now() - startTime, false, { error: message });
     state.lastError = message;
     state.consecutiveErrors++;
     if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -171,31 +189,42 @@ async function runIngestionTask(): Promise<void> {
 }
 
 async function startWorker(): Promise<void> {
-  console.log(
-    `[${WORKER_NAME}] Starting | interval=${INTERVAL_MINUTES}m timeout=${TIMEOUT_MINUTES}m lockTtl=${LOCK_TTL_SECONDS}s`,
-  );
+  logger.info('Ingestion worker starting', {
+    interval: `${INTERVAL_MINUTES}m`,
+    timeout: `${TIMEOUT_MINUTES}m`,
+    lockTtl: `${LOCK_TTL_SECONDS}s`,
+    offset: `${SCHEDULE_OFFSET}s`,
+  });
+
+  await waitStartupDelay();
+  logConfigWarnings(WORKER_NAME);
 
   await connectDB();
   await waitForRedisReady();
+  await forceCleanupLock('ingestion');
+  await forceCleanupLock(TICKET_RAW_WRITER_LOCK_KEY);
   await cleanupWorkerLock('ingestion', TIMEOUT_MINUTES * 60_000);
+  await cleanupWorkerLock(TICKET_RAW_WRITER_LOCK_KEY, TIMEOUT_MINUTES * 60_000);
+  await testExternalConnection();
   startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
-    scheduleEveryMinutes(INTERVAL_MINUTES, () => void runIngestionTask()),
+    scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => void runIngestionTask()), 'ingestion', SCHEDULE_OFFSET, { maxIntervalMinutes: 15, idleThreshold: 10 }),
   );
 
   installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
 
   if (RUN_ON_START) {
-    void runIngestionTask();
+    runWithCorrelationContext(WORKER_NAME, () => void runIngestionTask());
   }
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled rejection', reason, { worker: WORKER_NAME, promise: String(promise) });
+  logger.error('Unhandled rejection, exiting', reason, { worker: WORKER_NAME, promise: String(promise) });
+  process.exit(1);
 });
 
 startWorker().catch((error) => {
-  console.error(`[${WORKER_NAME}] Fatal startup error:`, error);
+  logger.error(`[${WORKER_NAME}] Fatal startup error:`, { error: String(error) });
   process.exit(1);
 });

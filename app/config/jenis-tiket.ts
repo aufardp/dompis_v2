@@ -138,6 +138,14 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     dbAliases: ['wifi-id', 'wifi_id', 'wifi id', 'wifiid', 'wifi', 'WIFI-ID'],
   },
   {
+    key: 'infracare',
+    label: 'INFRACARE',
+    segment: 'b2c',
+    color: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
+    priority: 1,
+    dbAliases: ['infracare', 'INFRACARE', 'InfraCare'],
+  },
+  {
     key: 'unknown',
     label: 'Unknown',
     segment: 'b2b',
@@ -176,6 +184,14 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     color: 'bg-zinc-50 text-zinc-600 dark:bg-zinc-500/15 dark:text-zinc-400',
     priority: 1,
     dbAliases: ['non-numbering', 'non_numbering', 'NON NUMBERING', 'NON_NUMBERING'],
+  },
+  {
+    key: 'billing',
+    label: 'Billing',
+    segment: 'b2b',
+    color: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
+    priority: 1,
+    dbAliases: ['billing', 'BILLING'],
   },
   {
     key: 'astinet',
@@ -235,9 +251,10 @@ export const JENIS_ALIAS_LOOKUP = new Map<string, string>(
   ),
 );
 
-export const B2C_JENIS_KEYS = JENIS_TIKET_LIST.filter(
-  (j) => j.segment === 'b2c',
-).map((j) => j.key);
+export const B2C_JENIS_KEYS = [
+  ...JENIS_TIKET_LIST.filter((j) => j.segment === 'b2c').map((j) => j.key),
+  'permintaan',
+];
 
 export const B2B_JENIS_KEYS = JENIS_TIKET_LIST.filter(
   (j) => j.segment === 'b2b',
@@ -332,16 +349,3 @@ export const B2C_JENIS_ALIASES = JENIS_TIKET_LIST.filter(
 export const B2B_JENIS_ALIASES = JENIS_TIKET_LIST.filter(
   (j) => j.segment === 'b2b',
 ).flatMap((j) => j.dbAliases);
-
-export function getB2CJenisWhereClause(): Record<string, unknown> {
-  return {
-    OR: [
-      { jenis_tiket_2: { in: [...new Set(B2C_JENIS_ALIASES)] } },
-      { jenis_tiket_2: null },
-    ],
-  };
-}
-
-export function getB2BJenisWhereClause(): { jenis_tiket_2: { in: string[] } } {
-  return { jenis_tiket_2: { in: [...new Set(B2B_JENIS_ALIASES)] } };
-}

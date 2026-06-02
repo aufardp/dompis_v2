@@ -7,6 +7,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 function normalizeStatus(value: unknown) {
   return String(value ?? '')
@@ -20,6 +21,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'ticket-detail',
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'helpdesk',
@@ -87,10 +95,15 @@ export async function GET(
     } else if (isAdminRole(user.role)) {
       const workzones = await getWorkzonesForUser(user.id_user);
       if (workzones.length > 0) {
-        const wz = row.workzone || '';
+        const wz = String(row.workzone || '')
+          .trim()
+          .toUpperCase();
         const allowed = workzones.some((w) => {
-          if (!w) return false;
-          return wz.includes(w) || w.includes(wz);
+          const normalized = String(w || '')
+            .trim()
+            .toUpperCase();
+          if (!normalized || !wz) return false;
+          return wz === normalized;
         });
         if (!allowed) {
           return NextResponse.json(
@@ -143,6 +156,7 @@ export async function GET(
       tipeOnt: row.tipe_ont,
       onuRx: row.onu_rx,
       rkInformation: row.rk_information,
+      classificationFlag: row.classification_flag,
       classificationPath: row.classification_path,
       lapul: row.lapul,
       gaul: row.gaul,

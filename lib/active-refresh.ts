@@ -2,6 +2,11 @@ import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isRedisReady, redis } from '@/lib/redis';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
+import { publishTicketInvalidate } from '@/lib/sse-redis';
+import { invalidateTicketsCache } from '@/lib/cache';
+import { withPrismaReconnect, setMySQLSessionTimeout } from '@/lib/workers/task-runner';
+import { logger } from '@/lib/observability/logger';
+import { quarantine } from '@/lib/dlq';
 
 export interface ActiveRefreshResult {
   batchId: string;
@@ -59,19 +64,21 @@ async function getAdaptiveBatchSize(): Promise<number> {
   if (!isRedisReady()) return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
 
   try {
-    const [lastDurationRaw, lastStatus] = await Promise.all([
+    const [lastDurationRaw, lastStatus, lastEffectiveRaw] = await Promise.all([
       redis.hget(METRICS_KEY, 'lastDurationMs'),
       redis.hget(METRICS_KEY, 'lastStatus'),
+      redis.hget(METRICS_KEY, 'lastEffectiveBatchSize'),
     ]);
     const lastDuration = Number.parseInt(lastDurationRaw ?? '', 10);
+    const currentBase = lastEffectiveRaw ? Number.parseInt(lastEffectiveRaw, 10) : CONFIGURED_BATCH_SIZE;
     if (!Number.isFinite(lastDuration) || lastStatus !== 'success') {
       return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
     if (lastDuration < FAST_RUN_THRESHOLD_MS) {
-      return clamp(Math.ceil(CONFIGURED_BATCH_SIZE * 1.25), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+      return clamp(Math.ceil(currentBase * 1.25), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
     if (lastDuration > SLOW_RUN_THRESHOLD_MS) {
-      return clamp(Math.floor(CONFIGURED_BATCH_SIZE * 0.5), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
+      return clamp(Math.floor(currentBase * 0.5), MIN_BATCH_SIZE, MAX_BATCH_SIZE);
     }
   } catch {
     return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
@@ -139,27 +146,38 @@ async function fetchCandidateTicketIds(
   today: Date,
   limit: number,
 ): Promise<Array<{ id_ticket: number }>> {
-  return prisma.$queryRaw<Array<{ id_ticket: number }>>`
+  const halfLimit = Math.ceil(limit / 2);
+
+  const notSyncedToday = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
     SELECT t.id_ticket
     FROM ticket t
-    WHERE (
-        t.sync_date IS NULL
-        OR t.sync_date <> ${today}
-      )
-      AND (
-        t.status IS NULL
-        OR t.status NOT IN ('closed', 'Closed', 'CLOSED')
-        OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending')
-        OR t.status_update IN ('OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
-        OR (
-          t.pending_dompis IS NOT NULL
-          AND t.pending_dompis <> ''
-        )
-      )
-    ORDER BY t.synced_at DESC, t.id_ticket DESC
-    LIMIT ${limit}
+    WHERE t.sync_date IS NULL
+       OR t.sync_date < ${today}
+    ORDER BY t.id_ticket DESC
+    LIMIT ${halfLimit}
     OFFSET ${offset}
   `;
+
+  const activeOpen = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
+    SELECT t.id_ticket
+    FROM ticket t
+    WHERE t.status_update IN ('open', 'assigned', 'on_progress', 'pending',
+                              'OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
+      AND (t.status IS NULL OR t.status NOT IN ('closed', 'Closed', 'CLOSED'))
+    ORDER BY t.synced_at DESC
+    LIMIT ${halfLimit}
+    OFFSET ${offset}
+  `;
+
+  const seen = new Set<number>();
+  const results: Array<{ id_ticket: number }> = [];
+  for (const r of [...notSyncedToday, ...activeOpen]) {
+    if (!seen.has(r.id_ticket)) {
+      seen.add(r.id_ticket);
+      results.push(r);
+    }
+  }
+  return results.slice(0, limit);
 }
 
 async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
@@ -273,7 +291,8 @@ export async function runActiveRefresh(
   }
 
   result.backlogEstimate = await estimateBacklog(today);
-  await createRunLog(batchId, effectiveBatchSize);
+  await setMySQLSessionTimeout(20_000);
+  await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
     let offset = 0;
@@ -307,17 +326,26 @@ export async function runActiveRefresh(
     result.durationMs = Date.now() - start;
     await finishRunLog(batchId, 'success', result);
     await recordMetrics('success', result);
+    if (result.updated > 0) {
+      await Promise.allSettled([
+        invalidateTicketsCache(),
+        publishTicketInvalidate('active_refresh'),
+      ]);
+    }
     return result;
   } catch (error) {
     result.durationMs = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
     const status = message.includes('Active refresh aborted') ? 'aborted' : 'failed';
+    await quarantine('active-refresh', { batchId }, error).catch(() => {});
     await finishRunLog(
       batchId,
       status,
       result,
       message,
-    ).catch(() => undefined);
+    ).catch((err) =>
+      logger.warn('Failed to finalize run log after error', { component: 'active-refresh', batchId, status, error: err instanceof Error ? err.message : String(err) }),
+    );
     await recordMetrics(status, result, message);
     throw error;
   }

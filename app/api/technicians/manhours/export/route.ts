@@ -8,6 +8,7 @@ import {
 } from '@/app/libs/services/manhours.service';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWIB } from '@/app/utils/datetime';
+import { logger } from '@/lib/observability/logger';
 
 /**
  * GET /api/technicians/manhours/export
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[MANHOURS_EXPORT_ERROR]', error);
+    logger.error('[MANHOURS_EXPORT_ERROR]', error);
     return NextResponse.json(
       {
         success: false,

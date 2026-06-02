@@ -6,6 +6,9 @@ import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.servic
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { assignTicketSchema } from '@/app/libs/validations/ticket.schema';
+import { validateBody } from '@/app/libs/validations/validate';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function POST(req: Request) {
   let lockKey: string | null = null;
@@ -14,6 +17,13 @@ export async function POST(req: Request) {
   let lockAcquired = false;
 
   try {
+    const rateLimited = await enforceApiRateLimit(req, {
+      namespace: 'tickets-assign',
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'helpdesk',
@@ -21,23 +31,26 @@ export async function POST(req: Request) {
       'super_admin',
     ]);
 
-    const body = await req.json();
-    // Accept both teknisiUserId and teknisiId for backwards compatibility
-    const teknisiUserId = Number(
-      body.teknisiUserId ?? body.teknisiId ?? body.teknisi_id,
-    );
-    ticketId = Number(body.ticketId);
-    const forceReassign = Boolean(body.forceReassign);
+    const body = await req.json().catch(() => null);
+    const parsed = validateBody(assignTicketSchema, {
+      ticketId: body?.ticketId,
+      teknisiUserId: body?.teknisiUserId ?? body?.teknisiId ?? body?.teknisi_id,
+      forceReassign: body?.forceReassign,
+    });
 
-    if (!ticketId || !teknisiUserId) {
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          message: 'ticketId and teknisiUserId (or teknisiId) are required',
+          message: 'ticketId dan teknisiUserId wajib valid',
+          errors: parsed.error.flatten().fieldErrors,
         },
         { status: 400 },
       );
     }
+
+    const { teknisiUserId, forceReassign } = parsed.data;
+    ticketId = parsed.data.ticketId;
 
     lockKey = `ticket-lock:${ticketId}`;
     ownerId = `assign-${ticketId}-${Date.now()}-${Math.random()}`;

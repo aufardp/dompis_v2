@@ -8,7 +8,7 @@ export default async function Home() {
 
   if (token) {
     try {
-      const decoded: any = verifyAccessToken(token);
+      const decoded: any = await verifyAccessToken(token);
 
       if (
         decoded.role === 'admin' ||

@@ -1,13 +1,29 @@
-import redis, { isRedisReady } from '@/lib/redis';
+import { logger } from '@/lib/observability/logger';
+import redis, { ensureRedisReady } from '@/lib/redis';
 
 export interface CacheOptions {
   ttl?: number;
 }
 
-const DEFAULT_TTL = 30;
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const v = parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+export const TICKETS_CACHE_TTL = parsePositiveIntEnv('TICKETS_CACHE_TTL', 15);
+export const DASHBOARD_CACHE_TTL = parsePositiveIntEnv('DASHBOARD_CACHE_TTL', 30);
+export const STATS_CACHE_TTL = parsePositiveIntEnv('STATS_CACHE_TTL', 30);
+
+const DEFAULT_TTL = 60;
+const DEFAULT_MAX_CACHE_BYTES = 512 * 1024;
+const MAX_CACHE_BYTES = Number.isFinite(
+  Number.parseInt(process.env.CACHE_MAX_BYTES || '', 10),
+)
+  ? Number.parseInt(process.env.CACHE_MAX_BYTES || '', 10)
+  : DEFAULT_MAX_CACHE_BYTES;
 
 export async function getCache<T>(key: string): Promise<T | null> {
-  if (!isRedisReady()) {
+  if (!(await ensureRedisReady())) {
     return null;
   }
 
@@ -16,7 +32,7 @@ export async function getCache<T>(key: string): Promise<T | null> {
     if (!data) return null;
     return JSON.parse(data) as T;
   } catch (error) {
-    console.error(`[Cache] Error getting key ${key}:`, error);
+    logger.error('[Cache] Error getting key:', { key, error: String(error) });
     return null;
   }
 }
@@ -26,21 +42,30 @@ export async function setCache<T>(
   data: T,
   ttl: number = DEFAULT_TTL,
 ): Promise<boolean> {
-  if (!isRedisReady()) {
+  if (!(await ensureRedisReady())) {
     return false;
   }
 
   try {
-    await redis.setex(key, ttl, JSON.stringify(data));
+    const payload = JSON.stringify(data);
+    const byteLength = Buffer.byteLength(payload, 'utf8');
+    if (byteLength > MAX_CACHE_BYTES) {
+      if (process.env.CACHE_DEBUG_SKIPS === 'true') {
+        logger.warn('[Cache] Skip large payload:', { key, bytes: byteLength, max: MAX_CACHE_BYTES });
+      }
+      return false;
+    }
+
+    await redis.setex(key, ttl, payload);
     return true;
   } catch (error) {
-    console.error(`[Cache] Error setting key ${key}:`, error);
+    logger.error('[Cache] Error setting key:', { key, error: String(error) });
     return false;
   }
 }
 
 export async function deleteCache(key: string): Promise<boolean> {
-  if (!isRedisReady()) {
+  if (!(await ensureRedisReady())) {
     return false;
   }
 
@@ -48,7 +73,7 @@ export async function deleteCache(key: string): Promise<boolean> {
     await redis.del(key);
     return true;
   } catch (error) {
-    console.error(`[Cache] Error deleting key ${key}:`, error);
+    logger.error('[Cache] Error deleting key:', { key, error: String(error) });
     return false;
   }
 }
@@ -58,7 +83,7 @@ export async function deleteCache(key: string): Promise<boolean> {
  * SCAN iterates incrementally — tidak memblok Redis seperti KEYS.
  */
 export async function deleteCachePattern(pattern: string): Promise<number> {
-  if (!isRedisReady()) return 0;
+  if (!(await ensureRedisReady())) return 0;
 
   try {
     let cursor = '0';
@@ -87,7 +112,7 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
 
     return deletedCount;
   } catch (error) {
-    console.error(`[Cache] Error deleting pattern ${pattern}:`, error);
+    logger.error('[Cache] Error deleting pattern:', { pattern, error: String(error) });
     return 0;
   }
 }
@@ -97,42 +122,41 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
  * Awaitable agar refresh UI setelah mutasi tidak membaca cache lama.
  */
 export async function invalidateTicketsCache(): Promise<void> {
-  if (!isRedisReady()) return;
+  if (!(await ensureRedisReady())) return;
 
   try {
-    // Jalankan SCAN secara sequential (bukan parallel) untuk mengurangi beban Redis.
-    // Mutasi tiket harus menunggu invalidation selesai agar refresh UI tidak membaca cache lama.
-    await deleteCachePattern('tickets:*');
-    await deleteCachePattern('daily_tickets:*');
-    await deleteCachePattern('stats:*');
-    await deleteCachePattern('dashboard:*');
-  } catch {
-    // Silently ignore — cache miss lebih baik dari crash
+    // Jalankan semua pola SCAN secara paralel — masing-masing pakai pipeline sendiri.
+    await Promise.all([
+      deleteCachePattern('tickets:*'),
+      deleteCachePattern('daily_tickets:*'),
+      deleteCachePattern('stats:*'),
+      deleteCachePattern('dashboard:*'),
+      deleteCachePattern('dashboard_operations_summary:*'),
+    ]);
+  } catch (error) {
+    logger.warn('[Cache] Operation failed:', { error: String(error) });
   }
 }
 
 export async function invalidateTicketById(ticketId: number): Promise<void> {
-  if (!isRedisReady()) return;
+  if (!(await ensureRedisReady())) return;
 
   try {
     await deleteCache(`ticket:${ticketId}`);
-  } catch {
-    // Silently ignore
+  } catch (error) {
+    logger.warn('[Cache] Operation failed:', { error: String(error) });
   }
 }
 
 export async function invalidateTechniciansCache(): Promise<void> {
-  if (!isRedisReady()) return;
+  if (!(await ensureRedisReady())) return;
 
-  // Fire-and-forget
-  (async () => {
-    try {
-      await deleteCachePattern('technicians:*');
-      await deleteCachePattern('attendance:*');
-    } catch {
-      // Silently ignore
-    }
-  })();
+  try {
+    await deleteCachePattern('technicians:*');
+    await deleteCachePattern('attendance:*');
+  } catch (error) {
+    logger.warn('[Cache] Operation failed:', { error: String(error) });
+  }
 }
 
 /**
@@ -153,8 +177,8 @@ export async function getOrSetCache<T>(
   // Cache miss — compute
   const data = await fn();
 
-  // Store in background (don't await — don't block response)
-  void setCache(key, data, ttl);
+  // Store synchronously — blocking is negligible vs recompute cost
+  await setCache(key, data, ttl);
 
   return data;
 }

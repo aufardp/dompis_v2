@@ -1,5 +1,3 @@
-'use client';
-
 import { cn } from '@/app/libs/utils';
 
 export type StatCardVariant = 'total' | 'open' | 'progress' | 'closed';
@@ -64,7 +62,7 @@ export default function StatCard({
         <div className='min-w-0'>
           <div
             className={cn(
-              'inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-[1.2px] uppercase',
+              'font-outfit inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-[1.2px] uppercase',
               v.pill,
             )}
           >
@@ -81,12 +79,14 @@ export default function StatCard({
           )}
 
           {subtitle && (
-            <div className='mt-1 text-xs text-(--text-muted)'>{subtitle}</div>
+            <div className='font-outfit mt-1 text-xs text-(--text-muted)'>
+              {subtitle}
+            </div>
           )}
         </div>
 
         <div className='hidden sm:block'>
-          <div className='bg-surface-2 rounded-xl border border-(--border) px-3 py-2 text-xs font-semibold text-(--text-secondary)'>
+          <div className='font-outfit bg-surface-2 rounded-xl border border-(--border) px-3 py-2 text-xs font-semibold text-(--text-secondary)'>
             KPI
           </div>
         </div>
