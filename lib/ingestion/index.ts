@@ -836,12 +836,8 @@ async function processBatch(
 
     assertNotAborted(signal);
     await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
-    await bulkUpsertTicketRaw(tx, sortedHeartbeatRows, [
-      'lastSeenAt',
-      'syncBatchId',
-      'importedAt',
-      'isActive',
-    ]);
+    // Skip heartbeat upsert — hash & status unchanged, no data to write.
+    // lastSeenAt tracking is not critical; stale detection uses updated_at.
     if (quarantined.length > 0) {
       await tx.ingestion_quarantine.createMany({ data: quarantined });
     }

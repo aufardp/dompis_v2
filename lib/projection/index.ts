@@ -1,5 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { format, toZonedTime } from 'date-fns-tz';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import {
@@ -246,6 +246,69 @@ const PROTECTED_FIELDS = new Set([
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const TICKET_BULK_COLUMNS: readonly string[] = [
+  'sync_date', 'import_batch', 'synced_at', 'incident',
+  'workzone', 'customer_type', 'summary', 'reported_date',
+  'owner_group', 'customer_segment', 'service_type', 'ticket_id_gamas',
+  'contact_phone', 'contact_name', 'booking_date', 'source_ticket',
+  'customer_name', 'service_no', 'symptom', 'device_name',
+  'rk_information', 'witel', 'worklog_summary', 'realm',
+  'sn_ont', 'tipe_ont', 'guarantee_status', 'lapul', 'gaul', 'onu_rx',
+  'jenis_tiket_1', 'jenis_tiket_2', 'channel', 'classification_flag', 'classification_path',
+  'incident_domain', 'solution', 'tsc_result', 'scc_result',
+  'alamat', 'status_update', 'closed_at', 'flagging_manja',
+];
+
+const LOG_BULK_COLUMNS: readonly string[] = [
+  'ticketRawId', 'incident', 'syncBatchId', 'importedAt',
+  'action', 'status', 'attempts', 'sourceHash', 'syncVersion', 'projectedAt',
+];
+
+function sqlIdentifier(identifier: string): Prisma.Sql {
+  if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
+    throw new Error(`Unsafe SQL identifier: ${identifier}`);
+  }
+  return Prisma.raw(`\`${identifier}\``);
+}
+
+function toSqlValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
+function getTicketRow(item: ProjectionItem): Record<string, unknown> {
+  const source = item.action === 'inserted'
+    ? (item.upsert.create as Record<string, unknown>)
+    : (item.upsert.update as Record<string, unknown>);
+  return Object.fromEntries(
+    TICKET_BULK_COLUMNS.map(col => [col, toSqlValue(source[col] ?? null)]),
+  );
+}
+
+function getLogRow(item: ProjectionItem, attempts: number): Record<string, unknown> {
+  return Object.fromEntries(
+    LOG_BULK_COLUMNS.map(col => {
+      switch (col) {
+        case 'ticketRawId': return [col, item.raw.id_ticket];
+        case 'incident': return [col, item.raw.incident];
+        case 'syncBatchId': return [col, item.raw.syncBatchId];
+        case 'importedAt': return [col, item.raw.importedAt];
+        case 'action': return [col, item.action];
+        case 'status': return [col, 'success'];
+        case 'attempts': return [col, attempts];
+        case 'sourceHash': return [col, item.raw.sourceHash];
+        case 'syncVersion': return [col, item.raw.syncVersion];
+        case 'projectedAt': return [col, nowWib()];
+        default: return [col, null];
+      }
+    }),
+  );
 }
 
 function assertNotAborted(signal?: AbortSignal): void {
@@ -649,42 +712,6 @@ async function prepareProjectionItems(
   return items;
 }
 
-async function projectOneItemInTransaction(
-  tx: Prisma.TransactionClient,
-  item: ProjectionItem,
-  attempts: number,
-): Promise<void> {
-  if (item.action !== 'skipped') {
-    await tx.ticket.upsert(item.upsert);
-  }
-  await tx.ticket_projection_log.upsert({
-    where: { ticketRawId: item.raw.id_ticket },
-    create: {
-      ticketRawId: item.raw.id_ticket,
-      incident: item.raw.incident!,
-      syncBatchId: item.raw.syncBatchId,
-      importedAt: item.raw.importedAt,
-      action: item.action,
-      status: 'success',
-      attempts,
-      sourceHash: item.raw.sourceHash,
-      syncVersion: item.raw.syncVersion,
-      projectedAt: nowWib(),
-    },
-    update: {
-      syncBatchId: item.raw.syncBatchId,
-      importedAt: item.raw.importedAt,
-      action: item.action,
-      status: 'success',
-      attempts,
-      error: null,
-      sourceHash: item.raw.sourceHash,
-      syncVersion: item.raw.syncVersion,
-      projectedAt: nowWib(),
-    },
-  });
-}
-
 async function markProjectionFailure(
   item: ProjectionItem,
   error: unknown,
@@ -788,6 +815,64 @@ async function withTransactionRetry<T>(
   throw new Error('Transaction retry exhausted');
 }
 
+async function bulkUpsertTicket(
+  tx: Prisma.TransactionClient,
+  items: ProjectionItem[],
+): Promise<void> {
+  if (items.length === 0) return;
+  const updateColumns = TICKET_BULK_COLUMNS.filter(c => c !== 'incident');
+  const rows = items.map(item => getTicketRow(item));
+  await tx.$executeRaw`
+    INSERT INTO ${sqlIdentifier('ticket')}
+      (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+    VALUES ${Prisma.join(
+      rows.map(row =>
+        Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+      ),
+    )}
+    ON DUPLICATE KEY UPDATE
+      ${Prisma.join(updateColumns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
+  `;
+}
+
+async function bulkInsertTicket(
+  tx: Prisma.TransactionClient,
+  items: ProjectionItem[],
+): Promise<void> {
+  if (items.length === 0) return;
+  const rows = items.map(item => getTicketRow(item));
+  await tx.$executeRaw`
+    INSERT IGNORE INTO ${sqlIdentifier('ticket')}
+      (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+    VALUES ${Prisma.join(
+      rows.map(row =>
+        Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+      ),
+    )}
+  `;
+}
+
+async function bulkUpsertProjectionLog(
+  tx: Prisma.TransactionClient,
+  items: ProjectionItem[],
+  attempts: number,
+): Promise<void> {
+  if (items.length === 0) return;
+  const updateColumns = LOG_BULK_COLUMNS.filter(c => c !== 'ticketRawId');
+  const rows = items.map(item => getLogRow(item, attempts));
+  await tx.$executeRaw`
+    INSERT INTO ${sqlIdentifier('ticket_projection_log')}
+      (${Prisma.join(LOG_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+    VALUES ${Prisma.join(
+      rows.map(row =>
+        Prisma.sql`(${Prisma.join(LOG_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+      ),
+    )}
+    ON DUPLICATE KEY UPDATE
+      ${Prisma.join(updateColumns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
+  `;
+}
+
 async function projectSubBatchAtomically(
   items: ProjectionItem[],
   lastRecord: RawSelectResult,
@@ -801,10 +886,19 @@ async function projectSubBatchAtomically(
   },
 ): Promise<void> {
   await withTransactionRetry(async (tx) => {
-    for (const item of items) {
-      assertNotAborted(options.signal);
-      await projectOneItemInTransaction(tx, item, options.attempts);
+    assertNotAborted(options.signal);
+
+    const newItems = items.filter(i => i.action === 'inserted');
+    const updatedItems = items.filter(i => i.action === 'updated');
+
+    if (newItems.length > 0) {
+      await bulkInsertTicket(tx, newItems);
     }
+    if (updatedItems.length > 0) {
+      await bulkUpsertTicket(tx, updatedItems);
+    }
+    await bulkUpsertProjectionLog(tx, items, options.attempts);
+
     await advanceCheckpoint(tx, lastRecord, result, options.syncBatchId, {
       preserveCursor: options.preserveCheckpointCursor,
       preservedCheckpoint: options.preservedCheckpoint,
