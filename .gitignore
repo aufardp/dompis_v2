@@ -62,3 +62,5 @@ dompis-*.json
 *.log
 error/logs/
 logs/
+EOF
+
