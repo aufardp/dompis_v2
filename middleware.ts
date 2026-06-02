@@ -66,29 +66,30 @@ const ROLE_HOME: Record<string, string> = {
   teknisi: '/teknisi',
 };
 
-// --- SAFE REDIRECT HELPER ---
-function safeRedirect(req: NextRequest, path: string): NextResponse {
-  const url = req.nextUrl.clone();
-  url.pathname = path;
-  url.search = '';
-  return applySecurityHeaders(NextResponse.redirect(url));
-}
-
 // --- MAIN MIDDLEWARE ---
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const correlationId = crypto.randomUUID();
+  const nonce = crypto.randomUUID();
   req.headers.set('x-correlation-id', correlationId);
 
-  function withCorrelation(res: NextResponse): NextResponse {
+  function withHeaders(res: NextResponse): NextResponse {
     res.headers.set('x-correlation-id', correlationId);
+    res.headers.set('x-nonce', nonce);
     return res;
+  }
+
+  function safeRedirect(path: string): NextResponse {
+    const url = req.nextUrl.clone();
+    url.pathname = path;
+    url.search = '';
+    return withHeaders(applySecurityHeaders(NextResponse.redirect(url), nonce));
   }
 
   // API routes → just correlation + security headers, skip page auth
   if (pathname.startsWith('/api/')) {
-    return withCorrelation(applySecurityHeaders(NextResponse.next()));
+    return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
   }
 
   // 1. BYPASS — public / internal page paths
@@ -98,13 +99,13 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
   ) {
-    return withCorrelation(applySecurityHeaders(NextResponse.next()));
+    return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
   }
 
   // 2. TOKEN CHECK
   const token = req.cookies.get('token')?.value;
   if (!token) {
-    return withCorrelation(safeRedirect(req, '/login'));
+    return safeRedirect('/login');
   }
 
   // 3. VERIFY AND DECODE PAYLOAD
@@ -117,18 +118,18 @@ export async function middleware(req: NextRequest) {
     payload = await verifyJWT(token, jwtSecret);
   } catch (err) {
     logger.error('JWT verification failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
-    const res = safeRedirect(req, '/login');
+    const res = safeRedirect('/login');
     res.cookies.delete('token');
     res.cookies.delete('refreshToken');
-    return withCorrelation(res);
+    return res;
   }
 
   // 4. EXPIRY CHECK
   if (payload?.exp && Date.now() >= payload.exp * 1000) {
-    const res = safeRedirect(req, '/login');
+    const res = safeRedirect('/login');
     res.cookies.delete('token');
     res.cookies.delete('refreshToken');
-    return withCorrelation(res);
+    return res;
   }
 
   // 5. ROLE GUARD
@@ -140,7 +141,7 @@ export async function middleware(req: NextRequest) {
     userRole !== 'admin' &&
     userRole !== 'superadmin'
   ) {
-    return withCorrelation(safeRedirect(req, roleHome));
+    return safeRedirect(roleHome);
   }
 
   if (
@@ -148,18 +149,18 @@ export async function middleware(req: NextRequest) {
     userRole !== 'helpdesk' &&
     userRole !== 'superadmin'
   ) {
-    return withCorrelation(safeRedirect(req, roleHome));
+    return safeRedirect(roleHome);
   }
 
   if (pathname.startsWith('/superadmin') && userRole !== 'superadmin') {
-    return withCorrelation(safeRedirect(req, roleHome));
+    return safeRedirect(roleHome);
   }
 
   if (pathname.startsWith('/teknisi') && userRole !== 'teknisi') {
-    return withCorrelation(safeRedirect(req, roleHome));
+    return safeRedirect(roleHome);
   }
 
-  return withCorrelation(applySecurityHeaders(NextResponse.next()));
+  return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
 }
 
 export const config = {

@@ -67,7 +67,10 @@ export function assertSameOriginRequest(
   return { ok: true };
 }
 
-export function applySecurityHeaders<T extends NextResponse>(response: T): T {
+export function applySecurityHeaders<T extends NextResponse>(
+  response: T,
+  nonce?: string,
+): T {
   const isDev = process.env.NODE_ENV === 'development';
 
   response.headers.set('X-Frame-Options', 'DENY');
@@ -84,7 +87,15 @@ export function applySecurityHeaders<T extends NextResponse>(response: T): T {
     response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
-  const scriptSrc = isDev ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self'";
+  let scriptSrc: string;
+  if (isDev) {
+    scriptSrc = "'self' 'unsafe-inline' 'unsafe-eval'";
+  } else if (nonce) {
+    scriptSrc = `'self' 'nonce-${nonce}' https://static.cloudflareinsights.com`;
+  } else {
+    scriptSrc = "'self'";
+  }
+
   const connectSrc = isDev ? "'self' ws: wss:" : "'self'";
 
   response.headers.set(
