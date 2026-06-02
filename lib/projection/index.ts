@@ -147,6 +147,7 @@ interface ProjectionCheckpoint {
   lastProjectedImportedAt: Date | null;
   lastProjectedTicketRawId: string | null;
   lastSyncBatchId: string | null;
+  neverProjectedCount: number;
 }
 
 interface RawSelectResult {
@@ -412,7 +413,9 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-async function getOrCreateCheckpoint(): Promise<ProjectionCheckpoint> {
+async function getOrCreateCheckpoint(): Promise<
+  ProjectionCheckpoint & { neverProjectedCount: number }
+> {
   const row = await prisma.ticket_projection_checkpoint.upsert({
     where: { name: CHECKPOINT_NAME },
     create: { name: CHECKPOINT_NAME, status: 'idle' },
@@ -421,6 +424,7 @@ async function getOrCreateCheckpoint(): Promise<ProjectionCheckpoint> {
       lastProjectedImportedAt: true,
       lastProjectedTicketRawId: true,
       lastSyncBatchId: true,
+      neverProjectedCount: true,
     },
   });
   return row;
@@ -950,6 +954,8 @@ async function projectRecords(
     data: { status: 'running', startedAt: nowWib(), lastError: null },
   });
 
+  let initialNeverProjectedCount = 0;
+
   await setMySQLSessionTimeout(30_000);
 
   try {
@@ -964,20 +970,43 @@ async function projectRecords(
   }
 
   let hasMore = true;
-  let activeCheckpoint =
+  let activeCheckpoint: ProjectionCheckpoint =
     options.syncBatchId && checkpoint.lastSyncBatchId !== options.syncBatchId
       ? {
           lastProjectedImportedAt: null,
           lastProjectedTicketRawId: null,
           lastSyncBatchId: options.syncBatchId,
+          neverProjectedCount: 0,
         }
       : options.preserveCheckpointCursor
         ? {
             lastProjectedImportedAt: null,
             lastProjectedTicketRawId: null,
             lastSyncBatchId: checkpoint.lastSyncBatchId,
+            neverProjectedCount: 0,
           }
       : checkpoint;
+
+  if (activeCheckpoint.lastProjectedImportedAt) {
+    const countResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) AS count FROM ticket_raw
+      WHERE isActive = TRUE AND importedAt IS NOT NULL
+        AND (importedAt > ${activeCheckpoint.lastProjectedImportedAt}
+          OR (importedAt = ${activeCheckpoint.lastProjectedImportedAt}
+            AND id_ticket > ${activeCheckpoint.lastProjectedTicketRawId}))
+    `;
+    initialNeverProjectedCount = Number(countResult[0]?.count ?? 0);
+  } else {
+    const countResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) AS count FROM ticket_raw
+      WHERE isActive = TRUE AND importedAt IS NOT NULL
+    `;
+    initialNeverProjectedCount = Number(countResult[0]?.count ?? 0);
+  }
+  await prisma.ticket_projection_checkpoint.update({
+    where: { name: CHECKPOINT_NAME },
+    data: { neverProjectedCount: initialNeverProjectedCount },
+  });
 
   logger.info('[Projection] Starting:', { mode: options.mode ?? 'incremental', batchSize, writeChunkSize, cursor: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}` });
 
@@ -1134,20 +1163,23 @@ async function projectRecords(
           lastProjectedImportedAt: lastRecord.importedAt,
           lastProjectedTicketRawId: lastRecord.id_ticket,
           lastSyncBatchId: checkpoint.lastSyncBatchId,
+          neverProjectedCount: 0,
         }
       : {
           lastProjectedImportedAt: lastRecord.importedAt,
           lastProjectedTicketRawId: lastRecord.id_ticket,
           lastSyncBatchId: options.syncBatchId ?? lastRecord.syncBatchId,
+          neverProjectedCount: 0,
         };
     hasMore = rawRecords.length === batchSize;
     logger.info('[Projection] Batch result:', { checkpoint: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}`, processed: result.processed, inserted: result.inserted, updated: result.updated, skipped: result.skipped, failed: result.failed });
     assertNotAborted(signal);
   }
 
+  const remainingNeverProjected = Math.max(0, initialNeverProjectedCount - result.processed);
   await prisma.ticket_projection_checkpoint.update({
     where: { name: CHECKPOINT_NAME },
-    data: { status: 'success', completedAt: nowWib() },
+    data: { status: 'success', neverProjectedCount: remainingNeverProjected, completedAt: nowWib() },
   });
   return result;
 }
@@ -1202,9 +1234,13 @@ export async function runProjection(
         ? recordProjectionMetric('pipelineLagMs', endToEndLagMs)
         : Promise.resolve(),
     ]);
-    const reconciliation = await getProjectionReconciliationReport().catch(
-      () => null,
-    );
+    const RECONCILIATION_TIMEOUT_MS = 10_000;
+    const reconciliation = await Promise.race([
+      getProjectionReconciliationReport(),
+      new Promise<null>(resolve =>
+        setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
+      ),
+    ]).catch(() => null);
     await setProjectionStatus('success', {
       duration: result.duration,
       lagMs: endToEndLagMs ?? undefined,
@@ -1306,7 +1342,6 @@ export async function getProjectionReconciliationReport(): Promise<{
     projectedRaw,
     failedRaw,
     tickets,
-    gapRows,
     oldestGapRows,
   ] =
     await Promise.all([
@@ -1317,34 +1352,28 @@ export async function getProjectionReconciliationReport(): Promise<{
           lastProjectedTicketRawId: true,
           lastSyncBatchId: true,
           status: true,
+          neverProjectedCount: true,
         },
       }),
       prisma.ticket_raw.count({ where: { isActive: true } }),
       prisma.ticket_projection_log.count({ where: { status: 'success' } }),
       prisma.ticket_projection_log.count({ where: { status: 'failed' } }),
       prisma.ticket.count(),
-      prisma.$queryRaw<Array<{ count: bigint }>>`
-        SELECT COUNT(*) AS count
-        FROM ticket_raw tr
-        LEFT JOIN ticket_projection_log tpl
-          ON tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
-        WHERE tr.isActive = TRUE
-          AND tpl.id IS NULL
-      `,
       prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
         SELECT tr.importedAt AS importedAt
         FROM ticket_raw tr
-        LEFT JOIN ticket_projection_log tpl
-          ON tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
         WHERE tr.isActive = TRUE
-          AND tpl.id IS NULL
           AND tr.importedAt IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM ticket_projection_log tpl
+            WHERE tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
+          )
         ORDER BY tr.importedAt ASC, tr.id_ticket ASC
         LIMIT 1
       `,
     ]);
 
-  const neverProjectedRaw = Number(gapRows[0]?.count ?? 0);
+  const neverProjectedRaw = checkpoint?.neverProjectedCount ?? 0;
   const oldestUnprojectedImportedAt = oldestGapRows[0]?.importedAt ?? null;
 
   return {
@@ -1359,6 +1388,7 @@ export async function getProjectionReconciliationReport(): Promise<{
       lastProjectedTicketRawId: null,
       lastSyncBatchId: null,
       status: null,
+      neverProjectedCount: 0,
     },
   };
 }
