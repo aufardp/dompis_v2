@@ -68,6 +68,10 @@ function fetchWithTimeout(input: RequestInfo, init?: FetchWithAuthInit) {
   }).finally(() => clearTimeout(timeoutId));
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function fetchWithAuth(
   input: RequestInfo,
   init?: FetchWithAuthInit,
@@ -77,6 +81,12 @@ export async function fetchWithAuth(
   let res = await doFetch();
 
   // Token still valid
+  if (res.status !== 401) return res;
+
+  // Give the browser a short grace period in case auth cookies are still
+  // propagating right after login/navigation.
+  await delay(150);
+  res = await doFetch();
   if (res.status !== 401) return res;
 
   // Avoid refresh loop

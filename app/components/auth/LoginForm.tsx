@@ -30,6 +30,10 @@ export default function LoginForm() {
       if (res.ok) {
         const { role, needsAttendanceCheck } = data;
 
+        // Give the browser a moment to persist HttpOnly auth cookies before
+        // navigating into protected routes.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
         if (role === 'superadmin') {
           window.location.replace('/superadmin');
         } else if (role === 'admin') {
