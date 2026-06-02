@@ -84,6 +84,11 @@ export async function GET(
       );
     }
 
+    const ticket = row as typeof row & {
+      classification_flag: string | null;
+      classification_path: string | null;
+    };
+
     // Access control
     if (user.role === 'teknisi') {
       if (row.teknisi_user_id !== user.id_user) {
@@ -156,8 +161,8 @@ export async function GET(
       tipeOnt: row.tipe_ont,
       onuRx: row.onu_rx,
       rkInformation: row.rk_information,
-      classificationFlag: row.classification_flag,
-      classificationPath: row.classification_path,
+      classificationFlag: ticket.classification_flag,
+      classificationPath: ticket.classification_path,
       lapul: row.lapul,
       gaul: row.gaul,
       tscResult: row.tsc_result,
