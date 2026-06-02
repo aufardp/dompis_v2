@@ -71,12 +71,10 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const correlationId = crypto.randomUUID();
-  const nonce = crypto.randomUUID();
   req.headers.set('x-correlation-id', correlationId);
 
-  function withHeaders(res: NextResponse): NextResponse {
+  function withCorrelation(res: NextResponse): NextResponse {
     res.headers.set('x-correlation-id', correlationId);
-    res.headers.set('x-nonce', nonce);
     return res;
   }
 
@@ -84,12 +82,12 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = path;
     url.search = '';
-    return withHeaders(applySecurityHeaders(NextResponse.redirect(url), nonce));
+    return withCorrelation(applySecurityHeaders(NextResponse.redirect(url)));
   }
 
   // API routes → just correlation + security headers, skip page auth
   if (pathname.startsWith('/api/')) {
-    return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
+    return withCorrelation(applySecurityHeaders(NextResponse.next()));
   }
 
   // 1. BYPASS — public / internal page paths
@@ -99,7 +97,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname === '/favicon.ico'
   ) {
-    return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
+    return withCorrelation(applySecurityHeaders(NextResponse.next()));
   }
 
   // 2. TOKEN CHECK
@@ -160,7 +158,7 @@ export async function middleware(req: NextRequest) {
     return safeRedirect(roleHome);
   }
 
-  return withHeaders(applySecurityHeaders(NextResponse.next(), nonce));
+  return withCorrelation(applySecurityHeaders(NextResponse.next()));
 }
 
 export const config = {
