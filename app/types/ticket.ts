@@ -58,6 +58,7 @@ export interface Ticket {
   alamat?: string | null;
 
   status: string;
+  statusDate?: string | null;
   status_update?: StatusUpdateValue | null;
   hasilVisit?: TicketVisitStatus;
 

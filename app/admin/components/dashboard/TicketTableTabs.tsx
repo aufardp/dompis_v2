@@ -36,7 +36,7 @@ interface TicketTableRow {
 }
 
 interface TicketTableTabsProps {
-  section: 'b2c' | 'b2b';
+  section: string;
   accentColor: string;
   mainTable: ReactNode;
   tickets: TicketTableRow[];

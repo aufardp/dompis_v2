@@ -501,6 +501,13 @@ function buildProjectionUpsert(
     if (statusResolution.closedAt !== undefined) {
       updateData.closed_at = statusResolution.closedAt;
     }
+  } else if (existing) {
+    if (existing.status_update !== undefined) {
+      updateData.status_update = existing.status_update;
+    }
+    if (existing.closed_at !== undefined) {
+      updateData.closed_at = existing.closed_at;
+    }
   }
 
   const newFlagging = computeFlaggingManja(raw.booking_date as string | null);

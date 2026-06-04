@@ -7,6 +7,7 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
 import TicketTable from './TicketTable';
+import TicketTableTabs from './TicketTableTabs';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -27,6 +28,7 @@ export default function ObsoleteBucketPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
+  const [validasiPage, setValidasiPage] = useState(1);
 
   const {
     tickets: pageTickets,
@@ -34,6 +36,9 @@ export default function ObsoleteBucketPage() {
     summary,
     loading,
     isRefreshing,
+    validasiTickets,
+    validasiCount,
+    validasiPagination,
   } = useDailyTicketPage({
     search: searchQuery,
     workzone: workzoneFilter || undefined,
@@ -41,6 +46,7 @@ export default function ObsoleteBucketPage() {
     operationalBucket: ['obsolete'],
     page,
     limit: 10,
+    validasiPage,
     includeValidasi: true,
   });
 
@@ -147,14 +153,34 @@ export default function ObsoleteBucketPage() {
             </div>
           </div>
 
-          <TicketTable
+          <TicketTableTabs
+            section='obsolete'
+            accentColor='#8b5cf6'
+            mainTable={
+              <TicketTable
+                tickets={tickets}
+                loading={loading}
+                isRefreshing={isRefreshing}
+                onAssign={onAssign}
+                pagination={pagination}
+                tableLabel='Obsolete Tickets'
+                tableSummary={tableSummary}
+              />
+            }
             tickets={tickets}
+            validasiTickets={validasiTickets}
+            totalCount={pagePagination?.total}
+            validasiTotalCount={validasiCount}
+            validasiPagination={{
+              currentPage: validasiPagination.currentPage,
+              totalPages: validasiPagination.totalPages,
+              total: validasiPagination.total,
+              limit: validasiPagination.limit,
+              onPageChange: setValidasiPage,
+            }}
             loading={loading}
             isRefreshing={isRefreshing}
             onAssign={onAssign}
-            pagination={pagination}
-            tableLabel='Obsolete Tickets'
-            tableSummary={tableSummary}
           />
         </div>
       </AdminLayout>

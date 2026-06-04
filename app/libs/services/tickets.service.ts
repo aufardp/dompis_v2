@@ -189,6 +189,7 @@ function mapTicket(t: any) {
     contactPhone: t.contact_phone,
     deviceName: t.device_name,
     status: t.status,
+    statusDate: t.status_date,
     status_update: (() => {
       const v = String(t.status_update ?? '')
         .trim()
@@ -573,6 +574,7 @@ export class TicketService {
           flagging_manja: true,
           guarantee_status: true,
           status_update: true,
+          status_date: true,
           status: true,
           worklog_summary: true,
           symptom: true,

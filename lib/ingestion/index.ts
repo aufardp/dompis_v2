@@ -1034,6 +1034,11 @@ async function processTable(
     });
   }
 
+  const wibOffset = 7 * 60 * 60 * 1000;
+  const wibNowMs = Date.now() + wibOffset;
+  const todayStart = new Date(wibNowMs).toISOString().slice(0, 10) + ' 00:00:00';
+  const tomorrowStart = new Date(wibNowMs + 86400000).toISOString().slice(0, 10) + ' 00:00:00';
+
   try {
     while (hasMore) {
       assertNotAborted(signal);
@@ -1045,14 +1050,20 @@ async function processTable(
                 offset: snapshotOffset,
                 orderBy: cursor.idColumn ?? cursor.columns[0]?.name ?? 'id',
                 columns: cursor.columns.map((c) => c.name),
+                createdAtColumn: cursor.createdAtColumn,
+                createdAtStart: todayStart,
+                createdAtEnd: tomorrowStart,
               })
             : fetchTableRowsByCursor(tableName, {
                 limit: DEFAULT_CHUNK_SIZE,
                 idColumn: cursor.idColumn,
                 modifiedColumn: cursor.modifiedColumn,
+                createdAtColumn: cursor.createdAtColumn,
                 lastCursorId: activeCursor.lastCursorId,
                 lastModifiedAt: activeCursor.lastModifiedAt,
                 columns: cursor.columns.map((c) => c.name),
+                createdAtStart: todayStart,
+                createdAtEnd: tomorrowStart,
               }),
         {
           retryMax: DEFAULT_RETRY_MAX,

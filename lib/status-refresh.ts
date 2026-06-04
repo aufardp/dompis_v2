@@ -310,6 +310,7 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
     INNER JOIN ticket_raw tr ON tr.incident = q.incident
     WHERE tr.sourceTable IS NOT NULL
       AND tr.isActive = TRUE
+      AND tr.importedAt >= ${todayWibDateForDb()}
       AND (
         tr.status IS NULL
         OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
@@ -335,6 +336,7 @@ async function seedRefreshState(limit: number): Promise<void> {
     WHERE tr.isActive = TRUE
       AND tr.incident IS NOT NULL
       AND tr.sourceTable IS NOT NULL
+      AND tr.importedAt >= ${todayWibDateForDb()}
       AND s.incident IS NULL
     LIMIT ${seedLimit}
   `,

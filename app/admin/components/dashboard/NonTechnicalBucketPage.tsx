@@ -7,6 +7,7 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
 import TicketTable from './TicketTable';
+import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 
 const AssignTechnicianModal = dynamic(
@@ -32,6 +33,7 @@ export default function NonTechnicalBucketPage() {
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string[]>([]);
   const [flaggingFilter, setFlaggingFilter] = useState<string[]>([]);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
+  const [validasiPage, setValidasiPage] = useState(1);
 
   const {
     tickets,
@@ -40,6 +42,9 @@ export default function NonTechnicalBucketPage() {
     loading,
     isRefreshing,
     ticketTypeOptions,
+    validasiTickets,
+    validasiCount,
+    validasiPagination,
   } = useDailyTicketPage({
     search: searchQuery,
     workzone: workzoneFilter || undefined,
@@ -51,6 +56,7 @@ export default function NonTechnicalBucketPage() {
     flagging: flaggingFilter,
     page,
     limit: 10,
+    validasiPage,
     includeValidasi: true,
   });
 
@@ -174,22 +180,42 @@ export default function NonTechnicalBucketPage() {
             />
           </div>
 
-          <TicketTable
+          <TicketTableTabs
+            section='non-technical'
+            accentColor='#e11d48'
+            mainTable={
+              <TicketTable
+                tickets={tickets}
+                loading={loading}
+                isRefreshing={isRefreshing}
+                onAssign={onAssign}
+                pagination={paginationConfig}
+                tableLabel='Non Technical Tickets'
+                tableSummary={tableSummary}
+                downloadFilters={{
+                  dept: 'all',
+                  operationalBucket: ['non_technical'],
+                  ticketType: ticketTypeFilter,
+                  statusUpdate: statusUpdateFilter,
+                  ticketStatus: ticketStatusFilter,
+                  flagging: flaggingFilter,
+                }}
+              />
+            }
             tickets={tickets}
+            validasiTickets={validasiTickets}
+            totalCount={pagination?.total}
+            validasiTotalCount={validasiCount}
+            validasiPagination={{
+              currentPage: validasiPagination.currentPage,
+              totalPages: validasiPagination.totalPages,
+              total: validasiPagination.total,
+              limit: validasiPagination.limit,
+              onPageChange: setValidasiPage,
+            }}
             loading={loading}
             isRefreshing={isRefreshing}
             onAssign={onAssign}
-            pagination={paginationConfig}
-            tableLabel='Non Technical Tickets'
-            tableSummary={tableSummary}
-            downloadFilters={{
-              dept: 'all',
-              operationalBucket: ['non_technical'],
-              ticketType: ticketTypeFilter,
-              statusUpdate: statusUpdateFilter,
-              ticketStatus: ticketStatusFilter,
-              flagging: flaggingFilter,
-            }}
           />
         </div>
       </AdminLayout>

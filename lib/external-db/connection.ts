@@ -161,6 +161,9 @@ export async function fetchTableRows(
     orderBy?: string;
     orderDirection?: 'ASC' | 'DESC';
     columns?: string[];
+    createdAtColumn?: string | null;
+    createdAtStart?: string | null;
+    createdAtEnd?: string | null;
   } = {}
 ): Promise<RowDataPacket[]> {
   const externalPool = getExternalPool();
@@ -170,14 +173,24 @@ export async function fetchTableRows(
   }
 
   const { limit = 1000, offset = 0, orderBy = 'id', orderDirection = 'ASC', columns } = options;
+  if (options.createdAtColumn) assertSafeIdentifier(options.createdAtColumn);
 
   const selectClause = columns && columns.length > 0
     ? (columns.forEach((c) => assertSafeIdentifier(c)), columns.map((c) => `\`${c}\``).join(', '))
     : '*';
 
-  const query = `SELECT ${selectClause} FROM \`${tableName}\` ORDER BY \`${orderBy}\` ${orderDirection} LIMIT ? OFFSET ?`;
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.createdAtColumn && options.createdAtStart && options.createdAtEnd) {
+    clauses.push(`\`${options.createdAtColumn}\` >= ? AND \`${options.createdAtColumn}\` < ?`);
+    params.push(options.createdAtStart, options.createdAtEnd);
+  }
+
+  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const query = `SELECT ${selectClause} FROM \`${tableName}\` ${whereClause} ORDER BY \`${orderBy}\` ${orderDirection} LIMIT ? OFFSET ?`;
   try {
-    const [rows] = await externalPool.query<RowDataPacket[]>(query, [limit, offset]);
+    const [rows] = await externalPool.query<RowDataPacket[]>(query, [...params, limit, offset]);
     return rows;
   } catch (error) {
     handleExternalQueryError(error);
@@ -226,6 +239,7 @@ export interface ExternalColumnInfo {
 export interface ExternalCursorDefinition {
   idColumn: string | null;
   modifiedColumn: string | null;
+  createdAtColumn: string | null;
   strategy: 'id_modified' | 'modified' | 'id' | 'snapshot';
   columns: ExternalColumnInfo[];
 }
@@ -309,9 +323,12 @@ export async function getExternalCursorDefinition(
   const modifiedColumn =
     modifiedCandidates.find((candidate) => names.has(candidate)) ?? null;
 
+  const createdAtColumn = names.has('created_at') ? 'created_at' : null;
+
   const definition: ExternalCursorDefinition = {
     idColumn,
     modifiedColumn,
+    createdAtColumn,
     strategy:
       idColumn && modifiedColumn
         ? 'id_modified'
@@ -336,14 +353,18 @@ export async function fetchTableRowsByCursor(
     limit: number;
     idColumn?: string | null;
     modifiedColumn?: string | null;
+    createdAtColumn?: string | null;
     lastCursorId?: string | null;
     lastModifiedAt?: Date | null;
     columns?: string[];
+    createdAtStart?: string | null;
+    createdAtEnd?: string | null;
   },
 ): Promise<RowDataPacket[]> {
   assertSafeIdentifier(tableName);
   if (options.idColumn) assertSafeIdentifier(options.idColumn);
   if (options.modifiedColumn) assertSafeIdentifier(options.modifiedColumn);
+  if (options.createdAtColumn) assertSafeIdentifier(options.createdAtColumn);
 
   const externalPool = getExternalPool();
   if (!externalPool) throw new Error('External DB pool not available');
@@ -355,6 +376,11 @@ export async function fetchTableRowsByCursor(
   const clauses: string[] = [];
   const params: unknown[] = [];
   const orderBy: string[] = [];
+
+  if (options.createdAtColumn && options.createdAtStart && options.createdAtEnd) {
+    clauses.push(`\`${options.createdAtColumn}\` >= ? AND \`${options.createdAtColumn}\` < ?`);
+    params.push(options.createdAtStart, options.createdAtEnd);
+  }
 
   if (options.modifiedColumn && options.lastModifiedAt) {
     if (options.idColumn && options.lastCursorId !== null && options.lastCursorId !== undefined) {

@@ -9,6 +9,7 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
 import TicketTableB2B from './TicketTableB2B';
+import TicketTableTabs from './TicketTableTabs';
 import type { Ticket } from '@/app/types/ticket';
 
 const AssignTechnicianModal = dynamic(
@@ -84,6 +85,7 @@ export default function TicketManagementGroupPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [validasiPage, setValidasiPage] = useState(1);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
@@ -95,6 +97,7 @@ export default function TicketManagementGroupPage({
     ticketGroup: [groupKey],
     page,
     limit: 10,
+    validasiPage,
   });
 
   const handleSearch = useCallback((query: string) => {
@@ -177,23 +180,43 @@ export default function TicketManagementGroupPage({
             </div>
           </div>
 
-          <TicketTableB2B
+          <TicketTableTabs
+            section={groupKey}
+            accentColor='#3b82f6'
+            mainTable={
+              <TicketTableB2B
+                tickets={pageData.tickets}
+                tableSummary={tableSummary}
+                loading={pageData.loading}
+                isRefreshing={pageData.isRefreshing}
+                onAssign={handleAssignClick}
+                downloadFilters={{
+                  dept: 'b2b',
+                  ticketGroup: [groupKey],
+                }}
+                pagination={{
+                  currentPage: pageData.pagination.currentPage,
+                  totalPages: pageData.pagination.totalPages,
+                  total: pageData.pagination.total,
+                  limit: pageData.pagination.limit,
+                  onPageChange: setPage,
+                }}
+              />
+            }
             tickets={pageData.tickets}
-            tableSummary={tableSummary}
+            validasiTickets={pageData.validasiTickets}
+            totalCount={pageData.pagination.total}
+            validasiTotalCount={pageData.validasiCount}
+            validasiPagination={{
+              currentPage: pageData.validasiPagination.currentPage,
+              totalPages: pageData.validasiPagination.totalPages,
+              total: pageData.validasiPagination.total,
+              limit: pageData.validasiPagination.limit,
+              onPageChange: setValidasiPage,
+            }}
             loading={pageData.loading}
             isRefreshing={pageData.isRefreshing}
             onAssign={handleAssignClick}
-            downloadFilters={{
-              dept: 'b2b',
-              ticketGroup: [groupKey],
-            }}
-            pagination={{
-              currentPage: pageData.pagination.currentPage,
-              totalPages: pageData.pagination.totalPages,
-              total: pageData.pagination.total,
-              limit: pageData.pagination.limit,
-              onPageChange: setPage,
-            }}
           />
         </div>
       </AdminLayout>

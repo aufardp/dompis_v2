@@ -1095,9 +1095,9 @@ export class DailyTicketService {
   }
 
   private static buildValidasiBaseWhere(
-    _where: Record<string, any>,
+    where: Record<string, any>,
   ): Prisma.ticketWhereInput | null {
-    return null;
+    return where;
   }
 
   private static buildMainTableWhere(

@@ -9,6 +9,7 @@ import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
 import TicketTable from './TicketTable';
 import TicketTableB2B from './TicketTableB2B';
+import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
 
@@ -244,6 +245,8 @@ export default function TicketManagementBucketPage({
   const [extraWorkboardPage, setExtraWorkboardPage] = useState(1);
   const [b2cPage, setB2cPage] = useState(1);
   const [b2bPage, setB2bPage] = useState(1);
+  const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
+  const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<string[]>([]);
   const [b2cHasilVisitFilter, setB2cHasilVisitFilter] = useState<string[]>([]);
   const [b2cTicketStatusFilter, setB2cTicketStatusFilter] = useState<string[]>(
@@ -279,6 +282,7 @@ export default function TicketManagementBucketPage({
     flagging: b2cFlaggingFilter,
     page: b2cPage,
     limit: 10,
+    validasiPage: b2cValidasiPage,
     enabled: deptView !== 'b2b',
   });
 
@@ -291,6 +295,7 @@ export default function TicketManagementBucketPage({
     flagging: b2bFlaggingFilter,
     page: b2bPage,
     limit: 10,
+    validasiPage: b2bValidasiPage,
     enabled: deptView !== 'b2c',
   });
 
@@ -691,30 +696,50 @@ export default function TicketManagementBucketPage({
                 items={b2cPageData.ticketTypeOptions}
                 activeKeys={b2cTicketTypeFilter}
               />
-              <TicketTable
+              <TicketTableTabs
+                section='b2c'
+                accentColor='#10b981'
+                mainTable={
+                  <TicketTable
+                    tickets={b2cPageData.tickets}
+                    tableSummary={b2cPageData.summary}
+                    loading={b2cPageData.loading}
+                    isRefreshing={b2cPageData.isRefreshing}
+                    onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
+                    pagination={{
+                      currentPage: b2cPageData.pagination.currentPage,
+                      totalPages: b2cPageData.pagination.totalPages,
+                      total: b2cPageData.pagination.total,
+                      limit: b2cPageData.pagination.limit,
+                      onPageChange: setB2cPage,
+                    }}
+                    downloadFilters={{
+                      dept: 'b2c',
+                      ticketType: b2cTicketTypeFilter,
+                      statusUpdate: b2cHasilVisitFilter,
+                      ticketStatus: b2cTicketStatusFilter,
+                      flagging: b2cFlaggingFilter,
+                      operationalBucket,
+                      regulerOnly,
+                      anomalyBucket,
+                      excludeSymptom: extraWorkboard?.symptom,
+                    }}
+                  />
+                }
                 tickets={b2cPageData.tickets}
-                tableSummary={b2cPageData.summary}
+                validasiTickets={b2cPageData.validasiTickets}
+                totalCount={b2cPageData.pagination.total}
+                validasiTotalCount={b2cPageData.validasiCount}
+                validasiPagination={{
+                  currentPage: b2cPageData.validasiPagination.currentPage,
+                  totalPages: b2cPageData.validasiPagination.totalPages,
+                  total: b2cPageData.validasiPagination.total,
+                  limit: b2cPageData.validasiPagination.limit,
+                  onPageChange: setB2cValidasiPage,
+                }}
                 loading={b2cPageData.loading}
                 isRefreshing={b2cPageData.isRefreshing}
                 onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
-                pagination={{
-                  currentPage: b2cPageData.pagination.currentPage,
-                  totalPages: b2cPageData.pagination.totalPages,
-                  total: b2cPageData.pagination.total,
-                  limit: b2cPageData.pagination.limit,
-                  onPageChange: setB2cPage,
-                }}
-                downloadFilters={{
-                  dept: 'b2c',
-                  ticketType: b2cTicketTypeFilter,
-                  statusUpdate: b2cHasilVisitFilter,
-                  ticketStatus: b2cTicketStatusFilter,
-                  flagging: b2cFlaggingFilter,
-                  operationalBucket,
-                  regulerOnly,
-                  anomalyBucket,
-                  excludeSymptom: extraWorkboard?.symptom,
-                }}
               />
             </div>
           )}
@@ -747,30 +772,50 @@ export default function TicketManagementBucketPage({
                 items={b2bPageData.ticketTypeOptions}
                 activeKeys={b2bTicketTypeFilter}
               />
-              <TicketTableB2B
+              <TicketTableTabs
+                section='b2b'
+                accentColor='#3b82f6'
+                mainTable={
+                  <TicketTableB2B
+                    tickets={b2bPageData.tickets}
+                    tableSummary={b2bPageData.summary}
+                    loading={b2bPageData.loading}
+                    isRefreshing={b2bPageData.isRefreshing}
+                    onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
+                    pagination={{
+                      currentPage: b2bPageData.pagination.currentPage,
+                      totalPages: b2bPageData.pagination.totalPages,
+                      total: b2bPageData.pagination.total,
+                      limit: b2bPageData.pagination.limit,
+                      onPageChange: setB2bPage,
+                    }}
+                    downloadFilters={{
+                      dept: 'b2b',
+                      ticketType: b2bTicketTypeFilter,
+                      statusUpdate: b2bHasilVisitFilter,
+                      ticketStatus: b2bTicketStatusFilter,
+                      flagging: b2bFlaggingFilter,
+                      operationalBucket,
+                      regulerOnly,
+                      anomalyBucket,
+                      excludeSymptom: extraWorkboard?.symptom,
+                    }}
+                  />
+                }
                 tickets={b2bPageData.tickets}
-                tableSummary={b2bPageData.summary}
+                validasiTickets={b2bPageData.validasiTickets}
+                totalCount={b2bPageData.pagination.total}
+                validasiTotalCount={b2bPageData.validasiCount}
+                validasiPagination={{
+                  currentPage: b2bPageData.validasiPagination.currentPage,
+                  totalPages: b2bPageData.validasiPagination.totalPages,
+                  total: b2bPageData.validasiPagination.total,
+                  limit: b2bPageData.validasiPagination.limit,
+                  onPageChange: setB2bValidasiPage,
+                }}
                 loading={b2bPageData.loading}
                 isRefreshing={b2bPageData.isRefreshing}
                 onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
-                pagination={{
-                  currentPage: b2bPageData.pagination.currentPage,
-                  totalPages: b2bPageData.pagination.totalPages,
-                  total: b2bPageData.pagination.total,
-                  limit: b2bPageData.pagination.limit,
-                  onPageChange: setB2bPage,
-                }}
-                downloadFilters={{
-                  dept: 'b2b',
-                  ticketType: b2bTicketTypeFilter,
-                  statusUpdate: b2bHasilVisitFilter,
-                  ticketStatus: b2bTicketStatusFilter,
-                  flagging: b2bFlaggingFilter,
-                  operationalBucket,
-                  regulerOnly,
-                  anomalyBucket,
-                  excludeSymptom: extraWorkboard?.symptom,
-                }}
               />
             </div>
           )}
