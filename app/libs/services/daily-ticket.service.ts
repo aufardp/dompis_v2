@@ -1916,20 +1916,34 @@ export class DailyTicketService {
     const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
     const todayWib = format(wibNow, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
     const currentHourWib = Number(format(wibNow, 'H', { timeZone: 'Asia/Jakarta' }));
+    const yesterdayWib = format(
+      new Date(wibNow.getTime() - 86400000),
+      'yyyy-MM-dd',
+      { timeZone: 'Asia/Jakarta' },
+    );
 
-    const fetchRows = (where: Record<string, any>) =>
-      prisma.ticket.findMany({
+    const fetchRows = (where: Record<string, any>) => {
+      const andArray = [
+        { reported_date: { not: null } },
+        {
+          OR: [
+            { reported_date: { startsWith: yesterdayWib } },
+            { reported_date: { startsWith: todayWib } },
+          ],
+        },
+        ...(where.AND || []),
+      ];
+      const { AND: _omit, ...rest } = where;
+      return prisma.ticket.findMany({
         where: {
-          ...where,
-          reported_date: {
-            not: null,
-            startsWith: todayWib,
-          },
+          ...rest,
+          AND: andArray,
         },
         select: {
           reported_date: true,
         },
       });
+    };
 
     let rows = await fetchRows(scopedWhere);
     if (rows.length === 0) {
@@ -1942,13 +1956,17 @@ export class DailyTicketService {
       const rawReportedDate = row.reported_date?.trim();
       if (!rawReportedDate) continue;
 
-      const datePart = rawReportedDate.slice(0, 10);
-      if (datePart !== todayWib) continue;
+      const parsed = new Date(rawReportedDate);
+      if (isNaN(parsed.getTime())) continue;
 
-      const hour = Number(rawReportedDate.slice(11, 13));
-      if (!Number.isFinite(hour) || hour < 0 || hour > currentHourWib) continue;
+      const zoned = toZonedTime(parsed, 'Asia/Jakarta');
+      const wibDate = format(zoned, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
+      if (wibDate !== todayWib) continue;
 
-      counts[hour].count += 1;
+      const wibHour = Number(format(zoned, 'H', { timeZone: 'Asia/Jakarta' }));
+      if (!Number.isFinite(wibHour) || wibHour < 0 || wibHour > currentHourWib) continue;
+
+      counts[wibHour].count += 1;
     }
 
     return counts;

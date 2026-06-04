@@ -77,7 +77,7 @@ export default function HourlyChart({ workzone }: { workzone?: string }) {
           <ResponsiveContainer width='100%' height='100%'>
             <BarChart
               data={chartData}
-              margin={{ left: 8, right: 8, top: 6, bottom: 6 }}
+              margin={{ left: 24, right: 24, top: 6, bottom: 6 }}
             >
               <CartesianGrid stroke='rgba(148,163,184,0.10)' vertical={false} />
               <XAxis
