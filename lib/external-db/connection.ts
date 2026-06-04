@@ -161,9 +161,9 @@ export async function fetchTableRows(
     orderBy?: string;
     orderDirection?: 'ASC' | 'DESC';
     columns?: string[];
-    createdAtColumn?: string | null;
-    createdAtStart?: string | null;
-    createdAtEnd?: string | null;
+    dateFilterColumn?: string | null;
+    dateFilterStart?: string | null;
+    dateFilterEnd?: string | null;
   } = {}
 ): Promise<RowDataPacket[]> {
   const externalPool = getExternalPool();
@@ -173,7 +173,7 @@ export async function fetchTableRows(
   }
 
   const { limit = 1000, offset = 0, orderBy = 'id', orderDirection = 'ASC', columns } = options;
-  if (options.createdAtColumn) assertSafeIdentifier(options.createdAtColumn);
+  if (options.dateFilterColumn) assertSafeIdentifier(options.dateFilterColumn);
 
   const selectClause = columns && columns.length > 0
     ? (columns.forEach((c) => assertSafeIdentifier(c)), columns.map((c) => `\`${c}\``).join(', '))
@@ -182,9 +182,9 @@ export async function fetchTableRows(
   const clauses: string[] = [];
   const params: unknown[] = [];
 
-  if (options.createdAtColumn && options.createdAtStart && options.createdAtEnd) {
-    clauses.push(`\`${options.createdAtColumn}\` >= ? AND \`${options.createdAtColumn}\` < ?`);
-    params.push(options.createdAtStart, options.createdAtEnd);
+  if (options.dateFilterColumn && options.dateFilterStart && options.dateFilterEnd) {
+    clauses.push(`\`${options.dateFilterColumn}\` >= ? AND \`${options.dateFilterColumn}\` < ?`);
+    params.push(options.dateFilterStart, options.dateFilterEnd);
   }
 
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -353,18 +353,18 @@ export async function fetchTableRowsByCursor(
     limit: number;
     idColumn?: string | null;
     modifiedColumn?: string | null;
-    createdAtColumn?: string | null;
+    dateFilterColumn?: string | null;
     lastCursorId?: string | null;
     lastModifiedAt?: Date | null;
     columns?: string[];
-    createdAtStart?: string | null;
-    createdAtEnd?: string | null;
+    dateFilterStart?: string | null;
+    dateFilterEnd?: string | null;
   },
 ): Promise<RowDataPacket[]> {
   assertSafeIdentifier(tableName);
   if (options.idColumn) assertSafeIdentifier(options.idColumn);
   if (options.modifiedColumn) assertSafeIdentifier(options.modifiedColumn);
-  if (options.createdAtColumn) assertSafeIdentifier(options.createdAtColumn);
+  if (options.dateFilterColumn) assertSafeIdentifier(options.dateFilterColumn);
 
   const externalPool = getExternalPool();
   if (!externalPool) throw new Error('External DB pool not available');
@@ -377,9 +377,9 @@ export async function fetchTableRowsByCursor(
   const params: unknown[] = [];
   const orderBy: string[] = [];
 
-  if (options.createdAtColumn && options.createdAtStart && options.createdAtEnd) {
-    clauses.push(`\`${options.createdAtColumn}\` >= ? AND \`${options.createdAtColumn}\` < ?`);
-    params.push(options.createdAtStart, options.createdAtEnd);
+  if (options.dateFilterColumn && options.dateFilterStart && options.dateFilterEnd) {
+    clauses.push(`\`${options.dateFilterColumn}\` >= ? AND \`${options.dateFilterColumn}\` < ?`);
+    params.push(options.dateFilterStart, options.dateFilterEnd);
   }
 
   if (options.modifiedColumn && options.lastModifiedAt) {

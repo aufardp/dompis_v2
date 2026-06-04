@@ -4,7 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { getOrSetCache } from '@/lib/cache';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
-import { toWibDateString } from '@/lib/timezone';
+import { nowWib, toWibDateString } from '@/lib/timezone';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
 
@@ -61,7 +61,7 @@ function calculateHours(reportedDate: string | null): number | null {
   if (!reportedDate) return null;
   const reported = new Date(reportedDate);
   if (isNaN(reported.getTime())) return null;
-  return (Date.now() - reported.getTime()) / 3_600_000;
+  return (nowWib().getTime() - reported.getTime()) / 3_600_000;
 }
 
 function bucketStandard(hours: number | null): number {
@@ -77,7 +77,7 @@ function bucketStandard(hours: number | null): number {
 function bucketManja(row: { flagging_manja: string | null; reported_date: string | null }): number {
   if (row.flagging_manja === 'EXPIRED') return 3;
   if (!row.reported_date) return 3;
-  const days = (Date.now() - new Date(row.reported_date).getTime()) / 86_400_000;
+  const days = (nowWib().getTime() - new Date(row.reported_date).getTime()) / 86_400_000;
   if (days <= 1) return 0;
   if (days <= 2) return 1;
   if (days <= 3) return 2;

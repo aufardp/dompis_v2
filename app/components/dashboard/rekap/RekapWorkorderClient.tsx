@@ -215,20 +215,17 @@ export default function RekapWorkorderClient() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-(--text-muted)">Filter KPI</span>
-            {BUCKET_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setSelectedBucket(opt.value)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium border transition-colors ${
-                  selectedBucket === opt.value
-                    ? 'bg-(--text-primary) text-(--bg) border-(--text-primary)'
-                    : 'bg-(--surface) text-(--text-secondary) border-(--border) hover:bg-(--surface-2)'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+            <select
+              value={selectedBucket}
+              onChange={(e) => setSelectedBucket(e.target.value)}
+              className="rounded-md border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              {BUCKET_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           {data.timestamp && (
             <DataFreshnessBadge generatedAt={data.timestamp} onRefresh={() => refetch()} isRefreshing={isFetching} />

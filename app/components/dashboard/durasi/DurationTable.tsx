@@ -65,24 +65,40 @@ export default function DurationTable({ areas, totals, buckets, showTotal }: Dur
             const isExpanded = expandedAreas.has(area.name);
             return (
               <Fragment key={area.name}>
-                <tr>
-                  <td
-                    colSpan={bucketCount + (showTotal ? 2 : 1)}
-                    className="bg-(--surface-2) px-4 py-1 border-l-4 border-blue-500 cursor-pointer select-none"
-                    onClick={() => toggleArea(area.name)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold tracking-widest uppercase text-(--text-muted)">{area.name}</span>
-                      <ChevronDown
-                        size={14}
-                        className={clsx(
-                          'text-(--text-muted) transition-transform duration-200',
-                          isExpanded && 'rotate-180',
-                        )}
-                      />
-                    </div>
-                  </td>
-                </tr>
+                {(() => {
+                  const areaCounts = area.sas.reduce(
+                    (acc, sa) => sa.counts.map((c, i) => acc[i] + c),
+                    new Array<number>(bucketCount).fill(0),
+                  );
+                  const areaTotal = areaCounts.reduce((s, v) => s + v, 0);
+                  return (
+                    <tr
+                      className="bg-(--surface-2) border-l-4 border-blue-500 cursor-pointer select-none"
+                      onClick={() => toggleArea(area.name)}
+                    >
+                      <td className="sticky left-0 z-10 bg-(--surface-2) px-3 py-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold tracking-widest uppercase text-(--text-muted)">{area.name}</span>
+                          <ChevronDown
+                            size={14}
+                            className={clsx(
+                              'text-(--text-muted) transition-transform duration-200',
+                              isExpanded && 'rotate-180',
+                            )}
+                          />
+                        </div>
+                      </td>
+                      {areaCounts.map((count, idx) => (
+                        <DurationCell key={`area-${area.name}-${idx}`} value={count} bucketIndex={idx} totalBuckets={bucketCount} />
+                      ))}
+                      {showTotal && (
+                        <td className={`px-2 py-0.5 text-center font-mono text-xs font-bold ${areaTotal > 0 ? 'bg-red-800 text-white' : ''}`}>
+                          {areaTotal > 0 ? areaTotal : ''}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })()}
                 {isExpanded && area.sas.map((sa) => {
                   const saTotal = sa.counts.reduce((s, v) => s + v, 0);
                   return (

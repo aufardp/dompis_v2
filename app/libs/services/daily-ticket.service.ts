@@ -1094,16 +1094,38 @@ export class DailyTicketService {
     return Number(rows[0]?.total ?? 0);
   }
 
+  private static buildValidasiCondition(): Prisma.ticketWhereInput {
+    return {
+      status: { notIn: [...CLOSE_STATUS_VALUES] },
+      OR: [
+        { worklog_summary: { contains: 'Tech Closed' } },
+        { status_update: 'close' },
+      ],
+    };
+  }
+
   private static buildValidasiBaseWhere(
     where: Record<string, any>,
   ): Prisma.ticketWhereInput | null {
-    return where;
+    return {
+      ...where,
+      AND: [
+        ...(where.AND ?? []),
+        this.buildValidasiCondition(),
+      ],
+    };
   }
 
   private static buildMainTableWhere(
     where: Record<string, any>,
   ): Prisma.ticketWhereInput {
-    return where as Prisma.ticketWhereInput;
+    return {
+      ...where,
+      AND: [
+        ...(where.AND ?? []),
+        { NOT: this.buildValidasiCondition() },
+      ],
+    };
   }
 
   private static withAdditionalWhere(
@@ -1120,48 +1142,22 @@ export class DailyTicketService {
   private static async countValidasiTickets(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<number> {
-    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
-      status_update: 'close',
-    });
-    const worklogWhere = this.withAdditionalWhere(
-      validasiBaseWhere,
-      { worklog_summary: 'Tech Closed' },
-      {
-        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
-      },
-    );
-
-    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
-    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT COUNT(*) AS total
-      FROM (
-        SELECT id_ticket
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${worklogSql}
-      ) AS validasi_ids
+      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+      WHERE ${sql}
     `;
     const sqlWithoutIndex = `
       SELECT COUNT(*) AS total
-      FROM (
-        SELECT id_ticket
-        FROM ticket
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket
-        FROM ticket
-        WHERE ${worklogSql}
-      ) AS validasi_ids
+      FROM ticket
+      WHERE ${sql}
     `;
 
     const rows = await queryRawWithOptionalIndex<Array<{ total: bigint | number }>>(
       sqlWithIndex,
       sqlWithoutIndex,
-      [...closeParams, ...worklogParams],
+      params,
     );
 
     return Number(rows[0]?.total ?? 0);
@@ -1225,35 +1221,15 @@ export class DailyTicketService {
   private static async countValidasiFlaggingSummary(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<Array<Record<string, unknown>>> {
-    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
-      status_update: 'close',
-    });
-    const worklogWhere = this.withAdditionalWhere(
-      validasiBaseWhere,
-      { worklog_summary: 'Tech Closed' },
-      {
-        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
-      },
-    );
-
-    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
-    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT
         SUM(CASE WHEN LOWER(COALESCE(t.guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
         SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
         SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
         SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-      FROM (
-        SELECT id_ticket
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${worklogSql}
-      ) AS validasi_ids
-      JOIN ticket t ON t.id_ticket = validasi_ids.id_ticket
+      FROM ticket t FORCE INDEX (idx_ticket_daily_validasi)
+      WHERE ${sql}
     `;
     const sqlWithoutIndex = `
       SELECT
@@ -1261,22 +1237,14 @@ export class DailyTicketService {
         SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
         SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
         SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-      FROM (
-        SELECT id_ticket
-        FROM ticket
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket
-        FROM ticket
-        WHERE ${worklogSql}
-      ) AS validasi_ids
-      JOIN ticket t ON t.id_ticket = validasi_ids.id_ticket
+      FROM ticket t
+      WHERE ${sql}
     `;
 
     return queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
       sqlWithIndex,
       sqlWithoutIndex,
-      [...closeParams, ...worklogParams],
+      params,
     );
   }
 
@@ -1284,44 +1252,18 @@ export class DailyTicketService {
     validasiBaseWhere: Prisma.ticketWhereInput,
     options: { sort: 'asc' | 'desc'; offset: number; limit: number },
   ): Promise<number[]> {
-    const closeWhere = this.withAdditionalWhere(validasiBaseWhere, {
-      status_update: 'close',
-    });
-    const worklogWhere = this.withAdditionalWhere(
-      validasiBaseWhere,
-      { worklog_summary: 'Tech Closed' },
-      {
-        OR: [{ status_update: null }, { status_update: { not: 'close' } }],
-      },
-    );
-
-    const [closeSql, closeParams] = buildSqlWhereClause(closeWhere);
-    const [worklogSql, worklogParams] = buildSqlWhereClause(worklogWhere);
+    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
-      SELECT id_ticket
-      FROM (
-        SELECT id_ticket, reported_date
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket, reported_date
-        FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-        WHERE ${worklogSql}
-      ) AS validasi_rows
+      SELECT id_ticket, reported_date
+      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+      WHERE ${sql}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
       LIMIT ?, ?
     `;
     const sqlWithoutIndex = `
-      SELECT id_ticket
-      FROM (
-        SELECT id_ticket, reported_date
-        FROM ticket
-        WHERE ${closeSql}
-        UNION DISTINCT
-        SELECT id_ticket, reported_date
-        FROM ticket
-        WHERE ${worklogSql}
-      ) AS validasi_rows
+      SELECT id_ticket, reported_date
+      FROM ticket
+      WHERE ${sql}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
       LIMIT ?, ?
     `;
@@ -1329,7 +1271,7 @@ export class DailyTicketService {
     const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
       sqlWithIndex,
       sqlWithoutIndex,
-      [...closeParams, ...worklogParams, options.offset, options.limit],
+      [...params, options.offset, options.limit],
     );
 
     return rows.map((row) => row.id_ticket);
@@ -1407,31 +1349,13 @@ export class DailyTicketService {
       _count: { _all: true },
     });
 
-    const [validasiCloseRows, validasiWorklogRows] = validasiBaseWhere
-      ? await Promise.all([
-          prisma.ticket.groupBy({
-            by: ['jenis_tiket_2'],
-            where: this.withAdditionalWhere(validasiBaseWhere, {
-              status_update: 'close',
-            }),
-            _count: { _all: true },
-          }),
-          prisma.ticket.groupBy({
-            by: ['jenis_tiket_2'],
-            where: this.withAdditionalWhere(
-              validasiBaseWhere,
-              { worklog_summary: 'Tech Closed' },
-              {
-                OR: [
-                  { status_update: null },
-                  { status_update: { not: 'close' } },
-                ],
-              },
-            ),
-            _count: { _all: true },
-          }),
-        ])
-      : [[], []];
+    const validasiRows = validasiBaseWhere
+      ? await prisma.ticket.groupBy({
+          by: ['jenis_tiket_2'],
+          where: validasiBaseWhere,
+          _count: { _all: true },
+        })
+      : [];
 
     const grouped = new Map<string, TicketTypeOption>();
 
@@ -1464,7 +1388,7 @@ export class DailyTicketService {
       if (status === 'close') item.close += count;
     }
 
-    for (const row of [...validasiCloseRows, ...validasiWorklogRows]) {
+    for (const row of validasiRows) {
       const item = ensure(row.jenis_tiket_2);
       const count = row._count._all;
       item.total += count;
@@ -1539,7 +1463,7 @@ export class DailyTicketService {
         })
       : Promise.resolve([] as number[]);
     const summaryPromise = includeSummary
-      ? this.countStatuses(where)
+      ? this.countStatuses(mainTableWhere)
       : Promise.resolve({
           total: 0,
           open: 0,
@@ -1550,7 +1474,7 @@ export class DailyTicketService {
           unassigned: 0,
         });
     const flaggingSummaryPromise = includeSummary
-      ? this.countFlaggingSummary(where)
+      ? this.countFlaggingSummary(mainTableWhere, validasiBaseWhere)
       : Promise.resolve({
           ffgCount: 0,
           gamasCount: 0,
@@ -1659,11 +1583,13 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ) {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const validasiBaseWhere = this.buildValidasiBaseWhere(where);
 
     const [total, summary, flaggingSummary] = await Promise.all([
-      this.countTicketsBySql(where, 'idx_ticket_daily_board'),
-      this.countStatuses(where),
-      this.countFlaggingSummary(where),
+      this.countTicketsBySql(mainTableWhere, 'idx_ticket_daily_board'),
+      this.countStatuses(mainTableWhere),
+      this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
     ]);
 
     return {
@@ -1693,11 +1619,12 @@ export class DailyTicketService {
       });
 
       const summary = {} as BucketSummaryMap;
+      const mainTableWhere = this.buildMainTableWhere(where);
       for (const bucket of KPI_SUMMARY_BUCKETS) {
         if (bucket === 'kpi_customer' || bucket === 'non_technical') {
           const rows = await prisma.ticket.findMany({
             where: {
-              AND: [where, buildOperationalBucketWhere(bucket)],
+              AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
             },
             select: {
               status: true,
@@ -1711,7 +1638,6 @@ export class DailyTicketService {
           continue;
         }
 
-        const mainTableWhere = this.buildMainTableWhere(where);
         const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
         const selectSql = buildBucketSummarySelect(bucket);
         const sqlWithIndex = `
@@ -1786,7 +1712,8 @@ export class DailyTicketService {
       applyStatusUpdateWhere(where, p0.statusUpdate);
     }
 
-    return this.countStatuses(where);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    return this.countStatuses(mainTableWhere);
   }
 
   /**
@@ -2034,7 +1961,8 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ): Promise<Array<{ symptom: string; count: number }>> {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
-    const [sqlWhere, params] = buildSqlWhereClause(where);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
     const sql = `
       SELECT
         symptom_clean,

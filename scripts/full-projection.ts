@@ -128,8 +128,8 @@ function buildUpsertData(
     pending_reason: raw.pending_reason,
     jenis_tiket_1: jenisTiket1,
     jenis_tiket_2: jenisTiket2,
-    status: raw.status,
-    status_date: raw.status_date,
+    ...(raw.status != null ? { status: raw.status } : {}),
+    ...(raw.status_date != null ? { status_date: raw.status_date } : {}),
   };
 
   const updateData = { ...base };
