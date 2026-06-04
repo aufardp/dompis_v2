@@ -31,7 +31,7 @@ export default function TopGaulList({
           </div>
         </div>
         <div className="font-dm-sans mt-1 text-xs text-(--text-muted)">
-          Service numbers with repeat incidents within 30 days
+          Service numbers with repeat incidents within 60 days
         </div>
       </div>
 

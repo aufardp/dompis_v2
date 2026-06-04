@@ -1,6 +1,7 @@
 // app/services/ticket.service.ts
 
 import prisma from '@/app/libs/prisma';
+import { Prisma } from '@prisma/client';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import {
   getWorkzonesForUser,
@@ -654,6 +655,49 @@ export class TicketService {
       _count: { _all: true },
     });
 
+    // --- WORKZONE FILTER for raw SQL queries ---
+    const workzoneFilter = await (async (): Promise<{
+      gaul: Prisma.Sql;
+      lapul: Prisma.Sql;
+      skip: boolean;
+    }> => {
+      const noAccess = { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: true };
+
+      if (role === 'superadmin' || role === 'super_admin') {
+        if (filters?.workzone) {
+          const eq = Prisma.sql`= ${filters.workzone}`;
+          return {
+            gaul: Prisma.sql`AND t1.workzone ${eq}`,
+            lapul: Prisma.sql`AND t.workzone ${eq}`,
+            skip: false,
+          };
+        }
+        return { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: false };
+      }
+
+      const userWorkzones = await getWorkzonesForUser(userId);
+      if (userWorkzones.length === 0) return noAccess;
+
+      if (filters?.workzone) {
+        if (userWorkzones.includes(filters.workzone)) {
+          const eq = Prisma.sql`= ${filters.workzone}`;
+          return {
+            gaul: Prisma.sql`AND t1.workzone ${eq}`,
+            lapul: Prisma.sql`AND t.workzone ${eq}`,
+            skip: false,
+          };
+        }
+        return noAccess;
+      }
+
+      const inClause = Prisma.sql`IN (${Prisma.join(userWorkzones)})`;
+      return {
+        gaul: Prisma.sql`AND t1.workzone ${inClause}`,
+        lapul: Prisma.sql`AND t.workzone ${inClause}`,
+        skip: false,
+      };
+    })();
+
     // --- QUERY 2: GAUL detection ---
     let gaulRows: Array<{
       service_no: string;
@@ -664,35 +708,38 @@ export class TicketService {
     }> = [];
     let gaulError = false;
 
-    try {
-      gaulRows = await prisma.$queryRaw`
-        SELECT
-          t1.service_no,
-          COUNT(DISTINCT t1.incident) AS occurrences,
-          t1.workzone,
-          MAX(t1.incident) AS last_incident,
-          MAX(t1.reported_date) AS last_date
-        FROM ticket t1
-        WHERE t1.service_no IS NOT NULL
-          AND t1.service_no != ''
-          AND t1.service_no != 'NN'
-          AND t1.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
-          AND t1.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
-          AND EXISTS (
-            SELECT 1 FROM ticket t2
-            WHERE t2.service_no = t1.service_no
-              AND t2.incident != t1.incident
-              AND ABS(DATEDIFF(t2.reported_date, t1.reported_date)) <= 30
-              AND t2.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
-              AND t2.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
-          )
-        GROUP BY t1.service_no, t1.workzone
-        ORDER BY occurrences DESC
-        LIMIT 100
-      `;
-      gaulRows = gaulRows.filter(r => r.service_no !== 'NN');
-    } catch {
-      gaulError = true;
+    if (!workzoneFilter.skip) {
+      try {
+        gaulRows = await prisma.$queryRaw`
+          SELECT
+            t1.service_no,
+            COUNT(DISTINCT t1.incident) AS occurrences,
+            t1.workzone,
+            MAX(t1.incident) AS last_incident,
+            MAX(t1.reported_date) AS last_date
+          FROM ticket t1
+          WHERE t1.service_no IS NOT NULL
+            AND t1.service_no != ''
+            AND t1.service_no != 'NN'
+            AND t1.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
+            AND t1.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
+            ${workzoneFilter.gaul}
+            AND EXISTS (
+              SELECT 1 FROM ticket t2
+              WHERE t2.service_no = t1.service_no
+                AND t2.incident != t1.incident
+                AND ABS(DATEDIFF(t2.reported_date, t1.reported_date)) <= 60
+                AND t2.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
+                AND t2.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
+            )
+          GROUP BY t1.service_no, t1.workzone
+          ORDER BY occurrences DESC
+          LIMIT 100
+        `;
+        gaulRows = gaulRows.filter(r => r.service_no !== 'NN');
+      } catch {
+        gaulError = true;
+      }
     }
 
     // --- QUERY 3: LAPUL detection ---
@@ -704,25 +751,28 @@ export class TicketService {
     }> = [];
     let lapulError = false;
 
-    try {
-      lapulRows = await prisma.$queryRaw`
-        SELECT
-          tr.incident,
-          COUNT(*) AS occurrences,
-          t.workzone,
-          MIN(tr.importedAt) AS first_date
-        FROM ticket_raw tr
-        INNER JOIN ticket t ON t.incident = tr.incident
-        WHERE tr.importedAt >= ${rangeFrom}
-          AND tr.importedAt <= ${rangeTo}
-        GROUP BY tr.incident, t.workzone
-        HAVING COUNT(*) > 1
-          AND DATEDIFF(MAX(tr.importedAt), MIN(tr.importedAt)) <= 30
-        ORDER BY occurrences DESC
-        LIMIT 100
-      `;
-    } catch {
-      lapulError = true;
+    if (!workzoneFilter.skip) {
+      try {
+        lapulRows = await prisma.$queryRaw`
+          SELECT
+            tr.incident,
+            COUNT(*) AS occurrences,
+            t.workzone,
+            MIN(tr.importedAt) AS first_date
+          FROM ticket_raw tr
+          INNER JOIN ticket t ON t.incident = tr.incident
+          WHERE tr.importedAt >= ${rangeFrom}
+            AND tr.importedAt <= ${rangeTo}
+            ${workzoneFilter.lapul}
+          GROUP BY tr.incident, t.workzone
+          HAVING COUNT(*) > 1
+            AND DATEDIFF(MAX(tr.importedAt), MIN(tr.importedAt)) <= 60
+          ORDER BY occurrences DESC
+          LIMIT 100
+        `;
+      } catch {
+        lapulError = true;
+      }
     }
 
     // --- APPLICATION LAYER PROCESSING ---

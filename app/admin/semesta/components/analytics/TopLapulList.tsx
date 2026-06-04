@@ -31,7 +31,7 @@ export default function TopLapulList({
           </div>
         </div>
         <div className="font-dm-sans mt-1 text-xs text-(--text-muted)">
-          Incidents re-opened within 30 days
+          Incidents re-opened within 60 days
         </div>
       </div>
 
