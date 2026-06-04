@@ -9,7 +9,7 @@ import {
 } from '@/lib/classify-jenis-vlookup';
 import { recordProjectionMetric, setProjectionStatus } from '@/lib/sync-metrics/metrics';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
-import { isTicketClosed, normalizeStatusUpdate } from '@/app/libs/ticket-utils';
+import { isTicketClosed, normalizeStatusUpdate, CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 
@@ -98,7 +98,8 @@ export function resolveProjectionStatusUpdate(
     return { protected: true };
   }
 
-  const isExternalClosed = external === 'close' || external === 'closed';
+  const isExternalClosed = external === 'close' || external === 'closed'
+    || CLOSE_STATUS_VALUES.some(s => s.toLowerCase() === external);
   const isUnassigned = !teknisiUserId;
 
   if (isExternalClosed && isUnassigned) {
