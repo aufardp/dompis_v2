@@ -794,43 +794,27 @@ export class DailyTicketService {
     where: Record<string, any>,
     tx?: Prisma.TransactionClient,
   ) {
-    const today = todayWibDateForDb();
     const { start: todayStart } = getTodayWibRange();
     
     where.AND = [
       ...(where.AND ?? []),
       {
         OR: [
-          // Active tickets synced today (not closed)
+          // Non-closed tickets: show all dates (no sync_date restriction)
+          { status: { notIn: [...CLOSE_STATUS_VALUES] } },
+          // Closed tickets: show only if closed today, gone tomorrow
           {
             AND: [
-              { sync_date: today },
-              { status: { not: 'closed' } },
-            ],
-          },
-          // Tickets closed today (closed_at >= today start in WIB)
-          {
-            AND: [
-              { sync_date: today },
-              { status: 'closed' },
+              { status: { in: [...CLOSE_STATUS_VALUES] } },
               { closed_at: { gte: todayStart } },
             ],
           },
-          // Tickets with status_update = 'close' AND status = 'closed' synced today
-          // (newly closed via Dompis workflow, visible today then gone tomorrow)
-          {
-            AND: [
-              { sync_date: today },
-              { status_update: 'close' },
-              { status: 'closed' },
-            ],
-          },
-          // Carry-over with pending_dompis (not yet closed)
+          // Carry-over with pending_dompis (not yet closed via Dompis)
           {
             AND: [
               { pending_dompis: { not: null } },
               { pending_dompis: { not: '' } },
-              { status: { not: 'closed' } },
+              { status: { notIn: [...CLOSE_STATUS_VALUES] } },
             ],
           },
         ],
@@ -934,9 +918,7 @@ export class DailyTicketService {
       ...(await this.buildWorkzoneWhere(effectiveRole, userId, selectedWorkzone)),
     };
 
-    if (!startDate && !endDate) {
-      await this.applyDailyTicketFilter(where);
-    }
+    await this.applyDailyTicketFilter(where);
 
     const searchWhere = buildTicketSearchWhere(search, searchType);
     if (searchWhere) {

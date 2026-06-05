@@ -8,7 +8,6 @@ export default function SqmUpdatePage() {
       icon='🔄'
       tone='slate'
       operationalBucket={['sqm_update']}
-      showDateFilter
     />
   );
 }
