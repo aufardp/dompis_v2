@@ -501,8 +501,8 @@ model ticket_raw {
   rawPayload                  Json?
 
   @@index([customer_id, service_no, reported_date])
+  @@index([incident])
   @@index([isActive, lastSeenAt])
-  @@index([service_no])
   @@index([sourceHash])
   @@index([sourceTable, incident])
   @@index([sourceTable, sourceUpdatedAt])
