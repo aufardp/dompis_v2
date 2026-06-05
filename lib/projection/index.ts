@@ -25,10 +25,10 @@ const PROTECTED_STATES = new Set([
   'closed',
 ]);
 
-const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('PROJECTION_BATCH_SIZE', 500);
+const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('PROJECTION_BATCH_SIZE', 1000);
 const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
   'PROJECTION_WRITE_CHUNK_SIZE',
-  Math.min(DEFAULT_BATCH_SIZE, 100),
+  Math.min(DEFAULT_BATCH_SIZE, 1000),
 );
 const DEFAULT_CONCURRENCY = parsePositiveIntEnv('PROJECTION_CONCURRENCY', 2);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv('PROJECTION_RETRY_MAX', 3);
@@ -702,7 +702,7 @@ async function prepareProjectionItems(
   const syncDate = todayWibDateForDb();
   const items: ProjectionItem[] = [];
   for (let i = 0; i < validRawRecords.length; i++) {
-    if (i > 0 && i % 100 === 0) {
+    if (i > 0 && i % 500 === 0) {
       await new Promise((resolve) => setImmediate(resolve));
     }
     const raw = validRawRecords[i]!;
