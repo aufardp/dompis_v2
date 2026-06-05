@@ -793,30 +793,33 @@ export class DailyTicketService {
   static async applyDailyTicketFilter(
     where: Record<string, any>,
     tx?: Prisma.TransactionClient,
+    legacyFilter?: boolean,
   ) {
+    const today = todayWibDateForDb();
     const { start: todayStart } = getTodayWibRange();
-    
+
+    if (legacyFilter) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { AND: [{ sync_date: today }, { status: { not: 'closed' } }] },
+            { AND: [{ sync_date: today }, { status: 'closed' }, { closed_at: { gte: todayStart } }] },
+            { AND: [{ sync_date: today }, { status_update: 'close' }, { status: 'closed' }] },
+            { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { not: 'closed' } }] },
+          ],
+        },
+      ];
+      return;
+    }
+
     where.AND = [
       ...(where.AND ?? []),
       {
         OR: [
-          // Non-closed tickets: show all dates (no sync_date restriction)
           { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-          // Closed tickets: show only if closed today, gone tomorrow
-          {
-            AND: [
-              { status: { in: [...CLOSE_STATUS_VALUES] } },
-              { closed_at: { gte: todayStart } },
-            ],
-          },
-          // Carry-over with pending_dompis (not yet closed via Dompis)
-          {
-            AND: [
-              { pending_dompis: { not: null } },
-              { pending_dompis: { not: '' } },
-              { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-            ],
-          },
+          { AND: [{ status: { in: [...CLOSE_STATUS_VALUES] } }, { closed_at: { gte: todayStart } }] },
+          { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { notIn: [...CLOSE_STATUS_VALUES] } }] },
         ],
       },
     ];
@@ -918,7 +921,10 @@ export class DailyTicketService {
       ...(await this.buildWorkzoneWhere(effectiveRole, userId, selectedWorkzone)),
     };
 
-    await this.applyDailyTicketFilter(where);
+    const isLegacyKpi = Array.isArray(operationalBucket)
+      ? operationalBucket.includes('kpi_customer')
+      : operationalBucket === 'kpi_customer';
+    await this.applyDailyTicketFilter(where, undefined, isLegacyKpi);
 
     const searchWhere = buildTicketSearchWhere(search, searchType);
     if (searchWhere) {
