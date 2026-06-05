@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import clsx from 'clsx';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 import {
@@ -11,6 +11,14 @@ import {
 } from '@/app/config/ticket-management-nav';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
+
+const BUCKET_OPTIONS = [
+  { value: 'all', label: 'All KPI' },
+  ...TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => ({
+    value: item.key,
+    label: item.label,
+  })),
+];
 
 const CARD_TONES: Record<string, string> = {
   overview:
@@ -65,6 +73,7 @@ function FlaggingMiniGrid({ counts }: { counts?: FlaggingCounts }) {
 
 export default function TicketManagementOverviewPage() {
   const [workzone, setWorkzone] = useState('');
+  const [selectedBucket, setSelectedBucket] = useState('all');
   const { data, isLoading } = useTicketManagementOverview(
     true,
     workzone || undefined,
@@ -74,37 +83,70 @@ export default function TicketManagementOverviewPage() {
     setWorkzone(value);
   }, []);
 
-  const cardData = [
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[0], // KPI Customer
-      summary: data?.cards.kpiCustomer,
-    },
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[1], // KPI Proactive
-      summary: data?.cards.kpiProactive,
-    },
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[2], // Non KPI Unspec
-      summary: data?.cards.nonKpiUnspec,
-    },
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[3], // Non Technical
-      summary: data?.cards.nonTechnical,
-    },
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[4], // SQM Update
-      summary: data?.cards.sqmUpdate,
-    },
-    {
-      ...TICKET_MANAGEMENT_BUCKET_ITEMS[5], // Obsolete
-      summary: data?.cards.obsolete,
-    },
-  ];
-
-  const totalWorkboard = cardData.reduce(
-    (sum, card) => sum + (card.summary?.total ?? 0),
-    0,
+  const allCardData = useMemo(
+    () => [
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[0],
+        summary: data?.cards.kpiCustomer,
+      },
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[1],
+        summary: data?.cards.kpiProactive,
+      },
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[2],
+        summary: data?.cards.nonKpiUnspec,
+      },
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[3],
+        summary: data?.cards.nonTechnical,
+      },
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[4],
+        summary: data?.cards.sqmUpdate,
+      },
+      {
+        ...TICKET_MANAGEMENT_BUCKET_ITEMS[5],
+        summary: data?.cards.obsolete,
+      },
+    ],
+    [data],
   );
+
+  const visibleCardData = useMemo(
+    () =>
+      selectedBucket === 'all'
+        ? allCardData
+        : allCardData.filter((c) => c.key === selectedBucket),
+    [allCardData, selectedBucket],
+  );
+
+  const totalWorkboard = useMemo(
+    () => visibleCardData.reduce((sum, card) => sum + (card.summary?.total ?? 0), 0),
+    [visibleCardData],
+  );
+
+  const flaggingTotals = useMemo(() => {
+    if (selectedBucket === 'all') return data?.totals;
+    const s = visibleCardData[0]?.summary;
+    if (!s) return undefined;
+    return {
+      total: s.total,
+      b2c: 0,
+      b2b: 0,
+      unassigned: 0,
+      assigned: s.assigned,
+      close: s.close,
+      p1Count: s.p1Count,
+      pPlusCount: s.pPlusCount,
+      ffgCount: s.ffgCount,
+      gamasCount: s.gamasCount,
+    };
+  }, [data, selectedBucket, visibleCardData]);
+
+  const bucketSuffix = selectedBucket === 'all'
+    ? 'seluruh bucket'
+    : allCardData.find((c) => c.key === selectedBucket)?.label ?? selectedBucket;
 
   return (
     <AdminLayout
@@ -146,12 +188,14 @@ export default function TicketManagementOverviewPage() {
                   Total seluruh bucket
                 </span>
               </div>
-              <FlaggingMiniGrid counts={data?.totals} />
+              <FlaggingMiniGrid counts={flaggingTotals} />
             </div>
           </div>
 
-          <div className='grid gap-px border-t border-slate-200 bg-slate-200 md:grid-cols-6 dark:border-slate-800 dark:bg-slate-800'>
-            {cardData.map((card) => (
+          <div className='grid gap-px border-t border-slate-200 bg-slate-200 dark:border-slate-800 dark:bg-slate-800'
+            style={selectedBucket === 'all' ? { gridTemplateColumns: 'repeat(6, minmax(0, 1fr))' } : {}}
+          >
+            {visibleCardData.map((card) => (
               <div key={card.key} className='bg-white p-4 dark:bg-slate-950'>
                 <p className='text-[11px] font-bold tracking-[1.4px] text-slate-500 uppercase dark:text-slate-400'>
                   {card.label}
@@ -164,13 +208,35 @@ export default function TicketManagementOverviewPage() {
           </div>
         </div>
 
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div className='flex items-center gap-3'>
+            <label className='text-[11px] font-bold tracking-[1.4px] text-slate-500 uppercase dark:text-slate-400'>
+              KPI Filter
+            </label>
+            <select
+              value={selectedBucket}
+              onChange={(e) => setSelectedBucket(e.target.value)}
+              className='rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+            >
+              {BUCKET_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <span className='text-[11px] font-semibold text-slate-400'>
+            {bucketSuffix}
+          </span>
+        </div>
+
         <div className='space-y-4'>
-          <HourlyChart workzone={workzone || undefined} />
-          <SymptomChart workzone={workzone || undefined} />
+          <HourlyChart workzone={workzone || undefined} bucket={selectedBucket} />
+          <SymptomChart workzone={workzone || undefined} bucket={selectedBucket} />
         </div>
 
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'>
-          {cardData.map((card) => (
+          {visibleCardData.map((card) => (
             <Link
               key={card.key}
               href={card.path}

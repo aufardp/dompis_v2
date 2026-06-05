@@ -20,7 +20,7 @@ module.exports = {
         TICKETS_CACHE_TTL: '10',
         DASHBOARD_CACHE_TTL: '15',
         CACHE_MAX_BYTES: '4194304',
-        DAILY_EXPORT_MAX_ROWS: '10000',
+        DAILY_EXPORT_MAX_ROWS: '100000',
         TECH_PERFORMANCE_EXPORT_MAX_ROWS: '10000',
       },
       autorestart: true,

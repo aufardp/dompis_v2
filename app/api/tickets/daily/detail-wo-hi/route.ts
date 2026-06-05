@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     const page = toInt(searchParams.get('page'), 1);
     const limit = Math.min(toInt(searchParams.get('limit'), 100), 100);
 
-    const baseWhere = await DailyTicketService.buildDailyTicketWhere(
+    const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
       user.role, user.id_user, {
         dept: dept === 'all' ? undefined : dept as 'b2b' | 'b2c',
         search: search || undefined,
@@ -88,8 +88,9 @@ export async function GET(request: Request) {
         endDate: endDate || undefined,
       },
     );
+    const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
 
-    const total = await prisma.ticket.count({ where: baseWhere });
+    const total = await prisma.ticket.count({ where: mainWhere });
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const offset = (page - 1) * limit;
 
@@ -108,7 +109,7 @@ export async function GET(request: Request) {
     // Summary counts by status (using both status and status_update)
     const statusGroups = await prisma.ticket.groupBy({
       by: ['status', 'status_update'],
-      where: baseWhere,
+      where: mainWhere,
       _count: { _all: true },
     });
     let open = 0, assigned = 0, onProgress = 0, pending = 0, close = 0;
@@ -132,7 +133,7 @@ export async function GET(request: Request) {
     const summary = { total, open, assigned: assigned + onProgress + pending, close };
 
     const orderedTickets = await prisma.ticket.findMany({
-      where: baseWhere,
+      where: mainWhere,
       orderBy: { booking_date: 'desc' },
       skip: offset,
       take: limit,

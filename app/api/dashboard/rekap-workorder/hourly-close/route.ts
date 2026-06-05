@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const rateLimited = await enforceApiRateLimit(request, {
-      namespace: 'top-symptoms',
+      namespace: 'rekap-workorder-hourly-close',
       limit: 30,
       windowSeconds: 60,
     });
@@ -36,16 +36,15 @@ export async function GET(request: Request) {
       operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 
-    const data = await DailyTicketService.getTopSymptoms(
+    const data = await DailyTicketService.getHourlyCloseCounts(
       user.role,
       user.id_user,
-      10,
       filters,
     );
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message = getErrorMessage(error, 'Failed to fetch top symptoms');
+    const message = getErrorMessage(error, 'Failed to fetch hourly close counts');
     const status = getErrorStatus(error, 500);
     return NextResponse.json({ success: false, message }, { status });
   }

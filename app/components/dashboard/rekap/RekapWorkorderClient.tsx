@@ -8,6 +8,7 @@ import { Activity, CheckCircle2, Clock3, RefreshCw, Users } from 'lucide-react';
 import DataFreshnessBadge from '../DataFreshnessBadge';
 import RekapWorkorderTable from './RekapWorkorderTable';
 import RekapWorkorderCards from './RekapWorkorderCards';
+import RekapWorkorderHourlyClose from './RekapWorkorderHourlyClose';
 import RekapSkeleton from './RekapSkeleton';
 
 interface SegCount { open: number; close: number; }
@@ -301,6 +302,8 @@ export default function RekapWorkorderClient() {
           icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
         />
       </div>
+
+      <RekapWorkorderHourlyClose bucket={selectedBucket} />
 
       <div className="hidden xl:block">
         <RekapWorkorderTable rows={data.rows} timestamp={data.timestamp} />

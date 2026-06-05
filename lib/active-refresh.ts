@@ -48,6 +48,13 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+const REFRESH_CLOSE_STATUS = [
+  'CLOSED', 'Closed', 'closed',
+  'FINALCHECK', 'Finalcheck', 'finalcheck',
+  'MEDIACARE', 'Mediacare', 'mediacare',
+  'CLOSE', 'Close', 'close',
+];
+
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error('Active refresh aborted');
 }
@@ -110,7 +117,7 @@ async function estimateBacklog(today: Date): Promise<number | null> {
         )
         AND (
           t.status IS NULL
-          OR t.status NOT IN ('closed', 'Closed', 'CLOSED')
+          OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)})
           OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending')
           OR t.status_update IN ('OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
           OR (
@@ -159,43 +166,42 @@ async function finishRunLog(
   `;
 }
 
-async function fetchCandidateTicketIds(
-  offset: number,
+async function fetchNotSyncedToday(
+  lastTicketId: number | undefined,
   today: Date,
   limit: number,
 ): Promise<Array<{ id_ticket: number }>> {
-  const halfLimit = Math.ceil(limit / 2);
+  if (limit <= 0) return [];
 
-  const notSyncedToday = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
+  return prisma.$queryRaw<Array<{ id_ticket: number }>>`
     SELECT t.id_ticket
     FROM ticket t
-    WHERE t.sync_date IS NULL
-       OR t.sync_date < ${today}
+    WHERE (t.sync_date IS NULL OR t.sync_date < ${today})
+      ${lastTicketId === undefined ? Prisma.empty : Prisma.sql`AND t.id_ticket < ${lastTicketId}`}
     ORDER BY t.id_ticket DESC
-    LIMIT ${halfLimit}
-    OFFSET ${offset}
+    LIMIT ${limit}
   `;
+}
 
-  const activeOpen = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
-    SELECT t.id_ticket
+async function fetchActiveOpen(
+  lastSyncedAt: Date | undefined,
+  limit: number,
+): Promise<Array<{ id_ticket: number; synced_at: Date | null }>> {
+  if (limit <= 0) return [];
+
+  return prisma.$queryRaw<Array<{ id_ticket: number; synced_at: Date | null }>>`
+    SELECT t.id_ticket, t.synced_at
     FROM ticket t
     WHERE t.status_update IN ('open', 'assigned', 'on_progress', 'pending',
                               'OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
-      AND (t.status IS NULL OR t.status NOT IN ('closed', 'Closed', 'CLOSED'))
+      AND (t.status IS NULL OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)}))
+      ${lastSyncedAt === undefined ? Prisma.empty : Prisma.sql`AND (
+        t.synced_at < ${lastSyncedAt}
+        OR (t.synced_at IS NULL AND ${lastSyncedAt} IS NOT NULL)
+      )`}
     ORDER BY t.synced_at DESC
-    LIMIT ${halfLimit}
-    OFFSET ${offset}
+    LIMIT ${limit}
   `;
-
-  const seen = new Set<number>();
-  const results: Array<{ id_ticket: number }> = [];
-  for (const r of [...notSyncedToday, ...activeOpen]) {
-    if (!seen.has(r.id_ticket)) {
-      seen.add(r.id_ticket);
-      results.push(r);
-    }
-  }
-  return results.slice(0, limit);
 }
 
 async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
@@ -209,7 +215,7 @@ async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
       AND tr.isActive = TRUE
       AND (
         tr.status IS NULL
-        OR tr.status NOT IN ('closed', 'Closed', 'CLOSED')
+        OR tr.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)})
       )
   `;
 
@@ -313,35 +319,100 @@ export async function runActiveRefresh(
   await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
-    let offset = 0;
+    const CURSOR_KEY_TICKET = 'active-refresh:cursor:ticket';
+    const CURSOR_KEY_SYNCED = 'active-refresh:cursor:synced';
+    const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
+
+    let lastTicketId: number | undefined;
+    let lastSyncedAt: Date | undefined;
+    let exhausted = false;
+
+    if (isRedisReady()) {
+      try {
+        const [ticketRaw, syncedRaw] = await Promise.all([
+          redis.get(CURSOR_KEY_TICKET),
+          redis.get(CURSOR_KEY_SYNCED),
+        ]);
+        if (ticketRaw) {
+          const parsed = Number(ticketRaw);
+          if (Number.isFinite(parsed) && parsed > 0) lastTicketId = parsed;
+        }
+        if (syncedRaw) {
+          const parsed = new Date(syncedRaw);
+          if (!Number.isNaN(parsed.getTime())) lastSyncedAt = parsed;
+        }
+      } catch { /* fall through */ }
+    }
 
     while (
       result.scanned < DEFAULT_MAX_SCAN_PER_RUN &&
       !shouldStopForBudget(start)
     ) {
       assertNotAborted(signal);
-      const remainingScan = DEFAULT_MAX_SCAN_PER_RUN - result.scanned;
-      const rows = await fetchCandidateTicketIds(
-        offset,
-        today,
-        Math.min(effectiveBatchSize, remainingScan),
-      );
-      if (rows.length === 0) break;
+      const remaining = DEFAULT_MAX_SCAN_PER_RUN - result.scanned;
+      const halfLimit = Math.ceil(Math.min(effectiveBatchSize, remaining) / 2);
 
-      offset += rows.length;
-      result.scanned += rows.length;
-      const activeIds = await filterRawActiveTicketIds(
-        rows.map((row) => row.id_ticket),
-      );
+      const [unsyncedRows, openRows] = await Promise.all([
+        fetchNotSyncedToday(lastTicketId, today, halfLimit),
+        fetchActiveOpen(lastSyncedAt, halfLimit),
+      ]);
+
+      if (unsyncedRows.length === 0 && openRows.length === 0) {
+        exhausted = true;
+        break;
+      }
+
+      if (unsyncedRows.length > 0) {
+        lastTicketId = unsyncedRows[unsyncedRows.length - 1].id_ticket;
+      }
+      if (openRows.length > 0) {
+        const minSynced = openRows
+          .filter((r) => r.synced_at !== null)
+          .map((r) => r.synced_at as Date)
+          .sort((a, b) => b.getTime() - a.getTime())
+          .pop();
+        if (minSynced) lastSyncedAt = minSynced;
+      }
+
+      const allIds = [
+        ...new Set([
+          ...unsyncedRows.map((r) => r.id_ticket),
+          ...openRows.map((r) => r.id_ticket),
+        ]),
+      ];
+
+      result.scanned += allIds.length;
+
+      const activeIds = await filterRawActiveTicketIds(allIds);
 
       assertNotAborted(signal);
       if (shouldStopForBudget(start)) break;
       result.updated += await refreshTicketIds(activeIds, batchId);
-      offset = activeIds.length > 0 ? 0 : offset;
     }
 
     result.stoppedByBudget = shouldStopForBudget(start);
     result.durationMs = Date.now() - start;
+
+    if (isRedisReady()) {
+      try {
+        if (exhausted) {
+          await Promise.all([
+            redis.del(CURSOR_KEY_TICKET),
+            redis.del(CURSOR_KEY_SYNCED),
+          ]);
+        } else {
+          const multi = redis.multi();
+          if (lastTicketId !== undefined) {
+            multi.set(CURSOR_KEY_TICKET, String(lastTicketId), 'PX', CURSOR_TTL_MS);
+          }
+          if (lastSyncedAt !== undefined) {
+            multi.set(CURSOR_KEY_SYNCED, lastSyncedAt.toISOString(), 'PX', CURSOR_TTL_MS);
+          }
+          await multi.exec();
+        }
+      } catch { /* non-critical */ }
+    }
+
     await finishRunLog(batchId, 'success', result);
     await recordMetrics('success', result);
     if (result.updated > 0) {

@@ -5,6 +5,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
+import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,13 @@ export async function GET(request: Request) {
     ]);
 
     const { searchParams } = new URL(request.url);
+    const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
       dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
       workzone: searchParams.get('workzone') || undefined,
+      operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 
     const data = await DailyTicketService.getHourlyTicketCounts(

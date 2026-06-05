@@ -21,26 +21,31 @@ const ALL_HOURS = Array.from({ length: 24 }, (_, i) => ({
   count: 0,
 }));
 
-async function fetchHourlyTickets(workzone?: string) {
-  const params = new URLSearchParams();
-  if (workzone) params.set('workzone', workzone);
-  const url = params.toString()
-    ? `/api/dashboard/hourly-tickets?${params.toString()}`
-    : '/api/dashboard/hourly-tickets';
-
-  const res = await fetchWithAuth(url);
-  if (!res) throw new Error('No response');
-  const json = await res.json();
-  if (!json?.success) throw new Error(json?.message || 'Failed');
-  return json.data as Array<{ hour: number; count: number }>;
-}
-
-export default function HourlyChart({ workzone }: { workzone?: string }) {
+export default function HourlyChart({
+  workzone,
+  bucket,
+}: {
+  workzone?: string;
+  bucket?: string;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.dashboard.operations({
-      scopeVersion: `hourly-v2:${workzone || 'all'}`,
+      scopeVersion: `hourly:${workzone || 'all'}:${bucket || 'all'}`,
     }),
-    queryFn: () => fetchHourlyTickets(workzone),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (workzone) params.set('workzone', workzone);
+      if (bucket && bucket !== 'all') params.set('bucket', bucket);
+      const url = params.toString()
+        ? `/api/dashboard/hourly-tickets?${params.toString()}`
+        : '/api/dashboard/hourly-tickets';
+
+      const res = await fetchWithAuth(url);
+      if (!res) throw new Error('No response');
+      const json = await res.json();
+      if (!json?.success) throw new Error(json?.message || 'Failed');
+      return json.data as Array<{ hour: number; count: number }>;
+    },
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

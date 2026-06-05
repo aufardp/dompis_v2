@@ -1106,7 +1106,7 @@ export class DailyTicketService {
     };
   }
 
-  private static buildMainTableWhere(
+  static buildMainTableWhere(
     where: Record<string, any>,
   ): Prisma.ticketWhereInput {
     return {
@@ -1686,6 +1686,32 @@ export class DailyTicketService {
     return { all, b2c, b2b };
   }
 
+  static async buildDetailWoHiWhere(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<Record<string, any>> {
+    const [kpiCustomerWhere, nonKpiWhere] = await Promise.all([
+      this.buildDailyTicketWhere(role, userId, {
+        ...filters,
+        operationalBucket: ['kpi_customer'],
+      }),
+      this.buildDailyTicketWhere(role, userId, {
+        ...filters,
+        operationalBucket: undefined,
+      }),
+    ]);
+
+    const kpiCustomerBucketWhere = buildOperationalBucketWhere('kpi_customer');
+
+    return {
+      OR: [
+        kpiCustomerWhere,
+        { AND: [nonKpiWhere, { NOT: kpiCustomerBucketWhere }] },
+      ],
+    };
+  }
+
   /**
    * Daily Stats
    */
@@ -1926,6 +1952,16 @@ export class DailyTicketService {
       scopedWhere.AND = [...(scopedWhere.AND ?? []), deptSegmentWhere];
     }
 
+    const bucketKey = filters?.operationalBucket?.length === 1
+      ? filters.operationalBucket[0] as OperationalBucketKey
+      : null;
+    if (bucketKey) {
+      const bucketWhere = buildOperationalBucketWhere(bucketKey);
+      if (bucketWhere) {
+        scopedWhere.AND = [...(scopedWhere.AND ?? []), bucketWhere];
+      }
+    }
+
     const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
     const todayWib = format(wibNow, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
     const currentHourWib = Number(format(wibNow, 'H', { timeZone: 'Asia/Jakarta' }));
@@ -1985,6 +2021,48 @@ export class DailyTicketService {
     return counts;
   }
 
+  static async getHourlyCloseCounts(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<Array<{ hour: number; count: number }>> {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+    const { start, end } = getTodayWibRange();
+
+    const closeStatusSql = CLOSE_STATUS_VALUES.map((status) => `'${status}'`).join(', ');
+    const sql = `
+      SELECT
+        HOUR(closed_at) AS hour,
+        COUNT(*) AS count
+      FROM ticket
+      WHERE ${whereClause}
+        AND closed_at IS NOT NULL
+        AND closed_at >= ?
+        AND closed_at < ?
+        AND UPPER(TRIM(status)) IN (${closeStatusSql})
+      GROUP BY HOUR(closed_at)
+    `;
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
+      sql,
+      ...params,
+      start,
+      end,
+    );
+
+    const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
+    for (const row of rows) {
+      const hour = Number(row.hour);
+      const count = Number(row.count ?? 0);
+      if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
+      counts[hour].count = count;
+    }
+
+    return counts;
+  }
+
   static async getTopSymptoms(
     role: string,
     userId: number,
@@ -2012,5 +2090,194 @@ export class DailyTicketService {
     `;
     const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params);
     return rows.map((r) => ({ symptom: r.symptom_clean, count: Number(r.count) }));
+  }
+
+  static async getB2CBreakdown(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<{
+    summary: {
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
+    };
+    reguler: {
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
+    };
+    hvcGold: {
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
+    };
+    hvcPlatinum: {
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
+    };
+    hvcDiamond: {
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
+    };
+  }> {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const mainTableWhere = this.buildMainTableWhere(where);
+    const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
+    const rawBucket = filters?.operationalBucket?.[0];
+    const bucket = rawBucket ? normalizeOperationalBucketKey(rawBucket) : undefined;
+
+    const zero = () => ({
+      total: 0, open: 0, assigned: 0, close: 0,
+      customerCount: 0, sqmCount: 0, unspecCount: 0,
+      ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0,
+    });
+
+    const sql = `
+      SELECT
+        CASE
+          WHEN LOWER(customer_type) IN ('hvc_diamond','hvc diamond','diamond') THEN 'HVC_DIAMOND'
+          WHEN LOWER(customer_type) IN ('hvc_platinum','hvc platinum','platinum') THEN 'HVC_PLATINUM'
+          WHEN LOWER(customer_type) IN ('hvc_gold','hvc gold','gold') THEN 'HVC_GOLD'
+          WHEN LOWER(customer_type) IN ('reguler','regular') THEN 'REGULER'
+          ELSE 'OTHER'
+        END AS cust_type,
+        COUNT(*) AS total,
+        SUM(CASE WHEN LOWER(status_update) = 'open' THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN LOWER(status_update) = 'assigned' THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN LOWER(status_update) IN ('close','closed') THEN 1 ELSE 0 END) AS close,
+        SUM(CASE
+          WHEN jenis_tiket_2 IS NULL OR jenis_tiket_2 = ''
+            OR LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) IN ('reguler', 'regular', 'hvc')
+            OR LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) LIKE 'reguler-%'
+            OR LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) LIKE 'regular-%'
+            OR LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) LIKE 'hvc-%'
+          THEN 1 ELSE 0 END
+        ) AS customer_count,
+        SUM(CASE
+          WHEN LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) LIKE 'sqm%'
+          THEN 1 ELSE 0 END
+        ) AS sqm_count,
+        SUM(CASE
+          WHEN jenis_tiket_2 IS NOT NULL AND jenis_tiket_2 != ''
+            AND LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) NOT LIKE 'reguler-%'
+            AND LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) NOT LIKE 'regular-%'
+            AND LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) NOT LIKE 'hvc-%'
+            AND LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) NOT IN ('reguler', 'regular', 'hvc')
+            AND LOWER(TRIM(REPLACE(REPLACE(jenis_tiket_2, ' ', '-'), '_', '-'))) NOT LIKE 'sqm%'
+          THEN 1 ELSE 0 END
+        ) AS unspec_count,
+        SUM(CASE
+          WHEN LOWER(guarantee_status) = 'guarantee'
+          THEN 1 ELSE 0 END) AS ffg_count,
+        SUM(CASE
+          WHEN ticket_id_gamas IS NOT NULL
+            AND ticket_id_gamas != ''
+            AND ticket_id_gamas != '-'
+            AND ticket_id_gamas != '--'
+          THEN 1 ELSE 0 END) AS gamas_count,
+        SUM(CASE
+          WHEN LOWER(flagging_manja) = 'p1'
+          THEN 1 ELSE 0 END) AS p1_count,
+        SUM(CASE
+          WHEN LOWER(flagging_manja) IN ('p+', 'pplus')
+          THEN 1 ELSE 0 END) AS pplus_count
+      FROM ticket
+      WHERE ${sqlWhere}
+        AND customer_segment IN ('DCS', 'PL-TSEL')
+      GROUP BY cust_type
+    `;
+
+    console.log('[B2CBreakdown] SQL:', sql.replace(/\s+/g, ' '));
+    console.log('[B2CBreakdown] params:', JSON.stringify(params));
+
+    const rows = await prisma.$queryRawUnsafe<Array<{
+      cust_type: string;
+      total: bigint; open: bigint; assigned: bigint; close: bigint;
+      customer_count: bigint; sqm_count: bigint; unspec_count: bigint;
+      ffg_count: bigint; gamas_count: bigint; p1_count: bigint; pplus_count: bigint;
+    }>>(sql, ...params);
+
+    const mapRow = (r: typeof rows[number]) => ({
+      total: Number(r.total),
+      open: Number(r.open),
+      assigned: Number(r.assigned),
+      close: Number(r.close),
+      customerCount: Number(r.customer_count),
+      sqmCount: Number(r.sqm_count),
+      unspecCount: Number(r.unspec_count),
+      ffgCount: Number(r.ffg_count),
+      gamasCount: Number(r.gamas_count),
+      p1Count: Number(r.p1_count),
+      pPlusCount: Number(r.pplus_count),
+    });
+
+    let summary = zero();
+    const byType: Record<string, ReturnType<typeof mapRow>> = { OTHER: zero() };
+
+    for (const row of rows) {
+      const mapped = mapRow(row);
+      if (row.cust_type === 'OTHER') {
+        byType.OTHER = mapped;
+      } else {
+        byType[row.cust_type] = mapped;
+      }
+      summary = {
+        total: summary.total + mapped.total,
+        open: summary.open + mapped.open,
+        assigned: summary.assigned + mapped.assigned,
+        close: summary.close + mapped.close,
+        customerCount: summary.customerCount + mapped.customerCount,
+        sqmCount: summary.sqmCount + mapped.sqmCount,
+        unspecCount: summary.unspecCount + mapped.unspecCount,
+        ffgCount: summary.ffgCount + mapped.ffgCount,
+        gamasCount: summary.gamasCount + mapped.gamasCount,
+        p1Count: summary.p1Count + mapped.p1Count,
+        pPlusCount: summary.pPlusCount + mapped.pPlusCount,
+      };
+    }
+
+    function applyBucketCounts(
+      tier: { total: number; customerCount: number; sqmCount: number; unspecCount: number },
+    ): void {
+      switch (bucket) {
+        case 'kpi_customer':
+          tier.customerCount = tier.total;
+          tier.sqmCount = 0;
+          tier.unspecCount = 0;
+          break;
+        case 'kpi_proactive':
+        case 'sqm_update':
+          tier.customerCount = 0;
+          tier.sqmCount = tier.total;
+          tier.unspecCount = 0;
+          break;
+        case 'non_kpi_unspec':
+          tier.customerCount = 0;
+          tier.sqmCount = 0;
+          tier.unspecCount = tier.total;
+          break;
+      }
+    }
+
+    const result = {
+      summary,
+      reguler: byType.REGULER ?? zero(),
+      hvcGold: byType.HVC_GOLD ?? zero(),
+      hvcPlatinum: byType.HVC_PLATINUM ?? zero(),
+      hvcDiamond: byType.HVC_DIAMOND ?? zero(),
+    };
+
+    if (bucket) {
+      applyBucketCounts(result.summary);
+      applyBucketCounts(result.reguler);
+      applyBucketCounts(result.hvcGold);
+      applyBucketCounts(result.hvcPlatinum);
+      applyBucketCounts(result.hvcDiamond);
+    }
+
+    return result;
   }
 }

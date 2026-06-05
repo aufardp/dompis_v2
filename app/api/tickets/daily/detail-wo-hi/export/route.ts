@@ -149,7 +149,7 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
 
-    const baseWhere = await DailyTicketService.buildDailyTicketWhere(
+    const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
       user.role, user.id_user, {
         dept: dept === 'all' ? undefined : dept,
         search: search || undefined,
@@ -160,8 +160,9 @@ export async function GET(request: Request) {
         endDate: endDate || undefined,
       },
     );
+    const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
 
-    const total = await prisma.ticket.count({ where: baseWhere });
+    const total = await prisma.ticket.count({ where: mainWhere });
 
     if (total > DIRECT_EXPORT_MAX_ROWS) {
       return NextResponse.json(
@@ -184,7 +185,7 @@ export async function GET(request: Request) {
     }
 
     const orderedTickets = await prisma.ticket.findMany({
-      where: baseWhere,
+      where: mainWhere,
       orderBy: { booking_date: 'desc' },
       include: { users: { select: { nama: true, username: true } } },
     });

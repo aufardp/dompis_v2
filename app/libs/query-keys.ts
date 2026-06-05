@@ -31,6 +31,10 @@ export const queryKeys = {
         ? ([...queryKeys.dashboard.all, 'durasi', bucket] as const)
         : ([...queryKeys.dashboard.all, 'durasi'] as const),
     rekapWorkorder: () => [...queryKeys.dashboard.all, 'rekap-workorder'] as const,
+    rekapWorkorderHourly: (bucket?: string) =>
+      bucket
+        ? ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close', bucket] as const)
+        : ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close'] as const),
   },
   clustering: {
     all: ['clustering'] as const,

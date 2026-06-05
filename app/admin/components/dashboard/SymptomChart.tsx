@@ -22,12 +22,19 @@ function truncateLabel(val: string) {
   return val.slice(0, MAX_LABEL_LENGTH) + '...';
 }
 
-export default function SymptomChart({ workzone }: { workzone?: string }) {
+export default function SymptomChart({
+  workzone,
+  bucket,
+}: {
+  workzone?: string;
+  bucket?: string;
+}) {
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard', 'top-symptoms', workzone || 'all'],
+    queryKey: ['dashboard', 'top-symptoms', workzone || 'all', bucket || 'all'],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (workzone) params.set('workzone', workzone);
+      if (bucket && bucket !== 'all') params.set('bucket', bucket);
       const url = params.toString()
         ? `/api/dashboard/top-symptoms?${params.toString()}`
         : '/api/dashboard/top-symptoms';

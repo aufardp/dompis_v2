@@ -4,10 +4,11 @@ import { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { format } from 'date-fns';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 import type { DateRange } from 'react-day-picker';
 import DateRangePicker from '@/app/admin/semesta/components/filters/DateRangePicker';
 import TicketTable from './TicketTable';
@@ -15,6 +16,7 @@ import TicketTableB2B from './TicketTableB2B';
 import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
+import B2CSection from './B2CSection';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -268,9 +270,38 @@ export default function TicketManagementBucketPage({
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
+  const [b2cActiveType, setB2cActiveType] = useState<
+    'all' | 'REGULER' | 'HVC_GOLD' | 'HVC_PLATINUM' | 'HVC_DIAMOND'
+  >('all');
 
-  const startDateStr = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
-  const endDateStr = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
+  const b2cBreakdownKey = [
+    'b2c-breakdown',
+    operationalBucket?.join(','),
+    workzoneFilter,
+  ];
+  const { data: b2cBreakdownData } = useQuery({
+    queryKey: b2cBreakdownKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (workzoneFilter) params.set('workzone', workzoneFilter);
+      if (operationalBucket?.length) params.set('bucket', operationalBucket[0]);
+      const url = `/api/dashboard/b2c-breakdown?${params.toString()}`;
+      const res = await fetchWithAuth(url);
+      if (!res) throw new Error('No response');
+      const json = await res.json();
+      if (!json?.success) throw new Error(json?.message || 'Failed');
+      return json.data;
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const startDateStr = dateRange?.from
+    ? format(dateRange.from, 'yyyy-MM-dd')
+    : undefined;
+  const endDateStr = dateRange?.to
+    ? format(dateRange.to, 'yyyy-MM-dd')
+    : undefined;
 
   const sharedFilters = {
     search: searchQuery,
@@ -336,14 +367,19 @@ export default function TicketManagementBucketPage({
       assigned:
         (b2c.assigned ?? 0) + (b2b.assigned ?? 0) + (extra.assigned ?? 0),
       close: (b2c.close ?? 0) + (b2b.close ?? 0) + (extra.close ?? 0),
-      ffgCount: (b2c.ffgCount ?? 0) + (b2b.ffgCount ?? 0) + (extra.ffgCount ?? 0),
+      ffgCount:
+        (b2c.ffgCount ?? 0) + (b2b.ffgCount ?? 0) + (extra.ffgCount ?? 0),
       gamasCount:
         (b2c.gamasCount ?? 0) + (b2b.gamasCount ?? 0) + (extra.gamasCount ?? 0),
       p1Count: (b2c.p1Count ?? 0) + (b2b.p1Count ?? 0) + (extra.p1Count ?? 0),
       pPlusCount:
         (b2c.pPlusCount ?? 0) + (b2b.pPlusCount ?? 0) + (extra.pPlusCount ?? 0),
     };
-  }, [b2bPageData.summary, b2cPageData.summary, extraWorkboardPageData.summary]);
+  }, [
+    b2bPageData.summary,
+    b2cPageData.summary,
+    extraWorkboardPageData.summary,
+  ]);
 
   const activeRuleBadges = useMemo(() => {
     const badges: string[] = [];
@@ -545,7 +581,12 @@ export default function TicketManagementBucketPage({
               </div>
             </div>
 
-            <div className={clsx('grid gap-px border-t border-slate-200 bg-slate-200 dark:border-slate-800 dark:bg-slate-800', extraWorkboard ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
+            <div
+              className={clsx(
+                'grid gap-px border-t border-slate-200 bg-slate-200 dark:border-slate-800 dark:bg-slate-800',
+                extraWorkboard ? 'md:grid-cols-3' : 'md:grid-cols-2',
+              )}
+            >
               {extraWorkboard && (
                 <div className='bg-white p-4 dark:bg-slate-950'>
                   <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
@@ -572,7 +613,10 @@ export default function TicketManagementBucketPage({
                     ))}
                   </div>
                   <div className='mt-3'>
-                    <FlaggingSummaryRow counts={extraWorkboardPageData.summary} compact />
+                    <FlaggingSummaryRow
+                      counts={extraWorkboardPageData.summary}
+                      compact
+                    />
                   </div>
                 </div>
               )}
@@ -708,6 +752,20 @@ export default function TicketManagementBucketPage({
                   {b2cPageData.pagination.total} ticket
                 </span>
               </div>
+
+              {b2cBreakdownData && (
+                <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
+                  <B2CSection
+                    data={b2cBreakdownData}
+                    activeType={b2cActiveType}
+                    onSelectType={(type) =>
+                      setB2cActiveType(type as typeof b2cActiveType)
+                    }
+                    isDailyScope
+                  />
+                </div>
+              )}
+
               <FilterBarB2C
                 ticketType={b2cTicketTypeFilter}
                 ticketTypeOptions={b2cPageData.ticketTypeOptions}
@@ -720,7 +778,7 @@ export default function TicketManagementBucketPage({
                 onTicketStatusChange={handleB2cTicketStatusChange}
                 onFlaggingChange={handleB2cFlaggingChange}
               />
-              <FlaggingSummaryRow counts={b2cPageData.summary} />
+              {/* <FlaggingSummaryRow counts={b2cPageData.summary} /> */}
               <TicketTypeBreakdownStrip
                 title='Perhitungan jenis tiket B2C'
                 items={b2cPageData.ticketTypeOptions}

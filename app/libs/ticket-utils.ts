@@ -33,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export const CLOSE_STATUS_VALUES = [
-  'CLOSED', 'FINALCHECK', 'MEDIACARE',
+  'CLOSED', 'CLOSE', 'FINALCHECK', 'MEDIACARE',
 ];
 
 export function getTicketCategory(
