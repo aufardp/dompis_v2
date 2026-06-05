@@ -191,7 +191,6 @@ function buildAllPanels(
 const BUCKET_FILTERS: Record<KpiBucketKey, any[]> = {
   kpi_customer: [
     { dept: 'all', operationalBucket: ['kpi_customer'] },
-    { dept: 'all', regulerOnly: true },
   ],
   kpi_proactive: [
     { dept: 'all', operationalBucket: ['kpi_proactive'] },
