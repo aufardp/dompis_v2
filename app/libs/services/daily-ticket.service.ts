@@ -934,7 +934,9 @@ export class DailyTicketService {
       ...(await this.buildWorkzoneWhere(effectiveRole, userId, selectedWorkzone)),
     };
 
-    await this.applyDailyTicketFilter(where);
+    if (!startDate && !endDate) {
+      await this.applyDailyTicketFilter(where);
+    }
 
     const searchWhere = buildTicketSearchWhere(search, searchType);
     if (searchWhere) {
