@@ -1611,7 +1611,30 @@ export class DailyTicketService {
       const summary = {} as BucketSummaryMap;
       const mainTableWhere = this.buildMainTableWhere(where);
       for (const bucket of KPI_SUMMARY_BUCKETS) {
-        if (bucket === 'kpi_customer' || bucket === 'non_technical') {
+        if (bucket === 'kpi_customer') {
+          const bucketWhere = await this.buildDailyTicketWhere(role, userId, {
+            ...filters,
+            dept,
+            operationalBucket: ['kpi_customer'],
+          });
+          const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere);
+          const rows = await prisma.ticket.findMany({
+            where: {
+              AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
+            },
+            select: {
+              status: true,
+              status_update: true,
+              guarantee_status: true,
+              ticket_id_gamas: true,
+              flagging_manja: true,
+            },
+          });
+          summary[bucket] = summarizeBucketRows(rows);
+          continue;
+        }
+
+        if (bucket === 'non_technical') {
           const rows = await prisma.ticket.findMany({
             where: {
               AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
