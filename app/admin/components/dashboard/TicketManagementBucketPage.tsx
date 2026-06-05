@@ -3,10 +3,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import clsx from 'clsx';
+import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
+import type { DateRange } from 'react-day-picker';
+import DateRangePicker from '@/app/admin/semesta/components/filters/DateRangePicker';
 import TicketTable from './TicketTable';
 import TicketTableB2B from './TicketTableB2B';
 import TicketTableTabs from './TicketTableTabs';
@@ -55,6 +58,7 @@ type BucketPageProps = {
   operationalBucket?: string[];
   regulerOnly?: boolean;
   anomalyBucket?: string[];
+  showDateFilter?: boolean;
   extraWorkboard?: {
     title: string;
     description: string;
@@ -236,11 +240,13 @@ export default function TicketManagementBucketPage({
   operationalBucket = [],
   regulerOnly,
   anomalyBucket = [],
+  showDateFilter,
   extraWorkboard,
 }: BucketPageProps) {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange>();
   const [deptView, setDeptView] = useState<'all' | 'b2b' | 'b2c'>('all');
   const [extraWorkboardPage, setExtraWorkboardPage] = useState(1);
   const [b2cPage, setB2cPage] = useState(1);
@@ -263,6 +269,9 @@ export default function TicketManagementBucketPage({
     null,
   );
 
+  const startDateStr = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
+  const endDateStr = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
+
   const sharedFilters = {
     search: searchQuery,
     workzone: workzoneFilter || undefined,
@@ -271,6 +280,8 @@ export default function TicketManagementBucketPage({
     anomalyBucket,
     excludeSymptom: extraWorkboard?.symptom,
     includeValidasi: true,
+    startDate: startDateStr,
+    endDate: endDateStr,
   } as const;
 
   const b2cPageData = useDailyTicketPage({
@@ -308,6 +319,8 @@ export default function TicketManagementBucketPage({
     regulerOnly,
     anomalyBucket,
     includeValidasi: false,
+    startDate: startDateStr,
+    endDate: endDateStr,
     page: extraWorkboardPage,
     limit: 10,
     enabled: Boolean(extraWorkboard),
@@ -484,6 +497,23 @@ export default function TicketManagementBucketPage({
                     </div>
                   </div>
                 </div>
+
+                {showDateFilter && (
+                  <DateRangePicker
+                    value={dateRange}
+                    onChange={(range) => {
+                      setDateRange(range);
+                      setB2cPage(1);
+                      setB2bPage(1);
+                    }}
+                    onClear={() => {
+                      setDateRange(undefined);
+                      setB2cPage(1);
+                      setB2bPage(1);
+                    }}
+                    className='mt-4 lg:mt-0'
+                  />
+                )}
 
                 <div className='grid grid-cols-2 gap-3 lg:min-w-[320px] lg:grid-cols-4'>
                   {[

@@ -1058,12 +1058,9 @@ async function processTable(
                 limit: DEFAULT_CHUNK_SIZE,
                 idColumn: cursor.idColumn,
                 modifiedColumn: cursor.modifiedColumn,
-                dateFilterColumn: cursor.modifiedColumn,
                 lastCursorId: activeCursor.lastCursorId,
                 lastModifiedAt: activeCursor.lastModifiedAt,
                 columns: cursor.columns.map((c) => c.name),
-                dateFilterStart: todayStart,
-                dateFilterEnd: tomorrowStart,
               }),
         {
           retryMax: DEFAULT_RETRY_MAX,

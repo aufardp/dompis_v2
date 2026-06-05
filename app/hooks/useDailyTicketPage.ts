@@ -23,6 +23,8 @@ type DailyTicketPageFilters = {
   statusUpdate?: string[];
   ticketStatus?: string[];
   flagging?: string[];
+  startDate?: string;
+  endDate?: string;
   page: number;
   limit?: number;
   validasiPage?: number;
@@ -62,6 +64,8 @@ export function useDailyTicketPage({
   statusUpdate = [],
   ticketStatus = [],
   flagging = [],
+  startDate,
+  endDate,
   page,
   limit = 10,
   validasiPage = 1,
@@ -86,6 +90,8 @@ export function useDailyTicketPage({
     statusUpdate,
     ticketStatus,
     flagging,
+    startDate,
+    endDate,
     page,
     limit,
     validasiPage,
@@ -137,6 +143,8 @@ export function useDailyTicketPage({
       for (const status of statusUpdate) params.append('statusUpdate', status);
       for (const status of ticketStatus) params.append('ticketStatus', status);
       for (const flag of flagging) params.append('flagging', flag);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
 
       const res = await fetchWithAuth(
         `/api/tickets/daily?${params.toString()}`,

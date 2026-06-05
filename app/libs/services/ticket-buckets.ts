@@ -5,6 +5,7 @@ import {
   type OperationalBucketKey,
   OPERATIONAL_BUCKET_DEFINITIONS,
 } from '@/app/config/operational-buckets';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return [...new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean))];
@@ -132,6 +133,7 @@ export function buildOperationalBucketWhere(
         NOT_OBSOLETE,
         containsAny('jenis_tiket_1', ['sqm', 'sqm-ccan']),
         { summary: { startsWith: '[SQM-UPDATE]' } },
+        { status: { notIn: CLOSE_STATUS_VALUES } },
       ],
     };
   }
