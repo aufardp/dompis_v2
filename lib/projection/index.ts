@@ -142,6 +142,7 @@ interface ProjectionOptions {
   syncBatchId?: string;
   mode?: 'incremental' | 'full' | 'batch';
   preserveCheckpointCursor?: boolean;
+  skipAutoRepair?: boolean;
 }
 
 interface ProjectionCheckpoint {
@@ -966,7 +967,7 @@ async function projectRecords(
     data: { status: 'running', startedAt: nowWib(), lastError: null },
   });
 
-  let initialNeverProjectedCount = 0;
+  await retryFailedProjectionItems(retryMax);
 
   await setMySQLSessionTimeout(30_000);
 
@@ -997,28 +998,7 @@ async function projectRecords(
             lastSyncBatchId: checkpoint.lastSyncBatchId,
             neverProjectedCount: 0,
           }
-      : checkpoint;
-
-  if (activeCheckpoint.lastProjectedImportedAt) {
-    const countResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*) AS count FROM ticket_raw
-      WHERE isActive = TRUE AND importedAt IS NOT NULL
-        AND (importedAt > ${activeCheckpoint.lastProjectedImportedAt}
-          OR (importedAt = ${activeCheckpoint.lastProjectedImportedAt}
-            AND id_ticket > ${activeCheckpoint.lastProjectedTicketRawId}))
-    `;
-    initialNeverProjectedCount = Number(countResult[0]?.count ?? 0);
-  } else {
-    const countResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*) AS count FROM ticket_raw
-      WHERE isActive = TRUE AND importedAt IS NOT NULL
-    `;
-    initialNeverProjectedCount = Number(countResult[0]?.count ?? 0);
-  }
-  await prisma.ticket_projection_checkpoint.update({
-    where: { name: CHECKPOINT_NAME },
-    data: { neverProjectedCount: initialNeverProjectedCount },
-  });
+        : checkpoint;
 
   logger.info('[Projection] Starting:', { mode: options.mode ?? 'incremental', batchSize, writeChunkSize, cursor: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}` });
 
@@ -1092,6 +1072,10 @@ async function projectRecords(
           },
         );
 
+        await prisma.ticket_projection_checkpoint.update({
+          where: { name: CHECKPOINT_NAME },
+          data: { heartbeatAt: nowWib() },
+        });
         logger.info('[Projection] Sub-batch success:', { size: itemChunk.length, checkpoint: `${chunkLastRecord.importedAt?.toISOString() ?? '-'}:${chunkLastRecord.id_ticket}` });
         const batchDurationMs = Date.now() - chunkStartMs;
         const rowsPerSecond = batchDurationMs > 0
@@ -1188,12 +1172,29 @@ async function projectRecords(
     assertNotAborted(signal);
   }
 
-  const remainingNeverProjected = Math.max(0, initialNeverProjectedCount - result.processed);
   await prisma.ticket_projection_checkpoint.update({
     where: { name: CHECKPOINT_NAME },
-    data: { status: 'success', neverProjectedCount: remainingNeverProjected, completedAt: nowWib() },
+    data: { status: 'success', neverProjectedCount: 0, completedAt: nowWib() },
   });
   return result;
+}
+
+async function retryFailedProjectionItems(retryMax: number): Promise<void> {
+  const failedLogs = await prisma.ticket_projection_log.findMany({
+    where: { status: 'failed', attempts: { lt: retryMax } },
+    orderBy: { updatedAt: 'asc' },
+    take: 50,
+  });
+  if (failedLogs.length === 0) return;
+
+  const ids = failedLogs.map((l) => l.id);
+  await prisma.ticket_projection_log.updateMany({
+    where: { id: { in: ids } },
+    data: { attempts: { increment: 1 } },
+  });
+  logger.info('[Projection] DLQ retry: incremented retryCount; will be picked up by reconciliation guard', {
+    count: failedLogs.length,
+  });
 }
 
 function emptyProjectionResult(): ProjectionResult {
@@ -1253,7 +1254,55 @@ export async function runProjection(
         setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
       ),
     ]).catch(() => null);
-    await setProjectionStatus('success', {
+    let finalReconciliation = reconciliation;
+    let autoRepairError: unknown = null;
+
+    if (
+      !options.skipAutoRepair &&
+      reconciliation &&
+      reconciliation.neverProjectedRaw > 0
+    ) {
+      logger.warn('[Projection] Auto-repair triggered:', {
+        neverProjectedRaw: reconciliation.neverProjectedRaw,
+        oldestPending: reconciliation.oldestUnprojectedImportedAt?.toISOString(),
+      });
+      try {
+        const {
+          syncBatchId: _ignoredSyncBatchId,
+          skipAutoRepair: _ignoredSkipAutoRepair,
+          ...repairOptions
+        } = options;
+        await projectRecords(signal, {
+          ...repairOptions,
+          since: new Date(0),
+          mode: 'full',
+          preserveCheckpointCursor: true,
+          batchSize: 200,
+          skipAutoRepair: true,
+        });
+        logger.info('[Projection] Auto-repair complete');
+      } catch (error) {
+        autoRepairError = error;
+        logger.error('[Projection] Auto-repair failed:', { error: String(error) });
+      }
+
+      finalReconciliation = await Promise.race([
+        getProjectionReconciliationReport(),
+        new Promise<null>(resolve =>
+          setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
+        ),
+      ]).catch(() => finalReconciliation);
+    }
+
+    const projectionHealthy = reconciliation
+      ? reconciliation.neverProjectedRaw === 0
+        ? autoRepairError === null
+        : autoRepairError === null &&
+          finalReconciliation !== null &&
+          finalReconciliation.neverProjectedRaw === 0
+      : autoRepairError === null;
+
+    await setProjectionStatus(projectionHealthy ? 'success' : 'failed', {
       duration: result.duration,
       lagMs: endToEndLagMs ?? undefined,
       rowsPerSecond,
@@ -1266,8 +1315,8 @@ export async function runProjection(
       protected: result.protected,
       checkpoint:
         `${result.checkpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${result.checkpoint.lastProjectedTicketRawId ?? '-'}` +
-        (reconciliation
-          ? `|neverProjected=${reconciliation.neverProjectedRaw}|oldestPending=${reconciliation.oldestUnprojectedImportedAt?.toISOString() ?? '-'}`
+        (finalReconciliation
+          ? `|neverProjected=${finalReconciliation.neverProjectedRaw}|oldestPending=${finalReconciliation.oldestUnprojectedImportedAt?.toISOString() ?? '-'}`
           : ''),
     });
 

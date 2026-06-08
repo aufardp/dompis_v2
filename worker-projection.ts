@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import 'dotenv/config';
-import { connectDB } from '@/app/libs/prisma';
+import { connectDB, prisma } from '@/app/libs/prisma';
 import { runFullScanProjection, runProjection } from '@/lib/projection';
 import { redis } from '@/lib/redis';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
@@ -59,6 +59,34 @@ let projectionRequestSubscriber: ReturnType<typeof redis.duplicate> | null = nul
 let pendingProjectionRun = false;
 let projectionPumpActive = false;
 
+async function collectPendingProjectionRequestIds(): Promise<bigint[]> {
+  try {
+    const pending = await prisma.projection_request.findMany({
+      where: { processedAt: null },
+      orderBy: { id: 'asc' },
+      take: 100,
+    });
+    if (pending.length === 0) return [];
+    return pending.map((r) => r.id);
+  } catch (error) {
+    logger.warn('Failed to inspect projection requests:', { error: String(error) });
+    return [];
+  }
+}
+
+async function acknowledgeProjectionRequests(ids: bigint[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    await prisma.projection_request.updateMany({
+      where: { id: { in: ids } },
+      data: { processedAt: new Date() },
+    });
+    logger.info('Acknowledged projection requests in DB queue:', { count: ids.length });
+  } catch (error) {
+    logger.warn('Failed to acknowledge projection requests:', { error: String(error) });
+  }
+}
+
 function queueIncrementalProjectionRun(source: string): void {
   pendingProjectionRun = true;
   if (projectionPumpActive || state.running) return;
@@ -113,6 +141,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   const startTime = Date.now();
   const { controller, signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
   state.abortController = controller;
+  const pendingProjectionRequestIds = await collectPendingProjectionRequestIds();
 
   try {
     const lockResult = await withTaskLock(
@@ -146,6 +175,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           checkpoint: result.checkpoint,
           time: nowWIB(),
         });
+        await acknowledgeProjectionRequests(pendingProjectionRequestIds);
         await recordRun(WORKER_NAME, duration, true, {
           processed: result.processed,
         });
@@ -241,7 +271,7 @@ async function startWorker(): Promise<void> {
         ),
       'projection',
       SCHEDULE_OFFSET,
-      { maxIntervalMinutes: 10, idleThreshold: 5 },
+      { maxIntervalMinutes: 1, idleThreshold: 0 },
     ),
   );
   if (FULL_SCAN_ENABLED) {

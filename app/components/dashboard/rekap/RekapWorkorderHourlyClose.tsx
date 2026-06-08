@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bar,
@@ -18,6 +18,7 @@ import { toZonedTime, format } from 'date-fns-tz';
 import { ChartContainer, ChartTooltipContent } from '@/app/components/ui/chart';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { queryKeys } from '@/app/libs/query-keys';
+import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 
 type HourlyCloseRow = {
   hour: number;
@@ -139,11 +140,16 @@ function HourChip({
 }
 
 export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string }) {
+  const [selectedWorkzone, setSelectedWorkzone] = useState('');
+  const { options: workzoneOptions, loading: workzoneLoading } = useWorkzoneOptions();
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: queryKeys.dashboard.rekapWorkorderHourly(bucket || 'all'),
+    queryKey: queryKeys.dashboard.rekapWorkorderHourly(
+      `${bucket || 'all'}:${selectedWorkzone || 'all'}`,
+    ),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (bucket && bucket !== 'all') params.set('bucket', bucket);
+      if (selectedWorkzone) params.set('workzone', selectedWorkzone);
       const url = params.toString()
         ? `/api/dashboard/rekap-workorder/hourly-close?${params.toString()}`
         : '/api/dashboard/rekap-workorder/hourly-close';
@@ -219,7 +225,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
             <h3 className="mt-1 text-lg font-bold text-(--text-primary)">
               Distribusi close workorder sepanjang hari
             </h3>
-            <p className="mt-1 text-sm leading-6 text-(--text-secondary)">
+            <p className="mt-1 hidden text-sm leading-6 text-(--text-secondary) sm:block">
               Pola jam yang paling aktif, jam berjalan, dan titik sepi dibuat mudah dibaca
               supaya user bisa cepat menangkap ritme penyelesaian tiket.
             </p>
@@ -252,14 +258,43 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
             />
           </div>
         </div>
+
+        <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--surface-2) p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+              Filter workzone
+            </p>
+            <p className="mt-1 text-xs text-(--text-secondary)">
+              Chart close per jam mengikuti workzone yang dipilih.
+            </p>
+          </div>
+          <div className="relative w-full sm:w-[260px]">
+            <select
+              value={selectedWorkzone}
+              onChange={(e) => setSelectedWorkzone(e.target.value)}
+              disabled={workzoneLoading}
+              className="w-full cursor-pointer appearance-none rounded-xl border border-(--border) bg-(--surface) px-3 py-2.5 pr-9 text-sm font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500/30"
+            >
+              <option value="">Semua Workzone</option>
+              {workzoneOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs font-bold text-(--text-muted)">
+              ▾
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.95fr)] sm:p-5">
         <div className="space-y-4">
           {isLoading ? (
-            <div className="h-[360px] animate-pulse rounded-2xl border border-(--border) bg-(--surface-2)" />
+            <div className="h-[280px] animate-pulse rounded-2xl border border-(--border) bg-(--surface-2) sm:h-[360px]" />
           ) : summary.total === 0 ? (
-            <div className="flex h-[360px] items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center">
+            <div className="flex h-[280px] items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-[360px]">
               <div className="max-w-sm">
                 <MoonStar className="mx-auto h-8 w-8 text-(--text-muted)" />
                 <p className="mt-3 text-sm font-semibold text-(--text-primary)">
@@ -272,7 +307,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
             </div>
           ) : (
             <div className="rounded-2xl border border-(--border) bg-(--surface)">
-              <div className="h-[320px] p-3 sm:p-4">
+              <div className="h-[250px] p-3 sm:h-[320px] sm:p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chartData}
@@ -349,7 +384,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
           )}
 
           {!isLoading && summary.total > 0 && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+            <div className="hidden grid-cols-2 gap-2 md:grid xl:grid-cols-6 sm:grid-cols-4">
               {chartData.map((item) => (
                 <HourChip
                   key={item.hour}
@@ -363,12 +398,12 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
           )}
         </div>
 
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-(--border) bg-(--surface-2) p-4">
+        <div className="space-y-3 md:space-y-4">
+          <div className="rounded-2xl border border-(--border) bg-(--surface-2) p-4 md:p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
               Insight cepat
             </p>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <div className="rounded-xl bg-(--surface) p-3">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
                   <Flame className="h-4 w-4 text-emerald-500" />
@@ -391,7 +426,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
                 </p>
               </div>
 
-              <div className="rounded-xl bg-(--surface) p-3">
+              <div className="rounded-xl bg-(--surface) p-3 sm:col-span-2 lg:col-span-1">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
                   <Activity className="h-4 w-4 text-sky-500" />
                   Rata-rata distribusi
@@ -404,7 +439,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
             </div>
           </div>
 
-          <div className="rounded-2xl border border-(--border) bg-gradient-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-4">
+          <div className="hidden rounded-2xl border border-(--border) bg-gradient-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-4 md:block">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
               Cara baca
             </p>

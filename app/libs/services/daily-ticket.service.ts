@@ -2026,7 +2026,10 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ): Promise<Array<{ hour: number; count: number }>> {
-    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const hasSpecificBucket = filters?.operationalBucket?.length === 1;
+    const where = hasSpecificBucket
+      ? await this.buildDailyTicketWhere(role, userId, filters)
+      : await this.buildDetailWoHiWhere(role, userId, filters);
     const mainTableWhere = this.buildMainTableWhere(where);
     const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
     const { start, end } = getTodayWibRange();

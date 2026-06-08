@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { connectDB } from '@/app/libs/prisma';
+import { connectDB, prisma } from '@/app/libs/prisma';
 import { runIngestion } from '@/lib/ingestion';
 import { isRedisReady, redis } from '@/lib/redis';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
@@ -55,8 +55,23 @@ const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
 
 async function requestImmediateProjection(syncBatchId?: string | null): Promise<void> {
   if (process.env.INGESTION_TRIGGER_PROJECTION === 'false') return;
+
+  try {
+    await prisma.projection_request.create({
+      data: {
+        source: WORKER_NAME,
+        syncBatchId: syncBatchId ?? undefined,
+      },
+    });
+  } catch (dbError) {
+    logger.warn('Projection request DB insert failed', {
+      batchId: syncBatchId,
+      error: dbError instanceof Error ? dbError.message : String(dbError),
+    });
+  }
+
   if (!isRedisReady()) {
-    logger.warn('Projection trigger skipped because Redis is not ready', {
+    logger.warn('Projection Redis signal skipped — DB fallback active', {
       batchId: syncBatchId,
     });
     return;
