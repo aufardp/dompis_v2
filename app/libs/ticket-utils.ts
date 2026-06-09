@@ -33,7 +33,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export const CLOSE_STATUS_VALUES = [
-  'CLOSED', 'CLOSE', 'FINALCHECK', 'MEDIACARE',
+  'CLOSED',
+  'CLOSE',
+  'FINALCHECK',
+  'MEDIACARE',
+  'SALAMSIM',
+  'RESOLVED',
 ];
 
 export function getTicketCategory(
@@ -85,7 +90,9 @@ export function isTicketInWork(
   statusUpdate: string | null | undefined,
 ): boolean {
   const status = normalizeStatusUpdate(statusUpdate);
-  return status === 'assigned' || status === 'on_progress' || status === 'pending';
+  return (
+    status === 'assigned' || status === 'on_progress' || status === 'pending'
+  );
 }
 
 export function countStatusBuckets<T>(

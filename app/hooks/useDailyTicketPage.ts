@@ -187,7 +187,7 @@ export function useDailyTicketPage({
     const pagination: PaginationInfo = {
       currentPage: Number(data?.page || page),
       totalPages: Math.max(1, Number(data?.totalPages || 1)),
-      total: Number(data?.total || 0),
+      total: Math.max(0, Number(data?.total || 0) - Number(data?.validasiCount || 0)),
       limit: Number(data?.limit || limit),
     };
 

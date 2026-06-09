@@ -535,6 +535,15 @@ function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]
         if (operator.not !== undefined) {
           if (operator.not === null) {
             conditions.push(`\`${key}\` IS NOT NULL`);
+          } else if (typeof operator.not === 'object' && operator.not.contains !== undefined) {
+            conditions.push(`\`${key}\` NOT LIKE ?`);
+            params.push(`%${operator.not.contains}%`);
+          } else if (typeof operator.not === 'object' && operator.not.startsWith !== undefined) {
+            conditions.push(`\`${key}\` NOT LIKE ?`);
+            params.push(`${operator.not.startsWith}%`);
+          } else if (typeof operator.not === 'object' && operator.not.endsWith !== undefined) {
+            conditions.push(`\`${key}\` NOT LIKE ?`);
+            params.push(`%${operator.not.endsWith}`);
           } else {
             conditions.push(`\`${key}\` != ?`);
             params.push(operator.not);
@@ -1113,7 +1122,17 @@ export class DailyTicketService {
       ...where,
       AND: [
         ...(where.AND ?? []),
-        { NOT: this.buildValidasiCondition() },
+        {
+          OR: [
+            { status: { in: [...CLOSE_STATUS_VALUES] } },
+            {
+              AND: [
+                { worklog_summary: { not: { contains: 'Tech Closed' } } },
+                { status_update: { not: 'close' } },
+              ],
+            },
+          ],
+        },
       ],
     };
   }
@@ -1274,11 +1293,24 @@ export class DailyTicketService {
    */
 
   static async countStatuses(where: Record<string, any>) {
-    const grouped = await prisma.ticket.groupBy({
-      by: ['status', 'status_update'],
-      where,
-      _count: { _all: true },
-    });
+    const [whereClause, params] = buildSqlWhereClause(where);
+
+    const sqlWithIndex = `
+      SELECT status, status_update, COUNT(*) AS count
+      FROM ticket FORCE INDEX (idx_ticket_daily_board)
+      WHERE ${whereClause}
+      GROUP BY status, status_update
+    `;
+    const sqlWithoutIndex = `
+      SELECT status, status_update, COUNT(*) AS count
+      FROM ticket
+      WHERE ${whereClause}
+      GROUP BY status, status_update
+    `;
+
+    const rows = await queryRawWithOptionalIndex<
+      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
+    >(sqlWithIndex, sqlWithoutIndex, params);
 
     const stats: any = {
       total: 0,
@@ -1289,12 +1321,12 @@ export class DailyTicketService {
       close: 0,
     };
 
-    for (const g of grouped) {
-      const count = g._count._all;
+    for (const row of rows) {
+      const count = Number(row.count);
       stats.total += count;
 
-      const statusVal = (g.status ?? '').trim().toUpperCase();
-      const su = (g.status_update ?? '').trim().toLowerCase();
+      const statusVal = (row.status ?? '').trim().toUpperCase();
+      const su = (row.status_update ?? '').trim().toLowerCase();
 
       if (CLOSE_STATUS_VALUES.includes(statusVal)) {
         stats.close += count;
@@ -2033,6 +2065,7 @@ export class DailyTicketService {
     const mainTableWhere = this.buildMainTableWhere(where);
     const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
     const { start, end } = getTodayWibRange();
+    const currentHourWib = toZonedTime(new Date(), 'Asia/Jakarta').getHours();
 
     const closeStatusSql = CLOSE_STATUS_VALUES.map((status) => `'${status}'`).join(', ');
     const sql = `
@@ -2057,10 +2090,12 @@ export class DailyTicketService {
 
     const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
     for (const row of rows) {
-      const hour = Number(row.hour);
+      const utcHour = Number(row.hour);
       const count = Number(row.count ?? 0);
-      if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
-      counts[hour].count = count;
+      if (!Number.isFinite(utcHour) || utcHour < 0 || utcHour > 23) continue;
+      const wibHour = (utcHour + 7) % 24;
+      if (wibHour > currentHourWib) continue;
+      counts[wibHour].count += count;
     }
 
     return counts;

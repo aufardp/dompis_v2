@@ -49,7 +49,12 @@ function getHourBadge(hour: number): string {
   return 'Malam';
 }
 
-function getBarFill(hour: number, count: number, currentHour: number, peakHour: number | null): string {
+function getBarFill(
+  hour: number,
+  count: number,
+  currentHour: number,
+  peakHour: number | null,
+): string {
   if (count === 0) return 'rgba(148, 163, 184, 0.20)';
   if (peakHour === hour) return '#10b981';
   if (currentHour === hour) return '#f59e0b';
@@ -70,16 +75,20 @@ function StatPill({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+    <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+      <div className='flex items-center justify-between gap-2'>
+        <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
           {label}
         </p>
-        <div className="text-(--text-muted)">{icon}</div>
+        <div className='text-(--text-muted)'>{icon}</div>
       </div>
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <p className="text-lg font-bold leading-none text-(--text-primary)">{value}</p>
-        <p className="text-right text-[11px] leading-tight text-(--text-secondary)">{sub}</p>
+      <div className='mt-2 flex items-end justify-between gap-3'>
+        <p className='text-lg leading-none font-bold text-(--text-primary)'>
+          {value}
+        </p>
+        <p className='text-right text-[11px] leading-tight text-(--text-secondary)'>
+          {sub}
+        </p>
       </div>
     </div>
   );
@@ -102,7 +111,7 @@ function HourChip({
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center"
+      className='flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center'
       style={{
         borderColor: isPeak
           ? 'rgba(16, 185, 129, 0.35)'
@@ -116,11 +125,11 @@ function HourChip({
             : 'var(--surface-2)',
       }}
     >
-      <span className="text-[10px] font-semibold text-(--text-muted)">
+      <span className='text-[10px] font-semibold text-(--text-muted)'>
         {String(hour).padStart(2, '0')}
       </span>
       <div
-        className="w-full rounded-full"
+        className='w-full rounded-full'
         style={{
           height: `${Math.max(6, Math.min(28, count * 3))}px`,
           background: active
@@ -132,16 +141,21 @@ function HourChip({
             : 'rgba(148, 163, 184, 0.18)',
         }}
       />
-      <span className="font-mono text-[10px] font-bold text-(--text-secondary)">
+      <span className='font-mono text-[10px] font-bold text-(--text-secondary)'>
         {count}
       </span>
     </div>
   );
 }
 
-export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string }) {
+export default function RekapWorkorderHourlyClose({
+  bucket,
+}: {
+  bucket?: string;
+}) {
   const [selectedWorkzone, setSelectedWorkzone] = useState('');
-  const { options: workzoneOptions, loading: workzoneLoading } = useWorkzoneOptions();
+  const { options: workzoneOptions, loading: workzoneLoading } =
+    useWorkzoneOptions();
   const { data, isLoading, isFetching } = useQuery({
     queryKey: queryKeys.dashboard.rekapWorkorderHourly(
       `${bucket || 'all'}:${selectedWorkzone || 'all'}`,
@@ -165,7 +179,9 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
 
   const now = getWibNow();
   const currentHour = now.getHours();
-  const dateLabel = format(now, 'EEEE, dd MMM yyyy', { timeZone: WIB_TIMEZONE });
+  const dateLabel = format(now, 'EEEE, dd MMM yyyy', {
+    timeZone: WIB_TIMEZONE,
+  });
 
   const chartData = useMemo(() => {
     if (!data) return ALL_HOURS;
@@ -203,126 +219,148 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
     };
   }, [chartData, currentHour]);
 
-  const peakLabel = summary.peakHour !== null ? `${String(summary.peakHour).padStart(2, '0')}:00` : '-';
+  const peakLabel =
+    summary.peakHour !== null
+      ? `${String(summary.peakHour).padStart(2, '0')}:00`
+      : '-';
   const currentLabel = `${String(currentHour).padStart(2, '0')}:00`;
 
   return (
     <ChartContainer
       config={{ count: { label: 'Close', color: '#38bdf8' } }}
-      className="p-0"
+      className='p-0'
     >
-      <div className="border-b border-(--border) px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-(--text-muted)">
+      <div className='border-b border-(--border) px-4 py-4 sm:px-5'>
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+          <div className='max-w-2xl'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <p className='text-xs font-bold tracking-[0.22em] text-(--text-muted) uppercase'>
                 Close per jam WIB
               </p>
-              <span className="rounded-full border border-(--border) bg-(--surface-2) px-2.5 py-1 text-[11px] font-semibold text-(--text-secondary)">
+              <span className='rounded-full border border-(--border) bg-(--surface-2) px-2.5 py-1 text-[11px] font-semibold text-(--text-secondary)'>
                 {dateLabel}
               </span>
             </div>
-            <h3 className="mt-1 text-lg font-bold text-(--text-primary)">
+            <h3 className='mt-1 text-lg font-bold text-(--text-primary)'>
               Distribusi close workorder sepanjang hari
             </h3>
-            <p className="mt-1 hidden text-sm leading-6 text-(--text-secondary) sm:block">
-              Pola jam yang paling aktif, jam berjalan, dan titik sepi dibuat mudah dibaca
-              supaya user bisa cepat menangkap ritme penyelesaian tiket.
+            <p className='mt-1 hidden text-sm leading-6 text-(--text-secondary) sm:block'>
+              Pola jam yang paling aktif, jam berjalan, dan titik sepi dibuat
+              mudah dibaca supaya user bisa cepat menangkap ritme penyelesaian
+              tiket.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[460px]">
+          <div className='grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-115'>
             <StatPill
-              label="Total close"
+              label='Total close'
               value={formatNumber(summary.total)}
-              sub="hari ini"
-              icon={<Activity className="h-4 w-4" />}
+              sub='hari ini'
+              icon={<Activity className='h-4 w-4' />}
             />
             <StatPill
-              label="Peak hour"
+              label='Peak hour'
               value={peakLabel}
               sub={`${formatNumber(summary.peakCount)} tiket`}
-              icon={<Flame className="h-4 w-4" />}
+              icon={<Flame className='h-4 w-4' />}
             />
             <StatPill
-              label="Average"
+              label='Average'
               value={summary.average.toFixed(1)}
-              sub="per jam"
-              icon={<Clock3 className="h-4 w-4" />}
+              sub='per jam'
+              icon={<Clock3 className='h-4 w-4' />}
             />
             <StatPill
-              label="Aktif"
+              label='Aktif'
               value={formatNumber(summary.activeHours)}
               sub={`${formatNumber(summary.zeroHours)} jam kosong`}
-              icon={<SunMedium className="h-4 w-4" />}
+              icon={<SunMedium className='h-4 w-4' />}
             />
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--surface-2) p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className='mt-4 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--surface-2) p-3 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+            <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
               Filter workzone
             </p>
-            <p className="mt-1 text-xs text-(--text-secondary)">
+            <p className='mt-1 text-xs text-(--text-secondary)'>
               Chart close per jam mengikuti workzone yang dipilih.
             </p>
           </div>
-          <div className="relative w-full sm:w-[260px]">
+          <div className='relative w-full sm:w-65'>
             <select
               value={selectedWorkzone}
               onChange={(e) => setSelectedWorkzone(e.target.value)}
               disabled={workzoneLoading}
-              className="w-full cursor-pointer appearance-none rounded-xl border border-(--border) bg-(--surface) px-3 py-2.5 pr-9 text-sm font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500/30"
+              className='w-full cursor-pointer appearance-none rounded-xl border border-(--border) bg-(--surface) px-3 py-2.5 pr-9 text-sm font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500/30'
             >
-              <option value="">Semua Workzone</option>
+              <option value=''>Semua Workzone</option>
               {workzoneOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs font-bold text-(--text-muted)">
+            <span className='pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs font-bold text-(--text-muted)'>
               ▾
             </span>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.95fr)] sm:p-5">
-        <div className="space-y-4">
+      <div className='grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.95fr)]'>
+        <div className='space-y-4'>
           {isLoading ? (
-            <div className="h-[280px] animate-pulse rounded-2xl border border-(--border) bg-(--surface-2) sm:h-[360px]" />
+            <div className='h-70 animate-pulse rounded-2xl border border-(--border) bg-(--surface-2) sm:h-90' />
           ) : summary.total === 0 ? (
-            <div className="flex h-[280px] items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-[360px]">
-              <div className="max-w-sm">
-                <MoonStar className="mx-auto h-8 w-8 text-(--text-muted)" />
-                <p className="mt-3 text-sm font-semibold text-(--text-primary)">
+            <div className='flex h-70 items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-90'>
+              <div className='max-w-sm'>
+                <MoonStar className='mx-auto h-8 w-8 text-(--text-muted)' />
+                <p className='mt-3 text-sm font-semibold text-(--text-primary)'>
                   Belum ada close hari ini
                 </p>
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  Chart akan terisi otomatis begitu ada tiket yang selesai di jam berjalan.
+                <p className='mt-1 text-sm text-(--text-secondary)'>
+                  Chart akan terisi otomatis begitu ada tiket yang selesai di
+                  jam berjalan.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-(--border) bg-(--surface)">
-              <div className="h-[250px] p-3 sm:h-[320px] sm:p-4">
-                <ResponsiveContainer width="100%" height="100%">
+            <div className='rounded-2xl border border-(--border) bg-(--surface)'>
+              <div className='h-62.5 p-3 sm:h-80 sm:p-4'>
+                <ResponsiveContainer width='100%' height='100%'>
                   <BarChart
                     data={chartData}
                     margin={{ top: 12, right: 18, bottom: 8, left: 0 }}
                     barCategoryGap={10}
                   >
                     <defs>
-                      <linearGradient id="closeBarGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.95} />
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.75} />
+                      <linearGradient
+                        id='closeBarGradient'
+                        x1='0'
+                        y1='0'
+                        x2='0'
+                        y2='1'
+                      >
+                        <stop
+                          offset='0%'
+                          stopColor='#38bdf8'
+                          stopOpacity={0.95}
+                        />
+                        <stop
+                          offset='100%'
+                          stopColor='#3b82f6'
+                          stopOpacity={0.75}
+                        />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                    <CartesianGrid
+                      stroke='rgba(148,163,184,0.12)'
+                      vertical={false}
+                    />
                     <XAxis
-                      dataKey="shortLabel"
+                      dataKey='shortLabel'
                       tick={{ fill: 'rgb(136 150 179)', fontSize: 11 }}
                       axisLine={{ stroke: 'rgba(148,163,184,0.14)' }}
                       tickLine={false}
@@ -339,15 +377,22 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
                     <Tooltip
                       content={
                         <ChartTooltipContent
-                          labelFormatter={(label: unknown) => `Jam ${String(label)} WIB`}
+                          labelFormatter={(label: unknown) =>
+                            `Jam ${String(label)} WIB`
+                          }
                         />
                       }
                     />
-                    <Bar dataKey="count" radius={[10, 10, 4, 4]}>
+                    <Bar dataKey='count' radius={[10, 10, 4, 4]}>
                       {chartData.map((entry) => (
                         <Cell
                           key={`close-${entry.hour}`}
-                          fill={getBarFill(entry.hour, entry.count, currentHour, summary.peakHour)}
+                          fill={getBarFill(
+                            entry.hour,
+                            entry.count,
+                            currentHour,
+                            summary.peakHour,
+                          )}
                         />
                       ))}
                     </Bar>
@@ -355,26 +400,26 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
                 </ResponsiveContainer>
               </div>
 
-              <div className="border-t border-(--border) px-4 py-3">
-                <div className="flex flex-wrap items-center gap-3 text-xs text-(--text-secondary)">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <div className='border-t border-(--border) px-4 py-3'>
+                <div className='flex flex-wrap items-center gap-3 text-xs text-(--text-secondary)'>
+                  <span className='inline-flex items-center gap-1.5'>
+                    <span className='h-2.5 w-2.5 rounded-full bg-emerald-500' />
                     Peak hour
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  <span className='inline-flex items-center gap-1.5'>
+                    <span className='h-2.5 w-2.5 rounded-full bg-amber-500' />
                     Jam berjalan
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+                  <span className='inline-flex items-center gap-1.5'>
+                    <span className='h-2.5 w-2.5 rounded-full bg-sky-500' />
                     Close aktif
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-400/50" />
+                  <span className='inline-flex items-center gap-1.5'>
+                    <span className='h-2.5 w-2.5 rounded-full bg-slate-400/50' />
                     Jam kosong
                   </span>
                   {isFetching && (
-                    <span className="ml-auto text-[11px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+                    <span className='ml-auto text-[11px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                       Refreshing...
                     </span>
                   )}
@@ -384,7 +429,7 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
           )}
 
           {!isLoading && summary.total > 0 && (
-            <div className="hidden grid-cols-2 gap-2 md:grid xl:grid-cols-6 sm:grid-cols-4">
+            <div className='hidden grid-cols-2 gap-2 sm:grid-cols-4 md:grid xl:grid-cols-6'>
               {chartData.map((item) => (
                 <HourChip
                   key={item.hour}
@@ -398,55 +443,71 @@ export default function RekapWorkorderHourlyClose({ bucket }: { bucket?: string 
           )}
         </div>
 
-        <div className="space-y-3 md:space-y-4">
-          <div className="rounded-2xl border border-(--border) bg-(--surface-2) p-4 md:p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+        <div className='space-y-3 md:space-y-4'>
+          <div className='rounded-2xl border border-(--border) bg-(--surface-2) p-4 md:p-4'>
+            <p className='text-xs font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
               Insight cepat
             </p>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="rounded-xl bg-(--surface) p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
-                  <Flame className="h-4 w-4 text-emerald-500" />
+            <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1'>
+              <div className='rounded-xl bg-(--surface) p-3'>
+                <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
+                  <Flame className='h-4 w-4 text-emerald-500' />
                   Jam paling padat
                 </div>
-                <p className="mt-2 text-2xl font-bold text-(--text-primary)">{peakLabel}</p>
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  {formatNumber(summary.peakCount)} close atau {summary.peakShare}% dari total close hari ini.
+                <p className='mt-2 text-2xl font-bold text-(--text-primary)'>
+                  {peakLabel}
+                </p>
+                <p className='mt-1 text-sm text-(--text-secondary)'>
+                  {formatNumber(summary.peakCount)} close atau{' '}
+                  {summary.peakShare}% dari total close hari ini.
                 </p>
               </div>
 
-              <div className="rounded-xl bg-(--surface) p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
-                  <Clock3 className="h-4 w-4 text-amber-500" />
+              <div className='rounded-xl bg-(--surface) p-3'>
+                <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
+                  <Clock3 className='h-4 w-4 text-amber-500' />
                   Jam berjalan
                 </div>
-                <p className="mt-2 text-2xl font-bold text-(--text-primary)">{currentLabel}</p>
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  {formatNumber(summary.currentCount)} close tercatat di jam ini. {getHourBadge(currentHour)} ini sedang dipantau.
+                <p className='mt-2 text-2xl font-bold text-(--text-primary)'>
+                  {currentLabel}
+                </p>
+                <p className='mt-1 text-sm text-(--text-secondary)'>
+                  {formatNumber(summary.currentCount)} close tercatat di jam
+                  ini. {getHourBadge(currentHour)} ini sedang dipantau.
                 </p>
               </div>
 
-              <div className="rounded-xl bg-(--surface) p-3 sm:col-span-2 lg:col-span-1">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
-                  <Activity className="h-4 w-4 text-sky-500" />
+              <div className='rounded-xl bg-(--surface) p-3 sm:col-span-2 lg:col-span-1'>
+                <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
+                  <Activity className='h-4 w-4 text-sky-500' />
                   Rata-rata distribusi
                 </div>
-                <p className="mt-2 text-2xl font-bold text-(--text-primary)">{summary.average.toFixed(1)}</p>
-                <p className="mt-1 text-sm text-(--text-secondary)">
-                  Close per jam dari total {formatNumber(summary.total)} ticket close yang terdistribusi di {formatNumber(summary.activeHours)} jam aktif.
+                <p className='mt-2 text-2xl font-bold text-(--text-primary)'>
+                  {summary.average.toFixed(1)}
+                </p>
+                <p className='mt-1 text-sm text-(--text-secondary)'>
+                  Close per jam dari total {formatNumber(summary.total)} ticket
+                  close yang terdistribusi di{' '}
+                  {formatNumber(summary.activeHours)} jam aktif.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="hidden rounded-2xl border border-(--border) bg-gradient-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-4 md:block">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+          <div className='hidden rounded-2xl border border-(--border) bg-linear-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-4 md:block'>
+            <p className='text-xs font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
               Cara baca
             </p>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-(--text-secondary)">
+            <ul className='mt-3 space-y-2 text-sm leading-6 text-(--text-secondary)'>
               <li>• Batang tinggi menandakan jam close paling padat.</li>
-              <li>• Warna hijau menandai peak hour, warna amber menandai jam berjalan.</li>
-              <li>• Strip kecil di bawah chart memudahkan scan cepat tanpa membuka tooltip.</li>
+              <li>
+                • Warna hijau menandai peak hour, warna amber menandai jam
+                berjalan.
+              </li>
+              <li>
+                • Strip kecil di bawah chart memudahkan scan cepat tanpa membuka
+                tooltip.
+              </li>
             </ul>
           </div>
         </div>
