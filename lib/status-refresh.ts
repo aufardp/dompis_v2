@@ -4,6 +4,7 @@ import { isRedisReady, redis } from '@/lib/redis';
 import {
   getExternalCursorDefinition,
   getExternalPool,
+  getTableNames,
 } from '@/lib/external-db/connection';
 import { ExternalRow, NormalizedExternalRow } from '@/lib/external-db/types';
 import {
@@ -267,17 +268,18 @@ function isChanged(candidate: CandidateRow, external: ExternalStatusRow): boolea
   return clamp(CONFIGURED_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE);
 }
 
-async function estimateBacklog(): Promise<number | null> {
+async function estimateBacklog(sourceTables: string[]): Promise<number | null> {
   if (process.env.STATUS_REFRESH_ESTIMATE_BACKLOG !== 'true') return null;
 
   try {
+    const sourceTableFilter = buildSourceTableScopeFilter('tr', sourceTables);
     const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) AS count
       FROM (
         SELECT tr.id_ticket
         FROM ticket_raw tr
         WHERE tr.incident IS NOT NULL
-          AND tr.sourceTable IS NOT NULL
+          AND ${sourceTableFilter}
           AND tr.isActive = TRUE
           AND (
             tr.status IS NULL
@@ -292,9 +294,21 @@ async function estimateBacklog(): Promise<number | null> {
   }
 }
 
-async function fetchHotCandidates(limit: number, hotWindowStart: Date): Promise<CandidateRow[]> {
+function buildSourceTableScopeFilter(alias: string, sourceTables: string[]): Prisma.Sql {
+  const column = Prisma.raw(`${alias}.sourceTable`);
+  return sourceTables.length > 0
+    ? Prisma.sql`${column} IN (${Prisma.join(sourceTables)})`
+    : Prisma.sql`${column} IS NOT NULL`;
+}
+
+async function fetchHotCandidates(
+  limit: number,
+  hotWindowStart: Date,
+  sourceTables: string[],
+): Promise<CandidateRow[]> {
   if (limit <= 0) return [];
 
+  const sourceTableFilter = buildSourceTableScopeFilter('tr', sourceTables);
   const rows = await withStatusRefreshRetry(
     () => prisma.$queryRaw<CandidateRow[]>`
       SELECT
@@ -311,7 +325,7 @@ async function fetchHotCandidates(limit: number, hotWindowStart: Date): Promise<
       FROM ticket_raw tr
       LEFT JOIN status_refresh_ticket_state s
         ON s.incident = tr.incident
-      WHERE tr.sourceTable IS NOT NULL
+      WHERE ${sourceTableFilter}
         AND tr.isActive = TRUE
         AND tr.sourceUpdatedAt IS NOT NULL
         AND tr.sourceUpdatedAt >= ${hotWindowStart}
@@ -332,10 +346,16 @@ async function fetchHotCandidates(limit: number, hotWindowStart: Date): Promise<
   return rows ?? [];
 }
 
-async function fetchSafetyCandidates(limit: number, hotWindowStart: Date): Promise<CandidateRow[]> {
+async function fetchSafetyCandidates(
+  limit: number,
+  hotWindowStart: Date,
+  sourceTables: string[],
+): Promise<CandidateRow[]> {
   if (limit <= 0) return [];
 
   const recheckBefore = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000);
+  const sourceTableFilter = buildSourceTableScopeFilter('tr', sourceTables);
+  const stateTableFilter = buildSourceTableScopeFilter('s', sourceTables);
   const rows = await withStatusRefreshRetry(
     () => prisma.$queryRaw<CandidateRow[]>`
       SELECT
@@ -351,7 +371,9 @@ async function fetchSafetyCandidates(limit: number, hotWindowStart: Date): Promi
         tr.sourceHash
       FROM status_refresh_ticket_state s
       INNER JOIN ticket_raw tr ON tr.incident = s.incident
-      WHERE tr.sourceTable IS NOT NULL
+      WHERE ${stateTableFilter}
+        AND ${sourceTableFilter}
+        AND tr.sourceTable IS NOT NULL
         AND tr.isActive = TRUE
         AND s.lastCheckedAt < ${recheckBefore}
         AND (
@@ -375,11 +397,12 @@ async function fetchSafetyCandidates(limit: number, hotWindowStart: Date): Promi
   return rows ?? [];
 }
 
-async function seedRefreshState(limit: number): Promise<void> {
+async function seedRefreshState(limit: number, sourceTables: string[]): Promise<void> {
   const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 200);
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
   const hotWindowStart = getHotWindowStart();
   const FINAL_STATUS_SET = new Set(FINAL_STATUS_VALUES.map(s => s.toLowerCase()));
+  const sourceTableFilter = buildSourceTableScopeFilter('tr', sourceTables);
 
   const candidates = await withStatusRefreshRetry(
     () => prisma.$queryRaw<Array<{ incident: string; sourceTable: string; status: string | null; sourceHash: string | null }>>`
@@ -390,7 +413,7 @@ async function seedRefreshState(limit: number): Promise<void> {
       AND s.lastCheckedAt > ${dueAt}
     WHERE tr.isActive = TRUE
       AND tr.incident IS NOT NULL
-      AND tr.sourceTable IS NOT NULL
+      AND ${sourceTableFilter}
       AND (
         tr.sourceUpdatedAt IS NULL
         OR tr.sourceUpdatedAt < ${hotWindowStart}
@@ -761,12 +784,13 @@ export async function runStatusRefresh(
     return result;
   }
 
-  result.backlogEstimate = await estimateBacklog();
+  const sourceTables = getTableNames();
+  result.backlogEstimate = await estimateBacklog(sourceTables);
   await setMySQLSessionTimeout(25_000);
   await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
-    await seedRefreshState(effectiveBatchSize).catch((error) =>
+    await seedRefreshState(effectiveBatchSize, sourceTables).catch((error) =>
       logger.warn('[StatusRefresh] Seed skipped', {
         error: error instanceof Error ? error.message : String(error),
       }),
@@ -781,8 +805,8 @@ export async function runStatusRefresh(
     }
 
     const [hotCandidates, safetyCandidates] = await Promise.all([
-      fetchHotCandidates(hotLimit, hotWindowStart),
-      fetchSafetyCandidates(safetyLimit, hotWindowStart),
+      fetchHotCandidates(hotLimit, hotWindowStart, sourceTables),
+      fetchSafetyCandidates(safetyLimit, hotWindowStart, sourceTables),
     ]);
 
     const candidateMap = new Map<string, CandidateRow>();
