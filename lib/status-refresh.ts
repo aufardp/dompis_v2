@@ -402,33 +402,96 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
   const hotWindowStart = getHotWindowStart();
   const FINAL_STATUS_SET = new Set(FINAL_STATUS_VALUES.map(s => s.toLowerCase()));
-  const sourceTableFilter = buildSourceTableScopeFilter('tr', sourceTables);
+  const sourceTableWhere =
+    sourceTables.length > 0
+      ? { sourceTable: { in: sourceTables } }
+      : { sourceTable: { not: null } };
+  const fetchLimit = Math.min(Math.max(seedLimit * 3, seedLimit), 1000);
 
-  const candidates = await withStatusRefreshRetry(
-    () => prisma.$queryRaw<Array<{ incident: string; sourceTable: string; status: string | null; sourceHash: string | null }>>`
-    SELECT tr.incident, tr.sourceTable, tr.status, tr.sourceHash
-    FROM ticket_raw tr
-    LEFT JOIN status_refresh_ticket_state s
-      ON s.incident = tr.incident
-      AND s.lastCheckedAt > ${dueAt}
-    WHERE tr.isActive = TRUE
-      AND tr.incident IS NOT NULL
-      AND ${sourceTableFilter}
-      AND (
-        tr.sourceUpdatedAt IS NULL
-        OR tr.sourceUpdatedAt < ${hotWindowStart}
-      )
-      AND s.incident IS NULL
-    ORDER BY COALESCE(tr.sourceUpdatedAt, tr.lastSeenAt, tr.importedAt) DESC, tr.id_ticket ASC
-    LIMIT ${seedLimit}
-  `,
-    { label: 'seedRefreshState.select', retries: 1, baseDelayMs: 250, failOpen: true },
-  );
-  if (!candidates) return;
+  const [datedCandidates, nullCandidates] = await Promise.all([
+    withStatusRefreshRetry(
+      () =>
+        prisma.ticket_raw.findMany({
+          where: {
+            isActive: true,
+            incident: { not: null },
+            ...sourceTableWhere,
+            sourceUpdatedAt: { lt: hotWindowStart, not: null },
+          },
+          orderBy: [{ sourceUpdatedAt: 'desc' }, { id_ticket: 'asc' }],
+          take: fetchLimit,
+          select: {
+            incident: true,
+            sourceTable: true,
+            status: true,
+            sourceHash: true,
+          },
+        }),
+      { label: 'seedRefreshState.datedCandidates', retries: 1, baseDelayMs: 250, failOpen: true },
+    ),
+    withStatusRefreshRetry(
+      () =>
+        prisma.ticket_raw.findMany({
+          where: {
+            isActive: true,
+            incident: { not: null },
+            ...sourceTableWhere,
+            sourceUpdatedAt: null,
+          },
+          orderBy: [{ lastSeenAt: 'desc' }, { importedAt: 'desc' }, { id_ticket: 'asc' }],
+          take: fetchLimit,
+          select: {
+            incident: true,
+            sourceTable: true,
+            status: true,
+            sourceHash: true,
+          },
+        }),
+      { label: 'seedRefreshState.nullCandidates', retries: 1, baseDelayMs: 250, failOpen: true },
+    ),
+  ]);
 
-  const toSeed = candidates.filter(
-    c => !c.status || !FINAL_STATUS_SET.has(c.status.toLowerCase())
+  const mergedCandidates = new Map<string, {
+    incident: string;
+    sourceTable: string;
+    status: string | null;
+    sourceHash: string | null;
+  }>();
+  for (const candidate of [...(datedCandidates ?? []), ...(nullCandidates ?? [])]) {
+    if (!candidate.incident || !candidate.sourceTable) continue;
+    const normalizedCandidate = {
+      incident: candidate.incident,
+      sourceTable: candidate.sourceTable,
+      status: candidate.status,
+      sourceHash: candidate.sourceHash,
+    };
+    if (!mergedCandidates.has(normalizedCandidate.incident)) {
+      mergedCandidates.set(normalizedCandidate.incident, normalizedCandidate);
+    }
+  }
+
+  const candidates = [...mergedCandidates.values()];
+  if (candidates.length === 0) return;
+
+  const recentStateRows = await withStatusRefreshRetry(
+    () =>
+      prisma.status_refresh_ticket_state.findMany({
+        where: {
+          incident: { in: candidates.map((c) => c.incident) },
+          lastCheckedAt: { gt: dueAt },
+        },
+        select: {
+          incident: true,
+        },
+      }),
+    { label: 'seedRefreshState.stateLookup', retries: 1, baseDelayMs: 200, failOpen: true },
   );
+
+  const recentStateSet = new Set((recentStateRows ?? []).map((row) => row.incident));
+  const toSeed = candidates
+    .filter((candidate) => !recentStateSet.has(candidate.incident))
+    .filter((c) => !c.status || !FINAL_STATUS_SET.has(c.status.toLowerCase()))
+    .slice(0, seedLimit);
 
   if (toSeed.length === 0) return;
 
