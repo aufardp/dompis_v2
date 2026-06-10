@@ -27,6 +27,7 @@ import Badge from '../../../components/ui/badge/Badge';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import {
   getStatusColor,
+  getStatusLabel,
   getTicketAge,
   getTicketAgeColorClass,
 } from '../../../components/tickets/helpers';
@@ -173,7 +174,8 @@ const COL_LABELS: Record<string, string> = {
   jenis: 'Jenis Tiket',
   workzone: 'Workzone',
   technician: 'Technician',
-  status: 'Status',
+  statusInsera: 'Status Insera',
+  statusDompis: 'Status Dompis',
 };
 
 type ColKey = keyof typeof COL_LABELS;
@@ -189,7 +191,8 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   jenis: true,
   workzone: true,
   technician: true,
-  status: true,
+  statusInsera: true,
+  statusDompis: true,
 };
 
 export default function TicketTableSemesta({
@@ -459,6 +462,19 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                             <p className='mt-0.5 text-xs text-slate-500'>
                               Jenis tiket: {ticket.jenisTiket || '-'}
                             </p>
+                            <div className='mt-2 flex flex-wrap gap-2'>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status || '')}`}
+                              >
+                                Insera: {getStatusLabel(ticket.status || '')}
+                              </span>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status_update || '')}`}
+                              >
+                                Dompis:{' '}
+                                {getStatusLabel(ticket.status_update || '')}
+                              </span>
+                            </div>
                           </div>
                           <button
                             onClick={() => handleOpenDrawer(ticket)}
@@ -541,8 +557,11 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                     renderSortableHeader('Workzone', 'workzone')}
                   {visibleCols.technician &&
                     renderSortableHeader('Teknisi', 'technicianName')}
-                  {visibleCols.status && (
-                    <th className='px-3 py-3 text-center'>Status</th>
+                  {visibleCols.statusInsera && (
+                    <th className='px-3 py-3 text-center'>Status Insera</th>
+                  )}
+                  {visibleCols.statusDompis && (
+                    <th className='px-3 py-3 text-center'>Status Dompis</th>
                   )}
                   {/* Detail column */}
                   <th className='px-3 py-3 text-center'>Aksi</th>
@@ -551,13 +570,13 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
               <tbody className='divide-y divide-(--border)'>
                 {loading ? (
                   <tr>
-                    <td colSpan={15}>
-                      <TableLoadingSkeleton rows={6} cols={15} />
+                    <td colSpan={16}>
+                      <TableLoadingSkeleton rows={6} cols={16} />
                     </td>
                   </tr>
                 ) : sortedTickets.length === 0 ? (
                   <TableEmptyState
-                    colSpan={15}
+                    colSpan={16}
                     message='Tidak ada tiket ditemukan'
                   />
                 ) : (

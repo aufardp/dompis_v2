@@ -92,6 +92,76 @@ function buildTicketSearchWhere(
   return { incident: { equals: term } };
 }
 
+function buildTicketSearchPhases(
+  search: string,
+  searchType?: SearchType,
+): {
+  primaryWhere: Record<string, any> | null;
+  fallbackWhere: Record<string, any> | null;
+} {
+  const term = normalizeSearchInput(search);
+  if (!term) {
+    return { primaryWhere: null, fallbackWhere: null };
+  }
+
+  const isNumericLike = /^[\d\s+().-]+$/.test(term);
+  const compactNumber = term.replace(/[^\d]/g, '');
+  const primaryOrs: Record<string, any>[] = [];
+
+  if (searchType === 'service' || (isNumericLike && compactNumber.length >= 4)) {
+    primaryOrs.push(
+      { service_no: { equals: compactNumber } },
+      { service_no: { startsWith: compactNumber } },
+      { contact_phone: { startsWith: compactNumber } },
+    );
+    return { primaryWhere: { OR: primaryOrs }, fallbackWhere: null };
+  }
+
+  const isTicketCodeLike = /^[a-z0-9_-]{3,}$/i.test(term) && !term.includes(' ');
+  if (searchType === 'ticket_code' || isTicketCodeLike) {
+    primaryOrs.push(
+      { incident: { equals: term } },
+      { incident: { startsWith: term } },
+      { ticket_id_gamas: { equals: term } },
+      { ticket_id_gamas: { startsWith: term } },
+    );
+    return { primaryWhere: { OR: primaryOrs }, fallbackWhere: null };
+  }
+
+  primaryOrs.push(
+    { incident: { equals: term } },
+    ...(term.length >= 3 ? [{ incident: { startsWith: term } }] : []),
+    { service_no: { equals: term } },
+    { ticket_id_gamas: { equals: term } },
+    ...(term.length >= 3
+      ? [
+          { service_no: { startsWith: term } },
+          { ticket_id_gamas: { startsWith: term } },
+        ]
+      : []),
+    ...(compactNumber.length >= 4
+      ? [
+          { service_no: { equals: compactNumber } },
+          { service_no: { startsWith: compactNumber } },
+          { contact_phone: { startsWith: compactNumber } },
+        ]
+      : []),
+  );
+
+  const fallbackOrs: Record<string, any>[] = [];
+  if (term.length >= 3 && !isNumericLike) {
+    fallbackOrs.push(
+      { contact_name: { contains: term } },
+      { customer_name: { contains: term } },
+    );
+  }
+
+  return {
+    primaryWhere: { OR: primaryOrs },
+    fallbackWhere: fallbackOrs.length > 0 ? { OR: fallbackOrs } : null,
+  };
+}
+
 const ticketSearchSelect = {
   id_ticket: true,
   incident: true,
@@ -432,6 +502,7 @@ export class TicketService {
   ) {
     const {
       search = '',
+      searchType,
       statusUpdate,
       dept,
       ticketType,
@@ -439,7 +510,6 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
-      searchType,
     } = filters ?? {};
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
@@ -523,6 +593,7 @@ export class TicketService {
   ) {
     const {
       search = '',
+      searchType,
       statusUpdate,
       dept,
       ticketType,
@@ -547,6 +618,7 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      searchType,
     });
 
     /* QUERY DATABASE */
@@ -1118,55 +1190,67 @@ export class TicketService {
 
   static async search(incident: string, role: string, userId: number) {
     const roleWhere = await this.buildWorkzoneWhere(role, userId);
-    const term = normalizeSearchInput(incident);
-    if (!term) return [];
-
-    const compactNumber = term.replace(/[^\d]/g, '');
-    const querySpecs: Array<Record<string, any>> = [{ incident: { equals: term } }];
-
-    if (term.length >= 3) {
-      querySpecs.push({ incident: { startsWith: term } });
-    }
-
-    querySpecs.push({ service_no: { equals: term } });
-    querySpecs.push({ ticket_id_gamas: { equals: term } });
-
-    if (term.length >= 3) {
-      querySpecs.push({ service_no: { startsWith: term } });
-      querySpecs.push({ ticket_id_gamas: { startsWith: term } });
-    }
-
-    if (compactNumber.length >= 4) {
-      querySpecs.push({ service_no: { equals: compactNumber } });
-      querySpecs.push({ service_no: { startsWith: compactNumber } });
-      querySpecs.push({ contact_phone: { startsWith: compactNumber } });
-    }
-
-    if (term.length >= 3 && !/^[\d\s+().-]+$/.test(term)) {
-      querySpecs.push({ contact_name: { contains: term } });
-      querySpecs.push({ customer_name: { contains: term } });
-    }
+    const searchPhases = buildTicketSearchPhases(incident);
+    if (!searchPhases.primaryWhere) return [];
 
     const results: SearchTicketRow[] = [];
-    for (const queryWhere of querySpecs) {
-      if (results.length >= 20) break;
+    const primaryRows = await prisma.ticket.findMany({
+      where: {
+        ...roleWhere,
+        ...searchPhases.primaryWhere,
+      },
+      orderBy: { id_ticket: 'desc' },
+      take: 20,
+      select: ticketSearchSelect,
+    });
 
-      const rows = await prisma.ticket.findMany({
+    results.push(...primaryRows);
+
+    if (results.length < 20 && searchPhases.fallbackWhere) {
+      const fallbackRows = await prisma.ticket.findMany({
         where: {
           ...roleWhere,
-          ...queryWhere,
+          ...searchPhases.fallbackWhere,
         },
         orderBy: { id_ticket: 'desc' },
         take: 20,
         select: ticketSearchSelect,
       });
 
-      results.push(...rows);
+      results.push(...fallbackRows);
     }
 
     return uniqueSearchResults(results)
       .slice(0, 20)
       .map(mapSearchTicketResult);
+  }
+
+  static async hasSearchHit(incident: string, role: string, userId: number) {
+    const roleWhere = await this.buildWorkzoneWhere(role, userId);
+    const searchPhases = buildTicketSearchPhases(incident);
+    if (!searchPhases.primaryWhere) return false;
+
+    const primary = await prisma.ticket.findFirst({
+      where: {
+        ...roleWhere,
+        ...searchPhases.primaryWhere,
+      },
+      select: { id_ticket: true },
+    });
+
+    if (primary) return true;
+
+    if (!searchPhases.fallbackWhere) return false;
+
+    const fallback = await prisma.ticket.findFirst({
+      where: {
+        ...roleWhere,
+        ...searchPhases.fallbackWhere,
+      },
+      select: { id_ticket: true },
+    });
+
+    return Boolean(fallback);
   }
 
   static async searchByContactName(
@@ -1189,6 +1273,26 @@ export class TicketService {
     });
 
     return tickets.map(mapSearchTicketResult);
+  }
+
+  static async hasContactNameHit(
+    contactName: string,
+    role: string,
+    userId: number,
+  ) {
+    const roleWhere = await this.buildWorkzoneWhere(role, userId);
+    const term = normalizeSearchInput(contactName);
+    const where =
+      term.length >= 3
+        ? { ...roleWhere, contact_name: { contains: term } }
+        : { ...roleWhere, contact_name: { equals: term } };
+
+    const ticket = await prisma.ticket.findFirst({
+      where,
+      select: { id_ticket: true },
+    });
+
+    return Boolean(ticket);
   }
 
   static async searchByServiceNo(
@@ -1216,6 +1320,29 @@ export class TicketService {
     });
 
     return tickets.map(mapSearchTicketResult);
+  }
+
+  static async hasServiceNoHit(
+    serviceNo: string,
+    role: string,
+    userId: number,
+  ) {
+    const roleWhere = await this.buildWorkzoneWhere(role, userId);
+    const term = normalizeSearchInput(serviceNo);
+    const compactNumber = term.replace(/[^\d]/g, '');
+    const matchTerm = compactNumber.length >= 4 ? compactNumber : term;
+    const ticket = await prisma.ticket.findFirst({
+      where: {
+        ...roleWhere,
+        OR: [
+          { service_no: { equals: matchTerm } },
+          { service_no: { startsWith: matchTerm } },
+        ],
+      },
+      select: { id_ticket: true },
+    });
+
+    return Boolean(ticket);
   }
 
   static async getTicketsByUser(userId: number) {

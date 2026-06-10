@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { format } from 'date-fns';
@@ -61,6 +61,7 @@ type BucketPageProps = {
   regulerOnly?: boolean;
   anomalyBucket?: string[];
   showDateFilter?: boolean;
+  disableLocalSearch?: boolean;
   extraWorkboard?: {
     title: string;
     description: string;
@@ -243,6 +244,7 @@ export default function TicketManagementBucketPage({
   regulerOnly,
   anomalyBucket = [],
   showDateFilter,
+  disableLocalSearch = false,
   extraWorkboard,
 }: BucketPageProps) {
   const queryClient = useQueryClient();
@@ -273,9 +275,14 @@ export default function TicketManagementBucketPage({
   const [b2cActiveType, setB2cActiveType] = useState<
     'all' | 'REGULER' | 'HVC_GOLD' | 'HVC_PLATINUM' | 'HVC_DIAMOND'
   >('all');
+  const b2cTableRef = useRef<HTMLDivElement>(null);
+  const b2bTableRef = useRef<HTMLDivElement>(null);
+  const extraWorkboardTableRef = useRef<HTMLDivElement>(null);
+  const effectiveSearchQuery = disableLocalSearch ? '' : searchQuery;
 
   const b2cBreakdownKey = [
     'b2c-breakdown',
+    effectiveSearchQuery,
     operationalBucket?.join(','),
     workzoneFilter,
   ];
@@ -283,6 +290,7 @@ export default function TicketManagementBucketPage({
     queryKey: b2cBreakdownKey,
     queryFn: async () => {
       const params = new URLSearchParams();
+      if (effectiveSearchQuery.trim()) params.set('search', effectiveSearchQuery.trim());
       if (workzoneFilter) params.set('workzone', workzoneFilter);
       if (operationalBucket?.length) params.set('bucket', operationalBucket[0]);
       const url = `/api/dashboard/b2c-breakdown?${params.toString()}`;
@@ -304,7 +312,7 @@ export default function TicketManagementBucketPage({
     : undefined;
 
   const sharedFilters = {
-    search: searchQuery,
+    search: effectiveSearchQuery,
     workzone: workzoneFilter || undefined,
     operationalBucket,
     regulerOnly,
@@ -342,7 +350,7 @@ export default function TicketManagementBucketPage({
   });
 
   const extraWorkboardPageData = useDailyTicketPage({
-    search: '',
+    search: effectiveSearchQuery,
     symptom: extraWorkboard?.symptom,
     workzone: workzoneFilter || undefined,
     dept: extraWorkboard?.dept ?? 'all',
@@ -379,6 +387,70 @@ export default function TicketManagementBucketPage({
     b2bPageData.summary,
     b2cPageData.summary,
     extraWorkboardPageData.summary,
+  ]);
+
+  useEffect(() => {
+    if (disableLocalSearch) return;
+    if (!effectiveSearchQuery.trim()) return;
+    if (
+      b2cPageData.loading ||
+      b2bPageData.loading ||
+      extraWorkboardPageData.loading ||
+      b2cPageData.isRefreshing ||
+      b2bPageData.isRefreshing ||
+      extraWorkboardPageData.isRefreshing
+    ) {
+      return;
+    }
+
+    const extraCount = extraWorkboard ? extraWorkboardPageData.pagination.total : 0;
+    const b2cCount = b2cPageData.pagination.total;
+    const b2bCount = b2bPageData.pagination.total;
+    const totalFound = extraCount + b2cCount + b2bCount;
+
+    if (totalFound === 0) return;
+
+    const target =
+      extraCount > 0 && b2cCount === 0 && b2bCount === 0
+        ? 'extra'
+        : deptView === 'b2c' && b2cCount > 0
+          ? 'b2c'
+          : deptView === 'b2b' && b2bCount > 0
+            ? 'b2b'
+            : b2bCount > 0
+              ? 'b2b'
+              : b2cCount > 0
+                ? 'b2c'
+                : 'extra';
+
+    window.requestAnimationFrame(() => {
+      if (target === 'extra') {
+        extraWorkboardTableRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+        return;
+      }
+      const targetRef = target === 'b2b' ? b2bTableRef : b2cTableRef;
+      targetRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }, [
+    effectiveSearchQuery,
+    deptView,
+    extraWorkboard,
+    disableLocalSearch,
+    extraWorkboardPageData.loading,
+    extraWorkboardPageData.isRefreshing,
+    extraWorkboardPageData.pagination.total,
+    b2cPageData.loading,
+    b2cPageData.isRefreshing,
+    b2cPageData.pagination.total,
+    b2bPageData.loading,
+    b2bPageData.isRefreshing,
+    b2bPageData.pagination.total,
   ]);
 
   const activeRuleBadges = useMemo(() => {
@@ -494,7 +566,7 @@ export default function TicketManagementBucketPage({
   return (
     <>
       <AdminLayout
-        onSearch={handleSearch}
+        onSearch={disableLocalSearch ? undefined : handleSearch}
         onWorkzoneChange={handleWorkzoneChange}
         selectedWorkzone={workzoneFilter}
       >
@@ -531,6 +603,32 @@ export default function TicketManagementBucketPage({
                         </span>
                       ))}
                     </div>
+                    {!disableLocalSearch && (
+                      <div className='mt-4 flex max-w-2xl items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70'>
+                        <div className='relative flex-1'>
+                          <input
+                            type='search'
+                            value={searchQuery}
+                            onChange={(e) => handleSearch(e.target.value)}
+                            placeholder='Search incident, ticket, customer, service...'
+                            className='h-11 w-full rounded-xl border-0 bg-slate-50 px-4 pr-10 text-sm font-medium text-slate-900 outline-none ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/30 dark:bg-slate-950 dark:text-slate-100 dark:ring-slate-800'
+                          />
+                          {searchQuery.trim() && (
+                            <button
+                              type='button'
+                              onClick={() => handleSearch('')}
+                              className='absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                              aria-label='Clear search'
+                            >
+                              <span className='text-lg leading-none'>×</span>
+                            </button>
+                          )}
+                        </div>
+                        <span className='hidden shrink-0 text-xs font-semibold text-slate-400 lg:inline'>
+                          Search in this bucket
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -706,7 +804,7 @@ export default function TicketManagementBucketPage({
           </div>
 
           {extraWorkboard && deptView !== 'b2b' && (
-            <div className='space-y-3'>
+            <div ref={extraWorkboardTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
                 <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
                   {extraWorkboard.title}
@@ -787,6 +885,7 @@ export default function TicketManagementBucketPage({
               <TicketTableTabs
                 section='b2c'
                 accentColor='#10b981'
+                forceMainTabKey={searchQuery.trim()}
                 mainTable={
                   <TicketTable
                     tickets={b2cPageData.tickets}
@@ -863,6 +962,7 @@ export default function TicketManagementBucketPage({
               <TicketTableTabs
                 section='b2b'
                 accentColor='#3b82f6'
+                forceMainTabKey={searchQuery.trim()}
                 mainTable={
                   <TicketTableB2B
                     tickets={b2bPageData.tickets}

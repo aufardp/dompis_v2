@@ -6,6 +6,10 @@ export const queryKeys = {
       filters
         ? ([...queryKeys.tickets.all, 'daily', filters] as const)
         : ([...queryKeys.tickets.all, 'daily'] as const),
+    semesta: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.tickets.all, 'semesta', filters] as const)
+        : ([...queryKeys.tickets.all, 'semesta'] as const),
     detail: (id: number) => [...queryKeys.tickets.all, id] as const,
     expired: (filters?: Record<string, unknown>) =>
       filters

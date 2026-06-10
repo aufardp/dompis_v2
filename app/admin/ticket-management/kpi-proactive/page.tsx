@@ -8,6 +8,7 @@ export default function TicketManagementKpiProactivePage() {
       icon='📗'
       tone='emerald'
       operationalBucket={['kpi_proactive']}
+      disableLocalSearch
     />
   );
 }

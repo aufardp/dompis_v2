@@ -20,6 +20,7 @@ import { useTicketAnalytics } from './hooks/useTicketAnalytics';
 import { useSemestaAnalyticsV2 } from './hooks/useSemestaAnalyticsV2';
 import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
+import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 
 const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
   ssr: false,
@@ -334,14 +335,17 @@ export default function SemestaPage() {
   const byWorkzone = analyticsData?.byWorkzone ?? [];
   const trend = analyticsData?.trend ?? [];
 
-  // Read search from URL on mount
-  useEffect(() => {
-    const q = searchParams.get('search') || '';
-    if (q) {
+  useUrlSearchQuery({
+    searchParams,
+    onQuery: useCallback((q: string) => {
       setSearchQuery(q);
       setCurrentPage(1);
-    }
-  }, [searchParams]);
+    }, []),
+    onClear: useCallback(() => {
+      setSearchQuery('');
+      setCurrentPage(1);
+    }, []),
+  });
 
   // Auto-scroll to ticket table when search results load + show toast
   useEffect(() => {
@@ -351,15 +355,17 @@ export default function SemestaPage() {
       }
       return;
     }
-    const timer = setTimeout(() => {
-      if (pagination.total > 0) {
-        setSearchToast({ message: `${pagination.total} tiket ditemukan`, type: 'success' });
+    if (pagination.total > 0) {
+      setSearchToast({
+        message: `${pagination.total} tiket ditemukan`,
+        type: 'success',
+      });
+      window.requestAnimationFrame(() => {
         tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
-      }
-    }, 300);
-    return () => clearTimeout(timer);
+      });
+    } else {
+      setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+    }
   }, [searchQuery, ticketsLoading, ticketsRefreshing, pagination.total]);
 
   const handleSearch = useCallback((query: string) => {

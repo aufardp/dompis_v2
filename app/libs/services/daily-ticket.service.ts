@@ -1626,6 +1626,20 @@ export class DailyTicketService {
     };
   }
 
+  static async hasDailyTicketHit(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ) {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const ticket = await prisma.ticket.findFirst({
+      where,
+      select: { id_ticket: true },
+    });
+
+    return Boolean(ticket);
+  }
+
   static async getKpiBucketSummaryMatrix(
     role: string,
     userId: number,

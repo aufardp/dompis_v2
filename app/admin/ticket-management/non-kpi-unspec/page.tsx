@@ -8,6 +8,7 @@ export default function TicketManagementNonKpiUnspecPage() {
       icon='🟠'
       tone='amber'
       operationalBucket={['non_kpi_unspec']}
+      disableLocalSearch
       extraWorkboard={{
         title: 'Unspec OHI',
         description: 'Ticket dengan symptom mengandung PROACTIVE UNSPEC 2026.',

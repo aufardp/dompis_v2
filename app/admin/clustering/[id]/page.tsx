@@ -358,7 +358,7 @@ export default function ClusterDetailPage() {
             >
               ← Kembali ke Cluster
             </button>
-            <h1 className='font-syne text-2xl font-bold text-(--text-primary)'>
+            <h1 className='text-2xl font-black text-(--text-primary)'>
               {cluster.nama_cluster}
             </h1>
             <p className='text-sm text-(--text-secondary)'>
@@ -401,7 +401,7 @@ export default function ClusterDetailPage() {
             <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <h2 className='font-syne text-lg font-bold text-(--text-primary)'>
+                  <h2 className='text-lg font-bold text-(--text-primary)'>
                     ODC Nodes
                   </h2>
                   <p className='text-xs text-(--text-secondary)'>
@@ -698,7 +698,7 @@ export default function ClusterDetailPage() {
             <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <h2 className='font-syne text-lg font-bold text-(--text-primary)'>
+                  <h2 className='text-lg font-bold text-(--text-primary)'>
                     Deskripsi Wilayah
                   </h2>
                   <p className='text-xs text-(--text-secondary)'>
@@ -774,7 +774,7 @@ export default function ClusterDetailPage() {
               <div className='bg-surface w-full max-w-2xl rounded-2xl border border-(--border) shadow-xl'>
                 <div className='flex items-center justify-between border-b border-(--border) px-5 py-4'>
                   <div>
-                    <h3 className='font-syne text-base font-bold text-(--text-primary)'>
+                    <h3 className='text-base font-semibold text-(--text-primary)'>
                       Pratinjau Import ODC
                     </h3>
                     <p className='mt-0.5 text-xs text-(--text-secondary)'>

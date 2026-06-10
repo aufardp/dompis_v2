@@ -14,7 +14,7 @@ interface Props {
 
 export default function AdminLayout({
   children,
-  onSearch: _onSearch,
+  onSearch,
   onWorkzoneChange,
   selectedWorkzone,
 }: Props) {
@@ -89,7 +89,7 @@ export default function AdminLayout({
           onMenuClick={() => setSidebarOpen(true)}
           onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
           sidebarCollapsed={sidebarCollapsed}
-          onSearch={undefined}
+          onSearch={onSearch}
           onWorkzoneChange={onWorkzoneChange}
           selectedWorkzone={selectedWorkzone}
         />

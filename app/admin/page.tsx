@@ -4,6 +4,7 @@ import { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import clsx from 'clsx';
 import AdminLayout from '@/app/components/layout/AdminLayout';
+import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 import NewTicketModal from '@/app/admin/components/dashboard/create/NewTicketModal';
 import AssignTechnicianModal from '@/app/admin/components/dashboard/assign/AssignTechnicianModal';
 import { useDailyTickets } from '@/app/hooks/useDailyTickets';
@@ -200,13 +201,22 @@ export default function TicketPage() {
     } else {
       setDeptFilter('all');
     }
-    const q = searchParams.get('search') || '';
-    if (q) {
+  }, [searchParams]);
+
+  useUrlSearchQuery({
+    searchParams,
+    onQuery: useCallback((q: string) => {
       setSearchQuery(q);
       setB2cPage(1);
       setB2bPage(1);
-    }
-  }, [searchParams]);
+    }, []),
+    onClear: useCallback(() => {
+      setSearchQuery('');
+      setB2cPage(1);
+      setB2bPage(1);
+      setSearchOpenSectionIds([]);
+    }, []),
+  });
 
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
@@ -1427,43 +1437,39 @@ export default function TicketPage() {
 
     if (b2cPageData.loading || b2bPageData.loading || b2cPageData.isRefreshing || b2bPageData.isRefreshing) return;
 
-    const timer = setTimeout(() => {
-      const b2cCount = b2cPageData.pagination.total;
-      const b2bCount = b2bPageData.pagination.total;
-      const totalFound = b2cCount + b2bCount;
+    const b2cCount = b2cPageData.pagination.total;
+    const b2bCount = b2bPageData.pagination.total;
+    const totalFound = b2cCount + b2bCount;
 
-      if (totalFound === 0) {
-        setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
-        setSearchOpenSectionIds([]);
-        return;
-      }
+    if (totalFound === 0) {
+      setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+      setSearchOpenSectionIds([]);
+      return;
+    }
 
-      setSearchToast({
-        message: `${totalFound} tiket ditemukan`,
-        type: 'success',
-      });
+    setSearchToast({
+      message: `${totalFound} tiket ditemukan`,
+      type: 'success',
+    });
 
-      const target =
-        deptFilter === 'b2c' && b2cCount > 0
-          ? 'b2c'
-          : deptFilter === 'b2b' && b2bCount > 0
+    const target =
+      deptFilter === 'b2c' && b2cCount > 0
+        ? 'b2c'
+        : deptFilter === 'b2b' && b2bCount > 0
+          ? 'b2b'
+          : b2bCount > 0
             ? 'b2b'
-            : b2bCount > 0
-              ? 'b2b'
-              : 'b2c';
+            : 'b2c';
 
-      setSearchOpenSectionIds([target]);
+    setSearchOpenSectionIds([target]);
 
-      window.setTimeout(() => {
-        const targetRef = target === 'b2b' ? b2bTableRef : b2cTableRef;
-        targetRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }, 350);
-    }, 300);
-
-    return () => clearTimeout(timer);
+    window.requestAnimationFrame(() => {
+      const targetRef = target === 'b2b' ? b2bTableRef : b2cTableRef;
+      targetRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
   }, [
     searchQuery,
     deptFilter,
@@ -1647,6 +1653,7 @@ export default function TicketPage() {
                       <TicketTableTabs
                         section='b2b'
                         accentColor='#3b82f6'
+                        forceMainTabKey={searchQuery.trim()}
                         mainTable={
                           <TicketTableB2B
                             tickets={b2bPageData.tickets}
@@ -1717,6 +1724,7 @@ export default function TicketPage() {
                       <TicketTableTabs
                         section='b2c'
                         accentColor='#10b981'
+                        forceMainTabKey={searchQuery.trim()}
                         mainTable={
                           <TicketTable
                             tickets={b2cPageData.tickets}

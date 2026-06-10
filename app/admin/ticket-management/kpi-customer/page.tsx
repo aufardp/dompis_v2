@@ -8,6 +8,7 @@ export default function TicketManagementKpiCustomerPage() {
       icon='📘'
       tone='blue'
       operationalBucket={['kpi_customer']}
+      disableLocalSearch
     />
   );
 }

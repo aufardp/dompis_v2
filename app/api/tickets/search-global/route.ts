@@ -3,7 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { subDays, format } from 'date-fns';
+import { detectSearchType } from '@/lib/search-intent';
 
 export async function GET(request: Request) {
   try {
@@ -13,31 +13,30 @@ export async function GET(request: Request) {
     if (!q.trim()) {
       return NextResponse.json({ found: false, count: 0 });
     }
-
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const thirtyDaysAgo = format(subDays(new Date(), 29), 'yyyy-MM-dd');
-
-    const [dailySummary, semestaResult] = await Promise.all([
-      DailyTicketService.getDailyTicketSummary(user.role, user.id_user, {
+    const searchType = detectSearchType(q);
+    const [dailyFound, semestaFound] = await Promise.all([
+      DailyTicketService.hasDailyTicketHit(user.role, user.id_user, {
         dept: 'all',
         search: q,
+        searchType,
       }),
-      TicketService.getTickets(user.role, user.id_user, {
-        search: q,
-        startDate: thirtyDaysAgo,
-        endDate: today,
-        limit: 1,
-      }),
+      (async () => {
+        switch (searchType) {
+          case 'service':
+            return TicketService.hasServiceNoHit(q, user.role, user.id_user);
+          case 'contact':
+            return TicketService.hasContactNameHit(q, user.role, user.id_user);
+          default:
+            return TicketService.hasSearchHit(q, user.role, user.id_user);
+        }
+      })(),
     ]);
 
-    const dailyCount = dailySummary?.total ?? 0;
-    const semestaCount = semestaResult?.total ?? 0;
-
-    if (dailyCount > 0) {
-      return NextResponse.json({ found: true, page: 'admin', count: dailyCount });
+    if (dailyFound) {
+      return NextResponse.json({ found: true, page: 'admin', count: 1 });
     }
-    if (semestaCount > 0) {
-      return NextResponse.json({ found: true, page: 'semesta', count: semestaCount });
+    if (semestaFound) {
+      return NextResponse.json({ found: true, page: 'semesta', count: 1 });
     }
     return NextResponse.json({ found: false, count: 0 });
   } catch (error) {

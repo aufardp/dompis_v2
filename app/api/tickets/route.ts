@@ -42,10 +42,11 @@ export async function GET(request: Request) {
       searchParams.get('statusUpdate') ||
       searchParams.get('status') ||
       undefined;
+    const searchType = parseSearchType(searchParams.get('searchType'));
 
     const filters = {
       search: searchParams.get('search') || '',
-      searchType: parseSearchType(searchParams.get('searchType')),
+      searchType,
       statusUpdate,
       dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
       ticketType:

@@ -1,13 +1,15 @@
 import { ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
-import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
+import {
+  getStatusColor,
+  getStatusLabel,
+} from '../../../components/tickets/helpers';
 import { TicketSeverity, SEVERITY_COLORS } from '@/app/libs/tickets/sort';
 import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 import { TicketCtype } from '@/app/types/ticket';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
-import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { getJenisStyle } from '@/app/config/jenis-tiket';
 import TtrCountdownBadge from './TtrCountdownBadge';
 import MaxTtrCell from './MaxTtrCell';
@@ -79,9 +81,6 @@ export default function TicketRowSemesta({
 }: TicketRowSemestaProps) {
   const severityStyles = SEVERITY_COLORS[severity];
 
-  const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
-
-  const maxTtr = getMaxTtr(ticket);
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
@@ -281,15 +280,27 @@ export default function TicketRowSemesta({
           )}
         </td>
 
-        {/* Status */}
+        {/* Status Insera */}
         <td className='px-4 py-3 text-center'>
           <span
             className={clsx(
               'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase',
-              `badge-${getStatusColor((ticket.status_update ?? ticket.status_update) || '')}`,
+              `badge-${getStatusColor((ticket.status ?? '') || '')}`,
             )}
           >
-            {(ticket.status_update ?? ticket.status_update) || '-'}
+            {getStatusLabel(ticket.status ?? '')}
+          </span>
+        </td>
+
+        {/* Status Dompis */}
+        <td className='px-4 py-3 text-center'>
+          <span
+            className={clsx(
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase',
+              `badge-${getStatusColor((ticket.status_update ?? '') || '')}`,
+            )}
+          >
+            {getStatusLabel(ticket.status_update ?? '')}
           </span>
         </td>
 
@@ -309,7 +320,7 @@ export default function TicketRowSemesta({
       {/* Expanded detail row */}
       {isExpanded && (
         <tr>
-          <td colSpan={15} className='bg-surface-2 px-4 py-4'>
+          <td colSpan={16} className='bg-surface-2 px-4 py-4'>
             <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
               <div>
                 <h4 className='text-xs font-bold text-(--text-secondary) uppercase'>

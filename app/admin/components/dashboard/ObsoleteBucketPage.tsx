@@ -25,7 +25,6 @@ type TicketData = {
 export default function ObsoleteBucketPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
   const [validasiPage, setValidasiPage] = useState(1);
@@ -40,7 +39,7 @@ export default function ObsoleteBucketPage() {
     validasiCount,
     validasiPagination,
   } = useDailyTicketPage({
-    search: searchQuery,
+    search: '',
     workzone: workzoneFilter || undefined,
     dept: 'all',
     operationalBucket: ['obsolete'],
@@ -58,11 +57,6 @@ export default function ObsoleteBucketPage() {
     assigned: summary?.assigned ?? 0,
     close: summary?.close ?? 0,
   }), [pagePagination?.total, summary?.open, summary?.assigned, summary?.close]);
-
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    setPage(1);
-  }, []);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
@@ -107,7 +101,6 @@ export default function ObsoleteBucketPage() {
   return (
     <>
       <AdminLayout
-        onSearch={handleSearch}
         onWorkzoneChange={handleWorkzoneChange}
         selectedWorkzone={workzoneFilter}
       >

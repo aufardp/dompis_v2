@@ -53,6 +53,7 @@ interface TicketTableTabsProps {
   loading?: boolean;
   isRefreshing?: boolean;
   onAssign?: (ticketId: number | string) => void;
+  forceMainTabKey?: string;
 }
 
 export default function TicketTableTabs({
@@ -67,6 +68,7 @@ export default function TicketTableTabs({
   loading,
   isRefreshing,
   onAssign,
+  forceMainTabKey,
 }: TicketTableTabsProps) {
   const STORAGE_KEY = `admin:tab:${section}`;
 
@@ -95,6 +97,11 @@ export default function TicketTableTabs({
       // ignore
     }
   }, [activeTab, STORAGE_KEY, mounted]);
+
+  useEffect(() => {
+    if (!forceMainTabKey?.trim()) return;
+    setActiveTab('main');
+  }, [forceMainTabKey]);
 
   // Validasi tickets are fetched server-side with their own WHERE clause.
   // Condition: (status_update = 'close' OR worklog_summary = 'Tech Closed') AND status != 'closed'

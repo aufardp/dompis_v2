@@ -26,7 +26,6 @@ type TicketData = {
 export default function NonTechnicalBucketPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string[]>([]);
   const [statusUpdateFilter, setStatusUpdateFilter] = useState<string[]>([]);
@@ -46,7 +45,7 @@ export default function NonTechnicalBucketPage() {
     validasiCount,
     validasiPagination,
   } = useDailyTicketPage({
-    search: searchQuery,
+    search: '',
     workzone: workzoneFilter || undefined,
     dept: 'all',
     operationalBucket: ['non_technical'],
@@ -66,11 +65,6 @@ export default function NonTechnicalBucketPage() {
     assigned: summary?.assigned ?? 0,
     close: summary?.close ?? 0,
   }), [pagination?.total, tickets.length, summary?.open, summary?.assigned, summary?.close]);
-
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    setPage(1);
-  }, []);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
@@ -115,7 +109,6 @@ export default function NonTechnicalBucketPage() {
   return (
     <>
       <AdminLayout
-        onSearch={handleSearch}
         onWorkzoneChange={handleWorkzoneChange}
         selectedWorkzone={workzoneFilter}
       >

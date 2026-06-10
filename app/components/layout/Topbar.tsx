@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/app/hooks/useOptimizations';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import {
@@ -37,12 +37,13 @@ export default function Topbar({
   onMenuClick,
   onToggleSidebar,
   sidebarCollapsed = false,
-  onSearch: _onSearch,
+  onSearch,
   onWorkzoneChange,
   selectedWorkzone,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchToast, setSearchToast] = useState<string | null>(null);
@@ -53,20 +54,35 @@ export default function Topbar({
   const { isDark, toggleTheme } = useTheme();
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
+  const urlSearch = searchParams.get('search') || '';
+  const isLocalSearch = typeof onSearch === 'function';
 
   useEffect(() => {
     setWorkzone(selectedWorkzone || '');
   }, [selectedWorkzone]);
 
+  useEffect(() => {
+    setSearchValue(urlSearch);
+  }, [urlSearch]);
+
   const navigateToSearch = useCallback(async (q: string) => {
+    if (isLocalSearch) {
+      onSearch?.(q);
+      return;
+    }
     if (!q.trim()) return;
     setIsSearching(true);
     setSearchToast(null);
     try {
-      const res = await fetch(`/api/tickets/search-global?q=${encodeURIComponent(q)}`);
+      const res = await fetch(
+        `/api/tickets/search-global?q=${encodeURIComponent(q)}`,
+        { cache: 'no-store' },
+      );
       const result = await res.json();
       if (result.found) {
-        const targetPath = result.page === 'semesta' ? '/admin/semesta' : `/${result.page}`;
+        const targetPath = result.page === 'admin'
+          ? '/admin'
+          : '/admin/semesta';
         await router.push(`${targetPath}?search=${encodeURIComponent(q)}`);
       } else {
         setSearchToast('Tiket tidak ditemukan');
@@ -75,29 +91,66 @@ export default function Topbar({
       setSearchToast('Pencarian gagal');
     }
     setIsSearching(false);
-  }, [router]);
+  }, [isLocalSearch, onSearch, router]);
 
   useEffect(() => {
     const q = debouncedSearch.trim();
+    if (isLocalSearch) {
+      onSearch?.(q);
+      return;
+    }
     if (!q) return;
+    if (q === urlSearch.trim()) return;
 
-    const timer = setTimeout(() => {
-      navigateToSearch(q);
-    }, 300);
+    navigateToSearch(q);
+  }, [debouncedSearch, isLocalSearch, navigateToSearch, onSearch, urlSearch]);
 
-    return () => clearTimeout(timer);
-  }, [debouncedSearch, navigateToSearch]);
+  const clearGlobalSearchUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('search');
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl);
+  }, [pathname, router, searchParams]);
+
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      setSearchValue(value);
+      if (value.trim()) return;
+
+      setSearchToast(null);
+      if (isLocalSearch) {
+        onSearch?.('');
+        return;
+      }
+
+      if (urlSearch) {
+        clearGlobalSearchUrl();
+      }
+    },
+    [clearGlobalSearchUrl, isLocalSearch, onSearch, urlSearch],
+  );
 
   const handleSearch = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      navigateToSearch(searchValue.trim());
+      const q = searchValue.trim();
+      if (isLocalSearch) {
+        onSearch?.(q);
+        return;
+      }
+      navigateToSearch(q);
     },
-    [navigateToSearch, searchValue],
+    [isLocalSearch, navigateToSearch, onSearch, searchValue],
   );
 
   const clearSearch = () => {
     setSearchValue('');
+    setSearchToast(null);
+    if (isLocalSearch) {
+      onSearch?.('');
+      return;
+    }
+    clearGlobalSearchUrl();
   };
 
   const handleWorkzoneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -169,7 +222,7 @@ export default function Topbar({
                 type='text'
                 placeholder='Search ticket, customer...'
                 value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
+                onChange={(e) => handleSearchInputChange(e.target.value)}
                 className='bg-surface-2 w-64 rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary) focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none xl:w-80'
               />
               <Search className='absolute top-2.5 left-3 h-4 w-4 text-(--text-secondary)' />
@@ -225,7 +278,7 @@ export default function Topbar({
             type='text'
             placeholder='Search...'
             value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
+            onChange={(e) => handleSearchInputChange(e.target.value)}
             className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
           />
           <select
@@ -259,7 +312,7 @@ export default function Topbar({
                   type='text'
                   placeholder='Search ticket, customer...'
                   value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
                   autoFocus
                   className='bg-surface-2 w-full rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
                 />
@@ -275,7 +328,13 @@ export default function Topbar({
               )}
               <button
                 onClick={() => {
-                  navigateToSearch(searchValue.trim());
+                  const q = searchValue.trim();
+                  if (isLocalSearch) {
+                    onSearch?.(q);
+                    setShowMobileSearch(false);
+                    return;
+                  }
+                  navigateToSearch(q);
                   setShowMobileSearch(false);
                 }}
                 className='rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white'
@@ -290,7 +349,7 @@ export default function Topbar({
       {/* Search loading overlay */}
       </header>
 
-      {isSearching && (
+      {isSearching && !isLocalSearch && (
         <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/30'>
           <div className='flex flex-col items-center gap-3 rounded-xl bg-white px-8 py-6 shadow-2xl dark:bg-gray-900'>
             <Loader2 className='h-8 w-8 animate-spin text-blue-600' />

@@ -103,7 +103,7 @@ export function useDailyTicketPage({
     queryKey,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    placeholderData: search?.trim() ? undefined : keepPreviousData,
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams({

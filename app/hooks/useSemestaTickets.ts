@@ -28,10 +28,10 @@ export function useSemestaTickets(
 ) {
   const searchType = detectSearchType(search);
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: queryKeys.tickets.daily({ search, searchType, page, workzone, ctype, statusUpdate, dept, ticketType, startDate, endDate }),
+    queryKey: queryKeys.tickets.semesta({ search, searchType, page, workzone, ctype, statusUpdate, dept, ticketType, startDate, endDate }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
+    placeholderData: search.trim() ? undefined : keepPreviousData,
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),

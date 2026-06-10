@@ -369,7 +369,7 @@ export default function ClusteringPage() {
     <AdminLayout>
       <div className='space-y-6'>
         <div>
-          <h1 className='font-syne text-2xl font-bold text-(--text-primary)'>
+          <h1 className='text-2xl font-black text-(--text-primary)'>
             Cluster Management
           </h1>
           <p className='text-sm text-(--text-secondary)'>
@@ -394,7 +394,7 @@ export default function ClusteringPage() {
           <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
             <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
               <div>
-                <h2 className='font-syne text-lg font-bold text-(--text-primary)'>
+                <h2 className='text-lg font-bold text-(--text-primary)'>
                   Jadwal Hari Ini
                 </h2>
                 <p className='text-xs text-(--text-secondary)'>{todayStr}</p>
@@ -511,7 +511,7 @@ export default function ClusteringPage() {
           <div className='bg-surface-2 px-4 py-3 md:px-5 md:py-3.5'>
             <div className='flex items-center justify-between'>
               <div>
-                <h2 className='font-syne text-lg font-bold text-(--text-primary)'>
+                <h2 className='text-lg font-bold text-(--text-primary)'>
                   Manajemen Cluster
                 </h2>
                 <p className='text-xs text-(--text-secondary)'>
@@ -629,9 +629,9 @@ export default function ClusteringPage() {
                             </span>
                           ) : (
                             <div className='flex flex-wrap gap-1'>
-                              {cluster.area_names.slice(0, 5).map((name) => (
+                              {cluster.area_names.slice(0, 5).map((name, idx) => (
                                 <span
-                                  key={name}
+                                  key={`${cluster.id}-${name}-${idx}`}
                                   className='rounded-full bg-white/5 px-2 py-0.5 text-xs'
                                 >
                                   {name}
@@ -732,7 +732,7 @@ export default function ClusteringPage() {
             {/* Header */}
             <div className='flex items-center justify-between border-b border-(--border) px-5 py-4'>
               <div>
-                <h3 className='font-syne text-lg font-bold text-(--text-primary)'>
+                <h3 className='text-lg font-semibold text-(--text-primary)'>
                   Plot Teknisi — {plotModalCluster.name}
                 </h3>
                 <p className='text-xs text-(--text-secondary)'>
