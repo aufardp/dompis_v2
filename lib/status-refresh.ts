@@ -34,6 +34,7 @@ type CandidateRow = {
   id_ticket: string;
   incident: string;
   sourceTable: string;
+  sourceUpdatedAt: Date | null;
   status: string | null;
   status_date: string | null;
   date_modified: string | null;
@@ -65,6 +66,7 @@ const SLOW_RUN_THRESHOLD_MS = parsePositiveIntEnv(
   60_000,
 );
 const TIMEOUT_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_TIMEOUT_MINUTES', 5);
+const HOT_WINDOW_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_HOT_WINDOW_MINUTES', 15);
 const RECHECK_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_RECHECK_MINUTES', 2);
 const SEED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_SEED_BATCH_SIZE', 150);
 const RUN_BUDGET_MS = parsePositiveIntEnv(
@@ -116,6 +118,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function shouldStopForBudget(start: number): boolean {
   return Date.now() - start >= RUN_BUDGET_MS;
+}
+
+function getHotWindowStart(): Date {
+  return new Date(nowWib().getTime() - HOT_WINDOW_MINUTES * 60_000);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -286,37 +292,85 @@ async function estimateBacklog(): Promise<number | null> {
   }
 }
 
-async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
+async function fetchHotCandidates(limit: number, hotWindowStart: Date): Promise<CandidateRow[]> {
+  if (limit <= 0) return [];
+
+  const rows = await withStatusRefreshRetry(
+    () => prisma.$queryRaw<CandidateRow[]>`
+      SELECT
+        tr.id_ticket,
+        tr.incident,
+        tr.sourceTable,
+        tr.sourceUpdatedAt,
+        tr.status,
+        tr.status_date,
+        tr.date_modified,
+        tr.worklog_summary,
+        tr.last_update_worklog,
+        tr.sourceHash
+      FROM ticket_raw tr
+      LEFT JOIN status_refresh_ticket_state s
+        ON s.incident = tr.incident
+      WHERE tr.sourceTable IS NOT NULL
+        AND tr.isActive = TRUE
+        AND tr.sourceUpdatedAt IS NOT NULL
+        AND tr.sourceUpdatedAt >= ${hotWindowStart}
+        AND (
+          s.incident IS NULL
+          OR s.lastCheckedAt < tr.sourceUpdatedAt
+          OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
+        )
+        AND (
+          tr.status IS NULL
+          OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
+        )
+      ORDER BY tr.sourceUpdatedAt ASC, tr.id_ticket ASC
+      LIMIT ${limit}
+    `,
+    { label: 'fetchHotCandidates', retries: 2, baseDelayMs: 200, failOpen: false },
+  );
+  return rows ?? [];
+}
+
+async function fetchSafetyCandidates(limit: number, hotWindowStart: Date): Promise<CandidateRow[]> {
+  if (limit <= 0) return [];
+
   const recheckBefore = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000);
   const rows = await withStatusRefreshRetry(
     () => prisma.$queryRaw<CandidateRow[]>`
-    SELECT
-      tr.id_ticket,
-      tr.incident,
-      tr.sourceTable,
-      tr.status,
-      tr.status_date,
-      tr.date_modified,
-      tr.worklog_summary,
-      tr.last_update_worklog,
-      tr.sourceHash
-    FROM (
-      SELECT s.incident
+      SELECT
+        tr.id_ticket,
+        tr.incident,
+        tr.sourceTable,
+        tr.sourceUpdatedAt,
+        tr.status,
+        tr.status_date,
+        tr.date_modified,
+        tr.worklog_summary,
+        tr.last_update_worklog,
+        tr.sourceHash
       FROM status_refresh_ticket_state s
-      WHERE s.lastCheckedAt < ${recheckBefore}
-      ORDER BY s.lastCheckedAt ASC
+      INNER JOIN ticket_raw tr ON tr.incident = s.incident
+      WHERE tr.sourceTable IS NOT NULL
+        AND tr.isActive = TRUE
+        AND s.lastCheckedAt < ${recheckBefore}
+        AND (
+          tr.sourceUpdatedAt IS NULL
+          OR tr.sourceUpdatedAt < ${hotWindowStart}
+        )
+        AND (
+          tr.status IS NULL
+          OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
+        )
+        AND (
+          s.lastCheckedAt < tr.sourceUpdatedAt
+          OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
+          OR tr.sourceUpdatedAt IS NULL
+        )
+      ORDER BY s.lastCheckedAt ASC, tr.id_ticket ASC
       LIMIT ${limit}
-    ) q
-    INNER JOIN ticket_raw tr ON tr.incident = q.incident
-    WHERE tr.sourceTable IS NOT NULL
-      AND tr.isActive = TRUE
-      AND tr.importedAt >= ${todayWibDateForDb()}
-      AND (
-        tr.status IS NULL
-        OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
-      )
-  `,
-    { label: 'fetchCandidates', retries: 2, baseDelayMs: 200, failOpen: false },
+    `,
+    { label: 'fetchSafetyCandidates', retries: 2, baseDelayMs: 200, failOpen: false },
   );
   return rows ?? [];
 }
@@ -324,6 +378,7 @@ async function fetchCandidates(limit: number): Promise<CandidateRow[]> {
 async function seedRefreshState(limit: number): Promise<void> {
   const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 200);
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
+  const hotWindowStart = getHotWindowStart();
   const FINAL_STATUS_SET = new Set(FINAL_STATUS_VALUES.map(s => s.toLowerCase()));
 
   const candidates = await withStatusRefreshRetry(
@@ -336,8 +391,12 @@ async function seedRefreshState(limit: number): Promise<void> {
     WHERE tr.isActive = TRUE
       AND tr.incident IS NOT NULL
       AND tr.sourceTable IS NOT NULL
-      AND tr.importedAt >= ${todayWibDateForDb()}
+      AND (
+        tr.sourceUpdatedAt IS NULL
+        OR tr.sourceUpdatedAt < ${hotWindowStart}
+      )
       AND s.incident IS NULL
+    ORDER BY COALESCE(tr.sourceUpdatedAt, tr.lastSeenAt, tr.importedAt) DESC, tr.id_ticket ASC
     LIMIT ${seedLimit}
   `,
     { label: 'seedRefreshState.select', retries: 1, baseDelayMs: 250, failOpen: true },
@@ -682,6 +741,9 @@ export async function runStatusRefresh(
   const start = Date.now();
   const batchId = `status-refresh-${Date.now()}`;
   const effectiveBatchSize = await getAdaptiveBatchSize();
+  const hotWindowStart = getHotWindowStart();
+  const hotLimit = Math.max(1, Math.ceil(effectiveBatchSize * 0.7));
+  const safetyLimit = Math.max(1, effectiveBatchSize - hotLimit);
   const result: StatusRefreshResult = {
     batchId,
     scanned: 0,
@@ -704,6 +766,12 @@ export async function runStatusRefresh(
   await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
+    await seedRefreshState(effectiveBatchSize).catch((error) =>
+      logger.warn('[StatusRefresh] Seed skipped', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+
     assertNotAborted(signal);
     if (shouldStopForBudget(start)) {
       result.durationMs = Date.now() - start;
@@ -712,15 +780,19 @@ export async function runStatusRefresh(
       return result;
     }
 
-    let candidates = await fetchCandidates(effectiveBatchSize);
-    if (candidates.length === 0 && !shouldStopForBudget(start)) {
-      await seedRefreshState(effectiveBatchSize).catch((error) =>
-        logger.warn('[StatusRefresh] Seed skipped', {
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-      candidates = await fetchCandidates(effectiveBatchSize);
+    const [hotCandidates, safetyCandidates] = await Promise.all([
+      fetchHotCandidates(hotLimit, hotWindowStart),
+      fetchSafetyCandidates(safetyLimit, hotWindowStart),
+    ]);
+
+    const candidateMap = new Map<string, CandidateRow>();
+    for (const candidate of [...hotCandidates, ...safetyCandidates]) {
+      if (!candidateMap.has(candidate.incident)) {
+        candidateMap.set(candidate.incident, candidate);
+      }
     }
+
+    const candidates = [...candidateMap.values()];
     result.scanned = candidates.length;
 
     const byTable = new Map<string, CandidateRow[]>();

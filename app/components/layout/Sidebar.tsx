@@ -52,6 +52,11 @@ const MENU_ITEMS: Array<{
     path: '/admin/detail-wo-hi',
     icon: '📋',
   },
+  {
+    label: 'Import Tiket',
+    path: '/admin/import-tiket',
+    icon: '📥',
+  },
 ];
 
 interface NavItemProps {

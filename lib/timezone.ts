@@ -5,14 +5,26 @@ const TIMEZONE = 'Asia/Jakarta';
 
 export function toWibString(date: Date | string | null | undefined): string | null {
   if (!date) return null;
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === 'string'
+    ? (() => {
+        const normalized = date.includes('T') ? date : date.replace(' ', 'T');
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+        return new Date(hasTimezone ? normalized : `${normalized}+07:00`);
+      })()
+    : date;
   if (isNaN(d.getTime())) return null;
   return format(toZonedTime(d, TIMEZONE), 'yyyy-MM-dd HH:mm:ss', { timeZone: TIMEZONE });
 }
 
 export function toWibDateString(date: Date | string | null | undefined): string | null {
   if (!date) return null;
-  const d = typeof date === 'string' ? new Date(date) : date;
+  const d = typeof date === 'string'
+    ? (() => {
+        const normalized = date.includes('T') ? date : date.replace(' ', 'T');
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+        return new Date(hasTimezone ? normalized : `${normalized}+07:00`);
+      })()
+    : date;
   if (isNaN(d.getTime())) return null;
   return format(toZonedTime(d, TIMEZONE), 'yyyy-MM-dd', { timeZone: TIMEZONE });
 }
