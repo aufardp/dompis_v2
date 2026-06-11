@@ -44,6 +44,13 @@ type CandidateRow = {
   sourceHash: string | null;
 };
 
+type SeedCandidateRow = {
+  incident: string | null;
+  sourceTable: string | null;
+  status: string | null;
+  sourceHash: string | null;
+};
+
 type ExternalStatusRow = {
   incident: string;
   sourceTable: string;
@@ -70,6 +77,7 @@ const TIMEOUT_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_TIMEOUT_MINUTES', 5)
 const HOT_WINDOW_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_HOT_WINDOW_MINUTES', 15);
 const RECHECK_MINUTES = parsePositiveIntEnv('STATUS_REFRESH_RECHECK_MINUTES', 2);
 const SEED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_SEED_BATCH_SIZE', 150);
+const SEED_TIMEOUT_MS = parsePositiveIntEnv('STATUS_REFRESH_SEED_TIMEOUT_MS', 15_000);
 const RUN_BUDGET_MS = parsePositiveIntEnv(
   'STATUS_REFRESH_RUN_BUDGET_MS',
   Math.max(5_000, Math.floor(TIMEOUT_MINUTES * 60_000 * 0.8)),
@@ -119,6 +127,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function shouldStopForBudget(start: number): boolean {
   return Date.now() - start >= RUN_BUDGET_MS;
+}
+
+function shouldStopForSeedBudget(start: number): boolean {
+  return Date.now() - start >= SEED_TIMEOUT_MS || shouldStopForBudget(start);
 }
 
 function getHotWindowStart(): Date {
@@ -238,6 +250,40 @@ function isChanged(candidate: CandidateRow, external: ExternalStatusRow): boolea
     candidate.worklog_summary !== external.worklogSummary ||
     candidate.last_update_worklog !== external.lastUpdateWorklog
   );
+}
+
+function mergeSeedCandidates(
+  ...rowsList: Array<SeedCandidateRow[] | null | undefined>
+): Array<{
+  incident: string;
+  sourceTable: string;
+  status: string | null;
+  sourceHash: string | null;
+}> {
+  const merged = new Map<
+    string,
+    {
+      incident: string;
+      sourceTable: string;
+      status: string | null;
+      sourceHash: string | null;
+    }
+  >();
+
+  for (const rows of rowsList) {
+    for (const candidate of rows ?? []) {
+      if (!candidate.incident || !candidate.sourceTable) continue;
+      if (merged.has(candidate.incident)) continue;
+      merged.set(candidate.incident, {
+        incident: candidate.incident,
+        sourceTable: candidate.sourceTable,
+        status: candidate.status,
+        sourceHash: candidate.sourceHash,
+      });
+    }
+  }
+
+  return [...merged.values()];
 }
 
     async function getAdaptiveBatchSize(): Promise<number> {
@@ -398,6 +444,7 @@ async function fetchSafetyCandidates(
 }
 
 async function seedRefreshState(limit: number, sourceTables: string[]): Promise<void> {
+  const seedStart = Date.now();
   const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 200);
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
   const hotWindowStart = getHotWindowStart();
@@ -406,30 +453,34 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
     sourceTables.length > 0
       ? { sourceTable: { in: sourceTables } }
       : { sourceTable: { not: null } };
-  const fetchLimit = Math.min(Math.max(seedLimit * 3, seedLimit), 1000);
+  const fetchLimit = Math.min(Math.max(seedLimit * 2, seedLimit), 500);
 
-  const [datedCandidates, nullCandidates] = await Promise.all([
-    withStatusRefreshRetry(
-      () =>
-        prisma.ticket_raw.findMany({
-          where: {
-            isActive: true,
-            incident: { not: null },
-            ...sourceTableWhere,
-            sourceUpdatedAt: { lt: hotWindowStart, not: null },
-          },
-          orderBy: [{ sourceUpdatedAt: 'desc' }, { id_ticket: 'asc' }],
-          take: fetchLimit,
-          select: {
-            incident: true,
-            sourceTable: true,
-            status: true,
-            sourceHash: true,
-          },
-        }),
-      { label: 'seedRefreshState.datedCandidates', retries: 1, baseDelayMs: 250, failOpen: true },
-    ),
-    withStatusRefreshRetry(
+  const datedCandidates = await withStatusRefreshRetry(
+    () =>
+      prisma.ticket_raw.findMany({
+        where: {
+          isActive: true,
+          incident: { not: null },
+          ...sourceTableWhere,
+          sourceUpdatedAt: { lt: hotWindowStart, not: null },
+        },
+        orderBy: [{ sourceUpdatedAt: 'desc' }, { id_ticket: 'asc' }],
+        take: fetchLimit,
+        select: {
+          incident: true,
+          sourceTable: true,
+          status: true,
+          sourceHash: true,
+        },
+      }),
+    { label: 'seedRefreshState.datedCandidates', retries: 1, baseDelayMs: 250, failOpen: true },
+  );
+
+  let candidates = mergeSeedCandidates(datedCandidates);
+  if (candidates.length < seedLimit && !shouldStopForSeedBudget(seedStart)) {
+    const remainingNeed = seedLimit - candidates.length;
+    const nullFetchLimit = Math.min(Math.max(remainingNeed * 2, remainingNeed), 300);
+    const nullCandidates = await withStatusRefreshRetry(
       () =>
         prisma.ticket_raw.findMany({
           where: {
@@ -439,7 +490,7 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
             sourceUpdatedAt: null,
           },
           orderBy: [{ lastSeenAt: 'desc' }, { importedAt: 'desc' }, { id_ticket: 'asc' }],
-          take: fetchLimit,
+          take: nullFetchLimit,
           select: {
             incident: true,
             sourceTable: true,
@@ -448,29 +499,15 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
           },
         }),
       { label: 'seedRefreshState.nullCandidates', retries: 1, baseDelayMs: 250, failOpen: true },
-    ),
-  ]);
-
-  const mergedCandidates = new Map<string, {
-    incident: string;
-    sourceTable: string;
-    status: string | null;
-    sourceHash: string | null;
-  }>();
-  for (const candidate of [...(datedCandidates ?? []), ...(nullCandidates ?? [])]) {
-    if (!candidate.incident || !candidate.sourceTable) continue;
-    const normalizedCandidate = {
-      incident: candidate.incident,
-      sourceTable: candidate.sourceTable,
-      status: candidate.status,
-      sourceHash: candidate.sourceHash,
-    };
-    if (!mergedCandidates.has(normalizedCandidate.incident)) {
-      mergedCandidates.set(normalizedCandidate.incident, normalizedCandidate);
-    }
+    );
+    candidates = mergeSeedCandidates(datedCandidates, nullCandidates);
+  } else if (candidates.length < seedLimit) {
+    logger.info('[StatusRefresh] Seed null scan skipped due to seed budget', {
+      seedLimit,
+      datedCandidates: candidates.length,
+    });
   }
 
-  const candidates = [...mergedCandidates.values()];
   if (candidates.length === 0) return;
 
   const recentStateRows = await withStatusRefreshRetry(
