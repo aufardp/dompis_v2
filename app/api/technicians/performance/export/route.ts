@@ -7,6 +7,9 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getOrSetCache } from '@/lib/cache';
+
+const CACHE_TTL_SECONDS = 30;
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -33,6 +36,17 @@ function buildWorkzoneTicketFilter(workzones: string[], selected?: string) {
   }
   if (filters.length === 0) return undefined;
   return { AND: filters };
+}
+
+function buildCacheKey(
+  role: string,
+  userId: number,
+  month: number,
+  year: number,
+  workzone: string | undefined,
+  type: string,
+) {
+  return `technicians_performance_export_csv:${role}:${userId}:${year}-${String(month).padStart(2, '0')}:${workzone || 'all'}:${type}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -68,161 +82,176 @@ export async function GET(req: NextRequest) {
       (w) => w && w.trim() !== '',
     );
     const wzFilter = buildWorkzoneTicketFilter(userWorkzones, selectedWorkzone);
+    const cacheKey = buildCacheKey(
+      user.role,
+      user.id_user,
+      month,
+      year,
+      selectedWorkzone,
+      type,
+    );
 
-    if (type === 'tickets') {
-      const where: any = {
-        status_update: { in: ['closed', 'close', 'CLOSE', 'CLOSED'] },
-        closed_at: { gte: start, lt: end },
-        ...(wzFilter ? wzFilter : {}),
-      };
+    const exportData = await getOrSetCache(
+      cacheKey,
+      async () => {
+        if (type === 'tickets') {
+          const where: any = {
+            status_update: { in: ['closed', 'close', 'CLOSE', 'CLOSED'] },
+            closed_at: { gte: start, lt: end },
+            ...(wzFilter ? wzFilter : {}),
+          };
 
-      const rows = await prisma.ticket.findMany({
-        where,
-        include: { users: { select: { nama: true, nik: true } } },
-        orderBy: { closed_at: 'desc' },
-      });
+          const rows = await prisma.ticket.findMany({
+            where,
+            include: { users: { select: { nama: true, nik: true } } },
+            orderBy: { closed_at: 'desc' },
+          });
 
-      const headers = [
-        'TicketID',
-        'incident',
-        'service_no',
-        'contact_name',
-        'customer_type',
-        'workzone',
-        'status_update',
-        'CLOSED_AT',
-        'TEKNISI_NAME',
-        'TEKNISI_NIK',
-      ];
+          const headers = [
+            'TicketID',
+            'incident',
+            'service_no',
+            'contact_name',
+            'customer_type',
+            'workzone',
+            'status_update',
+            'CLOSED_AT',
+            'TEKNISI_NAME',
+            'TEKNISI_NIK',
+          ];
 
-      const csv = [
-        headers.join(','),
-        ...rows.map((t: any) =>
-          [
-            t.id_ticket,
-            t.incident,
-            t.service_no,
-            t.contact_name,
-            t.customer_type,
-            t.workzone,
-            t.closed_at ? t.closed_at.toISOString() : '',
-            t.users?.nama,
-            t.users?.nik,
-          ]
-            .map(escapeCsvCell)
-            .join(','),
-        ),
-      ].join('\n');
+          const csv = [
+            headers.join(','),
+            ...rows.map((t: any) =>
+              [
+                t.id_ticket,
+                t.incident,
+                t.service_no,
+                t.contact_name,
+                t.customer_type,
+                t.workzone,
+                t.closed_at ? t.closed_at.toISOString() : '',
+                t.users?.nama,
+                t.users?.nik,
+              ]
+                .map(escapeCsvCell)
+                .join(','),
+            ),
+          ].join('\n');
 
-      const filename = `technicians_closed_tickets_${year}-${String(month).padStart(2, '0')}.csv`;
-      return new NextResponse('\ufeff' + csv, {
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${filename}"`,
-        },
-      });
-    }
+          return {
+            filename: `technicians_closed_tickets_${year}-${String(month).padStart(2, '0')}.csv`,
+            csv: '\ufeff' + csv,
+          };
+        }
 
-    // summary
-    const technicianRoleId = 4;
-    const adminSaRows = await prisma.user_sa.findMany({
-      where: { user_id: user.id_user },
-      select: { sa_id: true },
-    });
-    const adminSaIds = adminSaRows
-      .map((r: { sa_id: number | null }) => r.sa_id)
-      .filter((v: number | null): v is number => v != null);
+        // summary
+        const technicianRoleId = 4;
+        const adminSaRows = await prisma.user_sa.findMany({
+          where: { user_id: user.id_user },
+          select: { sa_id: true },
+        });
+        const adminSaIds = adminSaRows
+          .map((r: { sa_id: number | null }) => r.sa_id)
+          .filter((v: number | null): v is number => v != null);
 
-    const technicianIds =
-      adminSaIds.length > 0
-        ? await prisma.user_sa
-            .findMany({
-              where: { sa_id: { in: adminSaIds } },
-              select: { user_id: true },
+        const technicianIds =
+          adminSaIds.length > 0
+            ? await prisma.user_sa
+                .findMany({
+                  where: { sa_id: { in: adminSaIds } },
+                  select: { user_id: true },
+                })
+                .then((rows: { user_id: number | null }[]) => [
+                  ...new Set(
+                    rows
+                      .map((r: { user_id: number | null }) => r.user_id)
+                      .filter((v: number | null): v is number => v != null),
+                  ),
+                ])
+            : await prisma.users
+                .findMany({
+                  where: { role_id: technicianRoleId },
+                  select: { id_user: true },
+                })
+                .then((rows: { id_user: number }[]) => rows.map((r: { id_user: number }) => r.id_user));
+
+        const technicians = await prisma.users.findMany({
+          where: { id_user: { in: technicianIds }, role_id: technicianRoleId },
+          select: { id_user: true, nama: true, nik: true },
+          orderBy: { nama: 'asc' },
+        });
+
+        const techSa = await prisma.user_sa.findMany({
+          where: { user_id: { in: technicianIds } },
+          include: { service_area: { select: { nama_sa: true } } },
+        });
+        const techWorkzones = new Map<number, string[]>();
+        for (const usa of techSa) {
+          if (!usa.user_id || !usa.service_area?.nama_sa) continue;
+          const existing = techWorkzones.get(usa.user_id) || [];
+          existing.push(usa.service_area.nama_sa);
+          techWorkzones.set(usa.user_id, existing);
+        }
+
+        const selectedWz = selectedWorkzone?.trim().toLowerCase();
+        const filteredTechnicians = selectedWz
+          ? technicians.filter((t: { id_user: number; nama: string | null; nik: string | null }) => {
+              const wzs = techWorkzones.get(t.id_user) || [];
+              return wzs.some((wz) =>
+                String(wz || '')
+                  .toLowerCase()
+                  .trim() === selectedWz,
+              );
             })
-            .then((rows: { user_id: number | null }[]) => [
-              ...new Set(
-                rows
-                  .map((r: { user_id: number | null }) => r.user_id)
-                  .filter((v: number | null): v is number => v != null),
-              ),
-            ])
-        : await prisma.users
-            .findMany({
-              where: { role_id: technicianRoleId },
-              select: { id_user: true },
-            })
-            .then((rows: { id_user: number }[]) => rows.map((r: { id_user: number }) => r.id_user));
+          : technicians;
 
-    const technicians = await prisma.users.findMany({
-      where: { id_user: { in: technicianIds }, role_id: technicianRoleId },
-      select: { id_user: true, nama: true, nik: true },
-      orderBy: { nama: 'asc' },
-    });
+        const finalTechIds = filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => t.id_user);
 
-    const techSa = await prisma.user_sa.findMany({
-      where: { user_id: { in: technicianIds } },
-      include: { service_area: { select: { nama_sa: true } } },
-    });
-    const techWorkzones = new Map<number, string[]>();
-    for (const usa of techSa) {
-      if (!usa.user_id || !usa.service_area?.nama_sa) continue;
-      const existing = techWorkzones.get(usa.user_id) || [];
-      existing.push(usa.service_area.nama_sa);
-      techWorkzones.set(usa.user_id, existing);
-    }
+        const closedCounts = await prisma.ticket.groupBy({
+          by: ['teknisi_user_id'],
+          where: {
+            teknisi_user_id: { in: finalTechIds },
+            status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+            closed_at: { gte: start, lt: end },
+            ...(wzFilter ? wzFilter : {}),
+          },
+          _count: true,
+        });
+        const closedCountMap = new Map<number, number>();
+        for (const row of closedCounts) {
+          if (row.teknisi_user_id)
+            closedCountMap.set(row.teknisi_user_id, row._count);
+        }
 
-    const selectedWz = selectedWorkzone?.trim().toLowerCase();
-    const filteredTechnicians = selectedWz
-      ? technicians.filter((t: { id_user: number; nama: string | null; nik: string | null }) => {
-          const wzs = techWorkzones.get(t.id_user) || [];
-          return wzs.some((wz) =>
-            String(wz || '')
-              .toLowerCase()
-              .trim() === selectedWz,
-          );
-        })
-      : technicians;
+        const headers = ['Nama', 'NIK', 'Workzone', 'Closed Count (Month)'];
+        const csv = [
+          headers.join(','),
+          ...filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => {
+            const wzs = techWorkzones.get(t.id_user) || [];
+            return [
+              t.nama,
+              t.nik || '',
+              wzs.length > 0 ? wzs.join(', ') : 'Unknown',
+              closedCountMap.get(t.id_user) || 0,
+            ]
+              .map(escapeCsvCell)
+              .join(',');
+          }),
+        ].join('\n');
 
-    const finalTechIds = filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => t.id_user);
-
-    const closedCounts = await prisma.ticket.groupBy({
-      by: ['teknisi_user_id'],
-      where: {
-        teknisi_user_id: { in: finalTechIds },
-        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
-        closed_at: { gte: start, lt: end },
-        ...(wzFilter ? wzFilter : {}),
+        return {
+          filename: `technicians_summary_${year}-${String(month).padStart(2, '0')}.csv`,
+          csv: '\ufeff' + csv,
+        };
       },
-      _count: true,
-    });
-    const closedCountMap = new Map<number, number>();
-    for (const row of closedCounts) {
-      if (row.teknisi_user_id)
-        closedCountMap.set(row.teknisi_user_id, row._count);
-    }
+      CACHE_TTL_SECONDS,
+    );
 
-    const headers = ['Nama', 'NIK', 'Workzone', 'Closed Count (Month)'];
-    const csv = [
-      headers.join(','),
-      ...filteredTechnicians.map((t: { id_user: number; nama: string | null; nik: string | null }) => {
-        const wzs = techWorkzones.get(t.id_user) || [];
-        return [
-          t.nama,
-          t.nik || '',
-          wzs.length > 0 ? wzs.join(', ') : 'Unknown',
-          closedCountMap.get(t.id_user) || 0,
-        ]
-          .map(escapeCsvCell)
-          .join(',');
-      }),
-    ].join('\n');
-
-    const filename = `technicians_summary_${year}-${String(month).padStart(2, '0')}.csv`;
-    return new NextResponse('\ufeff' + csv, {
+    return new NextResponse(exportData.csv, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${exportData.filename}"`,
       },
     });
   } catch (error: unknown) {

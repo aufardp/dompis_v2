@@ -267,25 +267,37 @@ const BUCKET_FILTERS: Record<KpiBucketKey, any[]> = {
   ],
 };
 
+function buildRekapTicketsCacheKey(
+  role: string,
+  userId: number,
+  bucket: KpiBucketKey,
+  syncDate: string,
+): string {
+  return `dashboard:rekap:raw:${syncDate}:${role}:${userId}:${bucket}`;
+}
+
 async function getFilteredRekapTickets(
   role: string,
   userId: number,
   bucket: KpiBucketKey,
+  syncDate: string,
 ): Promise<RekapTicketRow[]> {
-  const filtersList = BUCKET_FILTERS[bucket];
-  const parts: string[] = [];
-  const allParams: any[] = [];
+  const cacheKey = buildRekapTicketsCacheKey(role, userId, bucket, syncDate);
+  return getOrSetCache(cacheKey, async () => {
+    const filtersList = BUCKET_FILTERS[bucket];
+    const parts: string[] = [];
+    const allParams: any[] = [];
 
-  for (const filters of filtersList) {
-    const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
-    parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
-    allParams.push(...params);
-  }
+    for (const filters of filtersList) {
+      const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
+      parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
+      allParams.push(...params);
+    }
 
-  if (parts.length === 0) return [];
+    if (parts.length === 0) return [];
 
-  const unionSql = parts.join(' UNION ALL ');
-  const fullSql = `
+    const unionSql = parts.join(' UNION ALL ');
+    const fullSql = `
     SELECT
       a.nama_area                     AS area,
       sa.nama_sa                      AS sa_name,
@@ -314,8 +326,8 @@ async function getFilteredRekapTickets(
              t.status_ttr_3_diamond, t.status_ttr_6_platinum, t.closed_at
     ORDER BY a.nama_area, sa.nama_sa, t.workzone
   `;
-
-  return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...allParams);
+    return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...allParams);
+  }, 60);
 }
 
 export async function GET(request: NextRequest) {
@@ -367,7 +379,7 @@ export async function GET(request: NextRequest) {
       };
 
       const [ticketRows, teknisiRows] = await Promise.all([
-        getFilteredRekapTickets(decoded.role, decoded.id_user, bucket),
+        getFilteredRekapTickets(decoded.role, decoded.id_user, bucket, today),
         prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
           SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
           FROM technician_attendance a

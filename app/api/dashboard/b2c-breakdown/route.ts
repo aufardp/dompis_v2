@@ -5,6 +5,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { parseSearchType } from '@/lib/search-intent';
+import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,12 @@ export async function GET(request: Request) {
     ]);
 
     const { searchParams } = new URL(request.url);
+    const cacheKey = (() => {
+      const filterParams = new URLSearchParams(searchParams);
+      if (filterParams.has('_t')) return null;
+      filterParams.sort();
+      return `dashboard_b2c_breakdown:${user.role}:${user.id_user}:${filterParams.toString()}`;
+    })();
     const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
     const filters = {
       search: searchParams.get('search') || undefined,
@@ -34,11 +41,21 @@ export async function GET(request: Request) {
       operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 
-    const data = await DailyTicketService.getB2CBreakdown(
-      user.role,
-      user.id_user,
-      filters,
-    );
+    const data = cacheKey
+      ? await getOrSetCache(
+        cacheKey,
+        () => DailyTicketService.getB2CBreakdown(
+          user.role,
+          user.id_user,
+          filters,
+        ),
+        DASHBOARD_CACHE_TTL,
+      )
+      : await DailyTicketService.getB2CBreakdown(
+        user.role,
+        user.id_user,
+        filters,
+      );
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

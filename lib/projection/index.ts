@@ -684,17 +684,31 @@ async function prepareProjectionItems(
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
-  const projectionLogs = await prisma.ticket_projection_log.findMany({
-    where: {
-      ticketRawId: { in: validRawRecords.map((r) => r.id_ticket) },
-    },
-    select: {
-      ticketRawId: true,
-      sourceHash: true,
-      syncVersion: true,
-      status: true,
-    },
+  const projectionLogCandidates = validRawRecords.filter((raw) => {
+    const existing = existingMap.get(raw.incident!);
+    if (!existing?.synced_at || !raw.importedAt) {
+      return true;
+    }
+
+    return !(
+      existing.import_batch === raw.syncBatchId &&
+      existing.synced_at >= raw.importedAt
+    );
   });
+
+  const projectionLogs = projectionLogCandidates.length > 0
+    ? await prisma.ticket_projection_log.findMany({
+        where: {
+          ticketRawId: { in: projectionLogCandidates.map((r) => r.id_ticket) },
+        },
+        select: {
+          ticketRawId: true,
+          sourceHash: true,
+          syncVersion: true,
+          status: true,
+        },
+      })
+    : [];
   const projectionLogMap = new Map(
     projectionLogs.map((log) => [log.ticketRawId, log as ExistingProjectionLog]),
   );

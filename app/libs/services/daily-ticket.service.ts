@@ -5,6 +5,7 @@ import {
   getWorkzonesForUser,
   resolveWorkzoneName,
 } from '../../helpers/ticket.helpers';
+import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
@@ -108,6 +109,32 @@ type FlaggingSummary = {
   p1Count: number;
   pPlusCount: number;
 };
+
+function normalizeCacheFilterValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return [...value]
+      .map((item) => normalizeCacheFilterValue(item))
+      .sort((a, b) => String(a).localeCompare(String(b)));
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => [key, normalizeCacheFilterValue(item)] as const);
+    return Object.fromEntries(entries);
+  }
+
+  return value ?? null;
+}
+
+function buildKpiBucketSummaryCacheKey(
+  role: string,
+  userId: number,
+  filters?: TicketFilters,
+): string {
+  const normalized = normalizeCacheFilterValue(filters ?? {});
+  return `dashboard:kpi_bucket_summary:${role}:${userId}:${JSON.stringify(normalized)}`;
+}
 
 function normalizeStatusUpdateFilter(value: unknown): string {
   return String(value ?? '')
@@ -1645,91 +1672,98 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ): Promise<BucketSummaryMatrix> {
-    const buildScopeSummary = async (
-      dept: BucketSummaryScope,
-    ): Promise<BucketSummaryMap> => {
-      const where = await this.buildDailyTicketWhere(role, userId, {
-        ...filters,
-        dept,
-        operationalBucket: undefined,
-      });
-
-      const summary = {} as BucketSummaryMap;
-      const mainTableWhere = this.buildMainTableWhere(where);
-      for (const bucket of KPI_SUMMARY_BUCKETS) {
-        if (bucket === 'kpi_customer') {
-          const bucketWhere = await this.buildDailyTicketWhere(role, userId, {
+    const cacheKey = buildKpiBucketSummaryCacheKey(role, userId, filters);
+    return getOrSetCache(
+      cacheKey,
+      async () => {
+        const buildScopeSummary = async (
+          dept: BucketSummaryScope,
+        ): Promise<BucketSummaryMap> => {
+          const where = await this.buildDailyTicketWhere(role, userId, {
             ...filters,
             dept,
-            operationalBucket: ['kpi_customer'],
+            operationalBucket: undefined,
           });
-          const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere);
-          const rows = await prisma.ticket.findMany({
-            where: {
-              AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
-            },
-            select: {
-              status: true,
-              status_update: true,
-              guarantee_status: true,
-              ticket_id_gamas: true,
-              flagging_manja: true,
-            },
-          });
-          summary[bucket] = summarizeBucketRows(rows);
-          continue;
-        }
 
-        if (bucket === 'non_technical') {
-          const rows = await prisma.ticket.findMany({
-            where: {
-              AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
-            },
-            select: {
-              status: true,
-              status_update: true,
-              guarantee_status: true,
-              ticket_id_gamas: true,
-              flagging_manja: true,
-            },
-          });
-          summary[bucket] = summarizeBucketRows(rows);
-          continue;
-        }
+          const summary = {} as BucketSummaryMap;
+          const mainTableWhere = this.buildMainTableWhere(where);
+          for (const bucket of KPI_SUMMARY_BUCKETS) {
+            if (bucket === 'kpi_customer') {
+              const bucketWhere = await this.buildDailyTicketWhere(role, userId, {
+                ...filters,
+                dept,
+                operationalBucket: ['kpi_customer'],
+              });
+              const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere);
+              const rows = await prisma.ticket.findMany({
+                where: {
+                  AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
+                },
+                select: {
+                  status: true,
+                  status_update: true,
+                  guarantee_status: true,
+                  ticket_id_gamas: true,
+                  flagging_manja: true,
+                },
+              });
+              summary[bucket] = summarizeBucketRows(rows);
+              continue;
+            }
 
-        const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
-        const selectSql = buildBucketSummarySelect(bucket);
-        const sqlWithIndex = `
-          SELECT
-            ${selectSql}
-          FROM ticket FORCE INDEX (idx_ticket_daily_board)
-          WHERE ${whereClause}
-        `;
-        const sqlWithoutIndex = `
-          SELECT
-            ${selectSql}
-          FROM ticket
-          WHERE ${whereClause}
-        `;
-        const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-          sqlWithIndex,
-          sqlWithoutIndex,
-          params,
-        );
-        const row = rows[0] ?? {};
-        summary[bucket] = normalizeBucketSummaryRow(row, bucket);
-      }
+            if (bucket === 'non_technical') {
+              const rows = await prisma.ticket.findMany({
+                where: {
+                  AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
+                },
+                select: {
+                  status: true,
+                  status_update: true,
+                  guarantee_status: true,
+                  ticket_id_gamas: true,
+                  flagging_manja: true,
+                },
+              });
+              summary[bucket] = summarizeBucketRows(rows);
+              continue;
+            }
 
-      return summary;
-    };
+            const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+            const selectSql = buildBucketSummarySelect(bucket);
+            const sqlWithIndex = `
+              SELECT
+                ${selectSql}
+              FROM ticket FORCE INDEX (idx_ticket_daily_board)
+              WHERE ${whereClause}
+            `;
+            const sqlWithoutIndex = `
+              SELECT
+                ${selectSql}
+              FROM ticket
+              WHERE ${whereClause}
+            `;
+            const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+              sqlWithIndex,
+              sqlWithoutIndex,
+              params,
+            );
+            const row = rows[0] ?? {};
+            summary[bucket] = normalizeBucketSummaryRow(row, bucket);
+          }
 
-    const [all, b2c, b2b] = await Promise.all([
-      buildScopeSummary('all'),
-      buildScopeSummary('b2c'),
-      buildScopeSummary('b2b'),
-    ]);
+          return summary;
+        };
 
-    return { all, b2c, b2b };
+        const [all, b2c, b2b] = await Promise.all([
+          buildScopeSummary('all'),
+          buildScopeSummary('b2c'),
+          buildScopeSummary('b2b'),
+        ]);
+
+        return { all, b2c, b2b };
+      },
+      DASHBOARD_CACHE_TTL,
+    );
   }
 
   static async buildDetailWoHiWhere(

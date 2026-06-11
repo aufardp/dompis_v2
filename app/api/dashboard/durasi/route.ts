@@ -106,6 +106,15 @@ const PANEL_CONFIGS = [
   { type: 'HSI', label: 'HSI', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('hsi'), bucketFn: (t: RawDurasiRow) => bucketHSI(calculateHours(t.reported_date)), buckets: HSI_BUCKETS },
 ];
 
+function buildDurasiTicketsCacheKey(
+  role: string,
+  userId: number,
+  bucket: KpiBucketKey,
+  syncDate: string,
+): string {
+  return `dashboard:durasi:raw:${syncDate}:${role}:${userId}:${bucket}`;
+}
+
 type PanelAccumulator = {
   type: string;
   label: string;
@@ -221,21 +230,24 @@ async function getFilteredTickets(
   role: string,
   userId: number,
   bucket: KpiBucketKey,
+  syncDate: string,
 ): Promise<RawDurasiRow[]> {
-  const filtersList = BUCKET_FILTERS[bucket];
-  const parts: string[] = [];
-  const allParams: any[] = [];
+  const cacheKey = buildDurasiTicketsCacheKey(role, userId, bucket, syncDate);
+  return getOrSetCache(cacheKey, async () => {
+    const filtersList = BUCKET_FILTERS[bucket];
+    const parts: string[] = [];
+    const allParams: any[] = [];
 
-  for (const filters of filtersList) {
-    const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
-    parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
-    allParams.push(...params);
-  }
+    for (const filters of filtersList) {
+      const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
+      parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
+      allParams.push(...params);
+    }
 
-  if (parts.length === 0) return [];
+    if (parts.length === 0) return [];
 
-  const unionSql = parts.join(' UNION ALL ');
-  const fullSql = `
+    const unionSql = parts.join(' UNION ALL ');
+    const fullSql = `
     SELECT
       COALESCE(r.nama_region, 'UNKNOWN') AS region,
       COALESCE(a.nama_area, 'UNKNOWN')   AS area,
@@ -254,8 +266,8 @@ async function getFilteredTickets(
     LEFT JOIN region r   ON r.id_region = b.region_id
     ORDER BY a.nama_area, sa.nama_sa
   `;
-
-  return prisma.$queryRawUnsafe<RawDurasiRow[]>(fullSql, ...allParams);
+    return prisma.$queryRawUnsafe<RawDurasiRow[]>(fullSql, ...allParams);
+  }, 60);
 }
 
 export async function GET(request: NextRequest) {
@@ -306,7 +318,7 @@ export async function GET(request: NextRequest) {
         obsolete: obsoleteTotal,
       };
 
-      const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket);
+      const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket, today);
 
       return {
         ...buildAllPanels(tickets, today),

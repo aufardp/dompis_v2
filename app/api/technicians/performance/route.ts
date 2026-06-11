@@ -7,6 +7,19 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getOrSetCache } from '@/lib/cache';
+
+const CACHE_TTL_SECONDS = 30;
+
+function buildCacheKey(
+  role: string,
+  userId: number,
+  month: number,
+  year: number,
+  workzone: string | undefined,
+) {
+  return `technicians_performance:${role}:${userId}:${year}-${String(month).padStart(2, '0')}:${workzone || 'all'}`;
+}
 
 type AdminSaRow = { sa_id: number | null };
 type TechSaRow = { user_id: number | null; service_area: { nama_sa: string | null } | null };
@@ -73,120 +86,116 @@ export async function GET(req: NextRequest) {
     );
     const wzFilter = buildWorkzoneTicketFilter(userWorkzones, selectedWorkzone);
 
-    // Technician universe
-    const adminSaRows = await prisma.user_sa.findMany({
-      where: { user_id: user.id_user },
-      select: { sa_id: true },
-    }) as unknown as AdminSaRow[];
-    const adminSaIds = adminSaRows
-      .map((r: AdminSaRow) => r.sa_id)
-      .filter((v: number | null): v is number => v != null);
+    const cacheKey = buildCacheKey(user.role, user.id_user, month, year, selectedWorkzone);
+    const result = await getOrSetCache(cacheKey, async () => {
+      // Technician universe
+      const adminSaRows = await prisma.user_sa.findMany({
+        where: { user_id: user.id_user },
+        select: { sa_id: true },
+      }) as unknown as AdminSaRow[];
+      const adminSaIds = adminSaRows
+        .map((r: AdminSaRow) => r.sa_id)
+        .filter((v: number | null): v is number => v != null);
 
-    const technicianRoleId = 4;
-    const technicianIds =
-      adminSaIds.length > 0
-        ? await prisma.user_sa
-            .findMany({
-              where: { sa_id: { in: adminSaIds } },
-              select: { user_id: true },
-            })
-            .then((rows: TechIdRow[]) => [
-              ...new Set(
-                rows
-                  .map((r: TechIdRow) => (r as { user_id: number | null }).user_id)
-                  .filter((v: number | null): v is number => v != null),
-              ),
-            ])
-        : await prisma.users
-            .findMany({
-              where: { role_id: technicianRoleId },
-              select: { id_user: true },
-            })
-            .then((rows: TechIdRow[]) =>
-              rows.map((r: TechIdRow) => (r as { id_user: number }).id_user),
+      const technicianRoleId = 4;
+      const technicianIds =
+        adminSaIds.length > 0
+          ? await prisma.user_sa
+              .findMany({
+                where: { sa_id: { in: adminSaIds } },
+                select: { user_id: true },
+              })
+              .then((rows: TechIdRow[]) => [
+                ...new Set(
+                  rows
+                    .map((r: TechIdRow) => (r as { user_id: number | null }).user_id)
+                    .filter((v: number | null): v is number => v != null),
+                ),
+              ])
+          : await prisma.users
+              .findMany({
+                where: { role_id: technicianRoleId },
+                select: { id_user: true },
+              })
+              .then((rows: TechIdRow[]) =>
+                rows.map((r: TechIdRow) => (r as { id_user: number }).id_user),
+              );
+
+      if (technicianIds.length === 0) {
+        return {
+          month,
+          year,
+          workzone: selectedWorkzone || null,
+          userWorkzones,
+          rows: [],
+        };
+      }
+
+      // Workzones per technician
+      const techSa = await prisma.user_sa.findMany({
+        where: { user_id: { in: technicianIds } },
+        include: { service_area: { select: { nama_sa: true } } },
+      }) as unknown as TechSaRow[];
+      const techWorkzones = new Map<number, string[]>();
+      for (const usa of techSa) {
+        if (!usa.user_id || !usa.service_area?.nama_sa) continue;
+        const existing = techWorkzones.get(usa.user_id) || [];
+        existing.push(usa.service_area.nama_sa);
+        techWorkzones.set(usa.user_id, existing);
+      }
+
+      const selectedWz = selectedWorkzone?.trim().toLowerCase();
+      const finalTechnicianIds = selectedWz
+        ? technicianIds.filter((id: number) => {
+            const wzs = techWorkzones.get(id) || [];
+            return wzs.some((wz: string) =>
+              String(wz || '')
+                .toLowerCase()
+                .trim() === selectedWz,
             );
+          })
+        : technicianIds;
 
-    if (technicianIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        data: {
+      if (finalTechnicianIds.length === 0) {
+        return {
           month,
           year,
           workzone: selectedWorkzone || null,
           userWorkzones,
           rows: [],
+        };
+      }
+
+      const technicians = await prisma.users.findMany({
+        where: {
+          id_user: { in: finalTechnicianIds },
+          role_id: technicianRoleId,
         },
-      });
-    }
+        select: { id_user: true, nama: true, nik: true },
+        orderBy: { nama: 'asc' },
+      }) as unknown as Technician[];
 
-    // Workzones per technician
-    const techSa = await prisma.user_sa.findMany({
-      where: { user_id: { in: technicianIds } },
-      include: { service_area: { select: { nama_sa: true } } },
-    }) as unknown as TechSaRow[];
-    const techWorkzones = new Map<number, string[]>();
-    for (const usa of techSa) {
-      if (!usa.user_id || !usa.service_area?.nama_sa) continue;
-      const existing = techWorkzones.get(usa.user_id) || [];
-      existing.push(usa.service_area.nama_sa);
-      techWorkzones.set(usa.user_id, existing);
-    }
+      // Closed counts from ticket table
+      const closedWhere = {
+        teknisi_user_id: { in: finalTechnicianIds },
+        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
+        closed_at: { gte: start, lt: end },
+        ...(wzFilter ? wzFilter : {}),
+      };
 
-    const selectedWz = selectedWorkzone?.trim().toLowerCase();
-    const finalTechnicianIds = selectedWz
-      ? technicianIds.filter((id: number) => {
-          const wzs = techWorkzones.get(id) || [];
-          return wzs.some((wz: string) =>
-            String(wz || '')
-              .toLowerCase()
-              .trim() === selectedWz,
-          );
-        })
-      : technicianIds;
+      const closedCounts = await prisma.ticket.groupBy({
+        by: ['teknisi_user_id'],
+        where: closedWhere,
+        _count: true,
+      }) as unknown as ClosedCountRow[];
+      const closedCountMap = new Map<number, number>();
+      for (const row of closedCounts) {
+        if (row.teknisi_user_id)
+          closedCountMap.set(row.teknisi_user_id, row._count);
+      }
 
-    if (finalTechnicianIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          month,
-          year,
-          workzone: selectedWorkzone || null,
-          userWorkzones,
-          rows: [],
-        },
-      });
-    }
-
-    const technicians = await prisma.users.findMany({
-      where: {
-        id_user: { in: finalTechnicianIds },
-        role_id: technicianRoleId,
-      },
-      select: { id_user: true, nama: true, nik: true },
-      orderBy: { nama: 'asc' },
-    }) as unknown as Technician[];
-
-    // Closed counts from ticket table
-    const closedWhere = {
-      teknisi_user_id: { in: finalTechnicianIds },
-      status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
-      closed_at: { gte: start, lt: end },
-      ...(wzFilter ? wzFilter : {}),
-    };
-
-    const closedCounts = await prisma.ticket.groupBy({
-      by: ['teknisi_user_id'],
-      where: closedWhere,
-      _count: true,
-    }) as unknown as ClosedCountRow[];
-    const closedCountMap = new Map<number, number>();
-    for (const row of closedCounts) {
-      if (row.teknisi_user_id)
-        closedCountMap.set(row.teknisi_user_id, row._count);
-    }
-
-    // Avg resolve hours (tracking) via raw SQL join to apply workzone filter
-    const Prisma: any = (await import('@prisma/client')).Prisma;
+      // Avg resolve hours (tracking) via raw SQL join to apply workzone filter
+      const Prisma: any = (await import('@prisma/client')).Prisma;
 
     const wzConditions: any[] = [];
     if (selectedWorkzone) {
@@ -209,8 +218,8 @@ export async function GET(req: NextRequest) {
         ? Prisma.empty
         : Prisma.sql``;
 
-    const avgRows = await prisma.$queryRaw(
-      Prisma.sql`
+      const avgRows = await prisma.$queryRaw(
+        Prisma.sql`
       SELECT tt.assigned_to as tech_id,
              AVG(TIMESTAMPDIFF(SECOND, tt.assigned_at, tt.closed_at)) / 3600 as avg_hours,
              COUNT(*) as n
@@ -227,42 +236,45 @@ export async function GET(req: NextRequest) {
         ${wzSql}
       GROUP BY tt.assigned_to
     `,
-    ) as unknown as Array<{ tech_id: number; avg_hours: number | null; n: number }>;
+      ) as unknown as Array<{ tech_id: number; avg_hours: number | null; n: number }>;
 
-    const avgMap = new Map<number, number>();
-    for (const r of avgRows) {
-      if (r.tech_id) avgMap.set(r.tech_id, Number(r.avg_hours || 0));
-    }
+      const avgMap = new Map<number, number>();
+      for (const r of avgRows) {
+        if (r.tech_id) avgMap.set(r.tech_id, Number(r.avg_hours || 0));
+      }
 
-    const rows = technicians
-      .map((t: Technician) => {
-        const wzs = techWorkzones.get(t.id_user) || [];
-        return {
-          id_user: t.id_user,
-          nama: t.nama ?? '',
-          nik: t.nik,
-          workzone: wzs.length > 0 ? wzs.join(', ') : 'Unknown',
-          closed_count: closedCountMap.get(t.id_user) || 0,
-          avg_resolve_time_hours: avgMap.get(t.id_user) ?? null,
-        };
-      })
-      .sort((a, b) => {
-        if (b.closed_count !== a.closed_count)
-          return b.closed_count - a.closed_count;
-        const aName = String((a as any).nama ?? '');
-        const bName = String((b as any).nama ?? '');
-        return aName.localeCompare(bName);
-      });
+      const rows = technicians
+        .map((t: Technician) => {
+          const wzs = techWorkzones.get(t.id_user) || [];
+          return {
+            id_user: t.id_user,
+            nama: t.nama ?? '',
+            nik: t.nik,
+            workzone: wzs.length > 0 ? wzs.join(', ') : 'Unknown',
+            closed_count: closedCountMap.get(t.id_user) || 0,
+            avg_resolve_time_hours: avgMap.get(t.id_user) ?? null,
+          };
+        })
+        .sort((a, b) => {
+          if (b.closed_count !== a.closed_count)
+            return b.closed_count - a.closed_count;
+          const aName = String((a as any).nama ?? '');
+          const bName = String((b as any).nama ?? '');
+          return aName.localeCompare(bName);
+        });
 
-    return NextResponse.json({
-      success: true,
-      data: {
+      return {
         month,
         year,
         workzone: selectedWorkzone || null,
         userWorkzones,
         rows,
-      },
+      };
+    }, CACHE_TTL_SECONDS);
+
+    return NextResponse.json({
+      success: true,
+      data: result,
     });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Failed to load performance');

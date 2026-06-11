@@ -347,6 +347,7 @@ model ticket {
   @@index([workzone, status_update], map: "idx_ticket_sync_workzone_statusupdate")
   @@index([sync_date, status_update, booking_date, customer_type], map: "idx_ticket_daily_board")
   @@index([sync_date, status_update, reported_date, customer_type], map: "idx_ticket_daily_validasi")
+  @@index([synced_at, id_ticket], map: "idx_ticket_active_refresh_synced")
 }
 
 model ticket_activity_log {

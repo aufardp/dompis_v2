@@ -8,9 +8,6 @@ CREATE INDEX idx_ticket_daily_board
 CREATE INDEX idx_ticket_daily_validasi
   ON ticket (sync_date, workzone, status_update, status, reported_date, id_ticket);
 
-CREATE INDEX idx_ticket_sync_workzone_statusupdate
-  ON ticket (sync_date, workzone, status_update);
-
 -- ticket_raw
 CREATE INDEX idx_ticket_raw_active_source_incident
   ON ticket_raw (isActive, sourceTable, incident);

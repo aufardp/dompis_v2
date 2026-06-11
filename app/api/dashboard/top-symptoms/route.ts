@@ -6,8 +6,16 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
+import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
+
+function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
+  const filterParams = new URLSearchParams(params);
+  if (filterParams.has('_t')) return null;
+  filterParams.sort();
+  return `dashboard_top_symptoms:${role}:${userId}:${filterParams.toString()}`;
+}
 
 export async function GET(request: Request) {
   try {
@@ -36,12 +44,24 @@ export async function GET(request: Request) {
       operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 
-    const data = await DailyTicketService.getTopSymptoms(
-      user.role,
-      user.id_user,
-      10,
-      filters,
-    );
+    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const data = cacheKey
+      ? await getOrSetCache(
+          cacheKey,
+          () => DailyTicketService.getTopSymptoms(
+            user.role,
+            user.id_user,
+            10,
+            filters,
+          ),
+          DASHBOARD_CACHE_TTL,
+        )
+      : await DailyTicketService.getTopSymptoms(
+          user.role,
+          user.id_user,
+          10,
+          filters,
+        );
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

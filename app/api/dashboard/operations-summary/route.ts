@@ -14,7 +14,7 @@ import {
 } from '@/app/config/jenis-tiket';
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
 import { normalizeCustomerType } from '@/app/config/customer-types';
-import { getCache, setCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
@@ -607,6 +607,174 @@ async function buildServiceAreas(where: Prisma.ticketWhereInput) {
     .slice(0, 5);
 }
 
+async function buildOperationsSummaryResult(
+  user: { role: string; id_user: number },
+  filters: {
+    search: string;
+    searchType: ReturnType<typeof parseSearchType>;
+    dept: 'all' | 'b2b' | 'b2c';
+    workzone?: string;
+    ticketType?: string;
+    statusUpdate?: string;
+  },
+) {
+  const where = (await DailyTicketService.buildDailyTicketWhere(
+    user.role,
+    user.id_user,
+    {
+      ...filters,
+    },
+  )) as Prisma.ticketWhereInput;
+
+  const b2cWhere = withWhere(
+    where,
+    { customer_segment: { in: ['DCS', 'PL-TSEL'] } } as Prisma.ticketWhereInput,
+  );
+  const b2bWhere = withWhere(
+    where,
+    {
+      OR: [
+        { customer_segment: { notIn: ['DCS', 'PL-TSEL'] } },
+        { customer_segment: null },
+      ],
+    } as Prisma.ticketWhereInput,
+  );
+  const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
+  const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
+
+  const [
+    b2cStats,
+    b2cRegulerStats,
+    b2bGroups,
+    b2bRegulerGroups,
+    serviceAreas,
+    focusRaw,
+  ] = await Promise.all([
+    buildB2CSummary(b2cWhere),
+    buildB2CSummary(b2cRegulerWhere),
+    buildB2BGroupsOptimized(b2bWhere),
+    buildB2BGroupsOptimized(b2bRegulerWhere),
+    buildServiceAreas(where),
+    (() => {
+      const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(where);
+      return queryRawWithOptionalIndex<Array<{
+        total: bigint;
+        close_count: bigint;
+        assigned_count: bigint;
+        open_count: bigint;
+        diamond: bigint;
+        p1: bigint;
+        gamas: bigint;
+        ffg: bigint;
+        carry_over: bigint;
+      }>>(sqlWithIndex, sqlWithoutIndex, params);
+    })(),
+  ]);
+
+  const focusRow = focusRaw?.[0];
+
+  const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
+    user.role,
+    user.id_user,
+    filters,
+  );
+
+  const allSummary = summaryMatrix.all;
+  const b2cSummaryCounts = summaryMatrix.b2c;
+  const b2bSummaryCounts = summaryMatrix.b2b;
+
+  const focusCounts = {
+    diamond: Number(focusRow?.diamond ?? 0),
+    p1: Number(focusRow?.p1 ?? 0),
+    gamas: Number(focusRow?.gamas ?? 0),
+    ffg: Number(focusRow?.ffg ?? 0),
+    carryOver: Number(focusRow?.carry_over ?? 0),
+  };
+
+  const b2bSummary = Object.values(b2bGroups).reduce(
+    (acc, group) => {
+      acc.total += group.total;
+      acc.open += group.open;
+      acc.assigned += group.assigned;
+      acc.close += group.close;
+      acc.ffgCount += group.ffgCount ?? 0;
+      acc.gamasCount += group.gamasCount ?? 0;
+      acc.p1Count += group.p1Count ?? 0;
+      acc.pPlusCount += group.pPlusCount ?? 0;
+      return acc;
+    },
+    cloneCounts(),
+  );
+
+  const b2cSummary = {
+    ...b2cStats,
+    summary: b2cStats.summary,
+  };
+
+  const b2cTotal =
+    b2cSummaryCounts.kpi_customer.total +
+    b2cSummaryCounts.kpi_proactive.total +
+    b2cSummaryCounts.non_kpi_unspec.total +
+    b2cSummaryCounts.non_technical.total +
+    b2cSummaryCounts.sqm_update.total +
+    b2cSummaryCounts.obsolete.total;
+  const b2bTotal =
+    b2bSummaryCounts.kpi_customer.total +
+    b2bSummaryCounts.kpi_proactive.total +
+    b2bSummaryCounts.non_kpi_unspec.total +
+    b2bSummaryCounts.non_technical.total +
+    b2bSummaryCounts.sqm_update.total +
+    b2bSummaryCounts.obsolete.total;
+
+  const overallSummary = {
+    total:
+      allSummary.kpi_customer.total +
+      allSummary.kpi_proactive.total +
+      allSummary.non_kpi_unspec.total +
+      allSummary.non_technical.total +
+      allSummary.sqm_update.total +
+      allSummary.obsolete.total,
+    unassigned:
+      allSummary.kpi_customer.open +
+      allSummary.kpi_proactive.open +
+      allSummary.non_kpi_unspec.open +
+      allSummary.non_technical.open +
+      allSummary.sqm_update.open +
+      allSummary.obsolete.open,
+    assigned:
+      allSummary.kpi_customer.assigned +
+      allSummary.kpi_proactive.assigned +
+      allSummary.non_kpi_unspec.assigned +
+      allSummary.non_technical.assigned +
+      allSummary.sqm_update.assigned +
+      allSummary.obsolete.assigned,
+    close:
+      allSummary.kpi_customer.close +
+      allSummary.kpi_proactive.close +
+      allSummary.non_kpi_unspec.close +
+      allSummary.non_technical.close +
+      allSummary.sqm_update.close +
+      allSummary.obsolete.close,
+  };
+
+  return {
+    stats: {
+      total: overallSummary.total,
+      unassigned: overallSummary.unassigned,
+      assigned: overallSummary.assigned,
+      close: overallSummary.close,
+      b2c: b2cTotal,
+      b2b: b2bTotal,
+    },
+    b2cStats: b2cSummary,
+    b2bSummary,
+    b2bGroups,
+    serviceAreas,
+    focusCounts,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const rateLimited = await enforceApiRateLimit(request, {
@@ -628,7 +796,7 @@ export async function GET(request: Request) {
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
-      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
+      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']) ?? 'all',
       workzone: searchParams.get('workzone') || undefined,
       ticketType:
         searchParams.get('ticketType') ||
@@ -640,169 +808,14 @@ export async function GET(request: Request) {
         undefined,
     };
 
-    const cacheKey = null;
-
-    const where = (await DailyTicketService.buildDailyTicketWhere(
-      user.role,
-      user.id_user,
-      {
-        ...filters,
-      },
-    )) as Prisma.ticketWhereInput;
-
-    const b2cWhere = withWhere(
-      where,
-      { customer_segment: { in: ['DCS', 'PL-TSEL'] } } as Prisma.ticketWhereInput,
-    );
-    const b2bWhere = withWhere(
-      where,
-      {
-        OR: [
-          { customer_segment: { notIn: ['DCS', 'PL-TSEL'] } },
-          { customer_segment: null },
-        ],
-      } as Prisma.ticketWhereInput,
-    );
-    const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
-    const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
-
-    const [
-      b2cStats,
-      b2cRegulerStats,
-      b2bGroups,
-      b2bRegulerGroups,
-      serviceAreas,
-      focusRaw,
-    ] = await Promise.all([
-      buildB2CSummary(b2cWhere),
-      buildB2CSummary(b2cRegulerWhere),
-      buildB2BGroupsOptimized(b2bWhere),
-      buildB2BGroupsOptimized(b2bRegulerWhere),
-      buildServiceAreas(where),
-      (() => {
-        const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(where);
-        return queryRawWithOptionalIndex<Array<{
-          total: bigint;
-          close_count: bigint;
-          assigned_count: bigint;
-          open_count: bigint;
-          diamond: bigint;
-          p1: bigint;
-          gamas: bigint;
-          ffg: bigint;
-          carry_over: bigint;
-        }>>(sqlWithIndex, sqlWithoutIndex, params);
-      })(),
-    ]);
-
-    const focusRow = focusRaw?.[0];
-
-    const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
-      user.role,
-      user.id_user,
-      filters,
-    );
-
-    const allSummary = summaryMatrix.all;
-    const b2cSummaryCounts = summaryMatrix.b2c;
-    const b2bSummaryCounts = summaryMatrix.b2b;
-
-    const focusCounts = {
-      diamond: Number(focusRow?.diamond ?? 0),
-      p1: Number(focusRow?.p1 ?? 0),
-      gamas: Number(focusRow?.gamas ?? 0),
-      ffg: Number(focusRow?.ffg ?? 0),
-      carryOver: Number(focusRow?.carry_over ?? 0),
-    };
-
-    const b2bSummary = Object.values(b2bGroups).reduce(
-      (acc, group) => {
-        acc.total += group.total;
-        acc.open += group.open;
-        acc.assigned += group.assigned;
-        acc.close += group.close;
-        acc.ffgCount += group.ffgCount ?? 0;
-        acc.gamasCount += group.gamasCount ?? 0;
-        acc.p1Count += group.p1Count ?? 0;
-        acc.pPlusCount += group.pPlusCount ?? 0;
-        return acc;
-      },
-      cloneCounts(),
-    );
-
-    const b2cSummary = {
-      ...b2cStats,
-      summary: b2cStats.summary,
-    };
-
-    const b2cTotal =
-      b2cSummaryCounts.kpi_customer.total +
-      b2cSummaryCounts.kpi_proactive.total +
-      b2cSummaryCounts.non_kpi_unspec.total +
-      b2cSummaryCounts.non_technical.total +
-      b2cSummaryCounts.sqm_update.total +
-      b2cSummaryCounts.obsolete.total;
-    const b2bTotal =
-      b2bSummaryCounts.kpi_customer.total +
-      b2bSummaryCounts.kpi_proactive.total +
-      b2bSummaryCounts.non_kpi_unspec.total +
-      b2bSummaryCounts.non_technical.total +
-      b2bSummaryCounts.sqm_update.total +
-      b2bSummaryCounts.obsolete.total;
-
-    const overallSummary = {
-      total:
-        allSummary.kpi_customer.total +
-        allSummary.kpi_proactive.total +
-        allSummary.non_kpi_unspec.total +
-        allSummary.non_technical.total +
-        allSummary.sqm_update.total +
-        allSummary.obsolete.total,
-      unassigned:
-        allSummary.kpi_customer.open +
-        allSummary.kpi_proactive.open +
-        allSummary.non_kpi_unspec.open +
-        allSummary.non_technical.open +
-        allSummary.sqm_update.open +
-        allSummary.obsolete.open,
-      assigned:
-        allSummary.kpi_customer.assigned +
-        allSummary.kpi_proactive.assigned +
-        allSummary.non_kpi_unspec.assigned +
-        allSummary.non_technical.assigned +
-        allSummary.sqm_update.assigned +
-        allSummary.obsolete.assigned,
-      close:
-        allSummary.kpi_customer.close +
-        allSummary.kpi_proactive.close +
-        allSummary.non_kpi_unspec.close +
-        allSummary.non_technical.close +
-        allSummary.sqm_update.close +
-        allSummary.obsolete.close,
-    };
-
-    const stats = {
-      total: overallSummary.total,
-      unassigned: overallSummary.unassigned,
-      assigned: overallSummary.assigned,
-      close: overallSummary.close,
-      b2c: b2cTotal,
-      b2b: b2bTotal,
-    };
-
-    const result = {
-      stats,
-      b2cStats: b2cSummary,
-      b2bSummary,
-      b2bGroups,
-      serviceAreas,
-      focusCounts,
-      generatedAt: new Date().toISOString(),
-    };
-
-    if (cacheKey) {
-      await setCache(cacheKey, result, CACHE_TTL_SECONDS);
-    }
+    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const result = cacheKey
+      ? await getOrSetCache(
+          cacheKey,
+          () => buildOperationsSummaryResult(user, filters),
+          CACHE_TTL_SECONDS,
+        )
+      : await buildOperationsSummaryResult(user, filters);
 
     return NextResponse.json(
       {

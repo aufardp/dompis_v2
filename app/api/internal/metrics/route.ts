@@ -5,12 +5,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSyncMetrics } from '@/lib/sync-metrics/metrics';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/app/libs/prisma';
-import { getExternalPool, getTableNames, testExternalConnection } from '@/lib/external-db/connection';
+import { testExternalConnection } from '@/lib/external-db/connection';
 import { authorizeInternalRoute } from '@/app/libs/internalRouteAuth';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getMetricAgeMs, parseProjectionCheckpointMeta } from '@/lib/observability/worker-health';
+import { getOrSetCache } from '@/lib/cache';
 
 const WORKER_NAMES = ['ingestion-worker', 'projection-worker', 'active-refresh-worker', 'status-refresh-worker', 'ops-worker'] as const;
+const DATABASE_METRICS_CACHE_KEY = 'internal:metrics:db-snapshot';
+const DATABASE_METRICS_CACHE_TTL = 15;
+
+type DatabaseMetrics = {
+  ticketRawActive: number;
+  ticketCount: number;
+  pendingOutbox: number;
+  externalDbConnected: boolean;
+};
+
+async function collectDatabaseMetrics(): Promise<DatabaseMetrics> {
+  return getOrSetCache(
+    DATABASE_METRICS_CACHE_KEY,
+    async () => {
+      const [ticketRawActive, ticketCount, pendingOutbox, externalDbConnected] = await Promise.all([
+        prisma.ticket_raw.count({ where: { isActive: true } }).catch(() => 0),
+        prisma.ticket.count().catch(() => 0),
+        prisma.tech_event_outbox.count({ where: { status: 'PENDING' } }).catch(() => 0),
+        testExternalConnection(),
+      ]);
+
+      return {
+        ticketRawActive,
+        ticketCount,
+        pendingOutbox,
+        externalDbConnected,
+      };
+    },
+    DATABASE_METRICS_CACHE_TTL,
+  );
+}
 
 async function collectPrometheusMetrics(): Promise<string> {
   const lines: string[] = [];
@@ -123,12 +155,7 @@ async function collectPrometheusMetrics(): Promise<string> {
   lines.push(`dompis_projection_records_total{status="failed"} ${projectionHealth.failedRecords ?? 0}`);
 
   // DB counts
-  const [ticketRawActive, ticketCount, pendingOutbox, externalDbConnected] = await Promise.all([
-    prisma.ticket_raw.count({ where: { isActive: true } }).catch(() => 0),
-    prisma.ticket.count().catch(() => 0),
-    prisma.tech_event_outbox.count({ where: { status: 'PENDING' } }).catch(() => 0),
-    testExternalConnection(),
-  ]);
+  const { ticketRawActive, ticketCount, pendingOutbox, externalDbConnected } = await collectDatabaseMetrics();
 
   lines.push(`dompis_db_ticket_raw_active ${ticketRawActive}`);
   lines.push(`dompis_db_ticket_count ${ticketCount}`);
