@@ -25,6 +25,15 @@ const PROTECTED_STATES = new Set([
   'closed',
 ]);
 
+const OPEN_EXTERNAL_STATES = new Set([
+  'new',
+  'draft',
+  'analysis',
+  'pending',
+  'backend',
+  'open',
+]);
+
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('PROJECTION_BATCH_SIZE', 1000);
 const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
   'PROJECTION_WRITE_CHUNK_SIZE',
@@ -93,6 +102,7 @@ export function resolveProjectionStatusUpdate(
 ): StatusUpdateResolution | null {
   const current = (currentStatusUpdate ?? '').trim().toLowerCase();
   const external = (externalStatus ?? '').trim().toLowerCase();
+  const isExternalOpenLike = OPEN_EXTERNAL_STATES.has(external);
 
   if (current && PROTECTED_STATES.has(current)) {
     return { protected: true };
@@ -108,7 +118,7 @@ export function resolveProjectionStatusUpdate(
 
   if (isUnassigned && !isTicketClosed(current)) {
     const normalized = normalizeStatusUpdate(current);
-    if (normalized === 'open') return null;
+    if (normalized === 'open' || isExternalOpenLike) return null;
     return { statusUpdate: 'open', closedAt: null, protected: false };
   }
 

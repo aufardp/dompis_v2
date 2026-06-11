@@ -204,6 +204,64 @@ async function fetchActiveOpen(
   `;
 }
 
+async function resetStaleAssignedTickets(
+  today: Date,
+  batchId: string,
+  limit: number,
+): Promise<number> {
+  if (limit <= 0) return 0;
+
+  const rows = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
+    SELECT t.id_ticket
+    FROM ticket t
+    INNER JOIN ticket_tracking tt
+      ON tt.ticket_id = t.id_ticket
+      AND tt.is_active = TRUE
+      AND tt.assigned_at IS NOT NULL
+    WHERE t.status_update = 'assigned'
+      AND t.teknisi_user_id IS NOT NULL
+      AND tt.assigned_at < ${today}
+      AND (t.status IS NULL OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)}))
+    ORDER BY tt.assigned_at ASC, t.id_ticket ASC
+    LIMIT ${limit}
+  `;
+
+  const ids = rows.map((row) => row.id_ticket);
+  if (ids.length === 0) return 0;
+
+  const now = nowWib();
+  await prisma.$transaction([
+    prisma.ticket.updateMany({
+      where: { id_ticket: { in: ids } },
+      data: {
+        teknisi_user_id: null,
+        status_update: 'open',
+        closed_at: null,
+        sync_date: today,
+        synced_at: now,
+        import_batch: batchId,
+      },
+    }),
+    prisma.ticket_tracking.updateMany({
+      where: { ticket_id: { in: ids }, is_active: true },
+      data: {
+        is_active: false,
+        closed_at: now,
+        updated_at: now,
+      },
+    }),
+    prisma.ticket_assignment_history.updateMany({
+      where: { ticket_id: { in: ids }, is_active: true },
+      data: {
+        is_active: false,
+        unassigned_at: now,
+      },
+    }),
+  ]);
+
+  return ids.length;
+}
+
 async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
   if (ids.length === 0) return [];
 
@@ -342,6 +400,16 @@ export async function runActiveRefresh(
           if (!Number.isNaN(parsed.getTime())) lastSyncedAt = parsed;
         }
       } catch { /* fall through */ }
+    }
+
+    const resetLimit = Math.max(1, Math.min(effectiveBatchSize, 200));
+    const staleAssignedResetCount = await resetStaleAssignedTickets(
+      today,
+      batchId,
+      resetLimit,
+    );
+    if (staleAssignedResetCount > 0) {
+      result.updated += staleAssignedResetCount;
     }
 
     while (
