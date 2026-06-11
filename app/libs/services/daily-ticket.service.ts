@@ -1154,7 +1154,17 @@ export class DailyTicketService {
             { status: { in: [...CLOSE_STATUS_VALUES] } },
             {
               AND: [
-                { worklog_summary: { not: { contains: 'Tech Closed' } } },
+                {
+                  OR: [
+                    { worklog_summary: null },
+                    { worklog_summary: '' },
+                    {
+                      NOT: {
+                        worklog_summary: { contains: 'Tech Closed' },
+                      },
+                    },
+                  ],
+                },
                 { status_update: { not: 'close' } },
               ],
             },

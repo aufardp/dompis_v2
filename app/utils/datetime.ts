@@ -32,7 +32,12 @@ export function parseWIBDateInput(
     // Handle DD/MM/YYYY HH:mm format (assumed WIB)
     if (raw.includes('/')) {
       const [day, month, yearAndTime] = raw.split('/');
-      const [year, time] = (yearAndTime || '').split(' ');
+      const [yearRaw, time] = (yearAndTime || '').trim().split(/\s+/);
+      const yearNum = Number(String(yearRaw ?? '').trim());
+      const year =
+        String(yearRaw ?? '').trim().length <= 2 && Number.isFinite(yearNum)
+          ? String(yearNum <= 69 ? 2000 + yearNum : 1900 + yearNum)
+          : String(yearRaw ?? '').trim();
       const [hour, minute] = time ? time.split(':') : ['0', '0'];
 
       const dd = String(day || '').padStart(2, '0');

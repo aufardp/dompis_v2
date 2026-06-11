@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   Upload,
   FileSpreadsheet,
+  Download,
   Check,
   X,
   AlertTriangle,
@@ -17,6 +18,10 @@ import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TICKET_RAW_FIELDS } from '@/app/libs/ticket-raw-columns';
+import {
+  TICKET_IMPORT_TEMPLATE_HEADERS,
+  TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS,
+} from '@/app/libs/ticket-import-template';
 
 type Step = 'upload' | 'result';
 
@@ -123,6 +128,42 @@ export default function ImportTiketPage() {
     }
   }, [file, preview, mapping]);
 
+  const handleDownloadTemplate = useCallback(async () => {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      [...TICKET_IMPORT_TEMPLATE_HEADERS],
+      TICKET_IMPORT_TEMPLATE_HEADERS.map((header) =>
+        TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS.includes(
+          header as (typeof TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS)[number],
+        )
+          ? 'WAJIB'
+          : '',
+      ),
+    ]);
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Template');
+    worksheet['!cols'] = TICKET_IMPORT_TEMPLATE_HEADERS.map(() => ({
+      wch: 22,
+    }));
+
+    const buffer = XLSX.write(workbook, {
+      type: 'array',
+      bookType: 'xlsx',
+    }) as ArrayBuffer;
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'template_import_tiket_raw.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
   const handleReset = useCallback(() => {
     setStep('upload');
     setFile(null);
@@ -138,7 +179,9 @@ export default function ImportTiketPage() {
       setMapping((prev) => {
         const next = { ...prev };
 
-        const oldField = Object.entries(next).find(([, v]) => v === fieldKey)?.[0];
+        const oldField = Object.entries(next).find(
+          ([, v]) => v === fieldKey,
+        )?.[0];
         if (oldField && oldField !== header) {
           next[oldField] = null;
         }
@@ -174,6 +217,46 @@ export default function ImportTiketPage() {
           </Link>
         </div>
 
+        <div className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
+          <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+            <div className='space-y-2'>
+              <p className='text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400'>
+                Template Excel final
+              </p>
+              <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
+                Unduh header resmi agar file langsung terbaca (tinggal timpa
+                data)
+              </h2>
+              <p className='max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300'>
+                File template sudah disusun mengikuti kolom `ticket_raw` yang
+                ada sekarang insera. 4 kolom wajib: `INCIDENT`, `STATUS`,
+                `REPORTED DATE`, `WORKZONE`.
+              </p>
+            </div>
+            <Button
+              onClick={handleDownloadTemplate}
+              variant='outline'
+              className='shrink-0'
+            >
+              <Download className='h-4 w-4' />
+              Download Template Excel
+            </Button>
+          </div>
+          <div className='mt-4 flex flex-wrap gap-2'>
+            {TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS.map((header) => (
+              <span
+                key={header}
+                className='border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900/60 dark:bg-brand-950/40 dark:text-brand-300 rounded-full border px-3 py-1 text-xs font-medium'
+              >
+                {header}
+              </span>
+            ))}
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'>
+              {TICKET_IMPORT_TEMPLATE_HEADERS.length} kolom total
+            </span>
+          </div>
+        </div>
+
         {step === 'upload' && (
           <>
             <div
@@ -193,7 +276,9 @@ export default function ImportTiketPage() {
               <p className='text-sm font-medium text-slate-600 dark:text-slate-300'>
                 Drop file Excel/CSV di sini
               </p>
-              <p className='mt-1 text-xs text-slate-400'>atau klik untuk memilih file</p>
+              <p className='mt-1 text-xs text-slate-400'>
+                atau klik untuk memilih file
+              </p>
               <p className='mt-4 text-xs text-slate-400'>
                 Format: .xlsx, .xls, .csv (maks 50MB)
               </p>
@@ -201,7 +286,7 @@ export default function ImportTiketPage() {
 
             {error && (
               <div className='flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400'>
-                <AlertTriangle className='mt-0.5 h-4 w-4 flex-shrink-0' />
+                <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
                 <span>{error}</span>
               </div>
             )}
@@ -224,13 +309,17 @@ export default function ImportTiketPage() {
                     <p className='text-2xl font-bold text-green-700 dark:text-green-400'>
                       {preview.valid_rows}
                     </p>
-                    <p className='text-xs text-green-600 dark:text-green-500'>Valid</p>
+                    <p className='text-xs text-green-600 dark:text-green-500'>
+                      Valid
+                    </p>
                   </div>
                   <div className='rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20'>
                     <p className='text-2xl font-bold text-red-700 dark:text-red-400'>
                       {preview.invalid_rows}
                     </p>
-                    <p className='text-xs text-red-600 dark:text-red-500'>Gagal Validasi</p>
+                    <p className='text-xs text-red-600 dark:text-red-500'>
+                      Gagal Validasi
+                    </p>
                   </div>
                   <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
                     <p className='text-2xl font-bold'>{mappedCount}</p>
@@ -257,16 +346,18 @@ export default function ImportTiketPage() {
                   <div className='divide-y divide-slate-100 dark:divide-slate-800'>
                     {preview.headers.map((header) => {
                       const mappedField = mapping[header];
-                      const fieldDef = TICKET_RAW_FIELDS.find((f) => f.key === mappedField);
+                      const fieldDef = TICKET_RAW_FIELDS.find(
+                        (f) => f.key === mappedField,
+                      );
                       return (
                         <div
                           key={header}
                           className='flex items-center gap-3 px-4 py-2.5'
                         >
-                          <span className='w-40 flex-shrink-0 truncate text-sm font-medium text-slate-700 dark:text-slate-300'>
+                          <span className='w-40 shrink-0 truncate text-sm font-medium text-slate-700 dark:text-slate-300'>
                             {header}
                           </span>
-                          <ArrowRight className='h-3.5 w-3.5 flex-shrink-0 text-slate-400' />
+                          <ArrowRight className='h-3.5 w-3.5 shrink-0 text-slate-400' />
                           <select
                             value={mappedField ?? ''}
                             onChange={(e) =>
@@ -322,17 +413,17 @@ export default function ImportTiketPage() {
                       Preview (20 baris pertama)
                     </h2>
                   </div>
-                  <div className='overflow-x-auto'>
-                    <table className='w-full text-left text-xs'>
+                  <div className='overflow-x-auto bg-slate-50/40 dark:bg-slate-950/40'>
+                    <table className='w-full min-w-280 border-separate border-spacing-0 text-left text-xs'>
                       <thead>
                         <tr className='border-b border-slate-100 dark:border-slate-800'>
-                          <th className='sticky left-0 bg-white px-3 py-2 font-medium text-slate-500 dark:bg-slate-950'>
+                          <th className='sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-3 font-semibold text-slate-500 shadow-[1px_0_0_0_rgba(148,163,184,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300'>
                             #
                           </th>
-                          {preview.headers.slice(0, 8).map((h) => (
+                          {preview.headers.slice(0, 12).map((h) => (
                             <th
                               key={h}
-                              className='whitespace-nowrap px-3 py-2 font-medium text-slate-500'
+                              className='border-b border-slate-100 px-3 py-3 font-semibold whitespace-nowrap text-slate-500 dark:border-slate-800 dark:text-slate-300'
                             >
                               {mapping[h] ?? h}
                             </th>
@@ -343,15 +434,16 @@ export default function ImportTiketPage() {
                         {preview.sample.map((row, i) => (
                           <tr
                             key={i}
-                            className='hover:bg-slate-50 dark:hover:bg-slate-900'
+                            className='transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/70'
                           >
-                            <td className='sticky left-0 bg-white px-3 py-2 text-slate-400 dark:bg-slate-950'>
+                            <td className='sticky left-0 z-10 bg-white px-3 py-2 font-medium text-slate-400 shadow-[1px_0_0_0_rgba(148,163,184,0.12)] dark:bg-slate-950 dark:text-slate-500'>
                               {i + 1}
                             </td>
-                            {preview.headers.slice(0, 8).map((h) => (
+                            {preview.headers.slice(0, 12).map((h) => (
                               <td
                                 key={h}
-                                className='max-w-[200px] truncate whitespace-nowrap px-3 py-2'
+                                title={String(row[mapping[h] ?? h] ?? '-')}
+                                className='max-w-60 px-3 py-2 whitespace-nowrap text-slate-700 dark:text-slate-200'
                               >
                                 {row[mapping[h] ?? h] ?? '-'}
                               </td>
@@ -361,17 +453,26 @@ export default function ImportTiketPage() {
                       </tbody>
                     </table>
                   </div>
+                  <div className='border-t border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400'>
+                    Tampilkan 12 kolom pertama. Geser horizontal untuk melihat
+                    kolom lain yang panjang.
+                  </div>
                 </div>
 
                 {preview.missing_required.length === 0 && (
-                  <div className='flex justify-end gap-3'>
-                    <Button variant='outline' onClick={handleReset}>
+                  <div className='flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-end dark:border-slate-800 dark:bg-slate-900/70'>
+                    <Button
+                      variant='outline'
+                      onClick={handleReset}
+                      className='min-w-32'
+                    >
                       <RotateCcw className='mr-1.5 h-3.5 w-3.5' />
                       Reset
                     </Button>
                     <Button
                       onClick={handleImport}
                       disabled={importing}
+                      className='shadow-brand-500/20 dark:shadow-brand-950/40 min-w-44 shadow-sm'
                     >
                       {importing ? (
                         <>
@@ -408,26 +509,37 @@ export default function ImportTiketPage() {
 
             <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
               <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
-                <p className='text-2xl font-bold text-blue-600'>{result.inserted}</p>
+                <p className='text-2xl font-bold text-blue-600'>
+                  {result.inserted}
+                </p>
                 <p className='text-xs text-slate-500'>Baru</p>
               </div>
               <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
-                <p className='text-2xl font-bold text-amber-600'>{result.updated}</p>
+                <p className='text-2xl font-bold text-amber-600'>
+                  {result.updated}
+                </p>
                 <p className='text-xs text-slate-500'>Diperbarui</p>
               </div>
               <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
-                <p className='text-2xl font-bold text-slate-500'>{result.skipped}</p>
+                <p className='text-2xl font-bold text-slate-500'>
+                  {result.skipped}
+                </p>
                 <p className='text-xs text-slate-500'>Dilewati</p>
               </div>
               <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
-                <p className='text-2xl font-bold text-red-600'>{result.failed}</p>
+                <p className='text-2xl font-bold text-red-600'>
+                  {result.failed}
+                </p>
                 <p className='text-xs text-slate-500'>Gagal</p>
               </div>
             </div>
 
             <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
               <p className='text-xs text-slate-500'>
-                Nama Batch: <span className='font-mono font-medium text-slate-700 dark:text-slate-300'>{result.import_batch}</span>
+                Nama Batch:{' '}
+                <span className='font-mono font-medium text-slate-700 dark:text-slate-300'>
+                  {result.import_batch}
+                </span>
               </p>
             </div>
 
@@ -449,13 +561,13 @@ export default function ImportTiketPage() {
               </div>
             )}
 
-            <div className='flex justify-center gap-3'>
-              <Button onClick={handleReset}>
+            <div className='flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-center dark:border-slate-800 dark:bg-slate-900/70'>
+              <Button onClick={handleReset} className='min-w-40'>
                 <RotateCcw className='mr-1.5 h-3.5 w-3.5' />
                 Import Lagi
               </Button>
               <Link href='/admin'>
-                <Button variant='outline'>
+                <Button variant='outline' className='min-w-40'>
                   <FileSpreadsheet className='mr-1.5 h-3.5 w-3.5' />
                   Ke Dashboard
                 </Button>

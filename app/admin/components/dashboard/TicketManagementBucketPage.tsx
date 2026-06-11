@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import type { DateRange } from 'react-day-picker';
@@ -529,6 +530,13 @@ export default function TicketManagementBucketPage({
       refetchType: 'active',
     });
   }, [queryClient]);
+
+  useTicketEvents({
+    onInvalidate: useCallback(() => {
+      invalidateQueries();
+    }, [invalidateQueries]),
+    enabled: true,
+  });
 
   const onAssign = useCallback(
     (ticketId: number | string, source: 'b2b' | 'b2c') => {

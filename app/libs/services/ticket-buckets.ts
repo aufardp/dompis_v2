@@ -47,7 +47,12 @@ export function buildRegulerJenis1Where(): Prisma.ticketWhereInput {
   };
 }
 
-const NOT_OBSOLETE: Prisma.ticketWhereInput = { NOT: { classification_path: 'Z_PERMINTAAN_044' } };
+const NOT_OBSOLETE: Prisma.ticketWhereInput = {
+  OR: [
+    { classification_path: null },
+    { NOT: { classification_path: 'Z_PERMINTAAN_044' } },
+  ],
+};
 
 export function buildOperationalBucketWhere(
   bucket: OperationalBucketKey,

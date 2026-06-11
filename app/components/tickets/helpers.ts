@@ -5,6 +5,7 @@ import {
   getTicketAgeColor as getAgeColor,
   getSlaHours,
   TicketAgeColor,
+  parseWIBDateInput,
 } from '@/app/utils/datetime';
 import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 
@@ -65,11 +66,14 @@ export function getSlaHoursRemaining(ticket: {
   const slaHours = getSlaHours(ticket.customerType);
 
   try {
-    const start = new Date(ticket.reportedDate);
+    const start = parseWIBDateInput(ticket.reportedDate);
+    if (!start) return 0;
+
     const now = new Date();
 
     if (ticket.hasilVisit === 'CLOSE' && ticket.closedAt) {
-      const closed = new Date(ticket.closedAt);
+      const closed = parseWIBDateInput(ticket.closedAt);
+      if (!closed) return 0;
       const hoursElapsed =
         (closed.getTime() - start.getTime()) / (1000 * 60 * 60);
       return Math.max(0, slaHours - hoursElapsed);

@@ -1,30 +1,21 @@
 import { toZonedTime, fromZonedTime, format } from 'date-fns-tz';
 import { startOfDay, endOfDay } from 'date-fns';
+import { parseWIBDateInput } from '@/app/utils/datetime';
 
 const TIMEZONE = 'Asia/Jakarta';
 
 export function toWibString(date: Date | string | null | undefined): string | null {
   if (!date) return null;
-  const d = typeof date === 'string'
-    ? (() => {
-        const normalized = date.includes('T') ? date : date.replace(' ', 'T');
-        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-        return new Date(hasTimezone ? normalized : `${normalized}+07:00`);
-      })()
-    : date;
+  const d = parseWIBDateInput(date);
+  if (!d) return null;
   if (isNaN(d.getTime())) return null;
   return format(toZonedTime(d, TIMEZONE), 'yyyy-MM-dd HH:mm:ss', { timeZone: TIMEZONE });
 }
 
 export function toWibDateString(date: Date | string | null | undefined): string | null {
   if (!date) return null;
-  const d = typeof date === 'string'
-    ? (() => {
-        const normalized = date.includes('T') ? date : date.replace(' ', 'T');
-        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-        return new Date(hasTimezone ? normalized : `${normalized}+07:00`);
-      })()
-    : date;
+  const d = parseWIBDateInput(date);
+  if (!d) return null;
   if (isNaN(d.getTime())) return null;
   return format(toZonedTime(d, TIMEZONE), 'yyyy-MM-dd', { timeZone: TIMEZONE });
 }
@@ -71,6 +62,5 @@ export function getTodayWibRange(): { start: Date; end: Date } {
 
 export function parseWibDate(dateStr: string | null | undefined): Date | null {
   if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
+  return parseWIBDateInput(dateStr);
 }

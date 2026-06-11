@@ -30,10 +30,12 @@ export default function Button({
   };
 
   const variants = {
-    primary: 'bg-primary text-white hover:bg-primary/90 focus:ring-primary',
+    primary:
+      'bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500 dark:bg-brand-500 dark:hover:bg-brand-400 dark:focus:ring-brand-400',
     outline:
-      'border border-slate-300 text-slate-700 hover:bg-slate-100 focus:ring-slate-400',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+      'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-slate-500',
+    danger:
+      'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-400 dark:focus:ring-red-400',
   };
 
   return (

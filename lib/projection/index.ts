@@ -548,6 +548,13 @@ export function shouldSkipProjection(
   existing: ExistingTicket | undefined,
   projectionLog: ExistingProjectionLog | undefined,
 ): boolean {
+  // Manual imports must always be projected into `ticket`.
+  // They can still be de-duplicated by the ticket upsert itself, but
+  // we should not short-circuit them here based on previous projection state.
+  if (raw.sourceTable === 'import_tiket') {
+    return false;
+  }
+
   if (
     projectionLog?.status === 'success' &&
     projectionLog.sourceHash === raw.sourceHash &&
