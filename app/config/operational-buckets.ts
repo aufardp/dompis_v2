@@ -81,7 +81,7 @@ export interface OperationalBucketDefinition {
 export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, OperationalBucketDefinition> = {
   kpi_customer: {
     key: 'kpi_customer',
-    label: 'KPI Customer',
+    label: 'Customer',
     description: 'Ticket KPI dari source CUSTOMER.',
     sourceTicket: ['CUSTOMER'],
     classificationFlag: ['TECHNICAL'],
@@ -105,7 +105,7 @@ export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, Operat
   },
   kpi_proactive: {
     key: 'kpi_proactive',
-    label: 'KPI Proactive',
+    label: 'Proactive',
     description: 'Ticket KPI dari source PROACTIVE dengan channel 50/83.',
     sourceTicket: ['PROACTIVE'],
     classificationFlag: ['TECHNICAL'],
@@ -114,7 +114,7 @@ export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, Operat
   },
   non_kpi_unspec: {
     key: 'non_kpi_unspec',
-    label: 'Non KPI Unspec',
+    label: 'Unspec',
     description: 'Ticket Non-KPI Unspec dari PROACTIVE channel 28.',
     sourceTicket: ['PROACTIVE'],
     classificationFlag: ['TECHNICAL'],

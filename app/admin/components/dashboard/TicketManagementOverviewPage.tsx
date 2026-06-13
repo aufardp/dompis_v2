@@ -3,17 +3,31 @@
 import Link from 'next/link';
 import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
+import { useSyncStatus } from '@/app/hooks/useSyncStatus';
+import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
+import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
+import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
 } from '@/app/config/ticket-management-nav';
+import StatCard from './StatCard';
+import { DiamondAlertBanner } from './AlertBanner';
+import OperationalFocusQueue, {
+  buildOperationalFocusItems,
+} from './OperationalFocusQueue';
+import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
+import ServiceAreaTable from './ServiceAreaTable';
+import AdminAccordion from '@/app/components/ui/AdminAccordion';
 
 const BUCKET_OPTIONS = [
-  { value: 'all', label: 'All KPI' },
+  { value: 'all', label: 'All' },
   ...TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => ({
     value: item.key,
     label: item.label,
@@ -71,16 +85,76 @@ function FlaggingMiniGrid({ counts }: { counts?: FlaggingCounts }) {
   );
 }
 
+type ExpiredTicket = {
+  ticketId: string;
+  customerType: string;
+  reportedAt: Date;
+  status: string;
+  overdueHours: number;
+  workzone?: string | null;
+  idTicket?: number;
+};
+
 export default function TicketManagementOverviewPage() {
   const [workzone, setWorkzone] = useState('');
   const [selectedBucket, setSelectedBucket] = useState('all');
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<{
+    ticketId: string;
+    idTicket?: number;
+  } | null>(null);
+
+  const queryClient = useQueryClient();
+
   const { data, isLoading } = useTicketManagementOverview(
     true,
     workzone || undefined,
   );
+  const { data: opsSummary } = useOperationsSummary({
+    workzone: workzone || undefined,
+  });
+  const {
+    lastSyncLabel,
+    nextSyncLabel,
+    isSyncOverdue,
+    isInProgress,
+    triggerSync,
+  } = useSyncStatus(30_000);
+  const { tickets: diamondTickets, loading: diamondLoading } =
+    useOpenDiamondTickets(workzone || undefined);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzone(value);
+  }, []);
+
+  const handleInvalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+  }, [queryClient]);
+
+  const { isConnected } = useTicketEvents({
+    onInvalidate: handleInvalidate,
+    onSyncStart: () => {},
+    onSyncComplete: () => {},
+    onSyncError: () => {},
+    enabled: true,
+    debounceMs: 300,
+  });
+
+  const handleAssign = useCallback((ticketId: string, idTicket?: number) => {
+    setAssignTarget({ ticketId, idTicket });
+    setAssignModalOpen(true);
+  }, []);
+
+  const handleAssignComplete = useCallback(async () => {
+    handleInvalidate();
+    setAssignModalOpen(false);
+    setAssignTarget(null);
+  }, [handleInvalidate]);
+
+  const handleAssignModalClose = useCallback(() => {
+    setAssignModalOpen(false);
+    setAssignTarget(null);
   }, []);
 
   const allCardData = useMemo(
@@ -122,7 +196,11 @@ export default function TicketManagementOverviewPage() {
   );
 
   const totalWorkboard = useMemo(
-    () => visibleCardData.reduce((sum, card) => sum + (card.summary?.total ?? 0), 0),
+    () =>
+      visibleCardData.reduce(
+        (sum, card) => sum + (card.summary?.total ?? 0),
+        0,
+      ),
     [visibleCardData],
   );
 
@@ -144,9 +222,41 @@ export default function TicketManagementOverviewPage() {
     };
   }, [data, selectedBucket, visibleCardData]);
 
-  const bucketSuffix = selectedBucket === 'all'
-    ? 'seluruh bucket'
-    : allCardData.find((c) => c.key === selectedBucket)?.label ?? selectedBucket;
+  const bucketSuffix =
+    selectedBucket === 'all'
+      ? 'seluruh bucket'
+      : (allCardData.find((c) => c.key === selectedBucket)?.label ??
+        selectedBucket);
+
+  const focusItems = useMemo(
+    () =>
+      buildOperationalFocusItems(
+        opsSummary?.focusCounts ?? {
+          diamond: 0,
+          p1: 0,
+          gamas: 0,
+          ffg: 0,
+          carryOver: 0,
+        },
+      ),
+    [opsSummary?.focusCounts],
+  );
+
+  const expiredTickets = useMemo<ExpiredTicket[]>(() => {
+    if (!diamondTickets) return [];
+    return diamondTickets.map((t) => ({
+      ticketId: t.ticketId,
+      customerType: t.customerType,
+      reportedAt: t.reportedAt,
+      status: t.status,
+      overdueHours: Math.max(
+        0,
+        (Date.now() - t.reportedAt.getTime()) / 3600000,
+      ),
+      workzone: t.workzone,
+      idTicket: t.idTicket,
+    }));
+  }, [diamondTickets]);
 
   return (
     <AdminLayout
@@ -154,87 +264,187 @@ export default function TicketManagementOverviewPage() {
       selectedWorkzone={workzone}
     >
       <div className='space-y-6'>
-        <div className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950'>
+        {/* ─── HEADER ─── */}
+        <div className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
           <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_36%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_28%)] p-6'>
-            <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
-              <div>
-                <p className='text-xs font-bold tracking-[1.6px] text-slate-400 uppercase dark:text-slate-500'>
+            {/* Row: Title + Sync + Total Workboard */}
+            <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+              <div className='flex-1'>
+                <p className='text-xs font-bold tracking-[1.6px] text-(--text-secondary) uppercase'>
                   Ticket Management
                 </p>
-                <h1 className='mt-2 text-3xl font-black text-slate-900 dark:text-slate-100'>
+                <h1 className='mt-2 text-3xl font-black text-(--text-primary)'>
                   Operational Overview
                 </h1>
-                <p className='mt-3 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400'>
+                <p className='mt-3 max-w-3xl text-sm leading-6 text-(--text-muted)'>
                   Halaman ini menjadi pintu masuk Ticket Management. Fokusnya
                   bukan sekadar total ticket, tetapi pemisahan workload
                   berdasarkan bucket operasional yang mudah dibaca.
                 </p>
               </div>
-              <div className='rounded-2xl bg-white/75 px-5 py-4 text-right shadow-sm backdrop-blur dark:bg-slate-900/80'>
-                <p className='text-[11px] font-bold tracking-[1.4px] text-slate-400 uppercase dark:text-slate-500'>
+
+              {/* Sync status bar */}
+              <div className='flex shrink-0 items-center gap-3 self-start rounded-2xl border border-(--border) bg-(--surface) px-4 py-3 shadow-sm'>
+                <div
+                  className={clsx(
+                    'h-2 w-2 shrink-0 rounded-full',
+                    isConnected ? 'bg-emerald-500' : 'bg-red-500',
+                  )}
+                />
+                <div className='min-w-0 text-xs text-(--text-secondary)'>
+                  <span>{lastSyncLabel}</span>
+                  {nextSyncLabel && (
+                    <span className='block text-[10px] text-(--text-muted)'>
+                      {nextSyncLabel}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={triggerSync}
+                  disabled={isInProgress}
+                  className='ml-1 rounded-lg border border-(--border) p-1.5 text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:opacity-50'
+                  title='Trigger sync'
+                >
+                  <RefreshCw
+                    size={14}
+                    className={isInProgress ? 'animate-spin' : ''}
+                  />
+                </button>
+              </div>
+
+              {/* Total Workboard pill */}
+              <div className='rounded-2xl border border-(--border) bg-(--surface) px-5 py-4 text-right shadow-sm'>
+                <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
                   Total Workboard
                 </p>
-                <p className='mt-1 text-3xl font-black text-slate-900 dark:text-slate-100'>
+                <p className='mt-1 text-3xl font-black text-(--text-primary)'>
                   {isLoading ? '...' : totalWorkboard}
                 </p>
               </div>
             </div>
-            <div className='mt-5 rounded-2xl border border-white/60 bg-white/70 p-3 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80'>
+
+            {/* KPI Filter + bucket label */}
+            <div className='mt-5 flex flex-wrap items-center justify-between gap-3'>
+              <div className='flex items-center gap-3'>
+                <label className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
+                  Filter
+                </label>
+                <select
+                  value={selectedBucket}
+                  onChange={(e) => setSelectedBucket(e.target.value)}
+                  className='rounded-md border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) shadow-sm'
+                >
+                  {BUCKET_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <span className='text-[11px] font-semibold text-(--text-muted)'>
+                {bucketSuffix}
+              </span>
+            </div>
+
+            {/* Priority Flag Overview */}
+            <div className='mt-4 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
               <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                <p className='text-[11px] font-bold tracking-[1.4px] text-slate-500 uppercase dark:text-slate-400'>
+                <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
                   Priority Flag Overview
                 </p>
-                <span className='text-[11px] font-semibold text-slate-400'>
+                <span className='text-[11px] font-semibold text-(--text-muted)'>
                   Total seluruh bucket
                 </span>
               </div>
               <FlaggingMiniGrid counts={flaggingTotals} />
             </div>
-          </div>
 
-          <div className='grid gap-px border-t border-slate-200 bg-slate-200 dark:border-slate-800 dark:bg-slate-800'
-            style={selectedBucket === 'all' ? { gridTemplateColumns: 'repeat(6, minmax(0, 1fr))' } : {}}
-          >
-            {visibleCardData.map((card) => (
-              <div key={card.key} className='bg-white p-4 dark:bg-slate-950'>
-                <p className='text-[11px] font-bold tracking-[1.4px] text-slate-500 uppercase dark:text-slate-400'>
-                  {card.label}
-                </p>
-                <p className='mt-2 text-3xl font-black text-slate-900 dark:text-slate-100'>
-                  {isLoading ? '...' : (card.summary?.total ?? 0)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className='flex flex-wrap items-center justify-between gap-3'>
-          <div className='flex items-center gap-3'>
-            <label className='text-[11px] font-bold tracking-[1.4px] text-slate-500 uppercase dark:text-slate-400'>
-              KPI Filter
-            </label>
-            <select
-              value={selectedBucket}
-              onChange={(e) => setSelectedBucket(e.target.value)}
-              className='rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+            {/* 6-bucket summary bar */}
+            <div
+              className='mt-4 grid gap-px border-t border-(--border) bg-(--border)'
+              style={
+                selectedBucket === 'all'
+                  ? { gridTemplateColumns: 'repeat(6, minmax(0, 1fr))' }
+                  : {}
+              }
             >
-              {BUCKET_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
+              {visibleCardData.map((card) => (
+                <div key={card.key} className='bg-(--surface) p-4'>
+                  <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
+                    {card.label}
+                  </p>
+                  <p className='mt-2 text-3xl font-black text-(--text-primary)'>
+                    {isLoading ? '...' : (card.summary?.total ?? 0)}
+                  </p>
+                </div>
               ))}
-            </select>
+            </div>
           </div>
-          <span className='text-[11px] font-semibold text-slate-400'>
-            {bucketSuffix}
-          </span>
         </div>
 
-        <div className='space-y-4'>
-          <HourlyChart workzone={workzone || undefined} bucket={selectedBucket} />
-          <SymptomChart workzone={workzone || undefined} bucket={selectedBucket} />
+        {/* ─── STAT CARDS ─── */}
+        <div className='grid grid-cols-2 gap-4 lg:grid-cols-4'>
+          <StatCard
+            label='Total'
+            value={opsSummary?.stats.total ?? 0}
+            subInfo='Semua tiket'
+            variant='total'
+          />
+          <StatCard
+            label='Unassigned'
+            value={opsSummary?.stats.unassigned ?? 0}
+            subInfo='Butuh assign'
+            variant='unassigned'
+          />
+          <StatCard
+            label='Assigned'
+            value={opsSummary?.stats.assigned ?? 0}
+            subInfo='Sedang dikerjakan'
+            variant='assigned'
+          />
+          <StatCard
+            label='Close'
+            value={opsSummary?.stats.close ?? 0}
+            subInfo='Selesai hari ini'
+            variant='close'
+          />
         </div>
 
+        {/* ─── FOCUS QUEUE ─── */}
+        <OperationalFocusQueue items={focusItems} />
+
+        {/* ─── DIAMOND ALERT ─── */}
+        {expiredTickets.length > 0 && (
+          <DiamondAlertBanner
+            tickets={expiredTickets}
+            onAssign={handleAssign}
+          />
+        )}
+
+        {/* ─── HOURLY CHART ─── */}
+        <HourlyChart workzone={workzone || undefined} bucket={selectedBucket} />
+
+        {/* ─── SYMPTOM CHART ─── */}
+        <SymptomChart
+          workzone={workzone || undefined}
+          bucket={selectedBucket}
+        />
+
+        {/* ─── SERVICE AREA PERFORMANCE ─── */}
+        <AdminAccordion
+          items={[
+            {
+              id: 'service-area-performance',
+              title: 'Service Area Performance',
+              defaultOpen: false,
+              children: (
+                <ServiceAreaTable areas={opsSummary?.serviceAreas ?? []} />
+              ),
+            },
+          ]}
+        />
+
+        {/* ─── BUCKET CARDS ─── */}
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'>
           {visibleCardData.map((card) => (
             <Link
@@ -246,14 +456,14 @@ export default function TicketManagementOverviewPage() {
               )}
             >
               <div className='flex items-start justify-between gap-4'>
-                <div>
+                <div className='min-w-0 flex-1'>
                   <p className='text-2xl'>{card.icon}</p>
                   <h2 className='mt-3 text-xl font-black'>{card.label}</h2>
                   <p className='mt-2 text-sm leading-6 opacity-80'>
                     {card.description}
                   </p>
                 </div>
-                <div className='rounded-2xl bg-white/60 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
+                <div className='shrink-0 rounded-2xl bg-white/60 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
                   <p className='text-[11px] font-bold tracking-[1.2px] uppercase opacity-70'>
                     Total
                   </p>
@@ -264,11 +474,13 @@ export default function TicketManagementOverviewPage() {
               </div>
 
               <div className='mt-5 grid grid-cols-3 gap-2 text-center'>
-                {[
-                  ['Open', card.summary?.open ?? 0],
-                  ['Assigned', card.summary?.assigned ?? 0],
-                  ['Close', card.summary?.close ?? 0],
-                ].map(([label, value]) => (
+                {(
+                  [
+                    ['Open', card.summary?.open ?? 0],
+                    ['Assigned', card.summary?.assigned ?? 0],
+                    ['Close', card.summary?.close ?? 0],
+                  ] as const
+                ).map(([label, value]) => (
                   <div
                     key={label}
                     className='rounded-2xl bg-white/55 px-3 py-2 dark:bg-black/10'
@@ -288,13 +500,14 @@ export default function TicketManagementOverviewPage() {
           ))}
         </div>
 
-        <div className='rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
+        {/* ─── QUICK ACCESS ─── */}
+        <div className='rounded-3xl border border-(--border) bg-(--surface) p-5 shadow-sm'>
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div>
-              <p className='text-xs font-bold tracking-[1.4px] text-slate-400 uppercase dark:text-slate-500'>
+              <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
                 Quick Access
               </p>
-              <h2 className='mt-1 text-xl font-black text-slate-900 dark:text-slate-100'>
+              <h2 className='mt-1 text-xl font-black text-(--text-primary)'>
                 Shortcut ke Area Kerja
               </h2>
             </div>
@@ -303,7 +516,7 @@ export default function TicketManagementOverviewPage() {
                 <Link
                   key={item.key}
                   href={item.path}
-                  className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold tracking-[1px] text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                  className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
                 >
                   {item.label}
                 </Link>
@@ -311,7 +524,7 @@ export default function TicketManagementOverviewPage() {
               <Link
                 key={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].key}
                 href={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].path}
-                className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold tracking-[1px] text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
               >
                 {TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].label}
               </Link>
@@ -319,6 +532,15 @@ export default function TicketManagementOverviewPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── ASSIGN MODAL ─── */}
+      <AssignTechnicianModal
+        isOpen={assignModalOpen}
+        onClose={handleAssignModalClose}
+        ticketId={assignTarget?.idTicket ?? 0}
+        ticketCode={assignTarget?.ticketId ?? ''}
+        onAssign={handleAssignComplete}
+      />
     </AdminLayout>
   );
 }

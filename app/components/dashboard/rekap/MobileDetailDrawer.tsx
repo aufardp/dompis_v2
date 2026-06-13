@@ -4,6 +4,20 @@ import { X } from 'lucide-react';
 
 interface SegCount { open: number; close: number; }
 
+interface DetailGroup {
+  b2c: Record<string, SegCount>;
+  b2b: Record<string, SegCount>;
+}
+
+interface BucketRecord {
+  kpiCustomer: SegCount;
+  kpiProactive: SegCount;
+  nonKpiUnspec: SegCount;
+  nonTechnical: SegCount;
+  sqmUpdate: SegCount;
+  obsolete: SegCount;
+}
+
 interface MobileDetailDrawerProps {
   row: SARow | WorkzoneRow;
   isOpen: boolean;
@@ -12,17 +26,11 @@ interface MobileDetailDrawerProps {
 
 interface WorkzoneRow {
   workzone: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   totalOpen: number;
   totalClose: number;
-  grandTotal?: number;
-  workzones?: never[];
-  saName?: string;
-  area?: string;
-  no?: number;
-  teknisiMasuk?: number;
-  woPerTeknisi?: string;
 }
 
 interface SARow {
@@ -31,24 +39,25 @@ interface SARow {
   saName: string;
   teknisiMasuk: number;
   woPerTeknisi: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   workzones: WorkzoneRow[];
   totalOpen: number;
   totalClose: number;
   grandTotal: number;
+  jenisTiket: Record<string, SegCount>;
 }
 
-const SEGMENTS = [
-  { key: 'diamond', label: 'Diamond', group: 'b2c' as const },
-  { key: 'platinum', label: 'Platinum', group: 'b2c' as const },
-  { key: 'gold', label: 'Gold', group: 'b2c' as const },
-  { key: 'reg', label: 'Reg', group: 'b2c' as const },
-  { key: 'sqmB2c', label: 'SQM B2C', group: 'b2c' as const },
-  { key: 'datin', label: 'DATIN', group: 'b2b' as const },
-  { key: 'nonDatin', label: 'Non-Datin', group: 'b2b' as const },
-  { key: 'sqmB2b', label: 'SQM B2B', group: 'b2b' as const },
-  { key: 'tsel', label: 'TSEL', group: 'b2b' as const },
+type BucketKey = keyof BucketRecord;
+
+const BUCKETS: { key: BucketKey; label: string }[] = [
+  { key: 'kpiCustomer', label: 'Customer' },
+  { key: 'kpiProactive', label: 'Proactive' },
+  { key: 'nonKpiUnspec', label: 'Unspec' },
+  { key: 'nonTechnical', label: 'Non Technical' },
+  { key: 'sqmUpdate', label: 'SQM Update' },
+  { key: 'obsolete', label: 'Obsolete' },
 ];
 
 function closeRate(open: number, close: number): number {
@@ -56,19 +65,17 @@ function closeRate(open: number, close: number): number {
   return total > 0 ? Math.round((close / total) * 100) : 0;
 }
 
-function getSegment(row: SARow | WorkzoneRow, segment: (typeof SEGMENTS)[number]): SegCount {
-  return segment.group === 'b2c'
-    ? row.b2c[segment.key as keyof typeof row.b2c]
-    : row.b2b[segment.key as keyof typeof row.b2b];
+function getBucketValue(row: SARow | WorkzoneRow, key: BucketKey): SegCount {
+  return row.buckets[key];
 }
 
 export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetailDrawerProps) {
-  const activeSegments = SEGMENTS.map((segment) => ({
-    ...segment,
-    data: getSegment(row, segment),
-  })).filter((segment) => segment.data.open > 0 || segment.data.close > 0);
+  const activeBuckets = BUCKETS.map((bkt) => ({
+    ...bkt,
+    data: getBucketValue(row, bkt.key),
+  })).filter((bkt) => bkt.data.open > 0 || bkt.data.close > 0);
 
-  const workzones = row.workzones ?? [];
+  const workzones = 'workzones' in row ? row.workzones : [];
 
   return (
     <>
@@ -92,7 +99,7 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
           <div className="grid grid-cols-4 gap-2">
             <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total</p>
-              <p className="mt-1 text-xl font-bold text-slate-950 dark:text-slate-50">{row.grandTotal ?? row.totalOpen + row.totalClose}</p>
+              <p className="mt-1 text-xl font-bold text-slate-950 dark:text-slate-50">{'grandTotal' in row ? row.grandTotal : row.totalOpen + row.totalClose}</p>
             </div>
             <div className="rounded-lg bg-red-50 p-3 dark:bg-red-950/30">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-red-400">Open</p>
@@ -110,16 +117,16 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
 
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Segment Aktif</p>
-              <span className="text-xs text-slate-400">{activeSegments.length} segment</span>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bucket Aktif</p>
+              <span className="text-xs text-slate-400">{activeBuckets.length} bucket</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {activeSegments.map((segment) => (
-                <div key={segment.key} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{segment.label}</p>
+              {activeBuckets.map((bkt) => (
+                <div key={bkt.key} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{bkt.label}</p>
                   <div className="mt-2 flex gap-2">
-                    <span className="rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-700 dark:bg-red-950/30 dark:text-red-300">Op {segment.data.open}</span>
-                    <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Cl {segment.data.close}</span>
+                    <span className="rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-700 dark:bg-red-950/30 dark:text-red-300">Op {bkt.data.open}</span>
+                    <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Cl {bkt.data.close}</span>
                   </div>
                 </div>
               ))}
@@ -130,7 +137,7 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
             <section>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Workzone</p>
               <div className="space-y-2">
-                {workzones.map((wz) => (
+                {workzones.map((wz: WorkzoneRow) => (
                   <div key={wz.workzone} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                     <div className="flex items-center justify-between">
                       <p className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{wz.workzone}</p>
@@ -160,4 +167,3 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
     </>
   );
 }
-

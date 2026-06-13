@@ -5,10 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { ChevronDown, X } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
-import {
-  TICKET_MANAGEMENT_BUCKET_ITEMS,
-  TICKET_MANAGEMENT_OVERVIEW_ITEMS,
-} from '@/app/config/ticket-management-nav';
+import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 
 const MENU_ITEMS: Array<{
@@ -234,14 +231,6 @@ export default function Sidebar({
                     {ticketMenuExpanded && (
                       <div className='mt-2 ml-3 rounded-xl border border-white/8 bg-white/3 p-2 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.45)]'>
                         {[
-                          {
-                            title: 'Overview',
-                            badge: TICKET_MANAGEMENT_OVERVIEW_ITEMS.length,
-                            items: TICKET_MANAGEMENT_OVERVIEW_ITEMS.map((item) => ({
-                              ...item,
-                              count: undefined,
-                            })),
-                          },
                           {
                             title: 'Operational Buckets',
                               badge: TICKET_MANAGEMENT_BUCKET_ITEMS.length,

@@ -44,6 +44,11 @@ export type OperationsSummary = {
     open: number;
     assigned: number;
     close: number;
+    teknisi: number;
+    reguler: number;
+    hvcGold: number;
+    hvcPlatinum: number;
+    hvcDiamond: number;
   }>;
   focusCounts: {
     diamond: number;

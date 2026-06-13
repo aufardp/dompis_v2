@@ -3,7 +3,7 @@ import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketM
 export default function TicketManagementNonKpiUnspecPage() {
   return (
     <TicketManagementBucketPage
-      title='Non KPI Unspec'
+      title='Unspec'
       description='Source: PROACTIVE | Classification: TECHNICAL | Channel: 28 | Jenis Tiket 1: UNSPEC, UNSPEC B2B'
       icon='🟠'
       tone='amber'

@@ -5,12 +5,30 @@ import { ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react';
 import clsx from 'clsx';
 import MobileDetailDrawer from './MobileDetailDrawer';
 
-interface SegCount { open: number; close: number; }
+interface SegCount {
+  open: number;
+  close: number;
+}
+
+interface DetailGroup {
+  b2c: Record<string, SegCount>;
+  b2b: Record<string, SegCount>;
+}
+
+interface BucketRecord {
+  kpiCustomer: SegCount;
+  kpiProactive: SegCount;
+  nonKpiUnspec: SegCount;
+  nonTechnical: SegCount;
+  sqmUpdate: SegCount;
+  obsolete: SegCount;
+}
 
 interface WorkzoneRow {
   workzone: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   totalOpen: number;
   totalClose: number;
 }
@@ -21,12 +39,14 @@ interface SARow {
   saName: string;
   teknisiMasuk: number;
   woPerTeknisi: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   workzones: WorkzoneRow[];
   totalOpen: number;
   totalClose: number;
   grandTotal: number;
+  jenisTiket: Record<string, SegCount>;
 }
 
 interface RekapCardsProps {
@@ -34,7 +54,9 @@ interface RekapCardsProps {
 }
 
 function closeRate(row: SARow): number {
-  return row.grandTotal > 0 ? Math.round((row.totalClose / row.grandTotal) * 100) : 0;
+  return row.grandTotal > 0
+    ? Math.round((row.totalClose / row.grandTotal) * 100)
+    : 0;
 }
 
 function loadToneColor(open: number, teknisi: number): string {
@@ -53,7 +75,9 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
     for (const row of rows) set.add(row.area);
     return Array.from(set);
   }, [rows]);
-  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(areaNames));
+  const [openAreas, setOpenAreas] = useState<Set<string>>(
+    () => new Set(areaNames),
+  );
 
   const toggleArea = useCallback((name: string) => {
     setOpenAreas((prev) => {
@@ -74,27 +98,35 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
   }, [rows]);
 
   if (rows.length === 0) {
-    return <div className="py-12 text-center text-sm text-(--text-muted)">Tidak ada data workorder</div>;
+    return (
+      <div className='py-12 text-center text-sm text-(--text-muted)'>
+        Tidak ada data workorder
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="space-y-5">
+      <div className='space-y-5'>
         {groupedRows.map(([area, areaRows]) => {
           const isOpen = openAreas.has(area);
           return (
-            <section key={area} className="space-y-2">
+            <section key={area} className='space-y-2'>
               <button
-                type="button"
+                type='button'
                 onClick={() => toggleArea(area)}
-                className="flex w-full items-center justify-between px-1 text-left"
+                className='flex w-full items-center justify-between px-1 text-left'
               >
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-(--text-muted)" />
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-(--text-muted)">{area}</h3>
+                <div className='flex items-center gap-2'>
+                  <MapPin className='h-4 w-4 text-(--text-muted)' />
+                  <h3 className='text-xs font-bold tracking-wide text-(--text-muted) uppercase'>
+                    {area}
+                  </h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-(--text-muted)">{areaRows.length} SA</span>
+                <div className='flex items-center gap-2'>
+                  <span className='text-xs text-(--text-muted)'>
+                    {areaRows.length} SA
+                  </span>
                   <ChevronDown
                     size={14}
                     className={clsx(
@@ -111,58 +143,102 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
                   isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
                 )}
               >
-                <div className="min-h-0 overflow-hidden">
-                  <div className="space-y-3">
+                <div className='min-h-0 overflow-hidden'>
+                  <div className='space-y-3'>
                     {areaRows.map((row) => {
-                      const toneColor = loadToneColor(row.totalOpen, row.teknisiMasuk);
+                      const toneColor = loadToneColor(
+                        row.totalOpen,
+                        row.teknisiMasuk,
+                      );
                       const cr = closeRate(row);
                       return (
                         <button
                           key={row.saName}
                           onClick={() => setSelectedRow(row)}
-                          className="w-full rounded-lg border border-(--border) bg-(--surface) p-4 text-left transition hover:border-(--border) hover:bg-(--surface-2)"
+                          className='w-full rounded-lg border border-(--border) bg-(--surface) p-4 text-left transition hover:border-(--border) hover:bg-(--surface-2)'
                         >
                           {/* Card header with accent bar */}
-                          <div className="flex items-center justify-between gap-2 border-b border-(--border) pb-2.5" style={{ background: `${toneColor}10` }}>
+                          <div
+                            className='flex items-center justify-between gap-2 border-b border-(--border) pb-2.5'
+                            style={{ background: `${toneColor}10` }}
+                          >
                             <div>
-                              <p className="text-xs font-bold text-(--text-primary)">{row.saName}</p>
-                              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-(--text-muted)">
-                                <Users className="h-3.5 w-3.5" />
+                              <p className='text-xs font-bold text-(--text-primary)'>
+                                {row.saName}
+                              </p>
+                              <div className='mt-0.5 flex items-center gap-2 text-[10px] text-(--text-muted)'>
+                                <Users className='h-3.5 w-3.5' />
                                 <span>{row.teknisiMasuk} teknisi</span>
                                 <span>{row.workzones.length} workzone</span>
                               </div>
                             </div>
                             {/* Closure ring */}
-                            <svg viewBox="0 0 36 36" className="h-9 w-9 -rotate-90 flex-shrink-0">
-                              <circle cx="18" cy="18" r="14" fill="none" stroke="var(--surface-3)" strokeWidth="4" />
+                            <svg
+                              viewBox='0 0 36 36'
+                              className='h-9 w-9 shrink-0 -rotate-90'
+                            >
                               <circle
-                                cx="18" cy="18" r="14" fill="none"
-                                stroke={cr >= 80 ? '#22c55e' : cr >= 50 ? '#f59e0b' : '#ef4444'}
-                                strokeWidth="4"
+                                cx='18'
+                                cy='18'
+                                r='14'
+                                fill='none'
+                                stroke='var(--surface-3)'
+                                strokeWidth='4'
+                              />
+                              <circle
+                                cx='18'
+                                cy='18'
+                                r='14'
+                                fill='none'
+                                stroke={
+                                  cr >= 80
+                                    ? '#22c55e'
+                                    : cr >= 50
+                                      ? '#f59e0b'
+                                      : '#ef4444'
+                                }
+                                strokeWidth='4'
                                 strokeDasharray={`${(cr / 100) * 87.96} 87.96`}
-                                strokeLinecap="round"
+                                strokeLinecap='round'
                               />
                             </svg>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-4 gap-2">
+                          <div className='mt-3 grid grid-cols-4 gap-2'>
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-(--text-muted)">Open</p>
-                              <p className="mt-1 text-lg font-bold text-red-600">{row.totalOpen}</p>
+                              <p className='text-[10px] font-semibold tracking-wide text-(--text-muted) uppercase'>
+                                Open
+                              </p>
+                              <p className='mt-1 text-lg font-bold text-red-600'>
+                                {row.totalOpen}
+                              </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-(--text-muted)">Close</p>
-                              <p className="mt-1 text-lg font-bold text-emerald-600">{row.totalClose}</p>
+                              <p className='text-[10px] font-semibold tracking-wide text-(--text-muted) uppercase'>
+                                Close
+                              </p>
+                              <p className='mt-1 text-lg font-bold text-emerald-600'>
+                                {row.totalClose}
+                              </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-(--text-muted)">Close %</p>
-                              <p className="mt-1 text-lg font-bold text-(--text-primary)">{cr}%</p>
+                              <p className='text-[10px] font-semibold tracking-wide text-(--text-muted) uppercase'>
+                                Close %
+                              </p>
+                              <p className='mt-1 text-lg font-bold text-(--text-primary)'>
+                                {cr}%
+                              </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-(--text-muted)">Load</p>
+                              <p className='text-[10px] font-semibold tracking-wide text-(--text-muted) uppercase'>
+                                Load
+                              </p>
                               <span
-                                className="mt-1 inline-flex rounded px-2 py-1 font-mono text-sm font-bold"
-                                style={{ background: `${toneColor}18`, color: toneColor }}
+                                className='mt-1 inline-flex rounded px-2 py-1 font-mono text-sm font-bold'
+                                style={{
+                                  background: `${toneColor}18`,
+                                  color: toneColor,
+                                }}
                               >
                                 {row.woPerTeknisi}
                               </span>
@@ -180,7 +256,11 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
       </div>
 
       {selectedRow && (
-        <MobileDetailDrawer row={selectedRow} isOpen={!!selectedRow} onClose={() => setSelectedRow(null)} />
+        <MobileDetailDrawer
+          row={selectedRow}
+          isOpen={!!selectedRow}
+          onClose={() => setSelectedRow(null)}
+        />
       )}
     </>
   );

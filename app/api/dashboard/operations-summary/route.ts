@@ -382,22 +382,38 @@ function buildServiceAreasRawSql(
   const sqlWithIndex = `
     SELECT
       workzone,
-      status,
-      status_update,
-      COUNT(*) AS total
+      COUNT(*) AS total,
+      SUM(CASE WHEN status IN (${CLOSE_STATUS_SQL}) THEN 1 ELSE 0 END) AS close_count,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND status_update IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned_count,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) THEN 1 ELSE 0 END) AS open_count,
+      COUNT(DISTINCT teknisi_user_id) AS teknisi,
+      SUM(CASE WHEN customer_type = 'REGULER' THEN 1 ELSE 0 END) AS reguler,
+      SUM(CASE WHEN customer_type = 'HVC_GOLD' THEN 1 ELSE 0 END) AS hvc_gold,
+      SUM(CASE WHEN customer_type = 'HVC_PLATINUM' THEN 1 ELSE 0 END) AS hvc_platinum,
+      SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS hvc_diamond
     FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
     WHERE ${whereClause}
-    GROUP BY workzone, status, status_update
+    GROUP BY workzone
+    ORDER BY total DESC
+    LIMIT 10
   `;
   const sqlWithoutIndex = `
     SELECT
       workzone,
-      status,
-      status_update,
-      COUNT(*) AS total
+      COUNT(*) AS total,
+      SUM(CASE WHEN status IN (${CLOSE_STATUS_SQL}) THEN 1 ELSE 0 END) AS close_count,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND status_update IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned_count,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) THEN 1 ELSE 0 END) AS open_count,
+      COUNT(DISTINCT teknisi_user_id) AS teknisi,
+      SUM(CASE WHEN customer_type = 'REGULER' THEN 1 ELSE 0 END) AS reguler,
+      SUM(CASE WHEN customer_type = 'HVC_GOLD' THEN 1 ELSE 0 END) AS hvc_gold,
+      SUM(CASE WHEN customer_type = 'HVC_PLATINUM' THEN 1 ELSE 0 END) AS hvc_platinum,
+      SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS hvc_diamond
     FROM ticket
     WHERE ${whereClause}
-    GROUP BY workzone, status, status_update
+    GROUP BY workzone
+    ORDER BY total DESC
+    LIMIT 10
   `;
 
   return [sqlWithIndex, sqlWithoutIndex, params];
@@ -565,46 +581,32 @@ async function buildB2BGroupsOptimized(
 
 async function buildServiceAreas(where: Prisma.ticketWhereInput) {
   const [sqlWithIndex, sqlWithoutIndex, params] = buildServiceAreasRawSql(where);
-  const groups: Array<{
+  const rows: Array<{
     workzone: string | null;
-    status: string | null;
-    status_update: string | null;
     total: bigint;
+    close_count: bigint;
+    assigned_count: bigint;
+    open_count: bigint;
+    teknisi: bigint;
+    reguler: bigint;
+    hvc_gold: bigint;
+    hvc_platinum: bigint;
+    hvc_diamond: bigint;
   }> = await queryRawWithOptionalIndex(sqlWithIndex, sqlWithoutIndex, params);
 
-  const areaMap = new Map<
-    string,
-    { name: string; total: number; unassigned: number; open: number; assigned: number; close: number }
-  >();
-
-  for (const group of groups) {
-    const name = String(group.workzone ?? '').trim();
-    if (!name) continue;
-    if (!areaMap.has(name)) {
-      areaMap.set(name, {
-        name,
-        total: 0,
-        unassigned: 0,
-        open: 0,
-        assigned: 0,
-        close: 0,
-      });
-    }
-
-    const row = areaMap.get(name)!;
-    const count = Number(group.total);
-    row.total += count;
-    if (getTicketCategory(group.status, group.status_update) === 'close') row.close += count;
-    else if (isTicketInWork(group.status_update)) row.assigned += count;
-    else {
-      row.open += count;
-      row.unassigned += count;
-    }
-  }
-
-  return Array.from(areaMap.values())
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+  return rows.map((row) => ({
+    name: String(row.workzone ?? '').trim(),
+    total: Number(row.total),
+    open: Number(row.open_count),
+    assigned: Number(row.assigned_count),
+    close: Number(row.close_count),
+    unassigned: Number(row.open_count),
+    teknisi: Number(row.teknisi),
+    reguler: Number(row.reguler),
+    hvcGold: Number(row.hvc_gold),
+    hvcPlatinum: Number(row.hvc_platinum),
+    hvcDiamond: Number(row.hvc_diamond),
+  }));
 }
 
 async function buildOperationsSummaryResult(

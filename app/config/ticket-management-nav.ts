@@ -19,14 +19,14 @@ export const TICKET_MANAGEMENT_OVERVIEW_ITEMS: TicketManagementNavItem[] = [
 export const TICKET_MANAGEMENT_BUCKET_ITEMS: TicketManagementNavItem[] = [
   {
     key: 'kpi-customer',
-    label: 'KPI Customer',
+    label: 'Customer',
     path: '/admin/ticket-management/kpi-customer',
     icon: '📘',
     description: 'Ticket KPI dari source CUSTOMER (TECHNICAL).',
   },
   {
     key: 'kpi-proactive',
-    label: 'KPI Proactive',
+    label: 'Proactive',
     path: '/admin/ticket-management/kpi-proactive',
     icon: '📗',
     description: 'Ticket KPI dari source PROACTIVE channel 50/83.',

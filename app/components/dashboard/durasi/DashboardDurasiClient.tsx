@@ -37,19 +37,19 @@ interface DashboardResponse {
 }
 
 const BUCKET_OPTIONS = [
-  { value: 'all', label: 'All KPI' },
-  { value: 'kpi_customer', label: 'KPI Customer' },
-  { value: 'kpi_proactive', label: 'KPI Proactive' },
-  { value: 'non_kpi_unspec', label: 'Non KPI Unspec' },
+  { value: 'all', label: 'All' },
+  { value: 'kpi_customer', label: 'Customer' },
+  { value: 'kpi_proactive', label: 'Proactive' },
+  { value: 'non_kpi_unspec', label: 'Unspec' },
   { value: 'non_technical', label: 'Non Technical' },
   { value: 'sqm_update', label: 'SQM Update' },
   { value: 'obsolete', label: 'Obsolete' },
 ] as const;
 
 const KPI_ACCENT: Record<string, string> = {
-  'KPI Customer': '#3b82f6',
-  'KPI Proactive': '#a855f7',
-  'Non KPI Unspec': '#64748b',
+  'Customer': '#3b82f6',
+  'Proactive': '#a855f7',
+  'Unspec': '#64748b',
   'Non Technical': '#e11d48',
   'SQM Update': '#7c3aed',
   'Obsolete': '#f43f5e',
@@ -122,9 +122,9 @@ export default function DashboardDurasiClient() {
   const summaryCards = ks
     ? [
         { label: 'Total', value: formatNum(ks.total ?? 0), accent: 'from-blue-600 to-purple-600' },
-        { label: 'KPI Customer', value: formatNum(ks.kpiCustomer), accent: KPI_ACCENT['KPI Customer'] },
-        { label: 'KPI Proactive', value: formatNum(ks.kpiProactive), accent: KPI_ACCENT['KPI Proactive'] },
-        { label: 'Non KPI Unspec', value: formatNum(ks.nonKpiUnspec), accent: KPI_ACCENT['Non KPI Unspec'] },
+        { label: 'Customer', value: formatNum(ks.kpiCustomer), accent: KPI_ACCENT['Customer'] },
+        { label: 'Proactive', value: formatNum(ks.kpiProactive), accent: KPI_ACCENT['Proactive'] },
+        { label: 'Unspec', value: formatNum(ks.nonKpiUnspec), accent: KPI_ACCENT['Unspec'] },
         { label: 'Non Technical', value: formatNum(ks.nonTechnical), accent: KPI_ACCENT['Non Technical'] },
         { label: 'SQM Update', value: formatNum(ks.sqmUpdate), accent: KPI_ACCENT['SQM Update'] },
         { label: 'Obsolete', value: formatNum(ks.obsolete), accent: KPI_ACCENT['Obsolete'] },

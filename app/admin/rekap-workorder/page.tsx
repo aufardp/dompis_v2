@@ -11,7 +11,9 @@ async function getUser() {
     const token = cookieStore.get('token')?.value;
     if (!token) return null;
     return await verifyAccessToken(token);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export default async function RekapWorkorderPage() {
@@ -21,23 +23,23 @@ export default async function RekapWorkorderPage() {
   const homeHref = user.role === 'superadmin' ? '/superadmin' : '/admin';
 
   return (
-    <div className="min-h-screen bg-(--bg) p-4 md:p-6">
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <div className='min-h-screen bg-(--bg) p-4 md:p-6'>
+      <div className='mb-5 flex items-start justify-between gap-4'>
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="h-5 w-1 rounded-full bg-amber-500" />
-            <span className="text-xs font-semibold uppercase tracking-widest text-(--text-muted)">
+          <div className='mb-1 flex items-center gap-2'>
+            <div className='h-5 w-1 rounded-full bg-amber-500' />
+            <span className='text-xs font-semibold tracking-widest text-(--text-muted) uppercase'>
               Workorder
             </span>
           </div>
-          <h1 className="text-xl font-bold text-(--text-primary) leading-tight">
+          <h1 className='text-xl leading-tight font-bold text-(--text-primary)'>
             Rekap Workorder
           </h1>
-          <p className="text-xs text-(--text-secondary) mt-0.5">
+          <p className='mt-0.5 text-xs text-(--text-secondary)'>
             Distribusi tiket per service area, segment, dan workzone
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className='flex shrink-0 items-center gap-2'>
           <ThemeToggleButton />
           <DashboardPageActions homeHref={homeHref} />
         </div>

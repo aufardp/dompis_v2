@@ -3,7 +3,7 @@ import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketM
 export default function TicketManagementKpiProactivePage() {
   return (
     <TicketManagementBucketPage
-      title='KPI Proactive'
+      title='Proactive'
       description='Source: PROACTIVE | Classification: TECHNICAL | Channel: 50, 83 | Jenis Tiket 1: SQM, SQM-CCAN'
       icon='📗'
       tone='emerald'

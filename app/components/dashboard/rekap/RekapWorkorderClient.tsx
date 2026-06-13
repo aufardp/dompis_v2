@@ -13,10 +13,25 @@ import RekapSkeleton from './RekapSkeleton';
 
 interface SegCount { open: number; close: number; }
 
+interface DetailGroup {
+  b2c: Record<string, SegCount>;
+  b2b: Record<string, SegCount>;
+}
+
+interface BucketRecord {
+  kpiCustomer: SegCount;
+  kpiProactive: SegCount;
+  nonKpiUnspec: SegCount;
+  nonTechnical: SegCount;
+  sqmUpdate: SegCount;
+  obsolete: SegCount;
+}
+
 interface WorkzoneRow {
   workzone: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   totalOpen: number;
   totalClose: number;
 }
@@ -27,8 +42,9 @@ interface SARow {
   saName: string;
   teknisiMasuk: number;
   woPerTeknisi: string;
-  b2c: { diamond: SegCount; platinum: SegCount; gold: SegCount; reg: SegCount; sqmB2c: SegCount; };
-  b2b: { datin: SegCount; nonDatin: SegCount; sqmB2b: SegCount; tsel: SegCount; };
+  buckets: BucketRecord;
+  detail: DetailGroup;
+  sqm: { open: number; close: number; update: number };
   workzones: WorkzoneRow[];
   totalOpen: number;
   totalClose: number;
@@ -46,6 +62,13 @@ interface KpiSummaryCounts {
   obsolete: number;
 }
 
+interface WorkboardSummaryCounts {
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+}
+
 interface RekapResponse {
   title: string;
   subtitle: string;
@@ -54,15 +77,16 @@ interface RekapResponse {
   rows: SARow[];
   totals: Record<string, number>;
   kpiSummary?: KpiSummaryCounts;
+  workboardSummary?: WorkboardSummaryCounts;
   selectedBucket?: string;
   error?: string;
 }
 
 const BUCKET_OPTIONS = [
-  { value: 'all', label: 'All KPI' },
-  { value: 'kpi_customer', label: 'KPI Customer' },
-  { value: 'kpi_proactive', label: 'KPI Proactive' },
-  { value: 'non_kpi_unspec', label: 'Non KPI Unspec' },
+  { value: 'all', label: 'All' },
+  { value: 'kpi_customer', label: 'Customer' },
+  { value: 'kpi_proactive', label: 'Proactive' },
+  { value: 'non_kpi_unspec', label: 'Unspec' },
   { value: 'non_technical', label: 'Non Technical' },
   { value: 'sqm_update', label: 'SQM Update' },
   { value: 'obsolete', label: 'Obsolete' },
@@ -76,9 +100,9 @@ const toneStyles: Record<string, { border: string; text: string; icon: string }>
 };
 
 const KPI_ACCENT: Record<string, string> = {
-  'KPI Customer': '#3b82f6',
-  'KPI Proactive': '#a855f7',
-  'Non KPI Unspec': '#64748b',
+  'Customer': '#3b82f6',
+  'Proactive': '#a855f7',
+  'Unspec': '#64748b',
   'Non Technical': '#e11d48',
 };
 
@@ -95,6 +119,15 @@ function computeSummary(rows: SARow[]) {
   const woPerTeknisi = teknisi > 0 ? (open / teknisi).toFixed(1) : '0.0';
 
   return { open, close, total, teknisi, closeRate, woPerTeknisi };
+}
+
+function computeOverviewSummary(summary?: WorkboardSummaryCounts) {
+  if (!summary) return null;
+  const open = summary.open + summary.assigned;
+  const close = summary.close;
+  const total = summary.total;
+  const closeRate = total > 0 ? Math.round((close / total) * 100) : 0;
+  return { open, close, total, closeRate };
 }
 
 function SummaryTile({
@@ -163,7 +196,9 @@ export default function RekapWorkorderClient() {
   const { data, isLoading, isError, refetch, isFetching } = useQuery<RekapResponse>({
     queryKey: [...queryKeys.dashboard.rekapWorkorder(), selectedBucket],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/rekap-workorder?${queryParams}`);
+      const res = await fetch(`/api/dashboard/rekap-workorder?${queryParams}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to fetch');
@@ -199,7 +234,14 @@ export default function RekapWorkorderClient() {
     );
   }
 
-  const summary = computeSummary(data.rows);
+  const summary = computeOverviewSummary(data.workboardSummary) ?? computeSummary(data.rows);
+  const fallbackSummary = computeSummary(data.rows);
+  const displaySummary = {
+    ...fallbackSummary,
+    ...summary,
+    teknisi: fallbackSummary.teknisi,
+    woPerTeknisi: fallbackSummary.woPerTeknisi,
+  };
   const ks = data.kpiSummary;
 
   return (
@@ -241,9 +283,9 @@ export default function RekapWorkorderClient() {
             <span className="text-lg leading-none">{formatNumber(ks.total ?? 0)}</span>
           </div>
           {[
-            { label: 'KPI Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
-            { label: 'KPI Proactive', value: ks.kpiProactive, accent: '#a855f7' },
-            { label: 'Non KPI Unspec', value: ks.nonKpiUnspec, accent: '#64748b' },
+            { label: 'Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
+            { label: 'Proactive', value: ks.kpiProactive, accent: '#a855f7' },
+            { label: 'Unspec', value: ks.nonKpiUnspec, accent: '#64748b' },
             { label: 'Non Technical', value: ks.nonTechnical, accent: '#e11d48' },
             { label: 'SQM Update', value: ks.sqmUpdate, accent: '#7c3aed' },
             { label: 'Obsolete', value: ks.obsolete, accent: '#f43f5e' },
@@ -274,29 +316,29 @@ export default function RekapWorkorderClient() {
         />
         <SummaryTile
           label="Open"
-          value={formatNumber(summary.open)}
+          value={formatNumber(displaySummary.open)}
           sub="perlu ditangani"
           tone="red"
           icon={<Clock3 className="h-4 w-4" />}
         />
         <SummaryTile
           label="Close"
-          value={formatNumber(summary.close)}
-          sub={`${summary.closeRate}% closure`}
+          value={formatNumber(displaySummary.close)}
+          sub={`${displaySummary.closeRate}% closure`}
           tone="green"
           icon={<CheckCircle2 className="h-4 w-4" />}
-          closeRate={summary.closeRate}
+          closeRate={displaySummary.closeRate}
         />
         <SummaryTile
           label="Teknisi"
-          value={formatNumber(summary.teknisi)}
+          value={formatNumber(displaySummary.teknisi)}
           sub="absen hari ini"
           tone="blue"
           icon={<Users className="h-4 w-4" />}
         />
         <SummaryTile
           label="WO/Teknisi"
-          value={summary.woPerTeknisi}
+          value={displaySummary.woPerTeknisi}
           sub="open load"
           tone="slate"
           icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
@@ -306,7 +348,12 @@ export default function RekapWorkorderClient() {
       <RekapWorkorderHourlyClose bucket={selectedBucket} />
 
       <div className="hidden xl:block">
-        <RekapWorkorderTable rows={data.rows} timestamp={data.timestamp} />
+        <RekapWorkorderTable
+          rows={data.rows}
+          timestamp={data.timestamp}
+          detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
+          overviewSummary={data.workboardSummary}
+        />
       </div>
 
       <div className="xl:hidden">
