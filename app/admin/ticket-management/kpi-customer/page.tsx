@@ -4,8 +4,8 @@ export default function TicketManagementKpiCustomerPage() {
   return (
     <TicketManagementBucketPage
       title='Customer'
-      description='Source: CUSTOMER | Classification: TECHNICAL | Jenis Tiket 1: Reguler, DATIN, Non DATIN, TSEL, VPN IP, CCAN, Regular, DWDM'
-      icon='📘'
+      description='Source CUSTOMER, bucket KPI customer, dengan breakdown B2C/B2B dan SQM yang tetap terbaca di mode detail.'
+      icon='C'
       tone='blue'
       operationalBucket={['kpi_customer']}
       disableLocalSearch

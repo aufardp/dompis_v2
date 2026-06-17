@@ -11,7 +11,7 @@ export default function StatsCards({
   loading?: boolean;
 }) {
   return (
-    <div className='grid grid-cols-2 gap-4 font-dm-sans md:grid-cols-4'>
+    <div className='grid grid-cols-2 gap-3 font-dm-sans md:grid-cols-4'>
       <StatCard
         title='Total Tickets'
         value={metrics?.total ?? 0}

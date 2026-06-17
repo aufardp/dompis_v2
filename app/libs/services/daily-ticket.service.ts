@@ -67,6 +67,7 @@ const KPI_SUMMARY_BUCKETS = [
 
 type TicketFilters = {
   search?: string;
+  ticketId?: number;
   symptom?: string;
   excludeSymptom?: string;
   searchType?: SearchType;
@@ -928,6 +929,7 @@ export class DailyTicketService {
   ): Promise<Record<string, any>> {
     const {
       search = '',
+      ticketId,
       symptom = '',
       excludeSymptom = '',
       statusUpdate,
@@ -967,6 +969,15 @@ export class DailyTicketService {
       where.AND = [
         ...(where.AND ?? []),
         searchWhere,
+      ];
+    }
+
+    if (Number.isFinite(ticketId) && Number(ticketId) > 0) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          id_ticket: Number(ticketId),
+        },
       ];
     }
 

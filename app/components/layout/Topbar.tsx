@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/app/hooks/useOptimizations';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
+import SearchToast from '@/app/admin/components/dashboard/SearchToast';
+import TopbarNotifications from './TopbarNotifications';
 import {
   Search,
   X,
@@ -15,6 +17,12 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  BarChart3,
+  Layers3,
+  LayoutDashboard,
+  Upload,
+  SearchCheck,
+  Clock3,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
 import { useTheme } from '@/app/contexts/ThemeContext';
@@ -33,6 +41,107 @@ interface Props {
   selectedWorkzone?: string;
 }
 
+type RouteMeta = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  icon: typeof LayoutDashboard;
+};
+
+type SearchToastState = {
+  message: string;
+  type: 'success' | 'error';
+};
+
+const LAST_SEARCH_ROUTE_KEY = 'dompis:last-search-route';
+
+function buildRouteWithoutSearch(
+  pathname: string,
+  searchParams: URLSearchParams,
+) {
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete('search');
+  const nextQuery = params.toString();
+  return nextQuery ? `${pathname}?${nextQuery}` : pathname;
+}
+
+function getBucketLabelFromPath(path: string): string {
+  if (path.startsWith('/admin/ticket-management/kpi-customer'))
+    return 'Customer';
+  if (path.startsWith('/admin/ticket-management/kpi-proactive'))
+    return 'Proactive';
+  if (path.startsWith('/admin/ticket-management/non-kpi-unspec'))
+    return 'Unspec';
+  if (path.startsWith('/admin/ticket-management/non-technical'))
+    return 'Non Technical';
+  if (path.startsWith('/admin/ticket-management/sqm-update'))
+    return 'SQM Update';
+  if (path.startsWith('/admin/ticket-management/obsolete')) return 'Obsolete';
+  if (path.startsWith('/admin/semesta')) return 'Semesta';
+  return 'Overview';
+}
+
+function getRouteMeta(pathname: string): RouteMeta {
+  if (pathname.startsWith('/admin/rekap-workorder')) {
+    return {
+      eyebrow: 'Report',
+      title: 'Rekap Workorder',
+      subtitle:
+        'Summary dan detail operasional per bucket, area, serta workzone.',
+      badge: 'Workboard',
+      icon: BarChart3,
+    };
+  }
+  if (pathname.startsWith('/admin/semesta')) {
+    return {
+      eyebrow: 'Live Board',
+      title: 'Semesta Dompis',
+      subtitle:
+        'Pantau alur tiket live, status kerja, dan prioritas operasional.',
+      badge: 'Live',
+      icon: Layers3,
+    };
+  }
+  if (pathname.startsWith('/admin/import-tiket')) {
+    return {
+      eyebrow: 'Utility',
+      title: 'Import Tiket',
+      subtitle: 'Alur upload, preview, validasi, dan eksekusi import data.',
+      badge: 'Pipeline',
+      icon: Upload,
+    };
+  }
+  if (pathname.startsWith('/admin/monitoring')) {
+    return {
+      eyebrow: 'Monitoring',
+      title: 'Monitoring Durasi',
+      subtitle: 'Ringkasan health service, SLA, dan performa operasional.',
+      badge: 'Health',
+      icon: Clock3,
+    };
+  }
+  if (pathname.startsWith('/admin/detail-wo-hi')) {
+    return {
+      eyebrow: 'Investigation',
+      title: 'Detail WO HI',
+      subtitle:
+        'Tampilan detail yang tenang untuk investigasi tiket dan timeline.',
+      badge: 'Forensic',
+      icon: SearchCheck,
+    };
+  }
+
+  return {
+    eyebrow: 'Control Room',
+    title: 'Ticket Management',
+    subtitle:
+      'Ringkasan bucket operasional, fokus queue, dan distribusi workzone.',
+    badge: 'Overview',
+    icon: LayoutDashboard,
+  };
+}
+
 export default function Topbar({
   onMenuClick,
   onToggleSidebar,
@@ -46,7 +155,7 @@ export default function Topbar({
   const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [searchToast, setSearchToast] = useState<string | null>(null);
+  const [searchToast, setSearchToast] = useState<SearchToastState | null>(null);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [workzone, setWorkzone] = useState(selectedWorkzone || '');
@@ -56,6 +165,11 @@ export default function Topbar({
     useWorkzoneOptions();
   const urlSearch = searchParams.get('search') || '';
   const isLocalSearch = typeof onSearch === 'function';
+  const meta = useMemo(() => getRouteMeta(pathname), [pathname]);
+  const currentRouteWithoutSearch = useMemo(
+    () => buildRouteWithoutSearch(pathname, searchParams),
+    [pathname, searchParams],
+  );
 
   useEffect(() => {
     setWorkzone(selectedWorkzone || '');
@@ -65,33 +179,74 @@ export default function Topbar({
     setSearchValue(urlSearch);
   }, [urlSearch]);
 
-  const navigateToSearch = useCallback(async (q: string) => {
-    if (isLocalSearch) {
-      onSearch?.(q);
-      return;
-    }
-    if (!q.trim()) return;
-    setIsSearching(true);
-    setSearchToast(null);
-    try {
-      const res = await fetch(
-        `/api/tickets/search-global?q=${encodeURIComponent(q)}`,
-        { cache: 'no-store' },
-      );
-      const result = await res.json();
-      if (result.found) {
-        const targetPath = result.page === 'admin'
-          ? '/admin'
-          : '/admin/semesta';
-        await router.push(`${targetPath}?search=${encodeURIComponent(q)}`);
-      } else {
-        setSearchToast('Tiket tidak ditemukan');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (urlSearch.trim()) return;
+    window.sessionStorage.setItem(
+      LAST_SEARCH_ROUTE_KEY,
+      currentRouteWithoutSearch,
+    );
+  }, [currentRouteWithoutSearch, urlSearch]);
+
+  const navigateToSearch = useCallback(
+    async (q: string) => {
+      if (isLocalSearch) {
+        onSearch?.(q);
+        return;
       }
-    } catch {
-      setSearchToast('Pencarian gagal');
-    }
-    setIsSearching(false);
-  }, [isLocalSearch, onSearch, router]);
+      if (!q.trim()) return;
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(
+          LAST_SEARCH_ROUTE_KEY,
+          currentRouteWithoutSearch,
+        );
+      }
+      setIsSearching(true);
+      setSearchToast(null);
+      try {
+        const res = await fetch(
+          `/api/tickets/search-global?q=${encodeURIComponent(q)}`,
+          { cache: 'no-store' },
+        );
+        const result = await res.json();
+        if (result.found) {
+          const targetPath =
+            typeof result.path === 'string' && result.path.trim().length > 0
+              ? result.path
+              : result.page === 'admin'
+                ? '/admin'
+                : '/admin/semesta';
+          const separator = targetPath.includes('?') ? '&' : '?';
+          setSearchToast({
+            type: 'success',
+            message: `Tiket ditemukan di ${getBucketLabelFromPath(targetPath)}. Halaman bucket sedang dibuka.`,
+          });
+          await router.push(
+            `${targetPath}${separator}search=${encodeURIComponent(q)}`,
+          );
+        } else {
+          setSearchToast({
+            type: 'error',
+            message: 'Tiket tidak ditemukan di bucket operasional.',
+          });
+        }
+      } catch {
+        setSearchToast({
+          type: 'error',
+          message: 'Pencarian gagal, coba lagi sebentar.',
+        });
+      }
+      setIsSearching(false);
+    },
+    [
+      currentRouteWithoutSearch,
+      isLocalSearch,
+      onSearch,
+      pathname,
+      router,
+      searchParams,
+    ],
+  );
 
   useEffect(() => {
     const q = debouncedSearch.trim();
@@ -106,11 +261,24 @@ export default function Topbar({
   }, [debouncedSearch, isLocalSearch, navigateToSearch, onSearch, urlSearch]);
 
   const clearGlobalSearchUrl = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
+      if (lastRoute && lastRoute !== currentRouteWithoutSearch) {
+        window.sessionStorage.removeItem(LAST_SEARCH_ROUTE_KEY);
+        router.replace(lastRoute);
+        return;
+      }
+      if (lastRoute) {
+        window.sessionStorage.removeItem(LAST_SEARCH_ROUTE_KEY);
+      }
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete('search');
-    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    const nextUrl = params.toString()
+      ? `${pathname}?${params.toString()}`
+      : pathname;
     router.replace(nextUrl);
-  }, [pathname, router, searchParams]);
+  }, [currentRouteWithoutSearch, pathname, router, searchParams]);
 
   const handleSearchInputChange = useCallback(
     (value: string) => {
@@ -118,6 +286,14 @@ export default function Topbar({
       if (value.trim()) return;
 
       setSearchToast(null);
+      if (typeof window !== 'undefined') {
+        const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
+        if (lastRoute && lastRoute !== currentRouteWithoutSearch) {
+          clearGlobalSearchUrl();
+          return;
+        }
+      }
+
       if (isLocalSearch) {
         onSearch?.('');
         return;
@@ -127,7 +303,14 @@ export default function Topbar({
         clearGlobalSearchUrl();
       }
     },
-    [clearGlobalSearchUrl, isLocalSearch, onSearch, urlSearch],
+    [
+      clearGlobalSearchUrl,
+      currentRouteWithoutSearch,
+      isLocalSearch,
+      onSearch,
+      pathname,
+      urlSearch,
+    ],
   );
 
   const handleSearch = useCallback(
@@ -146,6 +329,13 @@ export default function Topbar({
   const clearSearch = () => {
     setSearchValue('');
     setSearchToast(null);
+    if (typeof window !== 'undefined') {
+      const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
+      if (lastRoute) {
+        clearGlobalSearchUrl();
+        return;
+      }
+    }
     if (isLocalSearch) {
       onSearch?.('');
       return;
@@ -159,212 +349,234 @@ export default function Topbar({
     onWorkzoneChange?.(value);
   };
 
+  const selectedScopeLabel = selectedWorkzone || 'All workzone';
+
   return (
     <>
-      <header className='bg-bg/95 sticky top-0 z-30 flex flex-col border-b border-(--border) backdrop-blur-sm'>
-      {/* Main Topbar Row */}
-      <div className='flex h-14 items-center justify-between px-3 py-2 lg:px-6 lg:py-3'>
-        <div className='flex items-center gap-2'>
-          {/* Mobile Menu Button */}
-          <button
-            onClick={onMenuClick}
-            className='hover:bg-surface-2 rounded-lg p-2 lg:hidden'
-            title='Open menu'
-          >
-            <Menu className='h-5 w-5 text-(--text-secondary)' />
-          </button>
+      <header className='bg-bg/90 sticky top-0 z-30 border-b border-(--border) backdrop-blur-xl'>
+        <div className='flex flex-col gap-3 px-3 py-3 lg:px-6 lg:py-4'>
+          <div className='flex items-start justify-between gap-3'>
+            <div className='flex min-w-0 items-center gap-3'>
+              <button
+                onClick={onMenuClick}
+                className='bg-surface hover:bg-surface-2 rounded-xl border border-(--border) px-2.5 py-2 text-(--text-secondary) transition-colors lg:hidden'
+                title='Open menu'
+              >
+                <Menu className='h-5 w-5' />
+              </button>
 
-          {/* Desktop Sidebar Toggle */}
-          <button
-            onClick={onToggleSidebar}
-            className='hover:bg-surface-2 hidden rounded-lg p-2 lg:block'
-            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className='h-5 w-5 text-(--text-secondary)' />
-            ) : (
-              <Menu className='h-5 w-5 text-(--text-secondary)' />
-            )}
-          </button>
+              <button
+                onClick={onToggleSidebar}
+                className='bg-surface hover:bg-surface-2 hidden rounded-xl border border-(--border) px-2.5 py-2 text-(--text-secondary) transition-colors lg:block'
+                title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className='h-5 w-5' />
+                ) : (
+                  <Menu className='h-5 w-5' />
+                )}
+              </button>
 
-          {/* Page Title - Desktop */}
-          <h1 className='hidden text-lg font-semibold tracking-tight text-(--text-primary) lg:block'>
-            Ticket Management
-          </h1>
-
-          {/* Page Title - Mobile */}
-          <h1 className='text-base font-semibold tracking-tight text-(--text-primary) lg:hidden'>
-            Dompis
-          </h1>
-        </div>
-
-        <div className='flex items-center gap-1 lg:gap-2'>
-          {/* Mobile Search Button */}
-          <button
-            onClick={() => setShowMobileSearch(true)}
-            className='bg-surface-2 hover:bg-surface-3 rounded-lg p-2 lg:hidden'
-          >
-            <Search className='h-4 w-4 text-(--text-secondary)' />
-          </button>
-
-          {/* Mobile Filter Button */}
-          <button
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className='bg-surface-2 hover:bg-surface-3 rounded-lg p-2 lg:hidden'
-          >
-            <Filter className='h-4 w-4 text-(--text-secondary)' />
-          </button>
-
-          {/* Desktop Search */}
-          <form onSubmit={handleSearch} className='hidden lg:block'>
-            <div className='relative'>
-              <input
-                type='text'
-                placeholder='Search ticket, customer...'
-                value={searchValue}
-                onChange={(e) => handleSearchInputChange(e.target.value)}
-                className='bg-surface-2 w-64 rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary) focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none xl:w-80'
-              />
-              <Search className='absolute top-2.5 left-3 h-4 w-4 text-(--text-secondary)' />
+              <div className='min-w-0'>
+                <div className='flex items-center gap-2'>
+                  <meta.icon className='h-4 w-4 text-(--text-muted)' />
+                  <h1 className='truncate text-lg font-semibold tracking-tight text-(--text-primary) lg:text-xl'>
+                    {meta.title}
+                  </h1>
+                </div>
+                <p className='mt-1 hidden max-w-3xl truncate text-xs text-(--text-secondary) lg:block'>
+                  {meta.subtitle}
+                </p>
+              </div>
             </div>
-          </form>
-
-          {/* Desktop Workzone Select */}
-          <div className='relative hidden lg:block'>
-            <select
-              value={workzone}
-              onChange={handleWorkzoneChange}
-              disabled={workzoneLoading}
-              className='bg-surface-2 cursor-pointer appearance-none rounded-lg border border-(--border) px-3 py-2 pr-8 text-sm text-(--text-secondary) focus:border-blue-500 focus:outline-none'
-            >
-              <option value=''>All Workzone</option>
-              {workzoneOptions.map((option: Option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className='pointer-events-none absolute top-2.5 right-2 h-4 w-4 text-(--text-secondary)' />
           </div>
 
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            className='bg-surface-2 hover:bg-surface-3 rounded-lg border border-(--border) p-2 transition-colors'
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark ? (
-              <Sun className='h-4 w-4 text-amber-400' />
-            ) : (
-              <Moon className='h-4 w-4 text-slate-600' />
-            )}
-          </button>
-
-          {/* New Ticket Button */}
-          <button className='flex items-center gap-1.5 rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 lg:px-4'>
-            <Plus className='h-4 w-4' />
-            <span className='hidden lg:inline'>New Ticket</span>
-          </button>
-
-          {/* User Menu */}
-          <UserMenu profileHref='/admin/profile' />
-        </div>
-      </div>
-
-      {/* Mobile Filters Row */}
-      {showMobileFilters && (
-        <div className='bg-surface flex flex-col gap-2 border-t border-(--border) p-3 lg:hidden'>
-          <input
-            type='text'
-            placeholder='Search...'
-            value={searchValue}
-            onChange={(e) => handleSearchInputChange(e.target.value)}
-            className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
-          />
-          <select
-            value={workzone}
-            onChange={handleWorkzoneChange}
-            className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-secondary)'
-          >
-            <option value=''>All Workzone</option>
-            {workzoneOptions.map((option: Option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Mobile Search Modal */}
-      {showMobileSearch && (
-        <div
-          className='fixed inset-0 z-50 bg-black/50 lg:hidden'
-          onClick={() => setShowMobileSearch(false)}
-        >
-          <div
-            className='bg-surface fixed inset-x-0 top-0 z-50 p-4 shadow-lg'
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className='flex items-center gap-3'>
-              <div className='relative flex-1'>
+          <div className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center'>
+            <form onSubmit={handleSearch} className='relative min-w-0'>
+              <div className='relative flex items-center rounded-2xl border border-(--border) bg-[linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0.45))] px-3 py-2.5 shadow-sm dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.86),rgba(15,23,42,0.72))]'>
+                <Search className='pointer-events-none h-4 w-4 text-(--text-muted)' />
                 <input
                   type='text'
-                  placeholder='Search ticket, customer...'
+                  placeholder='Cari ticket, customer, incident, atau service no...'
                   value={searchValue}
                   onChange={(e) => handleSearchInputChange(e.target.value)}
-                  autoFocus
-                  className='bg-surface-2 w-full rounded-lg border border-(--border) px-4 py-2 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-secondary)'
+                  className='ml-3 min-w-0 flex-1 bg-transparent text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:outline-none'
                 />
-                <Search className='absolute top-2.5 left-3 h-5 w-5 text-(--text-secondary)' />
+                {searchValue && (
+                  <button
+                    type='button'
+                    onClick={clearSearch}
+                    className='hover:bg-surface-2 ml-2 rounded-lg p-1.5 text-(--text-muted) transition-colors hover:text-(--text-primary)'
+                    aria-label='Clear search'
+                  >
+                    <X className='h-4 w-4' />
+                  </button>
+                )}
+                <span className='bg-surface ml-2 hidden rounded-lg border border-(--border) px-2 py-1 text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase xl:inline-flex'>
+                  Enter
+                </span>
               </div>
-              {searchValue && (
-                <button
-                  onClick={clearSearch}
-                  className='hover:bg-surface-2 rounded-lg p-2'
+            </form>
+
+            <div className='flex flex-wrap items-center justify-end gap-1.5'>
+              <TopbarNotifications selectedWorkzone={workzone || undefined} />
+
+              <div className='relative hidden lg:block xl:block'>
+                <select
+                  value={workzone}
+                  onChange={handleWorkzoneChange}
+                  disabled={workzoneLoading}
+                  className='bg-surface hover:bg-surface-2 appearance-none rounded-2xl border border-(--border) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors focus:border-blue-500 focus:outline-none'
                 >
-                  <X className='h-5 w-5 text-(--text-secondary)' />
-                </button>
-              )}
+                  <option value=''>All Workzone</option>
+                  {workzoneOptions.map((option: Option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className='pointer-events-none absolute top-3 right-3 h-4 w-4 text-(--text-muted)' />
+              </div>
+
               <button
-                onClick={() => {
-                  const q = searchValue.trim();
-                  if (isLocalSearch) {
-                    onSearch?.(q);
-                    setShowMobileSearch(false);
-                    return;
-                  }
-                  navigateToSearch(q);
-                  setShowMobileSearch(false);
-                }}
-                className='rounded-lg bg-linear-to-r from-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white'
+                onClick={toggleTheme}
+                className='bg-surface hover:bg-surface-2 inline-flex items-center justify-center gap-2 rounded-2xl border border-(--border) px-3 py-2.5 text-(--text-secondary) shadow-sm transition-colors'
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               >
-                Search
+                {isDark ? (
+                  <Sun className='h-4 w-4 text-amber-400' />
+                ) : (
+                  <Moon className='h-4 w-4 text-slate-600' />
+                )}
+                {/* <span className='hidden text-sm font-semibold sm:inline'>
+                  Theme
+                </span> */}
               </button>
+
+              <button className='hidden items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,rgba(59,130,246,0.98),rgba(99,102,241,0.95))] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 lg:inline-flex'>
+                <Plus className='h-4 w-4' />
+                <span>New Ticket</span>
+              </button>
+
+              <div className='flex items-center justify-end'>
+                <UserMenu profileHref='/admin/profile' />
+              </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Search loading overlay */}
+        {showMobileFilters && (
+          <div className='bg-surface border-t border-(--border) px-3 py-3 lg:hidden'>
+            <div className='flex flex-col gap-3'>
+              <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                <div className='bg-surface-2 rounded-2xl border border-(--border) px-3 py-2.5'>
+                  <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase'>
+                    Scope
+                  </p>
+                  <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                    {selectedScopeLabel}
+                  </p>
+                </div>
+                <div className='bg-surface-2 rounded-2xl border border-(--border) px-3 py-2.5'>
+                  <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase'>
+                    Search mode
+                  </p>
+                  <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                    {isLocalSearch ? 'Local page filter' : 'Global search'}
+                  </p>
+                </div>
+              </div>
+              <input
+                type='text'
+                placeholder='Cari ticket, customer...'
+                value={searchValue}
+                onChange={(e) => handleSearchInputChange(e.target.value)}
+                className='bg-surface-2 w-full rounded-2xl border border-(--border) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-muted)'
+              />
+              <select
+                value={workzone}
+                onChange={handleWorkzoneChange}
+                className='bg-surface-2 w-full rounded-2xl border border-(--border) px-3 py-2.5 text-sm text-(--text-primary)'
+              >
+                <option value=''>All Workzone</option>
+                {workzoneOptions.map((option: Option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {showMobileSearch && (
+          <div
+            className='fixed inset-0 z-50 bg-black/50 lg:hidden'
+            onClick={() => setShowMobileSearch(false)}
+          >
+            <div
+              className='bg-surface fixed inset-x-0 top-0 z-50 border-b border-(--border) p-4 shadow-2xl'
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className='flex items-center gap-3'>
+                <div className='relative flex-1'>
+                  <input
+                    type='text'
+                    placeholder='Cari ticket, customer...'
+                    value={searchValue}
+                    onChange={(e) => handleSearchInputChange(e.target.value)}
+                    autoFocus
+                    className='bg-surface-2 w-full rounded-2xl border border-(--border) px-4 py-3 pl-10 text-sm text-(--text-primary) placeholder:text-(--text-muted)'
+                  />
+                  <Search className='pointer-events-none absolute top-3.5 left-3 h-4 w-4 text-(--text-muted)' />
+                </div>
+                {searchValue && (
+                  <button
+                    type='button'
+                    onClick={clearSearch}
+                    className='bg-surface-2 rounded-2xl border border-(--border) p-3 text-(--text-secondary)'
+                  >
+                    <X className='h-4 w-4' />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const q = searchValue.trim();
+                    if (isLocalSearch) {
+                      onSearch?.(q);
+                      setShowMobileSearch(false);
+                      return;
+                    }
+                    navigateToSearch(q);
+                    setShowMobileSearch(false);
+                  }}
+                  className='rounded-2xl bg-[linear-gradient(135deg,rgba(59,130,246,0.98),rgba(99,102,241,0.95))] px-4 py-3 text-sm font-semibold text-white'
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {isSearching && !isLocalSearch && (
-        <div className='fixed inset-0 z-[9999] flex items-center justify-center bg-black/30'>
-          <div className='flex flex-col items-center gap-3 rounded-xl bg-white px-8 py-6 shadow-2xl dark:bg-gray-900'>
+        <div className='fixed inset-0 z-9999 flex items-center justify-center bg-black/30'>
+          <div className='bg-surface flex flex-col items-center gap-3 rounded-2xl border border-(--border) px-8 py-6 shadow-2xl'>
             <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
-            <p className='text-sm font-medium text-gray-700 dark:text-gray-300'>Mencari tiket...</p>
+            <p className='text-sm font-medium text-(--text-secondary)'>
+              Mencari tiket...
+            </p>
           </div>
         </div>
       )}
 
-      {/* Search toast */}
       {searchToast && (
-        <div className='fixed top-20 left-1/2 z-[9999] -translate-x-1/2'>
-          <div className='rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-lg'>
-            {searchToast}
-          </div>
-        </div>
+        <SearchToast
+          message={searchToast.message}
+          type={searchToast.type}
+          onDismiss={() => setSearchToast(null)}
+        />
       )}
     </>
   );

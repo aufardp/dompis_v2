@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
@@ -25,6 +26,8 @@ type TicketData = {
 
 export default function NonTechnicalBucketPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string[]>([]);
@@ -33,6 +36,10 @@ export default function NonTechnicalBucketPage() {
   const [flaggingFilter, setFlaggingFilter] = useState<string[]>([]);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
   const [validasiPage, setValidasiPage] = useState(1);
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   const {
     tickets,
@@ -45,7 +52,7 @@ export default function NonTechnicalBucketPage() {
     validasiCount,
     validasiPagination,
   } = useDailyTicketPage({
-    search: '',
+    search: searchQuery,
     workzone: workzoneFilter || undefined,
     dept: 'all',
     operationalBucket: ['non_technical'],
@@ -113,41 +120,51 @@ export default function NonTechnicalBucketPage() {
         selectedWorkzone={workzoneFilter}
       >
         <div className='space-y-5'>
-          <div className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950'>
-            <div className='bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.08),transparent_36%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_28%)] p-5'>
-              <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-                <div className='flex items-start gap-4'>
-                  <div className='grid h-12 w-12 place-items-center rounded-2xl bg-rose-50 text-xl text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'>
-                    🔧
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='bg-[linear-gradient(180deg,rgba(255,241,242,0.72),rgba(255,255,255,0.96))] p-3.5 md:p-4 dark:bg-[linear-gradient(180deg,rgba(17,24,39,0.92),rgba(17,24,39,0.8))]'>
+              <div className='flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between'>
+                <div className='flex items-start gap-2.5'>
+                  <div className='grid h-10 w-10 place-items-center rounded-2xl border border-(--border) bg-(--bg) text-[0.95rem] font-black text-rose-600 shadow-sm'>
+                    NT
                   </div>
                   <div className='min-w-0 flex-1'>
-                    <p className='text-xs font-bold tracking-[1.5px] text-slate-400 uppercase dark:text-slate-500'>
+                    <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-secondary) uppercase'>
                       Ticket Management
                     </p>
-                    <h1 className='mt-1 text-2xl font-black text-slate-900 dark:text-slate-100'>
+                    <h1 className='mt-1 text-[1.35rem] leading-none font-black tracking-[-0.03em] text-(--text-primary) md:text-[1.6rem]'>
                       Non Technical
                     </h1>
-                    <p className='mt-2 max-w-3xl text-sm text-slate-500 dark:text-slate-400'>
-                      Ticket Non-Technical ditampilkan dalam satu tabel. Filter di bawah dipakai untuk menyaring jenis tiket dan status tiket langsung dari data tabel.
+                    <p className='mt-1.5 max-w-2xl text-[13px] leading-5 text-(--text-secondary)'>
+                      Bucket reason-based untuk analisis non teknis, dengan filter
+                      jenis tiket, status, dan flagging langsung di bawah.
                     </p>
                   </div>
                 </div>
 
-                <div className='grid grid-cols-4 gap-3 lg:min-w-[320px]'>
-                  <div className='col-span-4 rounded-2xl border border-slate-200 bg-white/85 p-3 text-center dark:border-slate-800 dark:bg-slate-900/80'>
-                    <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
-                      Total
-                    </p>
-                    <p className='mt-1 text-xl font-black text-slate-900 dark:text-slate-100'>
-                      {pagination?.total ?? 0}
-                    </p>
-                  </div>
+                <div className='grid grid-cols-3 gap-1.5 lg:min-w-[280px]'>
+                  {[
+                    ['Total', pagination?.total ?? 0],
+                    ['Open', summary?.open ?? 0],
+                    ['Close', summary?.close ?? 0],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className='rounded-2xl border border-(--border) bg-(--surface-2) px-2.5 py-2.5 text-center shadow-sm'
+                    >
+                      <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                        {label}
+                      </p>
+                      <p className='mt-0.5 text-[1rem] font-black text-(--text-primary) md:text-[1.1rem]'>
+                        {value}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
             <FilterBarB2B
               ticketType={ticketTypeFilter}
               ticketTypeOptions={ticketTypeOptions}
@@ -182,6 +199,7 @@ export default function NonTechnicalBucketPage() {
                 loading={loading}
                 isRefreshing={isRefreshing}
                 onAssign={onAssign}
+                highlightQuery={searchQuery}
                 pagination={paginationConfig}
                 tableLabel='Non Technical Tickets'
                 tableSummary={tableSummary}

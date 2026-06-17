@@ -69,12 +69,12 @@ const STATUS_OPTIONS: FilterOption[] = [
 const FLAG_OPTIONS: FilterOption[] = [
   {
     key: 'P1',
-    label: 'P1',
+    label: 'Manja HI',
     tone: 'bg-red-500/15 text-red-600 dark:text-red-300 ring-1 ring-red-500/40',
   },
   {
     key: 'P+',
-    label: 'P+',
+    label: 'Manja H+',
     tone: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-300 ring-1 ring-fuchsia-500/40',
   },
   {
@@ -183,30 +183,27 @@ function FilterGroup({
   const hiddenCount = options.length - ITEM_LIMIT;
 
   return (
-    // Menggunakan shrink-0 agar label & kelompok filter tidak ringsek saat layar menyempit
-    <div className='flex shrink-0 items-center gap-2 border-r border-slate-100 pr-4 last:border-0 last:pr-0 dark:border-slate-800/60'>
-      {/* Label Kategori */}
-      <div className='flex shrink-0 items-center gap-1.5 text-slate-400'>
+    <div className='rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm lg:flex lg:min-w-0 lg:items-start lg:gap-2 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:border-r lg:border-slate-100 lg:pr-4 lg:last:border-0 lg:last:pr-0 dark:lg:border-slate-800/60'>
+      <div className='flex shrink-0 items-center gap-1.5 text-(--text-secondary)'>
         {icon}
-        <span className='hidden text-[10px] font-bold tracking-wider text-slate-400 uppercase xl:inline-block'>
+        <span className='text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'>
           {label}
         </span>
         {count > 0 && (
-          <span className='rounded bg-slate-900 px-1 py-0.5 text-[9px] font-bold text-white dark:bg-slate-100 dark:text-slate-950'>
+          <span className='rounded-full border border-(--border) bg-(--bg) px-1.5 py-0.5 text-[9px] font-bold text-(--text-primary)'>
             {count}
           </span>
         )}
       </div>
 
-      {/* Jarak antar chip filter diset gap-1 (rapi dan padat) */}
-      <div className='flex items-center gap-1'>
+      <div className='mt-2 flex flex-wrap gap-1 lg:mt-0'>
         {visibleOptions.map(renderChip)}
 
         {options.length > ITEM_LIMIT && (
           <button
             type='button'
             onClick={onToggleExpand}
-            className='inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-slate-100 px-1.5 text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            className='inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-(--border) bg-(--bg) px-1.5 text-[10px] font-bold text-(--text-secondary) transition-colors hover:bg-(--surface-2) hover:text-(--text-primary)'
           >
             {isExpanded ? (
               <ChevronUp className='h-3 w-3' />
@@ -289,8 +286,7 @@ export default function OperationalFilterBar({
   }
 
   const content = (
-    // gap-x-5 memberikan jarak horizontal antar grup filter yang seimbang dan tidak terlalu dempet
-    <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-x-5'>
+    <div className='flex flex-col gap-2.5 xl:flex-row xl:flex-wrap xl:items-start'>
       <FilterGroup
         icon={<Tag className='h-3 w-3' />}
         label='Jenis'
@@ -370,74 +366,65 @@ export default function OperationalFilterBar({
   );
 
   return (
-    // p-2 (padding tipis) dan items-center membuat baris filter ini benar-benar datar, proporsional, dan presisi
-    <div className='w-full rounded-xl border border-slate-100 bg-white p-2 shadow-xs lg:flex lg:items-center lg:justify-between dark:border-slate-800/80 dark:bg-slate-950'>
-      {/* Kiri: Logo, Judul, dan Konten Utama Filter */}
-      {/* overflow-x-auto menjamin jika layar user kecil (seperti laptop 13 inch), filternya bisa di-scroll smooth tanpa merusak grid luar */}
-      <div className='no-scrollbar flex min-w-0 flex-1 items-center gap-3 overflow-x-auto py-0.5'>
+    <div className='w-full rounded-[1.25rem] border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-start'>
         <div
           className={cn(
-            'ml-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md',
+            'grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-(--border) bg-(--bg) text-(--text-primary)',
             style.soft,
           )}
         >
-          <ListFilter className='h-3 w-3' />
+          <ListFilter className='h-4 w-4' />
         </div>
 
-        {/* Nama Judul Filter */}
-        <div className='hidden shrink-0 border-r border-slate-100 pr-3 md:block dark:border-slate-800/60'>
-          <p
-            className={cn(
-              'text-[11px] leading-none font-bold tracking-wide',
-              style.accent,
-            )}
-          >
-            {style.title}
+        <div className='min-w-0 flex-1'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <p
+              className={cn(
+                'text-[11px] font-bold tracking-[0.22em] uppercase',
+                style.accent,
+              )}
+            >
+              {style.title}
+            </p>
+            <span className='rounded-full border border-(--border) bg-(--bg) px-2.5 py-0.5 text-[10px] font-semibold text-(--text-muted)'>
+              {activeCount > 0 ? `${activeCount} aktif` : 'Semua data'}
+            </span>
+          </div>
+          <p className='mt-1 text-xs leading-5 text-(--text-secondary)'>
+            Filter utama di bawah ini memotong data tabel secara langsung.
           </p>
-          <span className='text-[10px] font-medium text-slate-400'>
-            {activeCount > 0 ? `${activeCount} dipilih` : 'Semua'}
-          </span>
         </div>
 
-        {/* Baris Filter Utama */}
-        <div className='hidden lg:block'>{content}</div>
-      </div>
-
-      {/* Kanan: Aksi Ekstra & Tombol Reset (Clear) */}
-      <div className='mt-2 flex shrink-0 items-center justify-between gap-3 border-t border-slate-50 pt-2 pr-1 pl-1 lg:mt-0 lg:justify-end lg:border-t-0 lg:pt-0 dark:border-slate-900/60'>
-        <div className='text-[11px] font-medium text-slate-400 lg:hidden'>
-          {activeCount > 0 ? `${activeCount} filter aktif` : 'Semua data'}
-        </div>
-
-        <div className='ml-auto flex items-center gap-2'>
+        <div className='flex shrink-0 items-center gap-2 self-start sm:ml-auto'>
           {activeCount > 0 && (
             <button
               type='button'
               onClick={resetAll}
-              className='inline-flex h-6 items-center gap-1 rounded px-2 text-[10px] font-semibold text-red-500 transition-colors hover:bg-red-500/10 dark:text-red-400'
+              className='inline-flex h-8 items-center gap-1 rounded-xl border border-(--border) bg-(--bg) px-2.5 text-[10px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-2) hover:text-(--text-primary)'
             >
-              <RotateCcw className='h-2.5 w-2.5' />
-              Clear Filter
+              <RotateCcw className='h-3 w-3' />
+              Clear
             </button>
           )}
           <button
             type='button'
             onClick={() => setOpenMobile((value) => !value)}
-            className='inline-flex h-6 items-center gap-1 rounded border border-slate-200 px-2 text-[10px] font-medium text-slate-600 lg:hidden dark:border-slate-800 dark:text-slate-400'
+            className='inline-flex h-8 items-center gap-1 rounded-xl border border-(--border) bg-(--bg) px-2.5 text-[10px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-2) lg:hidden'
           >
             {openMobile ? (
-              <X className='h-2.5 w-2.5' />
+              <X className='h-3 w-3' />
             ) : (
-              <SlidersHorizontal className='h-2.5 w-2.5' />
+              <SlidersHorizontal className='h-3 w-3' />
             )}
             Filter
           </button>
         </div>
       </div>
 
-      {/* Tampilan Mobile Content */}
+      <div className='mt-3 hidden lg:block'>{content}</div>
       {openMobile && (
-        <div className='mt-2 border-t border-slate-100 pt-2.5 lg:hidden dark:border-slate-800'>
+        <div className='mt-3 border-t border-(--border) pt-3 lg:hidden'>
           {content}
         </div>
       )}

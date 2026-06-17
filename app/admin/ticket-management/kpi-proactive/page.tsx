@@ -4,8 +4,8 @@ export default function TicketManagementKpiProactivePage() {
   return (
     <TicketManagementBucketPage
       title='Proactive'
-      description='Source: PROACTIVE | Classification: TECHNICAL | Channel: 50, 83 | Jenis Tiket 1: SQM, SQM-CCAN'
-      icon='📗'
+      description='Source PROACTIVE dengan fokus SQM, SQM-CCAN, dan tindak lanjut harian.'
+      icon='P'
       tone='emerald'
       operationalBucket={['kpi_proactive']}
       disableLocalSearch

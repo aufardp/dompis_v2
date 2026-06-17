@@ -4,8 +4,8 @@ export default function SqmUpdatePage() {
   return (
     <TicketManagementBucketPage
       title='SQM Update'
-      description='Ticket SQM yang sudah di-flag update dengan headline [SQM-UPDATE].'
-      icon='🔄'
+      description='Ticket SQM berstatus update, dipisah sebagai view tindak lanjut harian.'
+      icon='S'
       tone='slate'
       operationalBucket={['sqm_update']}
       disableLocalSearch

@@ -90,6 +90,7 @@ export interface AdminTicketTableB2BProps {
     assigned: number;
     close: number;
   };
+  highlightQuery?: string;
   flaggingFilter?: string[];
   downloadFilters?: {
     dept: 'b2b' | 'b2c';
@@ -104,6 +105,8 @@ export interface AdminTicketTableB2BProps {
     excludeSymptom?: string;
   };
 }
+
+type TableTicket = NonNullable<AdminTicketTableB2BProps['tickets']>[number];
 
 interface SortConfig {
   field: SortField;
@@ -170,6 +173,7 @@ export default function TicketTableB2B({
   onBulkAssign,
   pagination,
   tableSummary,
+  highlightQuery,
   downloadFilters,
 }: AdminTicketTableB2BProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -183,6 +187,27 @@ export default function TicketTableB2B({
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [downloadFormat, setDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
   const [downloading, setDownloading] = useState(false);
+  const normalizedHighlightQuery = (highlightQuery ?? '').trim().toLowerCase();
+
+  const isHighlighted = useCallback(
+    (ticket: TableTicket) => {
+      if (!normalizedHighlightQuery) return false;
+      const haystack = [
+        ticket.ticket,
+        ticket.serviceNo,
+        ticket.contactName,
+        ticket.summary,
+        ticket.workzone,
+        ticket.customerType,
+        ticket.jenisTiket,
+      ]
+        .map((value) => String(value ?? '').toLowerCase())
+        .filter(Boolean);
+
+      return haystack.some((value) => value.includes(normalizedHighlightQuery));
+    },
+    [normalizedHighlightQuery],
+  );
 
   const handleDownload = useCallback(async () => {
     if (!downloadFilters) return;
@@ -397,6 +422,7 @@ export default function TicketTableB2B({
                   key={ticket.idTicket ?? ticket.ticket}
                   ticket={ticket}
                   onAssign={handleAssign}
+                  highlighted={isHighlighted(ticket)}
                 />
               ))}
             </div>
@@ -528,15 +554,16 @@ export default function TicketTableB2B({
                         onAssign={handleAssign}
                         onDetail={onDetail}
                         isExpanded={isExpanded}
-                        onToggleExpand={() => toggleExpand(ticketId as number)}
-                        rank={ticketInfo?.rank}
-                        ticketAge={ticketInfo?.ageFormatted}
-                        severity={ticketInfo?.severity}
-                        slaLabel={slaLabel}
-                        ttrCountdown={ttrCountdown}
-                      />
-                    );
-                  })
+                      onToggleExpand={() => toggleExpand(ticketId as number)}
+                      rank={ticketInfo?.rank}
+                      ticketAge={ticketInfo?.ageFormatted}
+                      severity={ticketInfo?.severity}
+                      slaLabel={slaLabel}
+                      ttrCountdown={ttrCountdown}
+                      highlighted={isHighlighted(ticket)}
+                    />
+                  );
+                })
                 )}
               </tbody>
             </table>

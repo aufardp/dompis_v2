@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
@@ -24,10 +25,16 @@ type TicketData = {
 
 export default function ObsoleteBucketPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
   const [validasiPage, setValidasiPage] = useState(1);
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   const {
     tickets: pageTickets,
@@ -39,7 +46,7 @@ export default function ObsoleteBucketPage() {
     validasiCount,
     validasiPagination,
   } = useDailyTicketPage({
-    search: '',
+    search: searchQuery,
     workzone: workzoneFilter || undefined,
     dept: 'all',
     operationalBucket: ['obsolete'],
@@ -105,38 +112,41 @@ export default function ObsoleteBucketPage() {
         selectedWorkzone={workzoneFilter}
       >
         <div className='space-y-5'>
-          <div className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950'>
-            <div className='bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.04),transparent_40%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_30%)] p-5 dark:bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_35%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_25%)]'>
-              <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-                <div className='flex items-start gap-4'>
-                  <div className='grid h-12 w-12 place-items-center rounded-2xl bg-rose-50 text-xl text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'>
-                    📦
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='bg-[linear-gradient(180deg,rgba(245,243,255,0.78),rgba(255,255,255,0.96))] p-3.5 md:p-4 dark:bg-[linear-gradient(180deg,rgba(17,24,39,0.92),rgba(17,24,39,0.8))]'>
+              <div className='flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between'>
+                <div className='flex items-start gap-2.5'>
+                  <div className='grid h-10 w-10 place-items-center rounded-2xl border border-(--border) bg-(--bg) text-[0.95rem] font-black text-violet-600 shadow-sm'>
+                    OB
                   </div>
                   <div className='min-w-0 flex-1'>
-                    <p className='text-xs font-bold tracking-[1.5px] text-slate-400 uppercase dark:text-slate-500'>
+                    <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-secondary) uppercase'>
                       Ticket Management
                     </p>
-                    <h1 className='mt-1 text-2xl font-black text-slate-900 dark:text-slate-100'>
+                    <h1 className='mt-1 text-[1.35rem] leading-none font-black tracking-[-0.03em] text-(--text-primary) md:text-[1.6rem]'>
                       Obsolete
                     </h1>
-                    <p className='mt-2 max-w-3xl text-sm text-slate-500 dark:text-slate-400'>
-                      Ticket dengan classification_path Z_PERMINTAAN_044.
+                    <p className='mt-1.5 max-w-2xl text-[13px] leading-5 text-(--text-secondary)'>
+                      Bucket final / archived untuk classification_path
+                      Z_PERMINTAAN_044, tetap dipantau sebagai slice operasional.
                     </p>
                   </div>
                 </div>
 
-                <div className='grid grid-cols-4 gap-3 lg:min-w-[320px]'>
+                <div className='grid grid-cols-3 gap-1.5 lg:min-w-[280px]'>
                   {[
                     ['Total', pagePagination?.total ?? 0],
+                    ['Open', summary?.open ?? 0],
+                    ['Close', summary?.close ?? 0],
                   ].map(([label, value]) => (
                     <div
                       key={label}
-                      className='col-span-4 rounded-2xl border border-slate-200 bg-white/85 p-3 text-center dark:border-slate-800 dark:bg-slate-900/80'
+                      className='rounded-2xl border border-(--border) bg-(--surface-2) px-2.5 py-2.5 text-center shadow-sm'
                     >
-                      <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
+                      <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                         {label}
                       </p>
-                      <p className='mt-1 text-xl font-black text-slate-900 dark:text-slate-100'>
+                      <p className='mt-0.5 text-[1rem] font-black text-(--text-primary) md:text-[1.1rem]'>
                         {value}
                       </p>
                     </div>
@@ -155,6 +165,7 @@ export default function ObsoleteBucketPage() {
                 loading={loading}
                 isRefreshing={isRefreshing}
                 onAssign={onAssign}
+                highlightQuery={searchQuery}
                 pagination={pagination}
                 tableLabel='Obsolete Tickets'
                 tableSummary={tableSummary}

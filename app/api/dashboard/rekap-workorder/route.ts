@@ -236,7 +236,7 @@ function classifyBucket(row: RekapTicketRow): BucketKey {
   if (isNonTech) return 'nonTechnical';
 
   if (isPro) {
-    if (isSqmJt1 && summary.startsWith('[sqm-update]') && !isStatusClosed(row.status)) return 'sqmUpdate';
+    if (isSqmJt1 && summary.startsWith('[sqm-update]')) return 'sqmUpdate';
     if (isSqmJt1 && !summary.startsWith('[sqm-update]')) return 'kpiProactive';
     if (jt1 === 'unspec' || jt1 === 'unspec-b2b') return 'nonKpiUnspec';
   }
@@ -298,6 +298,16 @@ function filterRekapRowsByBucket(
 ): RekapTicketRow[] {
   const members = BUCKET_VIEW_MEMBERS[bucket] ?? BUCKET_VIEW_MEMBERS.all;
   if (bucket === 'all') return rows;
+
+  if (bucket === 'kpi_customer') {
+    return rows.filter((row) => {
+      const source = normalizeBucketText(row.source_ticket);
+      if (source === 'customer' && classifyBucket(row) !== 'obsolete') return true;
+      const classified = classifyBucket(row);
+      return classified === 'kpiProactive' || classified === 'sqmUpdate';
+    });
+  }
+
   return rows.filter((row) => members.includes(classifyBucket(row)));
 }
 

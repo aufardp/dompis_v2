@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { format } from 'date-fns';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
+import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
@@ -17,7 +19,7 @@ import TicketTableB2B from './TicketTableB2B';
 import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
-import B2CSection from './B2CSection';
+import TicketTableValidasi from './TicketTableValidasi';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -130,8 +132,8 @@ function FlaggingSummaryRow({
   compact?: boolean;
 }) {
   const items = [
-    ['P1', counts.p1Count, 'text-red-600 dark:text-red-300'],
-    ['P+', counts.pPlusCount, 'text-amber-600 dark:text-amber-300'],
+    ['Manja HI', counts.p1Count, 'text-red-600 dark:text-red-300'],
+    ['Manja H+', counts.pPlusCount, 'text-amber-600 dark:text-amber-300'],
     ['FFG', counts.ffgCount, 'text-violet-600 dark:text-violet-300'],
     ['GAMAS', counts.gamasCount, 'text-sky-600 dark:text-sky-300'],
   ] as const;
@@ -140,15 +142,15 @@ function FlaggingSummaryRow({
     <div
       className={clsx(
         'grid gap-2',
-        compact ? 'grid-cols-4' : 'grid-cols-2 sm:grid-cols-4',
+        compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-4',
       )}
     >
       {items.map(([label, value, color]) => (
         <div
           key={label}
-          className='rounded-lg border border-slate-100 bg-slate-50 px-2 py-2 text-center dark:border-slate-800 dark:bg-slate-900'
+          className='rounded-2xl border border-(--border) bg-(--bg) px-2 py-2 text-center shadow-sm'
         >
-          <p className='text-[9px] font-bold tracking-[1px] text-slate-400 uppercase dark:text-slate-500'>
+          <p className='text-[9px] font-bold tracking-[1px] text-(--text-muted) uppercase'>
             {label}
           </p>
           <p className={clsx('mt-0.5 text-sm font-black', color)}>
@@ -172,12 +174,12 @@ function TicketTypeBreakdownStrip({
   const visibleItems = items.filter((item) => Number(item.total ?? 0) > 0);
 
   return (
-    <div className='rounded-xl border border-slate-100 bg-white p-3 shadow-xs dark:border-slate-800/80 dark:bg-slate-950'>
+    <div className='rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
+        <p className='text-[11px] font-bold tracking-[1.3px] text-(--text-muted) uppercase'>
           {title}
         </p>
-        <span className='text-[11px] font-semibold text-slate-400'>
+        <span className='text-[11px] font-semibold text-(--text-muted)'>
           {visibleItems.length} jenis
         </span>
       </div>
@@ -190,17 +192,17 @@ function TicketTypeBreakdownStrip({
               <div
                 key={item.key}
                 className={clsx(
-                  'rounded-lg border px-3 py-2 transition-colors',
+                  'rounded-2xl border px-3 py-2 transition-colors',
                   active
-                    ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10'
-                    : 'border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900',
+                    ? 'border-emerald-300 bg-emerald-500/10'
+                    : 'border-(--border) bg-(--bg)',
                 )}
               >
                 <div className='flex items-start justify-between gap-3'>
-                  <p className='min-w-0 truncate text-xs font-black text-slate-800 dark:text-slate-100'>
+                  <p className='min-w-0 truncate text-xs font-black text-(--text-primary)'>
                     {item.label}
                   </p>
-                  <span className='shrink-0 text-sm font-black text-slate-900 dark:text-slate-100'>
+                  <span className='shrink-0 text-sm font-black text-(--text-primary)'>
                     {Number(item.total ?? 0).toLocaleString('id-ID')}
                   </span>
                 </div>
@@ -212,12 +214,12 @@ function TicketTypeBreakdownStrip({
                   ].map(([label, value]) => (
                     <div
                       key={label}
-                      className='rounded bg-white px-1.5 py-1 dark:bg-slate-950'
+                      className='rounded-xl border border-(--border) bg-(--surface) px-1.5 py-1'
                     >
-                      <p className='text-[9px] font-bold tracking-[0.8px] text-slate-400 uppercase'>
+                      <p className='text-[9px] font-bold tracking-[0.8px] text-(--text-muted) uppercase'>
                         {label}
                       </p>
-                      <p className='text-xs font-black text-slate-700 dark:text-slate-200'>
+                      <p className='text-xs font-black text-(--text-primary)'>
                         {Number(value ?? 0).toLocaleString('id-ID')}
                       </p>
                     </div>
@@ -228,7 +230,7 @@ function TicketTypeBreakdownStrip({
           })}
         </div>
       ) : (
-        <p className='mt-2 text-xs font-semibold text-slate-400'>
+        <p className='mt-2 text-xs font-semibold text-(--text-muted)'>
           Belum ada jenis_tiket_2 untuk kombinasi filter ini.
         </p>
       )}
@@ -252,10 +254,14 @@ export default function TicketManagementBucketPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [dateRange, setDateRange] = useState<DateRange>();
-  const [deptView, setDeptView] = useState<'all' | 'b2b' | 'b2c'>('all');
+  const isUnspecBucket = operationalBucket.includes('non_kpi_unspec');
+  const [activeTab, setActiveTab] = useState<
+    'semua' | 'unspecOhi' | 'b2c' | 'b2b' | 'validasi'
+  >('semua');
   const [extraWorkboardPage, setExtraWorkboardPage] = useState(1);
   const [b2cPage, setB2cPage] = useState(1);
   const [b2bPage, setB2bPage] = useState(1);
+  const [semuaPage, setSemuaPage] = useState(1);
   const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
   const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<string[]>([]);
@@ -273,37 +279,85 @@ export default function TicketManagementBucketPage({
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
-  const [b2cActiveType, setB2cActiveType] = useState<
-    'all' | 'REGULER' | 'HVC_GOLD' | 'HVC_PLATINUM' | 'HVC_DIAMOND'
-  >('all');
+  const [focusedTicket, setFocusedTicket] = useState<DailyTicket | null>(null);
   const b2cTableRef = useRef<HTMLDivElement>(null);
   const b2bTableRef = useRef<HTMLDivElement>(null);
   const extraWorkboardTableRef = useRef<HTMLDivElement>(null);
-  const effectiveSearchQuery = disableLocalSearch ? '' : searchQuery;
+  const validasiTableRef = useRef<HTMLDivElement>(null);
+  const semuaTableRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const focusTicketId = useMemo(() => {
+    const value = Number(searchParams.get('ticketId') || 0);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }, [searchParams]);
+  const effectiveSearchQuery = searchQuery.trim();
 
-  const b2cBreakdownKey = [
-    'b2c-breakdown',
-    effectiveSearchQuery,
-    operationalBucket?.join(','),
-    workzoneFilter,
-  ];
-  const { data: b2cBreakdownData } = useQuery({
-    queryKey: b2cBreakdownKey,
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (effectiveSearchQuery.trim()) params.set('search', effectiveSearchQuery.trim());
-      if (workzoneFilter) params.set('workzone', workzoneFilter);
-      if (operationalBucket?.length) params.set('bucket', operationalBucket[0]);
-      const url = `/api/dashboard/b2c-breakdown?${params.toString()}`;
-      const res = await fetchWithAuth(url);
-      if (!res) throw new Error('No response');
-      const json = await res.json();
-      if (!json?.success) throw new Error(json?.message || 'Failed');
-      return json.data;
+  const scrollSectionToSearchHit = useCallback(
+    (container: HTMLDivElement | null) => {
+      if (!container) return;
+      window.requestAnimationFrame(() => {
+        const hit = container.querySelector<HTMLElement>(
+          '[data-search-highlight="true"]',
+        );
+        if (hit) {
+          hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     },
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-  });
+    [],
+  );
+
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    setSearchQuery(urlSearch);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (
+      urlTab === 'semua' ||
+      urlTab === 'unspecOhi' ||
+      urlTab === 'b2c' ||
+      urlTab === 'b2b' ||
+      urlTab === 'validasi'
+    ) {
+      setActiveTab(urlTab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!focusTicketId || !operationalBucket.includes('kpi_customer')) {
+      setFocusedTicket(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFocusedTicket = async () => {
+      setFocusedTicket(null);
+      const res = await fetchWithAuth(`/api/tickets/${focusTicketId}/detail`);
+      if (!res) return;
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success || !json.data || cancelled) return;
+      setFocusedTicket(json.data as DailyTicket);
+    };
+
+    void loadFocusedTicket();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusTicketId, operationalBucket]);
+
+  useEffect(() => {
+    if (activeTab === 'semua') {
+      setB2cPage(1);
+      setB2bPage(1);
+      setSemuaPage(1);
+    }
+  }, [activeTab]);
 
   const startDateStr = dateRange?.from
     ? format(dateRange.from, 'yyyy-MM-dd')
@@ -314,6 +368,7 @@ export default function TicketManagementBucketPage({
 
   const sharedFilters = {
     search: effectiveSearchQuery,
+    ticketId: focusTicketId,
     workzone: workzoneFilter || undefined,
     operationalBucket,
     regulerOnly,
@@ -332,9 +387,9 @@ export default function TicketManagementBucketPage({
     ticketStatus: b2cTicketStatusFilter,
     flagging: b2cFlaggingFilter,
     page: b2cPage,
-    limit: 10,
+    limit: activeTab === 'semua' ? 50 : 10,
     validasiPage: b2cValidasiPage,
-    enabled: deptView !== 'b2b',
+    enabled: activeTab !== 'b2b',
   });
 
   const b2bPageData = useDailyTicketPage({
@@ -345,9 +400,9 @@ export default function TicketManagementBucketPage({
     ticketStatus: b2bTicketStatusFilter,
     flagging: b2bFlaggingFilter,
     page: b2bPage,
-    limit: 10,
+    limit: activeTab === 'semua' ? 50 : 10,
     validasiPage: b2bValidasiPage,
-    enabled: deptView !== 'b2c',
+    enabled: activeTab !== 'b2c',
   });
 
   const extraWorkboardPageData = useDailyTicketPage({
@@ -363,7 +418,9 @@ export default function TicketManagementBucketPage({
     endDate: endDateStr,
     page: extraWorkboardPage,
     limit: 10,
-    enabled: Boolean(extraWorkboard),
+    enabled:
+      Boolean(extraWorkboard) &&
+      (activeTab === 'semua' || (isUnspecBucket && activeTab === 'unspecOhi')),
   });
 
   const totals = useMemo(() => {
@@ -391,7 +448,6 @@ export default function TicketManagementBucketPage({
   ]);
 
   useEffect(() => {
-    if (disableLocalSearch) return;
     if (!effectiveSearchQuery.trim()) return;
     if (
       b2cPageData.loading ||
@@ -404,54 +460,33 @@ export default function TicketManagementBucketPage({
       return;
     }
 
-    const extraCount = extraWorkboard ? extraWorkboardPageData.pagination.total : 0;
-    const b2cCount = b2cPageData.pagination.total;
-    const b2bCount = b2bPageData.pagination.total;
-    const totalFound = extraCount + b2cCount + b2bCount;
-
-    if (totalFound === 0) return;
-
-    const target =
-      extraCount > 0 && b2cCount === 0 && b2bCount === 0
-        ? 'extra'
-        : deptView === 'b2c' && b2cCount > 0
-          ? 'b2c'
-          : deptView === 'b2b' && b2bCount > 0
-            ? 'b2b'
-            : b2bCount > 0
-              ? 'b2b'
-              : b2cCount > 0
-                ? 'b2c'
-                : 'extra';
-
-    window.requestAnimationFrame(() => {
-      if (target === 'extra') {
-        extraWorkboardTableRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-        return;
-      }
-      const targetRef = target === 'b2b' ? b2bTableRef : b2cTableRef;
-      targetRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    });
+    if (activeTab === 'semua') {
+      scrollSectionToSearchHit(semuaTableRef.current);
+      return;
+    }
+    if (activeTab === 'unspecOhi') {
+      scrollSectionToSearchHit(extraWorkboardTableRef.current);
+      return;
+    }
+    if (activeTab === 'b2c') {
+      scrollSectionToSearchHit(b2cTableRef.current);
+      return;
+    }
+    if (activeTab === 'b2b') {
+      scrollSectionToSearchHit(b2bTableRef.current);
+      return;
+    }
+    if (activeTab === 'validasi') {
+      scrollSectionToSearchHit(validasiTableRef.current);
+      return;
+    }
   }, [
     effectiveSearchQuery,
-    deptView,
-    extraWorkboard,
-    disableLocalSearch,
-    extraWorkboardPageData.loading,
-    extraWorkboardPageData.isRefreshing,
-    extraWorkboardPageData.pagination.total,
-    b2cPageData.loading,
-    b2cPageData.isRefreshing,
-    b2cPageData.pagination.total,
+    activeTab,
     b2bPageData.loading,
     b2bPageData.isRefreshing,
     b2bPageData.pagination.total,
+    scrollSectionToSearchHit,
   ]);
 
   const activeRuleBadges = useMemo(() => {
@@ -472,6 +507,7 @@ export default function TicketManagementBucketPage({
     setSearchQuery(query);
     setB2bPage(1);
     setB2cPage(1);
+    setSemuaPage(1);
   }, []);
 
   const handleWorkzoneChange = useCallback((value: string) => {
@@ -479,6 +515,7 @@ export default function TicketManagementBucketPage({
     setExtraWorkboardPage(1);
     setB2bPage(1);
     setB2cPage(1);
+    setSemuaPage(1);
   }, []);
 
   const handleB2cTicketTypeChange = useCallback((types: string[]) => {
@@ -571,6 +608,81 @@ export default function TicketManagementBucketPage({
     [extraWorkboardPageData.tickets],
   );
 
+  const mergedTickets = useMemo(() => {
+    const combined = [
+      ...(b2cPageData.tickets ?? []),
+      ...(b2bPageData.tickets ?? []),
+    ];
+    const deduped = [...combined].sort(
+      (a, b) => (b.idTicket ?? 0) - (a.idTicket ?? 0),
+    );
+
+    if (
+      focusedTicket &&
+      !deduped.some(
+        (ticket) => String(ticket.idTicket) === String(focusedTicket.idTicket),
+      )
+    ) {
+      return [focusedTicket, ...deduped];
+    }
+
+    return deduped;
+  }, [b2cPageData.tickets, b2bPageData.tickets, focusedTicket]);
+
+  const mergedTotal =
+    (b2cPageData.pagination.total ?? 0) + (b2bPageData.pagination.total ?? 0);
+
+  const SEMUA_PAGE_SIZE = 15;
+  const mergedTotalPages = Math.max(
+    1,
+    Math.ceil(mergedTickets.length / SEMUA_PAGE_SIZE),
+  );
+  const displayMergedTickets = mergedTickets.slice(
+    (semuaPage - 1) * SEMUA_PAGE_SIZE,
+    semuaPage * SEMUA_PAGE_SIZE,
+  );
+
+  const onCombinedAssign = useCallback(
+    (ticketId: number | string) => {
+      const b2cTicket = b2cPageData.tickets.find(
+        (t) => String(t.idTicket) === String(ticketId),
+      );
+      onAssign(ticketId, b2cTicket ? 'b2c' : 'b2b');
+    },
+    [b2cPageData.tickets, onAssign],
+  );
+
+  const mergedSummary = useMemo(
+    () => ({
+      total:
+        (b2cPageData.summary.total ?? 0) + (b2bPageData.summary.total ?? 0),
+      open: (b2cPageData.summary.open ?? 0) + (b2bPageData.summary.open ?? 0),
+      assigned:
+        (b2cPageData.summary.assigned ?? 0) +
+        (b2bPageData.summary.assigned ?? 0),
+      close:
+        (b2cPageData.summary.close ?? 0) + (b2bPageData.summary.close ?? 0),
+      ffgCount:
+        (b2cPageData.summary.ffgCount ?? 0) +
+        (b2bPageData.summary.ffgCount ?? 0),
+      gamasCount:
+        (b2cPageData.summary.gamasCount ?? 0) +
+        (b2bPageData.summary.gamasCount ?? 0),
+      p1Count:
+        (b2cPageData.summary.p1Count ?? 0) + (b2bPageData.summary.p1Count ?? 0),
+      pPlusCount:
+        (b2cPageData.summary.pPlusCount ?? 0) +
+        (b2bPageData.summary.pPlusCount ?? 0),
+    }),
+    [b2cPageData.summary, b2bPageData.summary],
+  );
+
+  const mergedLoading =
+    b2cPageData.loading ||
+    b2bPageData.loading ||
+    b2cPageData.isRefreshing ||
+    b2bPageData.isRefreshing;
+
   return (
     <>
       <AdminLayout
@@ -579,60 +691,60 @@ export default function TicketManagementBucketPage({
         selectedWorkzone={workzoneFilter}
       >
         <div className='space-y-5'>
-          <div className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950'>
-            <div className='bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.04),transparent_40%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_30%)] p-5 dark:bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_35%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_25%)]'>
-              <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-                <div className='flex items-start gap-4'>
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,255,255,0.72))] p-3 md:p-4 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.9),rgba(15,23,42,0.78))]'>
+              <div className='flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between'>
+                <div className='flex items-start gap-2.5'>
                   <div
                     className={clsx(
-                      'grid h-12 w-12 place-items-center rounded-2xl text-xl',
+                      'grid h-10 w-10 place-items-center rounded-2xl text-[0.95rem] font-black uppercase shadow-sm ring-1 ring-white/10',
                       TONE_CLASSES[tone],
                     )}
                   >
                     {icon}
                   </div>
                   <div className='min-w-0 flex-1'>
-                    <p className='text-xs font-bold tracking-[1.5px] text-slate-400 uppercase dark:text-slate-500'>
+                    <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
                       Ticket Management
                     </p>
-                    <h1 className='mt-1 text-2xl font-black text-slate-900 dark:text-slate-100'>
+                    <h1 className='mt-1 text-[1.35rem] leading-none font-black tracking-[-0.03em] text-(--text-primary) md:text-[1.6rem]'>
                       {title}
                     </h1>
-                    <p className='mt-2 max-w-3xl text-sm text-slate-500 dark:text-slate-400'>
+                    <p className='mt-1.5 max-w-2xl text-[13px] leading-5 text-(--text-secondary)'>
                       {description}
                     </p>
-                    <div className='mt-3 flex flex-wrap gap-2'>
+                    <div className='mt-2.5 flex flex-wrap gap-1.5'>
                       {activeRuleBadges.map((badge) => (
                         <span
                           key={badge}
-                          className='rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-bold tracking-[1px] text-slate-600 uppercase backdrop-blur dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300'
+                          className='rounded-full border border-(--border) bg-(--surface-2) px-2.5 py-0.5 text-[9px] font-bold tracking-[0.16em] text-(--text-secondary) uppercase'
                         >
                           {badge}
                         </span>
                       ))}
                     </div>
                     {!disableLocalSearch && (
-                      <div className='mt-4 flex max-w-2xl items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70'>
+                      <div className='mt-3 flex max-w-2xl items-center gap-2 rounded-2xl border border-(--border) bg-(--surface) p-1.5 shadow-sm'>
                         <div className='relative flex-1'>
                           <input
                             type='search'
                             value={searchQuery}
                             onChange={(e) => handleSearch(e.target.value)}
                             placeholder='Search incident, ticket, customer, service...'
-                            className='h-11 w-full rounded-xl border-0 bg-slate-50 px-4 pr-10 text-sm font-medium text-slate-900 outline-none ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/30 dark:bg-slate-950 dark:text-slate-100 dark:ring-slate-800'
+                            className='h-10 w-full rounded-xl border border-(--border) bg-(--surface-2) px-3.5 pr-10 text-sm font-medium text-(--text-primary) outline-none placeholder:text-(--text-muted) focus:ring-2 focus:ring-blue-500/30'
                           />
                           {searchQuery.trim() && (
                             <button
                               type='button'
                               onClick={() => handleSearch('')}
-                              className='absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                              className='hover:bg-surface-2 absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-(--text-muted) transition-colors hover:text-(--text-primary)'
                               aria-label='Clear search'
                             >
                               <span className='text-lg leading-none'>×</span>
                             </button>
                           )}
                         </div>
-                        <span className='hidden shrink-0 text-xs font-semibold text-slate-400 lg:inline'>
+                        <span className='hidden shrink-0 text-xs font-semibold text-(--text-muted) lg:inline'>
                           Search in this bucket
                         </span>
                       </div>
@@ -653,11 +765,11 @@ export default function TicketManagementBucketPage({
                       setB2cPage(1);
                       setB2bPage(1);
                     }}
-                    className='mt-4 lg:mt-0'
+                    className='mt-3 lg:mt-0'
                   />
                 )}
 
-                <div className='grid grid-cols-2 gap-3 lg:min-w-[320px] lg:grid-cols-4'>
+                <div className='grid grid-cols-2 gap-2 lg:min-w-70 lg:grid-cols-4'>
                   {[
                     ['Total', totals.total],
                     ['Open', totals.open],
@@ -666,12 +778,12 @@ export default function TicketManagementBucketPage({
                   ].map(([label, value]) => (
                     <div
                       key={label}
-                      className='rounded-2xl border border-slate-200 bg-white/85 p-3 text-center dark:border-slate-800 dark:bg-slate-900/80'
+                      className='rounded-2xl border border-(--border) bg-(--surface-2) px-2.5 py-2.5 text-center shadow-sm'
                     >
-                      <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
+                      <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                         {label}
                       </p>
-                      <p className='mt-1 text-xl font-black text-slate-900 dark:text-slate-100'>
+                      <p className='mt-0.5 text-[1rem] font-black text-(--text-primary) md:text-[1.1rem]'>
                         {value}
                       </p>
                     </div>
@@ -679,139 +791,151 @@ export default function TicketManagementBucketPage({
                 </div>
               </div>
 
-              <div className='mt-4 rounded-2xl border border-slate-200 bg-white/85 p-3 dark:border-slate-800 dark:bg-slate-900/80'>
-                <p className='mb-2 text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
-                  Flagging Summary
-                </p>
+              <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+                <div className='mb-2.5 flex items-center justify-between gap-2'>
+                  <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                    Flagging Summary
+                  </p>
+                  <span className='text-[10px] font-semibold text-(--text-muted)'>
+                    Prioritas harian
+                  </span>
+                </div>
                 <FlaggingSummaryRow counts={totals} />
               </div>
             </div>
 
-            <div
-              className={clsx(
-                'grid gap-px border-t border-slate-200 bg-slate-200 dark:border-slate-800 dark:bg-slate-800',
-                extraWorkboard ? 'md:grid-cols-3' : 'md:grid-cols-2',
-              )}
-            >
-              {extraWorkboard && (
-                <div className='bg-white p-4 dark:bg-slate-950'>
-                  <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
-                    {extraWorkboard.tableLabel} Split
-                  </p>
-                  <div className='mt-3 grid grid-cols-4 gap-2 text-center'>
-                    {[
-                      ['Total', extraWorkboardPageData.summary.total],
-                      ['Open', extraWorkboardPageData.summary.open],
-                      ['Assigned', extraWorkboardPageData.summary.assigned],
-                      ['Close', extraWorkboardPageData.summary.close],
-                    ].map(([label, value]) => (
-                      <div
-                        key={label}
-                        className='rounded-2xl bg-slate-50 px-2 py-3 dark:bg-slate-900'
-                      >
-                        <p className='text-[10px] font-bold tracking-[1px] text-slate-400 uppercase dark:text-slate-500'>
-                          {label}
-                        </p>
-                        <p className='mt-1 text-lg font-black text-slate-900 dark:text-slate-100'>
-                          {value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className='mt-3'>
-                    <FlaggingSummaryRow
-                      counts={extraWorkboardPageData.summary}
-                      compact
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className='bg-white p-4 dark:bg-slate-950'>
-                <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
-                  B2C Split
-                </p>
-                <div className='mt-3 grid grid-cols-4 gap-2 text-center'>
-                  {[
-                    ['Total', b2cPageData.summary.total],
-                    ['Open', b2cPageData.summary.open],
-                    ['Assigned', b2cPageData.summary.assigned],
-                    ['Close', b2cPageData.summary.close],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className='rounded-2xl bg-slate-50 px-2 py-3 dark:bg-slate-900'
-                    >
-                      <p className='text-[10px] font-bold tracking-[1px] text-slate-400 uppercase dark:text-slate-500'>
-                        {label}
-                      </p>
-                      <p className='mt-1 text-lg font-black text-slate-900 dark:text-slate-100'>
-                        {value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className='mt-3'>
-                  <FlaggingSummaryRow counts={b2cPageData.summary} compact />
-                </div>
-              </div>
-
-              <div className='bg-white p-4 dark:bg-slate-950'>
-                <p className='text-[11px] font-bold tracking-[1.3px] text-slate-400 uppercase dark:text-slate-500'>
-                  B2B Split
-                </p>
-                <div className='mt-3 grid grid-cols-4 gap-2 text-center'>
-                  {[
-                    ['Total', b2bPageData.summary.total],
-                    ['Open', b2bPageData.summary.open],
-                    ['Assigned', b2bPageData.summary.assigned],
-                    ['Close', b2bPageData.summary.close],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className='rounded-2xl bg-slate-50 px-2 py-3 dark:bg-slate-900'
-                    >
-                      <p className='text-[10px] font-bold tracking-[1px] text-slate-400 uppercase dark:text-slate-500'>
-                        {label}
-                      </p>
-                      <p className='mt-1 text-lg font-black text-slate-900 dark:text-slate-100'>
-                        {value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className='mt-3'>
-                  <FlaggingSummaryRow counts={b2bPageData.summary} compact />
-                </div>
-              </div>
-            </div>
-
-            <div className='border-t border-slate-200 p-5 dark:border-slate-800'>
-              <div className='flex flex-wrap gap-2'>
-                {[
-                  ['all', 'All'],
-                  ['b2c', 'B2C'],
-                  ['b2b', 'B2B'],
-                ].map(([value, label]) => (
+            <div className='border-t border-(--border) bg-(--surface)'>
+              <div className='flex overflow-x-auto'>
+                {(
+                  [
+                    ['semua', 'Semua', totals.total],
+                    ...(isUnspecBucket && extraWorkboard
+                      ? [
+                          [
+                            'unspecOhi',
+                            'Unspec OHI',
+                            extraWorkboardPageData.pagination.total,
+                          ] as const,
+                        ]
+                      : []),
+                    ['b2c', 'B2C', b2cPageData.pagination.total],
+                    ['b2b', 'B2B', b2bPageData.pagination.total],
+                    [
+                      'validasi',
+                      'Validasi',
+                      (b2cPageData.validasiCount ?? 0) +
+                        (b2bPageData.validasiCount ?? 0),
+                    ],
+                  ] as const
+                ).map(([value, label, count]) => (
                   <button
                     key={value}
                     type='button'
-                    onClick={() => setDeptView(value as 'all' | 'b2b' | 'b2c')}
+                    onClick={() => setActiveTab(value)}
                     className={clsx(
-                      'rounded-full px-3 py-1.5 text-xs font-bold tracking-[1px] uppercase transition-colors',
-                      deptView === value
-                        ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                      'relative flex min-w-24 flex-1 flex-col items-center justify-center px-3 py-2.5 text-center text-[10px] font-bold tracking-[0.14em] uppercase transition-colors md:px-4',
+                      activeTab === value
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-(--text-muted) hover:text-(--text-secondary)',
                     )}
                   >
-                    {label}
+                    <span className='whitespace-nowrap'>{label}</span>
+                    <span
+                      className={clsx(
+                        'mt-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                        activeTab === value
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
+                          : 'bg-(--surface-2) text-(--text-muted)',
+                      )}
+                    >
+                      {count.toLocaleString('id-ID')}
+                    </span>
+                    {activeTab === value && (
+                      <span className='absolute right-3 bottom-0 left-3 h-0.5 rounded-full bg-blue-500' />
+                    )}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {extraWorkboard && deptView !== 'b2b' && (
+          {activeTab === 'semua' && (
+            <div className='space-y-5'>
+              {extraWorkboard && !isUnspecBucket && (
+                <div ref={extraWorkboardTableRef} className='space-y-3'>
+                  <div className='flex items-center justify-between'>
+                    <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                      {extraWorkboard.title}
+                    </h2>
+                    <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
+                      {extraWorkboardPageData.pagination.total} ticket
+                    </span>
+                  </div>
+                  <p className='text-sm text-slate-500 dark:text-slate-400'>
+                    {extraWorkboard.description}
+                  </p>
+                  <TicketTable
+                    tickets={extraWorkboardPageData.tickets}
+                    tableLabel={extraWorkboard.tableLabel}
+                    tableSummary={extraWorkboardPageData.summary}
+                    loading={extraWorkboardPageData.loading}
+                    isRefreshing={extraWorkboardPageData.isRefreshing}
+                    onAssign={onExtraAssign}
+                    highlightQuery={effectiveSearchQuery}
+                    pagination={{
+                      currentPage:
+                        extraWorkboardPageData.pagination.currentPage,
+                      totalPages: extraWorkboardPageData.pagination.totalPages,
+                      total: extraWorkboardPageData.pagination.total,
+                      limit: extraWorkboardPageData.pagination.limit,
+                      onPageChange: setExtraWorkboardPage,
+                    }}
+                    downloadFilters={{
+                      dept: extraWorkboard?.dept ?? 'all',
+                      operationalBucket,
+                      regulerOnly,
+                      anomalyBucket,
+                    }}
+                  />
+                </div>
+              )}
+
+              <div ref={semuaTableRef} className='space-y-3'>
+                <div className='flex items-center justify-between'>
+                  <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                    Semua Workboard
+                  </h2>
+                  <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
+                    {mergedTotal} ticket
+                  </span>
+                </div>
+                <TicketTable
+                  tickets={displayMergedTickets}
+                  tableSummary={mergedSummary}
+                  loading={mergedLoading}
+                  isRefreshing={mergedLoading}
+                  onAssign={onCombinedAssign}
+                  highlightQuery={effectiveSearchQuery}
+                  pagination={{
+                    currentPage: semuaPage,
+                    totalPages: mergedTotalPages,
+                    total: mergedTotal,
+                    limit: SEMUA_PAGE_SIZE,
+                    onPageChange: setSemuaPage,
+                  }}
+                  downloadFilters={{
+                    dept: 'all',
+                    operationalBucket,
+                    regulerOnly,
+                    anomalyBucket,
+                    excludeSymptom: extraWorkboard?.symptom,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'unspecOhi' && extraWorkboard && (
             <div ref={extraWorkboardTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
                 <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
@@ -831,6 +955,7 @@ export default function TicketManagementBucketPage({
                 loading={extraWorkboardPageData.loading}
                 isRefreshing={extraWorkboardPageData.isRefreshing}
                 onAssign={onExtraAssign}
+                highlightQuery={effectiveSearchQuery}
                 pagination={{
                   currentPage: extraWorkboardPageData.pagination.currentPage,
                   totalPages: extraWorkboardPageData.pagination.totalPages,
@@ -848,8 +973,8 @@ export default function TicketManagementBucketPage({
             </div>
           )}
 
-          {deptView !== 'b2b' && (
-            <div className='space-y-3'>
+          {activeTab === 'b2c' && (
+            <div ref={b2cTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
                 <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
                   B2C Workboard
@@ -858,20 +983,6 @@ export default function TicketManagementBucketPage({
                   {b2cPageData.pagination.total} ticket
                 </span>
               </div>
-
-              {b2cBreakdownData && (
-                <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
-                  <B2CSection
-                    data={b2cBreakdownData}
-                    activeType={b2cActiveType}
-                    onSelectType={(type) =>
-                      setB2cActiveType(type as typeof b2cActiveType)
-                    }
-                    isDailyScope
-                  />
-                </div>
-              )}
-
               <FilterBarB2C
                 ticketType={b2cTicketTypeFilter}
                 ticketTypeOptions={b2cPageData.ticketTypeOptions}
@@ -884,7 +995,6 @@ export default function TicketManagementBucketPage({
                 onTicketStatusChange={handleB2cTicketStatusChange}
                 onFlaggingChange={handleB2cFlaggingChange}
               />
-              {/* <FlaggingSummaryRow counts={b2cPageData.summary} /> */}
               <TicketTypeBreakdownStrip
                 title='Perhitungan jenis tiket B2C'
                 items={b2cPageData.ticketTypeOptions}
@@ -901,6 +1011,7 @@ export default function TicketManagementBucketPage({
                     loading={b2cPageData.loading}
                     isRefreshing={b2cPageData.isRefreshing}
                     onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
+                    highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2cPageData.pagination.currentPage,
                       totalPages: b2cPageData.pagination.totalPages,
@@ -939,8 +1050,8 @@ export default function TicketManagementBucketPage({
             </div>
           )}
 
-          {deptView !== 'b2c' && (
-            <div className='space-y-3'>
+          {activeTab === 'b2b' && (
+            <div ref={b2bTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
                 <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
                   B2B Workboard
@@ -961,7 +1072,6 @@ export default function TicketManagementBucketPage({
                 onTicketStatusChange={handleB2bTicketStatusChange}
                 onFlaggingChange={handleB2bFlaggingChange}
               />
-              <FlaggingSummaryRow counts={b2bPageData.summary} />
               <TicketTypeBreakdownStrip
                 title='Perhitungan jenis tiket B2B'
                 items={b2bPageData.ticketTypeOptions}
@@ -978,6 +1088,7 @@ export default function TicketManagementBucketPage({
                     loading={b2bPageData.loading}
                     isRefreshing={b2bPageData.isRefreshing}
                     onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
+                    highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2bPageData.pagination.currentPage,
                       totalPages: b2bPageData.pagination.totalPages,
@@ -1013,6 +1124,45 @@ export default function TicketManagementBucketPage({
                 isRefreshing={b2bPageData.isRefreshing}
                 onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
               />
+            </div>
+          )}
+
+          {activeTab === 'validasi' && (
+            <div ref={validasiTableRef} className='space-y-5'>
+              <div className='space-y-2'>
+                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                  Validasi B2C
+                </h2>
+                <TicketTableValidasi
+                  tickets={b2cPageData.validasiTickets}
+                  pagination={{
+                    currentPage: b2cPageData.validasiPagination.currentPage,
+                    totalPages: b2cPageData.validasiPagination.totalPages,
+                    total: b2cPageData.validasiPagination.total,
+                    limit: b2cPageData.validasiPagination.limit,
+                    onPageChange: setB2cValidasiPage,
+                  }}
+                  loading={b2cPageData.loading}
+                  isRefreshing={b2cPageData.isRefreshing}
+                />
+              </div>
+              <div className='space-y-2'>
+                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                  Validasi B2B
+                </h2>
+                <TicketTableValidasi
+                  tickets={b2bPageData.validasiTickets}
+                  pagination={{
+                    currentPage: b2bPageData.validasiPagination.currentPage,
+                    totalPages: b2bPageData.validasiPagination.totalPages,
+                    total: b2bPageData.validasiPagination.total,
+                    limit: b2bPageData.validasiPagination.limit,
+                    onPageChange: setB2bValidasiPage,
+                  }}
+                  loading={b2bPageData.loading}
+                  isRefreshing={b2bPageData.isRefreshing}
+                />
+              </div>
             </div>
           )}
         </div>

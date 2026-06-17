@@ -57,6 +57,7 @@ export interface TicketRowProps {
   ttrCountdown?: TtrCountdown | null;
   selected?: boolean; // unused
   onSelect?: () => void; // unused
+  highlighted?: boolean;
 }
 
 const SLA_STYLES = {
@@ -136,6 +137,7 @@ export default function TicketRow({
   ttrCountdown,
   selected = false,
   onSelect,
+  highlighted = false,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
   const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
@@ -202,10 +204,13 @@ export default function TicketRow({
     <>
     <tr
       className={clsx(
-        'group border-l-4 transition-colors duration-100',
-        severityStyles.border,
+        'group border-l-4 transition-colors duration-100 scroll-mt-28',
+        highlighted
+          ? 'border-l-blue-500 bg-blue-50/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)] dark:bg-blue-500/10'
+          : severityStyles.border,
         'hover:bg-(--surface-2)',
       )}
+      data-search-highlight={highlighted ? 'true' : undefined}
     >
       {/* Rank */}
       <td className='px-3 py-3 text-center'>
@@ -309,7 +314,11 @@ export default function TicketRow({
               )}
               title='Flagging Manja'
             >
-              {flagLabel}
+              {flagLabel === 'P1'
+                ? 'Manja HI'
+                : flagLabel === 'P+'
+                  ? 'Manja H+'
+                  : flagLabel}
             </span>
           )}
         </div>

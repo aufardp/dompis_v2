@@ -106,6 +106,44 @@ const KPI_ACCENT: Record<string, string> = {
   'Non Technical': '#e11d48',
 };
 
+const BUCKET_CONTEXT: Record<string, { label: string; description: string; hint: string }> = {
+  all: {
+    label: 'All view',
+    description: 'Menampilkan seluruh bucket operasional dalam satu tabel utama.',
+    hint: 'Gunakan untuk membaca distribusi total.',
+  },
+  kpi_customer: {
+    label: 'Customer view',
+    description: 'Fokus pada B2C, B2B, dan SQM yang masuk bucket Customer.',
+    hint: 'Detail utama: REGULER, GOLD, PLATINUM, DIAMOND.',
+  },
+  kpi_proactive: {
+    label: 'Proactive view',
+    description: 'Fokus pada tiket proactive, termasuk keluarga SQM dan SQM-CCAN.',
+    hint: 'Detail utama: SQM dan SQM-CCAN.',
+  },
+  non_kpi_unspec: {
+    label: 'Unspec view',
+    description: 'Fokus pada tiket unspec untuk B2C dan B2B.',
+    hint: 'Detail utama: UNSPEC dan UNSPEC-B2B.',
+  },
+  non_technical: {
+    label: 'Non Technical view',
+    description: 'Menampilkan ticket non-technical yang relevan untuk review operasional.',
+    hint: 'Konteks investigasi dan permintaan.',
+  },
+  sqm_update: {
+    label: 'SQM Update view',
+    description: 'Menampilkan tiket yang berstatus SQM Update dan turunannya.',
+    hint: 'Sesuai header [SQM-UPDATE].',
+  },
+  obsolete: {
+    label: 'Obsolete view',
+    description: 'Menampilkan tiket yang sudah masuk kategori obsolete.',
+    hint: 'classification_path Z_PERMINTAAN_044.',
+  },
+};
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('id-ID').format(value);
 }
@@ -243,117 +281,211 @@ export default function RekapWorkorderClient() {
     woPerTeknisi: fallbackSummary.woPerTeknisi,
   };
   const ks = data.kpiSummary;
+  const bucketContext =
+    BUCKET_CONTEXT[selectedBucket as keyof typeof BUCKET_CONTEXT] ??
+    BUCKET_CONTEXT.all;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-(--border) bg-(--surface) px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-bold text-(--text-primary)">{data.title}</h2>
-            <span className="rounded border border-(--border) px-2 py-0.5 text-[11px] font-semibold text-(--text-muted)">
-              {data.syncDate}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-(--text-secondary)">{data.subtitle}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedBucket}
-              onChange={(e) => setSelectedBucket(e.target.value)}
-              className="rounded-md border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              {BUCKET_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {data.timestamp && (
-            <DataFreshnessBadge generatedAt={data.timestamp} onRefresh={() => refetch()} isRefreshing={isFetching} />
-          )}
-        </div>
-      </div>
+      <section className="overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm">
+        <div className="border-b border-(--border) bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.09),transparent_24%)] px-4 py-4 md:px-5 md:py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-black tracking-tight text-(--text-primary) md:text-xl">
+                  {data.title}
+                </h2>
+                <span className="rounded-full border border-(--border) bg-surface px-2.5 py-1 text-[11px] font-semibold text-(--text-muted)">
+                  {data.syncDate}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-(--text-secondary)">
+                {data.subtitle}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-blue-500/15 bg-blue-500/[0.08] px-3 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-200">
+                  {bucketContext.label}
+                </span>
+                <span className="rounded-full border border-(--border) bg-surface px-3 py-1 text-[11px] font-semibold text-(--text-secondary)">
+                  {bucketContext.hint}
+                </span>
+                <span className="rounded-full border border-(--border) bg-surface px-3 py-1 text-[11px] font-semibold text-(--text-secondary)">
+                  {data.rows.length.toLocaleString('id-ID')} service area
+                </span>
+              </div>
+            </div>
 
-      {ks && (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: 'linear-gradient(to right, #2563eb, #9333ea)' }}>
-            <span className="text-xs uppercase tracking-wide opacity-70">Total</span>
-            <span className="text-lg leading-none">{formatNumber(ks.total ?? 0)}</span>
+            <div className="flex flex-col gap-3 lg:min-w-[18rem]">
+              {data.timestamp && (
+                <DataFreshnessBadge
+                  generatedAt={data.timestamp}
+                  onRefresh={() => refetch()}
+                  isRefreshing={isFetching}
+                />
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => refetch()}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-(--border) bg-surface px-4 py-2.5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-surface-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+                <div className="rounded-2xl border border-(--border) bg-surface-2 px-4 py-2.5 text-center">
+                  <p className="text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase">
+                    Mode
+                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-(--text-primary)">
+                    {bucketContext.label}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          {[
-            { label: 'Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
-            { label: 'Proactive', value: ks.kpiProactive, accent: '#a855f7' },
-            { label: 'Unspec', value: ks.nonKpiUnspec, accent: '#64748b' },
-            { label: 'Non Technical', value: ks.nonTechnical, accent: '#e11d48' },
-            { label: 'SQM Update', value: ks.sqmUpdate, accent: '#7c3aed' },
-            { label: 'Obsolete', value: ks.obsolete, accent: '#f43f5e' },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-3 py-2"
-              style={{ borderLeftWidth: '3px', borderLeftColor: item.accent }}
-            >
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
-                {item.label}
-              </span>
-              <span className="text-base font-bold leading-none" style={{ color: item.accent }}>
-                {formatNumber(item.value)}
+
+          <div className="mt-4 flex flex-wrap gap-2 rounded-3xl border border-(--border) bg-(--surface) p-2">
+            {BUCKET_OPTIONS.map((opt) => {
+              const active = opt.value === selectedBucket;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedBucket(opt.value)}
+                  className={`rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
+                    active
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'border border-(--border) bg-surface-2 text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-b border-(--border) px-4 py-4 md:px-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <SummaryTile
+              label="Total WO"
+              value={formatNumber(ks?.total ?? displaySummary.total)}
+              sub={`${data.rows.length} service area`}
+              tone="slate"
+              icon={<Activity className="h-4 w-4" />}
+            />
+            <SummaryTile
+              label="Open"
+              value={formatNumber(displaySummary.open)}
+              sub="perlu ditangani"
+              tone="red"
+              icon={<Clock3 className="h-4 w-4" />}
+            />
+            <SummaryTile
+              label="Close"
+              value={formatNumber(displaySummary.close)}
+              sub={`${displaySummary.closeRate}% closure`}
+              tone="green"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              closeRate={displaySummary.closeRate}
+            />
+            <SummaryTile
+              label="Teknisi"
+              value={formatNumber(displaySummary.teknisi)}
+              sub="absen hari ini"
+              tone="blue"
+              icon={<Users className="h-4 w-4" />}
+            />
+            <SummaryTile
+              label="WO/Teknisi"
+              value={displaySummary.woPerTeknisi}
+              sub="open load"
+              tone="slate"
+              icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
+            />
+          </div>
+        </div>
+
+        {ks && (
+          <div className="border-b border-(--border) px-4 py-4 md:px-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase">
+                  Priority overview
+                </p>
+                <p className="mt-1 text-sm text-(--text-muted)">
+                  Total seluruh bucket dan flag prioritas
+                </p>
+              </div>
+              <span className="text-[11px] font-semibold text-(--text-muted)">
+                Ringkasan bucket operasional
               </span>
             </div>
-          ))}
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryTile
-          label="Total WO"
-          value={formatNumber(ks?.total ?? 0)}
-          sub={`${data.rows.length} service area`}
-          tone="slate"
-          icon={<Activity className="h-4 w-4" />}
-        />
-        <SummaryTile
-          label="Open"
-          value={formatNumber(displaySummary.open)}
-          sub="perlu ditangani"
-          tone="red"
-          icon={<Clock3 className="h-4 w-4" />}
-        />
-        <SummaryTile
-          label="Close"
-          value={formatNumber(displaySummary.close)}
-          sub={`${displaySummary.closeRate}% closure`}
-          tone="green"
-          icon={<CheckCircle2 className="h-4 w-4" />}
-          closeRate={displaySummary.closeRate}
-        />
-        <SummaryTile
-          label="Teknisi"
-          value={formatNumber(displaySummary.teknisi)}
-          sub="absen hari ini"
-          tone="blue"
-          icon={<Users className="h-4 w-4" />}
-        />
-        <SummaryTile
-          label="WO/Teknisi"
-          value={displaySummary.woPerTeknisi}
-          sub="open load"
-          tone="slate"
-          icon={<RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />}
-        />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2.5 rounded-2xl border border-blue-500/15 bg-blue-500/[0.08] px-3 py-2 text-white">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                  Total
+                </span>
+                <span className="text-lg leading-none font-black text-blue-700 dark:text-blue-100">
+                  {formatNumber(ks.total ?? 0)}
+                </span>
+              </div>
+              {[
+                { label: 'Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
+                { label: 'Proactive', value: ks.kpiProactive, accent: '#a855f7' },
+                { label: 'Unspec', value: ks.nonKpiUnspec, accent: '#64748b' },
+                { label: 'Non Technical', value: ks.nonTechnical, accent: '#e11d48' },
+                { label: 'SQM Update', value: ks.sqmUpdate, accent: '#7c3aed' },
+                { label: 'Obsolete', value: ks.obsolete, accent: '#f43f5e' },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-2.5 rounded-2xl border border-(--border) bg-(--surface) px-3 py-2"
+                  style={{ borderLeftWidth: '3px', borderLeftColor: item.accent }}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-(--text-muted)">
+                    {item.label}
+                  </span>
+                  <span className="text-base font-bold leading-none" style={{ color: item.accent }}>
+                    {formatNumber(item.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+      <div className="grid gap-4">
+        <section className="rounded-[28px] border border-(--border) bg-(--surface) shadow-sm">
+          <RekapWorkorderHourlyClose bucket={selectedBucket} />
+        </section>
       </div>
 
-      <RekapWorkorderHourlyClose bucket={selectedBucket} />
-
       <div className="hidden xl:block">
-        <RekapWorkorderTable
-          rows={data.rows}
-          timestamp={data.timestamp}
-          detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
-          overviewSummary={data.workboardSummary}
-        />
+        <section className="overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm">
+          <div className="border-b border-(--border) bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(255,255,255,0.75))] px-4 py-4 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.45),rgba(15,23,42,0.2))]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-3xl">
+                <p className="text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase">
+                  Workboard table
+                </p>
+                <p className="mt-1 text-sm font-medium text-(--text-secondary)">
+                  Hierarki area, service area, dan workzone dengan detail sesuai bucket aktif.
+                </p>
+              </div>
+              <span className="rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)">
+                {selectedBucket === 'all' ? 'All view' : bucketContext.label}
+              </span>
+            </div>
+          </div>
+          <div className="p-0">
+            <RekapWorkorderTable
+              rows={data.rows}
+              timestamp={data.timestamp}
+              detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
+              overviewSummary={data.workboardSummary}
+            />
+          </div>
+        </section>
       </div>
 
       <div className="xl:hidden">

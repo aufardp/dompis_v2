@@ -472,141 +472,203 @@ export default function SemestaPage() {
       onWorkzoneChange={handleWorkzoneChange}
       selectedWorkzone={workzoneFilter}
     >
-      <div className='flex flex-col gap-6 font-dm-sans text-[13px] leading-5'>
+      <div className='flex flex-col gap-8 font-dm-sans text-[13px] leading-5'>
         {/* Page Header */}
-        <div className='bg-surface overflow-hidden rounded-2xl border border-(--border)'>
-          <div className='bg-surface-2 px-5 py-5 md:px-6'>
-            <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-              <div>
-                <h1 className='font-dm-sans text-2xl font-bold tracking-[-0.3px] text-(--text-primary) md:text-3xl'>
-                  Analytics
-                </h1>
-                <p className='mt-1 font-dm-sans text-sm text-(--text-muted)'>
-                  {workzoneFilter
-                    ? `Workzone: ${workzoneFilter}`
-                    : 'Semua Workzone'}
-                  {' · '}Ticket health, repeat patterns &amp; workzone load
-                </p>
+        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='bg-(--surface-2) px-5 py-5 md:px-6'>
+            <div className='flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between'>
+              <div className='max-w-3xl space-y-3'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className='rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-blue-500 uppercase'>
+                    Semesta
+                  </span>
+                  <span className='rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                    Daily Ops Board
+                  </span>
+                </div>
+                <div>
+                  <h1 className='font-dm-sans text-2xl font-bold tracking-[-0.3px] text-(--text-primary) md:text-4xl'>
+                    Analytics
+                  </h1>
+                  <p className='mt-2 max-w-2xl text-sm leading-6 text-(--text-muted)'>
+                    Ticket health, repeat patterns, and workzone load in one
+                    operational lens.{' '}
+                    {workzoneFilter
+                      ? `Focused on workzone ${workzoneFilter}.`
+                      : 'All workzones are visible in the current scope.'}
+                  </p>
+                </div>
+              </div>
+              <div className='grid gap-3 sm:grid-cols-3 lg:min-w-[360px]'>
+                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                  <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    Scope
+                  </p>
+                  <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                    {workzoneFilter ? `Workzone ${workzoneFilter}` : 'All Workzone'}
+                  </p>
+                </div>
+                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                  <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    Range
+                  </p>
+                  <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                    {trendSubtitle}
+                  </p>
+                </div>
+                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                  <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    Status
+                  </p>
+                  <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                    {dateFilterActive ? 'Filtered view' : 'Default window'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Filter Bar */}
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between lg:hidden'>
-            <button
-              onClick={() => setShowMobileFilters((v) => !v)}
-              className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 font-dm-sans text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
-            >
-              <SlidersHorizontal size={14} />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className='rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white'>
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='flex items-center justify-between border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+            <div>
+              <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                Filter Workspace
+              </p>
+              <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                Date, department, type, and status filters drive the table and charts below.
+              </p>
+            </div>
             {activeFilterCount > 0 && (
               <button
                 onClick={resetAllFilters}
-                className='flex items-center gap-1 font-dm-sans text-xs font-semibold text-red-400 hover:text-red-500'
+                className='hidden items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/15 lg:inline-flex'
               >
-                <X size={12} /> Reset
+                <X size={12} />
+                Reset
+                <span className='rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold'>
+                  {activeFilterCount}
+                </span>
               </button>
             )}
           </div>
 
-          <div
-            className={cn(
-              'flex-col gap-3',
-              showMobileFilters ? 'flex' : 'hidden lg:flex',
-              'bg-surface overflow-hidden rounded-xl border border-(--border) p-4 shadow-sm',
-            )}
-          >
-            <div className='flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center'>
-              {/* Date */}
-              <div className='flex items-center gap-2'>
-                <span className='font-outfit w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
-                  Tanggal
-                </span>
-                <DateRangePicker
-                  value={dateRange}
-                  onChange={(r) => {
-                    setDateRange(r);
-                    setCurrentPage(1);
-                  }}
-                  onClear={() => {
-                    setDateRange(undefined);
-                    setCurrentPage(1);
-                  }}
-                />
-              </div>
-
-              {/* Preset chips */}
-              <div className='flex items-center gap-1.5'>
-                {PRESET_OPTIONS.map((p) => {
-                  const days = p.key === '7d' ? 7 : p.key === '30d' ? 30 : 0;
-                  return (
-                    <button
-                      key={p.key}
-                      onClick={() => handlePreset(days || 30, p.label)}
-                      className={cn(
-                        'rounded-lg px-3 py-1.5 text-[11px] font-semibold transition',
-                        'border border-(--border)',
-                        'hover:border-blue-400/40 hover:text-blue-400',
-                      )}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <Dropdown
-                label='Dept'
-                value={deptFilter}
-                options={DEPT_OPTIONS}
-                onChange={handleDeptChange}
-              />
-
-              <Dropdown
-                label='Jenis'
-                value={ticketTypeFilter}
-                options={TYPE_OPTIONS}
-                onChange={handleTicketTypeChange}
-              />
-
-              {/* Status & Customer — moved to table scope, kept for ticket table filter */}
-              <Dropdown
-                label='Status'
-                value={hasilVisitFilter}
-                options={STATUS_OPTIONS}
-                onChange={handleHasilVisitChange}
-              />
-
-              <Dropdown
-                label='Customer'
-                value={ctypeFilter}
-                options={CTYPE_OPTIONS}
-                onChange={handleCtypeChange}
-              />
-
+          <div className='space-y-2 p-4'>
+            <div className='flex items-center justify-between lg:hidden'>
+              <button
+                onClick={() => setShowMobileFilters((v) => !v)}
+                className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 font-dm-sans text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
+              >
+                <SlidersHorizontal size={14} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className='rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white'>
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
               {activeFilterCount > 0 && (
                 <button
                   onClick={resetAllFilters}
-                  className={cn(
-                    'flex items-center gap-1 rounded-lg px-3 py-2 font-dm-sans text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
-                    'lg:ml-auto',
-                  )}
+                  className='flex items-center gap-1 font-dm-sans text-xs font-semibold text-red-400 hover:text-red-500'
                 >
-                  <X size={12} />
-                  Reset
-                  <span className='rounded-full bg-red-400/20 px-1.5 py-0.5 text-[9px] font-bold'>
-                    {activeFilterCount}
-                  </span>
+                  <X size={12} /> Reset
                 </button>
               )}
+            </div>
+
+            <div
+              className={cn(
+                'flex-col gap-3',
+                showMobileFilters ? 'flex' : 'hidden lg:flex',
+                'rounded-2xl border border-(--border) bg-(--bg) p-4',
+              )}
+            >
+              <div className='flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center'>
+                {/* Date */}
+                <div className='flex items-center gap-2'>
+                  <span className='font-outfit w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+                    Tanggal
+                  </span>
+                  <DateRangePicker
+                    value={dateRange}
+                    onChange={(r) => {
+                      setDateRange(r);
+                      setCurrentPage(1);
+                    }}
+                    onClear={() => {
+                      setDateRange(undefined);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                {/* Preset chips */}
+                <div className='flex items-center gap-1.5'>
+                  {PRESET_OPTIONS.map((p) => {
+                    const days = p.key === '7d' ? 7 : p.key === '30d' ? 30 : 0;
+                    return (
+                      <button
+                        key={p.key}
+                        onClick={() => handlePreset(days || 30, p.label)}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-[11px] font-semibold transition',
+                          'border border-(--border)',
+                          'hover:border-blue-400/40 hover:text-blue-400',
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Dropdown
+                  label='Dept'
+                  value={deptFilter}
+                  options={DEPT_OPTIONS}
+                  onChange={handleDeptChange}
+                />
+
+                <Dropdown
+                  label='Jenis'
+                  value={ticketTypeFilter}
+                  options={TYPE_OPTIONS}
+                  onChange={handleTicketTypeChange}
+                />
+
+                {/* Status & Customer — moved to table scope, kept for ticket table filter */}
+                <Dropdown
+                  label='Status'
+                  value={hasilVisitFilter}
+                  options={STATUS_OPTIONS}
+                  onChange={handleHasilVisitChange}
+                />
+
+                <Dropdown
+                  label='Customer'
+                  value={ctypeFilter}
+                  options={CTYPE_OPTIONS}
+                  onChange={handleCtypeChange}
+                />
+
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={resetAllFilters}
+                    className={cn(
+                      'flex items-center gap-1 rounded-lg px-3 py-2 font-dm-sans text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
+                      'lg:ml-auto',
+                    )}
+                  >
+                    <X size={12} />
+                    Reset
+                    <span className='rounded-full bg-red-400/20 px-1.5 py-0.5 text-[9px] font-bold'>
+                      {activeFilterCount}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -615,38 +677,48 @@ export default function SemestaPage() {
         {analyticsV2Loading ? (
           <AnalyticsSkeleton />
         ) : analyticsV2 ? (
-          <div className='flex flex-col gap-5'>
-            {/* KPI Strip */}
-            <KpiStrip kpi={analyticsV2.kpi} loading={false} />
-
-            {/* Trend Charts */}
-            <div className='grid gap-5 lg:grid-cols-2'>
-              <TrendByJenisChart
-                data={analyticsV2.trendByJenis}
-                loading={false}
-              />
-              <B2cB2bTrendChart
-                data={analyticsV2.trendByDept}
-                loading={false}
-              />
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+              <div className='flex items-center justify-between gap-3'>
+                <div>
+                  <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    Operational Snapshot
+                  </p>
+                  <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                    KPI mix, ticket trend, and workzone load from the current filter scope.
+                  </p>
+                </div>
+                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
+                  V2 Analytics
+                </span>
+              </div>
             </div>
-
-            {/* Workzone Analysis Table */}
-            <WorkzoneAnalysisTable
-              data={analyticsV2.byWorkzone}
-              loading={false}
-            />
-
-            {/* GAUL + LAPUL detail lists */}
-            <div className='grid gap-5 lg:grid-cols-2'>
-              <TopGaulList
-                data={analyticsV2.topGaulServices}
+            <div className='space-y-5 p-4 md:p-5'>
+              <KpiStrip kpi={analyticsV2.kpi} loading={false} />
+              <div className='grid gap-5 lg:grid-cols-2'>
+                <TrendByJenisChart
+                  data={analyticsV2.trendByJenis}
+                  loading={false}
+                />
+                <B2cB2bTrendChart
+                  data={analyticsV2.trendByDept}
+                  loading={false}
+                />
+              </div>
+              <WorkzoneAnalysisTable
+                data={analyticsV2.byWorkzone}
                 loading={false}
               />
-              <TopLapulList
-                data={analyticsV2.topLapulIncidents}
-                loading={false}
-              />
+              <div className='grid gap-5 lg:grid-cols-2'>
+                <TopGaulList
+                  data={analyticsV2.topGaulServices}
+                  loading={false}
+                />
+                <TopLapulList
+                  data={analyticsV2.topLapulIncidents}
+                  loading={false}
+                />
+              </div>
             </div>
           </div>
         ) : (
@@ -655,53 +727,84 @@ export default function SemestaPage() {
             {analyticsLoading ? (
               <DashboardSkeleton />
             ) : (metrics?.total ?? 0) === 0 ? (
-              <div className='bg-surface rounded-xl border border-slate-400/20 px-4 py-3 font-dm-sans text-sm text-(--text-secondary)'>
+              <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3 font-dm-sans text-sm text-(--text-secondary) shadow-sm'>
                 {dateFilterActive
                   ? 'No tickets found for the selected date range and filters.'
                   : 'No tickets found.'}
               </div>
             ) : (
               <>
-                <StatsCards metrics={metrics} loading={analyticsLoading} />
-                <div className='grid gap-6 lg:grid-cols-2'>
-                  <TicketTypeChart data={byType} loading={analyticsLoading} />
-                  <WorkzoneChart data={byWorkzone} loading={analyticsLoading} />
+                <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+                  <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+                    <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                      Legacy Analytics
+                    </p>
+                    <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                      Shown when the v2 analytics payload is unavailable.
+                    </p>
+                  </div>
+                  <div className='space-y-5 p-4 md:p-5'>
+                    <StatsCards metrics={metrics} loading={analyticsLoading} />
+                    <div className='grid gap-6 lg:grid-cols-2'>
+                      <TicketTypeChart data={byType} loading={analyticsLoading} />
+                      <WorkzoneChart data={byWorkzone} loading={analyticsLoading} />
+                    </div>
+                    <TicketTrendChart
+                      data={trend}
+                      loading={analyticsLoading}
+                      subtitle={trendSubtitle}
+                    />
+                  </div>
                 </div>
-                <TicketTrendChart
-                  data={trend}
-                  loading={analyticsLoading}
-                  subtitle={trendSubtitle}
-                />
               </>
             )}
           </>
         )}
 
         {/* Ticket Table — unchanged, separate hook */}
-        <div ref={tableRef} className="scroll-mt-20">
-        <TicketTableSemesta
-          tickets={ticketTableData}
-          loading={ticketsLoading}
-          downloadFilters={{
-            dept: deptFilter,
-            search: searchQuery.trim() || undefined,
-            workzone: workzoneFilter || undefined,
-            ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
-            ticketType:
-              ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-            statusUpdate:
-              hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
-            startDate,
-            endDate,
-          }}
-          pagination={{
-            currentPage: pagination.currentPage,
-            totalPages: pagination.totalPages,
-            total: pagination.total,
-            limit: pagination.limit,
-            onPageChange: setCurrentPage,
-          }}
-        />
+        <div ref={tableRef} className='scroll-mt-20'>
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+              <div className='flex flex-wrap items-center justify-between gap-3'>
+                <div>
+                  <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    Ticket Table
+                  </p>
+                  <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                    The list below follows the same filter scope as the analytics above.
+                  </p>
+                </div>
+                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
+                  {pagination.total.toLocaleString()} tickets
+                </span>
+              </div>
+            </div>
+            <div>
+              <TicketTableSemesta
+                tickets={ticketTableData}
+                loading={ticketsLoading}
+                downloadFilters={{
+                  dept: deptFilter,
+                  search: searchQuery.trim() || undefined,
+                  workzone: workzoneFilter || undefined,
+                  ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
+                  ticketType:
+                    ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+                  statusUpdate:
+                    hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
+                  startDate,
+                  endDate,
+                }}
+                pagination={{
+                  currentPage: pagination.currentPage,
+                  totalPages: pagination.totalPages,
+                  total: pagination.total,
+                  limit: pagination.limit,
+                  onPageChange: setCurrentPage,
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

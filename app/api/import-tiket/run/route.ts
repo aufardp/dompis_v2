@@ -14,6 +14,7 @@ import { todayWibDateForDb, toWibString } from '@/lib/timezone';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import {
   TICKET_RAW_FIELDS,
+  FIELD_CANDIDATES,
   REQUIRED_FIELDS,
   validateDate,
 } from '@/app/libs/ticket-raw-columns';
@@ -35,11 +36,31 @@ function findColumnValue(
   mapping: Record<string, string | null>,
   targetField: string,
 ): string | null {
+  const normalize = (value: string) =>
+    value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
   const header = Object.entries(mapping).find(([, v]) => v === targetField)?.[0];
-  if (!header) return null;
-  const value = row[header];
-  if (value === null || value === undefined) return null;
-  return String(value).trim() || null;
+  const candidates = [
+    header,
+    targetField,
+    targetField.replace(/_/g, ' '),
+    ...(FIELD_CANDIDATES[targetField] ?? []),
+  ].filter(Boolean) as string[];
+
+  const rowEntries = Object.entries(row);
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalize(candidate);
+    const matchedEntry = rowEntries.find(
+      ([key]) => normalize(String(key)) === normalizedCandidate,
+    );
+    if (!matchedEntry) continue;
+    const value = matchedEntry[1];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    return text;
+  }
+
+  return null;
 }
 
 function parseDateValue(raw: string | null): Date | null {
@@ -54,7 +75,7 @@ function normalizeImportedStringValue(
 ): string | null {
   if (value === null) return null;
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return '';
 
   if (DATE_STRING_FIELDS.has(key)) {
     const parsed = parseWIBDateInput(trimmed);

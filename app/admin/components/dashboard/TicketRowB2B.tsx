@@ -57,6 +57,7 @@ export interface TicketRowProps {
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
   ttrCountdown?: TtrCountdown | null;
+  highlighted?: boolean;
 }
 
 const SLA_STYLES = {
@@ -134,6 +135,7 @@ export default function TicketRowB2B({
   severity = 'normal',
   slaLabel,
   ttrCountdown,
+  highlighted = false,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
   const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
@@ -200,10 +202,13 @@ export default function TicketRowB2B({
     <>
     <tr
       className={clsx(
-        'group border-l-4 transition-colors duration-100',
-        severityStyles.border,
+        'group border-l-4 transition-colors duration-100 scroll-mt-28',
+        highlighted
+          ? 'border-l-blue-500 bg-blue-50/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)] dark:bg-blue-500/10'
+          : severityStyles.border,
         'hover:bg-(--surface-2)',
       )}
+      data-search-highlight={highlighted ? 'true' : undefined}
     >
       {/* Rank */}
       <td className='px-3 py-3 text-center'>
@@ -306,7 +311,11 @@ export default function TicketRowB2B({
                   : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
               )}
             >
-              {flagLabel}
+              {flagLabel === 'P1'
+                ? 'Manja HI'
+                : flagLabel === 'P+'
+                  ? 'Manja H+'
+                  : flagLabel}
             </span>
           )}
         </div>

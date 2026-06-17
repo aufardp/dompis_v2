@@ -10,6 +10,7 @@ import { detectSearchType } from '@/lib/search-intent';
 
 type DailyTicketPageFilters = {
   search?: string;
+  ticketId?: number;
   symptom?: string;
   excludeSymptom?: string;
   workzone?: string;
@@ -51,6 +52,7 @@ type TicketTypeOption = {
 
 export function useDailyTicketPage({
   search,
+  ticketId,
   symptom,
   excludeSymptom,
   workzone,
@@ -76,6 +78,7 @@ export function useDailyTicketPage({
   const searchType = detectSearchType(search);
   const queryKey = queryKeys.tickets.daily({
     search,
+    ticketId,
     symptom,
     excludeSymptom,
     searchType,
@@ -120,6 +123,9 @@ export function useDailyTicketPage({
       if (normalizedSearch) {
         params.set('search', normalizedSearch);
         if (searchType) params.set('searchType', searchType);
+      }
+      if (typeof ticketId === 'number' && Number.isFinite(ticketId) && ticketId > 0) {
+        params.set('ticketId', String(ticketId));
       }
       const normalizedSymptom = symptom?.trim();
       if (normalizedSymptom) {

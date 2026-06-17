@@ -72,10 +72,10 @@ export default function AdminLayout({
       {/* Desktop Sidebar - collapsible, sticky on scroll */}
       <div
         className={`hidden shrink-0 transition-[width] duration-300 ease-in-out lg:block lg:sticky lg:top-0 lg:self-start lg:h-screen ${
-          sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-55'
+          sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'
         }`}
       >
-        <div className='w-55'>
+        <div className='w-64'>
           <Sidebar
             isOpen={false}
             onClose={() => {}}

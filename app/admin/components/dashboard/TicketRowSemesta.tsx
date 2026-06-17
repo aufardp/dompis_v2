@@ -191,7 +191,11 @@ export default function TicketRowSemesta({
                 )}
                 title='Flagging Manja'
               >
-                {flagLabel}
+                {flagLabel === 'P1'
+                  ? 'Manja HI'
+                  : flagLabel === 'P+'
+                    ? 'Manja H+'
+                    : flagLabel}
               </span>
             )}
           </div>

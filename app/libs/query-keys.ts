@@ -40,6 +40,13 @@ export const queryKeys = {
         ? ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close', bucket] as const)
         : ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close'] as const),
   },
+  notifications: {
+    all: ['notifications'] as const,
+    topbar: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.notifications.all, 'topbar', filters] as const)
+        : ([...queryKeys.notifications.all, 'topbar'] as const),
+  },
   clustering: {
     all: ['clustering'] as const,
     lists: () => [...queryKeys.clustering.all, 'list'] as const,

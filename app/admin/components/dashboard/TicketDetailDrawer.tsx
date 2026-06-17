@@ -148,7 +148,11 @@ export default function TicketDetailDrawer({
                       )}
                     >
                       <AlertTriangle size={12} />
-                      {ticket.flaggingManja}
+                      {ticket.flaggingManja === 'P1'
+                        ? 'Manja HI'
+                        : ticket.flaggingManja === 'P+'
+                          ? 'Manja H+'
+                        : ticket.flaggingManja}
                     </span>
                   )}
                   {ticket.flaggingDatin && (

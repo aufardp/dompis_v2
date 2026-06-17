@@ -54,6 +54,7 @@ export async function GET(request: Request) {
 
     const filters = {
       search: searchParams.get('search') || '',
+      ticketId: toPositiveInt(searchParams.get('ticketId'), 0, 10_000_000),
       symptom: searchParams.get('symptom') || '',
       excludeSymptom: searchParams.get('excludeSymptom') || '',
       searchType: parseSearchType(searchParams.get('searchType')),

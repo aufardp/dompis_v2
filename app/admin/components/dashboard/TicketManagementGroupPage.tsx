@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { B2B_GROUPS } from '@/app/config/b2b-groups';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
@@ -77,6 +78,7 @@ export default function TicketManagementGroupPage({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const groupMeta = useMemo(
     () => B2B_GROUPS.find((group) => group.key === groupKey) ?? null,
     [groupKey],
@@ -89,6 +91,10 @@ export default function TicketManagementGroupPage({
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   const pageData = useDailyTicketPage({
     search: searchQuery,
@@ -159,23 +165,59 @@ export default function TicketManagementGroupPage({
         selectedWorkzone={workzoneFilter}
       >
         <div className='space-y-5'>
-          <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'>
-            <div className='flex items-start gap-4'>
-              <div className='grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-xl dark:bg-blue-500/10'>
-                {groupMeta.icon}
+          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+            <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.04),transparent_30%)] p-5'>
+              <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+                <div className='flex items-start gap-4'>
+                  <div className='grid h-14 w-14 place-items-center rounded-3xl border border-(--border) bg-(--bg) text-[1.15rem] font-black text-blue-600 shadow-sm'>
+                    {groupMeta.icon}
+                  </div>
+                  <div className='min-w-0 flex-1'>
+                    <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-secondary) uppercase'>
+                      Ticket Management
+                    </p>
+                    <h1 className='mt-1 text-2xl font-black text-(--text-primary)'>
+                      {groupMeta.label}
+                    </h1>
+                    <p className='mt-2 max-w-3xl text-sm leading-6 text-(--text-secondary)'>
+                      Halaman khusus tiket B2B group {groupMeta.label}. Tabel
+                      ini tetap mendukung assign, filter status, flagging, dan
+                      export.
+                    </p>
+                  </div>
+                </div>
+
+                <div className='grid grid-cols-4 gap-3 lg:min-w-[320px]'>
+                  {[
+                    ['Total', pageData.pagination.total],
+                    ['Open', pageData.summary.open],
+                    ['Assigned', pageData.summary.assigned],
+                    ['Close', pageData.summary.close],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className='rounded-2xl border border-(--border) bg-(--surface-2) p-3 text-center shadow-sm'
+                    >
+                      <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                        {label}
+                      </p>
+                      <p className='mt-1 text-xl font-black text-(--text-primary)'>
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className='min-w-0 flex-1'>
-                <p className='text-xs font-bold tracking-[1.5px] text-slate-400 uppercase dark:text-slate-500'>
-                  Ticket Management / B2B Group
-                </p>
-                <h1 className='mt-1 text-2xl font-black text-slate-900 dark:text-slate-100'>
-                  {groupMeta.label}
-                </h1>
-                <p className='mt-2 max-w-3xl text-sm text-slate-500 dark:text-slate-400'>
-                  Halaman khusus untuk tiket B2B dengan `jenis_tiket_1`{' '}
-                  {groupMeta.label}. Tabel ini tetap mendukung assign, filter
-                  status, flagging, dan export.
-                </p>
+              <div className='mt-4 flex flex-wrap gap-2'>
+                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                  B2B Group
+                </span>
+                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                  Search
+                </span>
+                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                  Assign
+                </span>
               </div>
             </div>
           </div>
@@ -190,6 +232,7 @@ export default function TicketManagementGroupPage({
                 loading={pageData.loading}
                 isRefreshing={pageData.isRefreshing}
                 onAssign={handleAssignClick}
+                highlightQuery={searchQuery}
                 downloadFilters={{
                   dept: 'b2b',
                   ticketGroup: [groupKey],

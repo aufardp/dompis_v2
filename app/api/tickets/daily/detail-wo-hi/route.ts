@@ -6,6 +6,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { parseSearchType } from '@/lib/search-intent';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { getOrSetCache } from '@/lib/cache';
+import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,12 +43,37 @@ function computeAge(reportedDate: string | null | undefined): string {
   } catch { return ''; }
 }
 
-function getMaxTtr(ticket: Record<string, any>, jenisRaw: string | null | undefined): string {
-  const ctype = (ticket.customer_type ?? '').toUpperCase();
-  if (ctype === 'HVC_GOLD' || jenisRaw?.toUpperCase().includes('GOLD')) return ticket.status_ttr_12_gold ?? '';
-  if (ctype === 'HVC_PLATINUM' || jenisRaw?.toUpperCase().includes('PLATINUM')) return ticket.status_ttr_6_platinum ?? '';
-  if (ctype === 'HVC_DIAMOND' || jenisRaw?.toUpperCase().includes('DIAMOND')) return ticket.status_ttr_3_diamond ?? '';
-  return ticket.status_ttr_24_reguler ?? '';
+function getMaxTtr(ticket: Record<string, any>): string {
+  const label = getEffectiveMaxTtrLabel({
+    reportedDate: ticket.reported_date,
+    bookingDate: ticket.booking_date,
+    guaranteeStatus: ticket.guarantee_status,
+    flaggingManja: ticket.flagging_manja,
+    customerType: ticket.customer_type,
+    ctype: ticket.customer_type,
+    maxTtrGold: ticket.status_ttr_12_gold,
+    maxTtrDiamond: ticket.status_ttr_3_diamond,
+    maxTtrPlatinum: ticket.status_ttr_6_platinum,
+    maxTtrReguler: ticket.status_ttr_24_reguler,
+  });
+  return label ?? '';
+}
+
+function buildStatusInseraWhere(status: string): Record<string, any> | null {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return null;
+
+  if (normalized === 'close') {
+    return {
+      status: { in: [...CLOSE_STATUS_VALUES, ...CLOSE_STATUS_VALUES.map((item) => item.toLowerCase())] },
+    };
+  }
+
+  return {
+    NOT: {
+      status: { in: [...CLOSE_STATUS_VALUES, ...CLOSE_STATUS_VALUES.map((item) => item.toLowerCase())] },
+    },
+  };
 }
 
 function formatDateTime(value: string | Date | null | undefined): string {
@@ -86,6 +112,7 @@ export async function GET(request: Request) {
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
     const ctype = searchParams.get('ctype') ?? '';
+    const status = searchParams.get('status') ?? 'all';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
     const page = toInt(searchParams.get('page'), 1);
@@ -93,20 +120,25 @@ export async function GET(request: Request) {
     const cacheKey = buildCacheKey(user.role, user.id_user, searchParams);
 
     const result = await getOrSetCache(cacheKey || `tickets_daily_detail_wo_hi:${user.role}:${user.id_user}:uncached`, async () => {
-      const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
-        user.role, user.id_user, {
-          dept: dept === 'all' ? undefined : dept as 'b2b' | 'b2c',
-          search: search || undefined,
-          searchType,
-          workzone: workzone || undefined,
-          ctype: ctype || undefined,
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-        },
-      );
-      const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
+    const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
+      user.role, user.id_user, {
+        dept: dept === 'all' ? undefined : dept as 'b2b' | 'b2c',
+        search: search || undefined,
+        searchType,
+        workzone: workzone || undefined,
+        ctype: ctype || undefined,
+        statusUpdate: status === 'assigned' ? 'assigned' : undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      },
+    );
+    const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
+    const statusWhere = buildStatusInseraWhere(status);
+    const finalWhere = statusWhere
+      ? { AND: [mainWhere, statusWhere] }
+      : mainWhere;
 
-      const total = await prisma.ticket.count({ where: mainWhere });
+    const total = await prisma.ticket.count({ where: finalWhere });
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const offset = (page - 1) * limit;
 
@@ -147,10 +179,10 @@ export async function GET(request: Request) {
       }
       const summary = { total, open, assigned: assigned + onProgress + pending, close };
 
-      const orderedTickets = await prisma.ticket.findMany({
-        where: mainWhere,
-        orderBy: { booking_date: 'desc' },
-        skip: offset,
+    const orderedTickets = await prisma.ticket.findMany({
+      where: finalWhere,
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
+      skip: offset,
         take: limit,
         include: {
           users: { select: { nama: true, username: true } },
@@ -188,10 +220,9 @@ export async function GET(request: Request) {
       }
 
       const data = orderedTickets.map((t: any) => {
-        const jenisRaw = t.jenis_tiket_2 ?? '';
-        const usiaOpen = computeAge(t.reported_date);
+    const usiaOpen = computeAge(t.reported_date);
         const statusClosing = CLOSE_STATUS_VALUES.includes((t.status ?? '').trim().toUpperCase()) ? 'CLOSE' : 'OPEN';
-        const maxTtr = getMaxTtr(t, jenisRaw);
+        const maxTtr = getMaxTtr(t);
         const latestStatus = latestStatusPerTicket.get(t.id_ticket) ?? '';
         const assignmentDate = earliestAssignmentPerTicket.get(t.id_ticket);
 

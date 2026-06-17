@@ -123,7 +123,7 @@ export default function TicketTableTabs({
   return (
     <div className='space-y-3'>
       {/* Tab bar */}
-      <div className='flex items-center gap-2'>
+      <div className='flex items-center gap-2 overflow-x-auto rounded-2xl border border-(--border) bg-(--surface) p-2 [-webkit-overflow-scrolling:touch]'>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -132,10 +132,10 @@ export default function TicketTableTabs({
               type='button'
               onClick={() => setActiveTab(tab.key)}
               className={clsx(
-                'flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-200',
+                'flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold whitespace-nowrap transition-all duration-200',
                 isActive
                   ? 'text-white shadow-md'
-                  : 'bg-(--surface-2) text-(--text-secondary) hover:bg-(--surface)',
+                  : 'bg-(--surface-2) text-(--text-secondary) hover:bg-(--surface-3)',
               )}
               style={isActive ? { backgroundColor: accentColor } : undefined}
             >

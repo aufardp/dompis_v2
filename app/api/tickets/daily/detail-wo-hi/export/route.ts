@@ -6,6 +6,8 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { parseSearchType } from '@/lib/search-intent';
 import { getCache, setCache } from '@/lib/cache';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,12 +42,42 @@ function computeAge(reportedDate: string | null | undefined): string {
   } catch { return ''; }
 }
 
-function getMaxTtr(ticket: Record<string, any>, jenisRaw: string | null | undefined): string {
-  const ctype = (ticket.customer_type ?? '').toUpperCase();
-  if (ctype === 'HVC_GOLD' || jenisRaw?.toUpperCase().includes('GOLD')) return ticket.status_ttr_12_gold ?? '';
-  if (ctype === 'HVC_PLATINUM' || jenisRaw?.toUpperCase().includes('PLATINUM')) return ticket.status_ttr_6_platinum ?? '';
-  if (ctype === 'HVC_DIAMOND' || jenisRaw?.toUpperCase().includes('DIAMOND')) return ticket.status_ttr_3_diamond ?? '';
-  return ticket.status_ttr_24_reguler ?? '';
+function getMaxTtr(ticket: Record<string, any>): string {
+  const label = getEffectiveMaxTtrLabel({
+    reportedDate: ticket.reported_date,
+    bookingDate: ticket.booking_date,
+    guaranteeStatus: ticket.guarantee_status,
+    flaggingManja: ticket.flagging_manja,
+    customerType: ticket.customer_type,
+    ctype: ticket.customer_type,
+    maxTtrGold: ticket.status_ttr_12_gold,
+    maxTtrDiamond: ticket.status_ttr_3_diamond,
+    maxTtrPlatinum: ticket.status_ttr_6_platinum,
+    maxTtrReguler: ticket.status_ttr_24_reguler,
+  });
+  return label ?? '';
+}
+
+function buildStatusInseraWhere(status: string): Record<string, any> | null {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return null;
+
+  const closedStatuses = [
+    ...CLOSE_STATUS_VALUES,
+    ...CLOSE_STATUS_VALUES.map((item) => item.toLowerCase()),
+  ];
+
+  if (normalized === 'close') {
+    return {
+      status: { in: closedStatuses },
+    };
+  }
+
+  return {
+    NOT: {
+      status: { in: closedStatuses },
+    },
+  };
 }
 
 function formatDate(value: string | Date | null | undefined): string {
@@ -75,7 +107,6 @@ function formatDateTime(value: string | Date | null | undefined): string {
 }
 
 function buildDetailRow(ticket: any, latestStatus: string, assignmentDate: Date | null) {
-  const jenisRaw = ticket.jenis_tiket_2 ?? '';
   return [
     computeAge(ticket.reported_date),
     ticket.incident ?? '',
@@ -97,7 +128,7 @@ function buildDetailRow(ticket: any, latestStatus: string, assignmentDate: Date 
     ticket.gaul ?? '',
     ticket.durasi_ticket ?? '',
     ticket.status === 'closed' ? 'CLOSE' : 'OPEN',
-    getMaxTtr(ticket, jenisRaw),
+    getMaxTtr(ticket),
     ticket.alamat ?? '',
     ticket.users?.nama ?? '',
     ticket.users?.username ?? '',
@@ -146,6 +177,7 @@ export async function GET(request: Request) {
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
     const ctype = searchParams.get('ctype') ?? '';
+    const status = searchParams.get('status') ?? 'all';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
 
@@ -156,13 +188,18 @@ export async function GET(request: Request) {
         searchType,
         workzone: workzone || undefined,
         ctype: ctype || undefined,
+        statusUpdate: status === 'assigned' ? 'assigned' : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       },
     );
     const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
+    const statusWhere = buildStatusInseraWhere(status);
+    const finalWhere = statusWhere
+      ? { AND: [mainWhere, statusWhere] }
+      : mainWhere;
 
-    const total = await prisma.ticket.count({ where: mainWhere });
+    const total = await prisma.ticket.count({ where: finalWhere });
 
     if (total > DIRECT_EXPORT_MAX_ROWS) {
       return NextResponse.json(
@@ -185,8 +222,8 @@ export async function GET(request: Request) {
     }
 
     const orderedTickets = await prisma.ticket.findMany({
-      where: mainWhere,
-      orderBy: { booking_date: 'desc' },
+      where: finalWhere,
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
       include: { users: { select: { nama: true, username: true } } },
     });
 

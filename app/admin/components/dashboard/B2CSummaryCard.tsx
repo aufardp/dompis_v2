@@ -16,38 +16,34 @@ interface B2CSummaryCardProps {
   isDailyScope?: boolean; // NEW: indicates daily operational scope
 }
 
-function ResolutionRing({ pct }: { pct: number }) {
-  const radius = 26;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - pct / 100);
+function MetricCard({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  helper: string;
+  tone: 'blue' | 'amber' | 'emerald' | 'slate';
+}) {
+  const toneClass = {
+    blue: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300',
+    amber:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300',
+    emerald:
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+    slate:
+      'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-300',
+  }[tone];
 
   return (
-    <div className='relative flex h-16 w-16 items-center justify-center'>
-      <svg className='absolute inset-0 -rotate-90' viewBox='0 0 64 64'>
-        <circle
-          cx='32'
-          cy='32'
-          r={radius}
-          fill='none'
-          stroke='rgba(255,255,255,0.1)'
-          strokeWidth='4'
-        />
-        <circle
-          cx='32'
-          cy='32'
-          r={radius}
-          fill='none'
-          stroke='#34d399'
-          strokeWidth='4'
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap='round'
-          className='transition-all duration-700'
-        />
-      </svg>
-      <div className='text-center'>
-        <p className='text-xs font-bold text-emerald-400'>{pct.toFixed(1)}%</p>
-      </div>
+    <div className={`rounded-xl border px-2.5 py-2 ${toneClass}`}>
+      <p className='text-[9px] font-bold tracking-[0.18em] uppercase opacity-75'>
+        {label}
+      </p>
+      <p className='mt-1 text-xl font-black leading-none'>{value}</p>
+      <p className='mt-0.5 text-[10px] opacity-80'>{helper}</p>
     </div>
   );
 }
@@ -70,182 +66,112 @@ function B2CSummaryCard({
   const regulerPct = total > 0 ? ((customerCount / total) * 100).toFixed(0) : 0;
   const sqmPct = total > 0 ? ((sqmCount / total) * 100).toFixed(0) : 0;
   const unspecPct = total > 0 ? ((unspecCount / total) * 100).toFixed(0) : 0;
-  const gamasPct = total > 0 ? ((gamasCount / total) * 100).toFixed(0) : 0;
-
   return (
-    <div
-      className='relative overflow-hidden rounded-2xl p-4 md:p-6'
-      style={{
-        background:
-          'linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #312e81 100%)',
-      }}
-    >
-      {/* Decorative background circles */}
-      <div
-        className='pointer-events-none absolute -top-10 -right-10 h-48 w-48 rounded-full'
-        style={{ background: 'rgba(255,255,255,0.04)' }}
-      />
-      <div
-        className='pointer-events-none absolute right-20 -bottom-15 h-40 w-40 rounded-full'
-        style={{ background: 'rgba(255,255,255,0.03)' }}
-      />
-
-      <div className='relative flex flex-wrap items-center gap-6 md:gap-10'>
-        {/* Total */}
-        <div className='shrink-0'>
-          <div className='flex items-center gap-1.5'>
-            <p className='mb-1 text-[10px] font-bold tracking-[2px] text-blue-300 uppercase'>
+    <section className='rounded-3xl border border-blue-200/70 bg-[linear-gradient(180deg,rgba(239,246,255,0.96),rgba(255,255,255,0.96))] p-4 shadow-sm dark:border-blue-900/50 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.84))] md:p-5'>
+      <div className='flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between'>
+        <div className='space-y-3 xl:max-w-[42rem]'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <span className='rounded-full border border-blue-200 bg-white px-3 py-1 text-[10px] font-bold tracking-[0.2em] text-blue-700 uppercase dark:border-blue-800 dark:bg-slate-950 dark:text-blue-300'>
               B2C Total Summary
-            </p>
+            </span>
             {isDailyScope && (
-              <div
-                className='group relative flex items-center justify-center'
-                title='Daily Operational Only: Tickets synced today or with pending reason'
-              >
-                <Info className='h-3.5 w-3.5 cursor-help text-blue-300/70' />
-                <div className='absolute top-full left-1/2 z-50 hidden w-64 -translate-x-1/2 rounded-lg border border-blue-200 bg-blue-900 px-3 py-2 text-[10px] text-blue-100 shadow-xl group-hover:block'>
-                  <p className='mb-0.5 font-semibold'>
-                    Daily Operational Scope
-                  </p>
-                  <p className='text-blue-200/80'>
-                    Angka ini hanya mencakup tiket operasional hari ini dan
-                    tiket pending. Bukan total keseluruhan database.
-                  </p>
-                </div>
-              </div>
+              <span className='inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'>
+                <Info className='h-3 w-3' />
+                Daily scope
+              </span>
             )}
           </div>
-          <p className='text-5xl font-black tracking-tight text-white md:text-6xl'>
-            {total.toLocaleString()}
-          </p>
-          <p className='mt-1 text-xs text-blue-300/70'>
-            {isDailyScope ? 'Daily Operational Tickets' : 'Total Tickets'}
-          </p>
-        </div>
 
-        {/* Divider */}
-        <div className='hidden h-14 w-px bg-white/10 sm:block' />
+          <div className='flex flex-wrap items-end gap-3'>
+            <div>
+              <p className='text-[10px] font-bold tracking-[0.22em] text-blue-600 uppercase dark:text-blue-300'>
+                Total
+              </p>
+              <div className='flex items-baseline gap-2'>
+                <p className='text-[clamp(2.2rem,4vw,3.4rem)] leading-none font-black tracking-tight text-slate-950 dark:text-white'>
+                  {total.toLocaleString()}
+                </p>
+                <span className='pb-1 text-[10px] font-bold tracking-[0.18em] text-slate-400 uppercase dark:text-slate-500'>
+                  Tickets
+                </span>
+              </div>
+              <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
+                {isDailyScope ? 'Daily operational tickets' : 'Total tickets'}
+              </p>
+            </div>
 
-        {/* Reguler + SQM + Unspec breakdown */}
-        <div className='flex gap-8'>
-          <div>
-            <p className='mb-1 text-[11px] text-blue-300'>📋 Customer</p>
-            <p className='text-2xl font-bold text-white'>
-              {customerCount.toLocaleString()}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>
-              {regulerPct}% of total
-            </p>
+            <div className='grid min-w-[13rem] flex-1 grid-cols-3 gap-1.5'>
+              <MetricCard
+                label='Open'
+                value={open}
+                helper={`${pctClosed.toFixed(1)}% close rate`}
+                tone='amber'
+              />
+              <MetricCard
+                label='Assigned'
+                value={assigned}
+                helper='sedang ditangani'
+                tone='blue'
+              />
+              <MetricCard
+                label='Close'
+                value={close}
+                helper='closed today'
+                tone='emerald'
+              />
+            </div>
           </div>
-          <div>
-            <p className='mb-1 text-[11px] text-blue-300'>📊 SQM</p>
-            <p className='text-2xl font-bold text-white'>
-              {sqmCount.toLocaleString()}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>{sqmPct}% of total</p>
-          </div>
-          <div>
-            <p className='mb-1 text-[11px] text-blue-300'>❓ Unspec</p>
-            <p className='text-2xl font-bold text-white'>
-              {unspecCount.toLocaleString()}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>
-              {unspecPct}% of total
-            </p>
-          </div>
-        </div>
 
-        {/* Divider */}
-        <div className='hidden h-14 w-px bg-white/10 sm:block' />
-
-        {/* Status */}
-        <div className='flex gap-6'>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{ color: open > 0 ? '#fbbf24' : 'rgba(251,191,36,0.4)' }}
-            >
-              {open}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>Open</p>
-          </div>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{
-                color: assigned > 0 ? '#60a5fa' : 'rgba(96,165,250,0.4)',
-              }}
-            >
-              {assigned}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>Assigned</p>
-          </div>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{ color: close > 0 ? '#34d399' : 'rgba(52,211,153,0.4)' }}
-            >
-              {close}
-            </p>
-            <p className='text-[10px] text-blue-300/60'>Close</p>
+          <div className='grid gap-1.5 sm:grid-cols-3'>
+            <MetricCard
+              label='Customer'
+              value={customerCount}
+              helper={`${regulerPct}% of total`}
+              tone='slate'
+            />
+            <MetricCard
+              label='SQM'
+              value={sqmCount}
+              helper={`${sqmPct}% of total`}
+              tone='blue'
+            />
+            <MetricCard
+              label='Unspec'
+              value={unspecCount}
+              helper={`${unspecPct}% of total`}
+              tone='amber'
+            />
           </div>
         </div>
 
-        {/* Divider */}
-        <div className='hidden h-14 w-px bg-white/10 sm:block' />
-
-        {/* Flagging counts */}
-        <div className='flex gap-6'>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{
-                color: ffgCount > 0 ? '#a855f7' : 'rgba(168,85,247,0.4)',
-              }}
-            >
-              {ffgCount}
-            </p>
-            <p className='text-[10px] text-purple-300/60'>🔥 FFG</p>
-          </div>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{ color: p1Count > 0 ? '#ef4444' : 'rgba(239,68,68,0.4)' }}
-            >
-              {p1Count}
-            </p>
-            <p className='text-[10px] text-red-300/60'>⚡ P1</p>
-          </div>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{
-                color: pPlusCount > 0 ? '#f59e0b' : 'rgba(245,158,11,0.4)',
-              }}
-            >
-              {pPlusCount}
-            </p>
-            <p className='text-[10px] text-amber-300/60'>⚡ P+</p>
-          </div>
-          <div className='text-center'>
-            <p
-              className='text-2xl font-black'
-              style={{
-                color: gamasCount > 0 ? '#38bdf8' : 'rgba(56,189,248,0.4)',
-              }}
-            >
-              {gamasCount}
-            </p>
-            <p className='text-[10px] text-sky-300/60'>GAMAS</p>
-          </div>
-        </div>
-
-        <div className='ml-auto hidden flex-col items-center gap-1 md:flex'>
-          <p className='text-[10px] text-blue-300/70'>Resolution Rate</p>
-          <ResolutionRing pct={pctClosed} />
+        <div className='grid gap-1.5 sm:grid-cols-2 xl:w-[17rem] xl:grid-cols-1'>
+          <MetricCard
+            label='FFG'
+            value={ffgCount}
+            helper='flagging priority'
+            tone='emerald'
+          />
+          <MetricCard
+            label='Manja HI'
+            value={p1Count}
+            helper='priority hard'
+            tone='amber'
+          />
+          <MetricCard
+            label='Manja H+'
+            value={pPlusCount}
+            helper='priority soft'
+            tone='blue'
+          />
+          <MetricCard
+            label='GAMAS'
+            value={gamasCount}
+            helper='alert bucket'
+            tone='slate'
+          />
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 

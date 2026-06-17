@@ -18,8 +18,8 @@ interface FlaggingFilterTabsProps {
 const tabs: { id: FlaggingFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'ffg', label: 'FFG' },
-  { id: 'p1', label: 'P1' },
-  { id: 'pplus', label: 'P+' },
+  { id: 'p1', label: 'Manja HI' },
+  { id: 'pplus', label: 'Manja H+' },
 ];
 
 export function FlaggingFilterTabs({

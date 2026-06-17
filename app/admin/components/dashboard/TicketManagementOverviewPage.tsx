@@ -15,11 +15,7 @@ import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
 } from '@/app/config/ticket-management-nav';
-import StatCard from './StatCard';
 import { DiamondAlertBanner } from './AlertBanner';
-import OperationalFocusQueue, {
-  buildOperationalFocusItems,
-} from './OperationalFocusQueue';
 import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
@@ -58,29 +54,242 @@ type FlaggingCounts = {
   gamasCount?: number;
 };
 
-function FlaggingMiniGrid({ counts }: { counts?: FlaggingCounts }) {
+type HeroTone = 'blue' | 'emerald' | 'amber' | 'slate' | 'violet' | 'red';
+
+type PriorityItem = {
+  key: string;
+  label: string;
+  count: number;
+  sub: string;
+};
+
+type BucketSummaryLike = {
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+  p1Count?: number;
+  pPlusCount?: number;
+  ffgCount?: number;
+  gamasCount?: number;
+};
+
+function PriorityPills({ counts }: { counts?: FlaggingCounts }) {
   const items = [
-    ['P1', counts?.p1Count ?? 0],
-    ['P+', counts?.pPlusCount ?? 0],
+    ['Manja HI', counts?.p1Count ?? 0],
+    ['Manja H+', counts?.pPlusCount ?? 0],
     ['FFG', counts?.ffgCount ?? 0],
     ['GAMAS', counts?.gamasCount ?? 0],
   ] as const;
 
   return (
-    <div className='grid grid-cols-4 gap-2 text-center'>
+    <div className='flex flex-wrap gap-2'>
       {items.map(([label, value]) => (
         <div
           key={label}
-          className='rounded-xl bg-white/55 px-2 py-2 dark:bg-black/10'
+          className='rounded-full border border-(--border) bg-(--surface-2) px-3 py-1.5 text-xs font-semibold text-(--text-secondary)'
         >
-          <p className='text-[9px] font-bold tracking-[1px] uppercase opacity-70'>
+          <span className='mr-1.5 text-[10px] font-bold tracking-[0.22em] uppercase'>
             {label}
-          </p>
-          <p className='mt-1 text-sm font-black'>
+          </span>
+          <span className='font-black text-(--text-primary)'>
             {Number(value).toLocaleString('id-ID')}
-          </p>
+          </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function BucketSummaryRow({
+  label,
+  total,
+  open,
+  close,
+  flags,
+  toneClass,
+  isLoading,
+}: {
+  label: string;
+  total: number;
+  open: number;
+  close: number;
+  flags?: FlaggingCounts;
+  toneClass: string;
+  isLoading?: boolean;
+}) {
+  return (
+    <div
+      className={clsx('rounded-2xl border px-3.5 py-2.5 shadow-sm', toneClass)}
+    >
+      <div className='grid gap-3 md:grid-cols-[minmax(0,1.25fr)_auto_auto] md:items-center'>
+        <div className='min-w-0'>
+          <p className='text-[10px] font-bold tracking-[0.22em] uppercase opacity-70'>
+            Bucket
+          </p>
+          <p className='mt-1 truncate text-[0.95rem] font-black tracking-tight'>
+            {label}
+          </p>
+        </div>
+        <div>
+          <p className='text-[10px] font-bold tracking-[0.18em] uppercase opacity-70'>
+            Total
+          </p>
+          <p className='mt-1 text-[1.4rem] font-black tracking-tight'>
+            {isLoading ? '...' : total.toLocaleString('id-ID')}
+          </p>
+        </div>
+        <div className='rounded-2xl bg-white/45 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
+          <p className='text-[10px] font-bold tracking-[0.18em] uppercase opacity-70'>
+            Open / Close
+          </p>
+          <p className='mt-1 text-[0.85rem] font-black'>
+            {open.toLocaleString('id-ID')} / {close.toLocaleString('id-ID')}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroMetricCard({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  helper: string;
+  tone: HeroTone;
+}) {
+  const toneStyles: Record<HeroTone, string> = {
+    blue: 'border-blue-500/15 bg-blue-500/[0.06] text-blue-700 dark:text-blue-200',
+    emerald:
+      'border-emerald-500/15 bg-emerald-500/[0.06] text-emerald-700 dark:text-emerald-200',
+    amber:
+      'border-amber-500/15 bg-amber-500/[0.06] text-amber-700 dark:text-amber-200',
+    red: 'border-red-500/15 bg-red-500/[0.06] text-red-700 dark:text-red-200',
+    slate:
+      'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-200',
+    violet:
+      'border-violet-500/15 bg-violet-500/[0.06] text-violet-700 dark:text-violet-200',
+  };
+
+  return (
+    <div
+      className={`rounded-2xl border px-3 py-1.5 shadow-sm ${toneStyles[tone]}`}
+    >
+      <div className='flex items-center justify-between gap-3'>
+        <div className='min-w-0'>
+          <p className='truncate text-[9px] font-bold tracking-[0.22em] text-(--text-muted) uppercase'>
+            {label}
+          </p>
+          <p className='mt-1 truncate text-[10px] text-(--text-secondary)'>
+            {helper}
+          </p>
+        </div>
+        <p className='shrink-0 text-right text-[1.15rem] leading-none font-black text-(--text-primary) md:text-[1.25rem]'>
+          {typeof value === 'number' ? value.toLocaleString('id-ID') : value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PriorityTodayPanel({
+  counts,
+  items,
+  mode,
+  bucketLabel,
+  bucketSummary,
+}: {
+  counts?: FlaggingCounts;
+  items: PriorityItem[];
+  mode: 'all' | 'bucket';
+  bucketLabel?: string;
+  bucketSummary?: BucketSummaryLike;
+}) {
+  const summary =
+    mode === 'all'
+      ? ([
+          ['Manja HI', counts?.p1Count ?? 0],
+          ['Manja H+', counts?.pPlusCount ?? 0],
+          ['FFG', counts?.ffgCount ?? 0],
+          ['GAMAS', counts?.gamasCount ?? 0],
+        ] as const)
+      : ([
+          ['Manja HI', bucketSummary?.p1Count ?? 0],
+          ['Manja H+', bucketSummary?.pPlusCount ?? 0],
+          ['FFG', bucketSummary?.ffgCount ?? 0],
+          ['GAMAS', bucketSummary?.gamasCount ?? 0],
+        ] as const);
+
+  const displayItems =
+    mode === 'all'
+      ? items
+      : ([
+          {
+            key: 'p1',
+            label: 'Manja HI',
+            count: bucketSummary?.p1Count ?? 0,
+            sub: 'bucket terpilih',
+          },
+          {
+            key: 'pplus',
+            label: 'Manja H+',
+            count: bucketSummary?.pPlusCount ?? 0,
+            sub: 'bucket terpilih',
+          },
+          {
+            key: 'ffg',
+            label: 'FFG',
+            count: bucketSummary?.ffgCount ?? 0,
+            sub: 'bucket terpilih',
+          },
+          {
+            key: 'gamas',
+            label: 'GAMAS',
+            count: bucketSummary?.gamasCount ?? 0,
+            sub: 'bucket terpilih',
+          },
+        ] satisfies PriorityItem[]);
+
+  return (
+    <div className='rounded-3xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div>
+          <p className='text-[9px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+            {mode === 'all'
+              ? 'Priority Today'
+              : `Priority Today · ${bucketLabel ?? 'Bucket'}`}
+          </p>
+          <p className='mt-1 text-[10px] font-semibold text-(--text-primary)'>
+            {mode === 'all'
+              ? 'Ringkasan prioritas dan fokus harian'
+              : 'Ringkasan prioritas bucket terpilih'}
+          </p>
+        </div>
+      </div>
+
+      <div className='mt-2.5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
+        {displayItems.map((item) => (
+          <div
+            key={item.key}
+            className='rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-1.5'
+          >
+            <div className='flex items-center justify-between gap-2'>
+              <p className='truncate text-[8px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
+                {item.label}
+              </p>
+              <p className='shrink-0 text-right text-[1rem] leading-none font-black text-(--text-primary)'>
+                {item.count.toLocaleString('id-ID')}
+              </p>
+            </div>
+            <p className='mt-1 text-[8px] text-(--text-muted)'>{item.sub}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -195,6 +404,9 @@ export default function TicketManagementOverviewPage() {
     [allCardData, selectedBucket],
   );
 
+  const selectedBucketCard = visibleCardData[0];
+  const selectedBucketSummary = selectedBucketCard?.summary;
+
   const totalWorkboard = useMemo(
     () =>
       visibleCardData.reduce(
@@ -228,17 +440,39 @@ export default function TicketManagementOverviewPage() {
       : (allCardData.find((c) => c.key === selectedBucket)?.label ??
         selectedBucket);
 
-  const focusItems = useMemo(
-    () =>
-      buildOperationalFocusItems(
-        opsSummary?.focusCounts ?? {
-          diamond: 0,
-          p1: 0,
-          gamas: 0,
-          ffg: 0,
-          carryOver: 0,
-        },
-      ),
+  const focusItems = useMemo<PriorityItem[]>(
+    () => [
+      {
+        key: 'diamond',
+        label: 'Diamond',
+        count: opsSummary?.focusCounts?.diamond ?? 0,
+        sub: 'total B2C+B2B harian',
+      },
+      {
+        key: 'p1',
+        label: 'Manja HI',
+        count: opsSummary?.focusCounts?.p1 ?? 0,
+        sub: 'total B2C+B2B harian',
+      },
+      {
+        key: 'gamas',
+        label: 'Gamas',
+        count: opsSummary?.focusCounts?.gamas ?? 0,
+        sub: 'total B2C+B2B harian',
+      },
+      {
+        key: 'ffg',
+        label: 'FFG',
+        count: opsSummary?.focusCounts?.ffg ?? 0,
+        sub: 'total B2C+B2B harian',
+      },
+      {
+        key: 'carry-over',
+        label: 'Carry Over',
+        count: opsSummary?.focusCounts?.carryOver ?? 0,
+        sub: 'total pending harian',
+      },
+    ],
     [opsSummary?.focusCounts],
   );
 
@@ -264,154 +498,196 @@ export default function TicketManagementOverviewPage() {
       selectedWorkzone={workzone}
     >
       <div className='space-y-6'>
-        {/* ─── HEADER ─── */}
-        <div className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_36%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_28%)] p-6'>
-            {/* Row: Title + Sync + Total Workboard */}
-            <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-              <div className='flex-1'>
-                <p className='text-xs font-bold tracking-[1.6px] text-(--text-secondary) uppercase'>
-                  Ticket Management
-                </p>
-                <h1 className='mt-2 text-3xl font-black text-(--text-primary)'>
-                  Operational Overview
-                </h1>
-                <p className='mt-3 max-w-3xl text-sm leading-6 text-(--text-muted)'>
-                  Halaman ini menjadi pintu masuk Ticket Management. Fokusnya
-                  bukan sekadar total ticket, tetapi pemisahan workload
-                  berdasarkan bucket operasional yang mudah dibaca.
-                </p>
+        <section className='overflow-hidden rounded-4xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.11),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)] p-6 md:p-7'>
+            <div className='flex flex-col gap-6'>
+              <div className='flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between'>
+                <div className='max-w-4xl'>
+                  <p className='text-[10px] font-bold tracking-[0.32em] text-(--text-secondary) uppercase'>
+                    Ticket Management
+                  </p>
+                  <h1 className='mt-2 text-3xl font-black tracking-tight text-(--text-primary) md:text-4xl'>
+                    Operational Overview
+                  </h1>
+                  <p className='mt-3 max-w-3xl text-sm leading-6 text-(--text-muted)'>
+                    Ringkasan operasional utama untuk membaca total workboard,
+                    melihat distribusi bucket, dan masuk ke area yang butuh
+                    tindakan cepat.
+                  </p>
+                </div>
+
+                <div className='rounded-3xl border border-(--border) bg-linear-to-br from-(--surface) to-(--surface-2) p-4 shadow-sm'>
+                  <div className='flex items-start justify-between gap-4'>
+                    <div>
+                      <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-muted) uppercase'>
+                        Total Workboard
+                      </p>
+
+                      <p className='mt-2 text-4xl leading-none font-black tracking-tight text-(--text-primary)'>
+                        {isLoading
+                          ? '...'
+                          : totalWorkboard.toLocaleString('id-ID')}
+                      </p>
+
+                      <p className='mt-2 text-xs text-(--text-secondary)'>
+                        Seluruh bucket operasional aktif
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={triggerSync}
+                      disabled={isInProgress}
+                      className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm transition hover:bg-(--surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-50'
+                      title='Trigger sync'
+                    >
+                      <RefreshCw
+                        size={15}
+                        className={isInProgress ? 'animate-spin' : ''}
+                      />
+                    </button>
+                  </div>
+
+                  <div className='mt-4 flex items-center justify-between gap-3 rounded-2xl bg-(--bg)/60 px-3 py-2'>
+                    <div className='flex min-w-0 items-center gap-2'>
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          isInProgress
+                            ? 'animate-pulse bg-amber-500'
+                            : 'bg-emerald-500'
+                        }`}
+                      />
+
+                      <p className='truncate text-[11px] text-(--text-secondary)'>
+                        {isInProgress
+                          ? 'Sinkronisasi berjalan...'
+                          : lastSyncLabel}
+                      </p>
+                    </div>
+
+                    {nextSyncLabel && (
+                      <p className='hidden shrink-0 text-[11px] text-(--text-muted) sm:block'>
+                        {nextSyncLabel}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Sync status bar */}
-              <div className='flex shrink-0 items-center gap-3 self-start rounded-2xl border border-(--border) bg-(--surface) px-4 py-3 shadow-sm'>
-                <div
-                  className={clsx(
-                    'h-2 w-2 shrink-0 rounded-full',
-                    isConnected ? 'bg-emerald-500' : 'bg-red-500',
-                  )}
+              <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
+                <HeroMetricCard
+                  label='Open Workload'
+                  value={
+                    (opsSummary?.stats.unassigned ?? 0) +
+                    (opsSummary?.stats.assigned ?? 0)
+                  }
+                  helper='Aktif'
+                  tone='blue'
                 />
-                <div className='min-w-0 text-xs text-(--text-secondary)'>
-                  <span>{lastSyncLabel}</span>
-                  {nextSyncLabel && (
-                    <span className='block text-[10px] text-(--text-muted)'>
-                      {nextSyncLabel}
+                <HeroMetricCard
+                  label='Close'
+                  value={opsSummary?.stats.close ?? 0}
+                  helper='Hari Ini'
+                  tone='emerald'
+                />
+                <HeroMetricCard
+                  label='Assigned'
+                  value={opsSummary?.stats.assigned ?? 0}
+                  helper='On Progress'
+                  tone='amber'
+                />
+                <HeroMetricCard
+                  label='Unassigned'
+                  value={opsSummary?.stats.unassigned ?? 0}
+                  helper='Butuh Assign'
+                  tone='slate'
+                />
+                <HeroMetricCard
+                  label='Close Rate'
+                  value={`${opsSummary?.stats.total ? Math.round(((opsSummary.stats.close ?? 0) / opsSummary.stats.total) * 100) : 0}%`}
+                  helper='Dari Total Workboard'
+                  tone='violet'
+                />
+              </div>
+
+              <div className='grid gap-4 xl:grid-cols-[0.9fr_1.1fr]'>
+                <div className='rounded-3xl border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
+                  <div className='flex flex-wrap items-center justify-between gap-2'>
+                    <div>
+                      <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                        Filter
+                      </p>
+                      <p className='mt-1 text-[11px] font-semibold text-(--text-primary)'>
+                        Bucket mode
+                      </p>
+                    </div>
+                    <span className='bg-surface-2 rounded-full border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
+                      {bucketSuffix}
                     </span>
-                  )}
+                  </div>
+
+                  <div className='mt-3 flex flex-nowrap gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+                    {BUCKET_OPTIONS.map((opt) => {
+                      const active = opt.value === selectedBucket;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => setSelectedBucket(opt.value)}
+                          className={clsx(
+                            'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all',
+                            active
+                              ? 'bg-blue-500 text-white shadow-sm'
+                              : 'bg-surface-2 border border-(--border) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)',
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <button
-                  onClick={triggerSync}
-                  disabled={isInProgress}
-                  className='ml-1 rounded-lg border border-(--border) p-1.5 text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:opacity-50'
-                  title='Trigger sync'
-                >
-                  <RefreshCw
-                    size={14}
-                    className={isInProgress ? 'animate-spin' : ''}
-                  />
-                </button>
+
+                <PriorityTodayPanel
+                  counts={flaggingTotals}
+                  items={focusItems}
+                  mode={selectedBucket === 'all' ? 'all' : 'bucket'}
+                  bucketLabel={selectedBucketCard?.label}
+                  bucketSummary={selectedBucketSummary}
+                />
               </div>
 
-              {/* Total Workboard pill */}
-              <div className='rounded-2xl border border-(--border) bg-(--surface) px-5 py-4 text-right shadow-sm'>
-                <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                  Total Workboard
-                </p>
-                <p className='mt-1 text-3xl font-black text-(--text-primary)'>
-                  {isLoading ? '...' : totalWorkboard}
-                </p>
-              </div>
-            </div>
+              <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
+                <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+                  <div>
+                    <p className='text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                      Bucket Summary
+                    </p>
+                    <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                      Distribusi seluruh bucket operasional
+                    </p>
+                  </div>
+                  <span className='text-[11px] font-semibold text-(--text-muted)'>
+                    Total seluruh bucket
+                  </span>
+                </div>
 
-            {/* KPI Filter + bucket label */}
-            <div className='mt-5 flex flex-wrap items-center justify-between gap-3'>
-              <div className='flex items-center gap-3'>
-                <label className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                  Filter
-                </label>
-                <select
-                  value={selectedBucket}
-                  onChange={(e) => setSelectedBucket(e.target.value)}
-                  className='rounded-md border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) shadow-sm'
-                >
-                  {BUCKET_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                <div className='grid gap-2'>
+                  {visibleCardData.map((card) => (
+                    <BucketSummaryRow
+                      key={card.key}
+                      label={card.label}
+                      total={card.summary?.total ?? 0}
+                      open={card.summary?.open ?? 0}
+                      close={card.summary?.close ?? 0}
+                      flags={card.summary}
+                      toneClass={CARD_TONES[card.key]}
+                      isLoading={isLoading}
+                    />
                   ))}
-                </select>
-              </div>
-              <span className='text-[11px] font-semibold text-(--text-muted)'>
-                {bucketSuffix}
-              </span>
-            </div>
-
-            {/* Priority Flag Overview */}
-            <div className='mt-4 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
-              <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                  Priority Flag Overview
-                </p>
-                <span className='text-[11px] font-semibold text-(--text-muted)'>
-                  Total seluruh bucket
-                </span>
-              </div>
-              <FlaggingMiniGrid counts={flaggingTotals} />
-            </div>
-
-            {/* 6-bucket summary bar */}
-            <div
-              className='mt-4 grid gap-px border-t border-(--border) bg-(--border)'
-              style={
-                selectedBucket === 'all'
-                  ? { gridTemplateColumns: 'repeat(6, minmax(0, 1fr))' }
-                  : {}
-              }
-            >
-              {visibleCardData.map((card) => (
-                <div key={card.key} className='bg-(--surface) p-4'>
-                  <p className='text-[11px] font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                    {card.label}
-                  </p>
-                  <p className='mt-2 text-3xl font-black text-(--text-primary)'>
-                    {isLoading ? '...' : (card.summary?.total ?? 0)}
-                  </p>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* ─── STAT CARDS ─── */}
-        <div className='grid grid-cols-2 gap-4 lg:grid-cols-4'>
-          <StatCard
-            label='Total'
-            value={opsSummary?.stats.total ?? 0}
-            subInfo='Semua tiket'
-            variant='total'
-          />
-          <StatCard
-            label='Unassigned'
-            value={opsSummary?.stats.unassigned ?? 0}
-            subInfo='Butuh assign'
-            variant='unassigned'
-          />
-          <StatCard
-            label='Assigned'
-            value={opsSummary?.stats.assigned ?? 0}
-            subInfo='Sedang dikerjakan'
-            variant='assigned'
-          />
-          <StatCard
-            label='Close'
-            value={opsSummary?.stats.close ?? 0}
-            subInfo='Selesai hari ini'
-            variant='close'
-          />
-        </div>
-
-        {/* ─── FOCUS QUEUE ─── */}
-        <OperationalFocusQueue items={focusItems} />
+        </section>
 
         {/* ─── DIAMOND ALERT ─── */}
         {expiredTickets.length > 0 && (
@@ -444,62 +720,6 @@ export default function TicketManagementOverviewPage() {
           ]}
         />
 
-        {/* ─── BUCKET CARDS ─── */}
-        <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'>
-          {visibleCardData.map((card) => (
-            <Link
-              key={card.key}
-              href={card.path}
-              className={clsx(
-                'group rounded-3xl border p-5 shadow-sm transition-transform duration-200 hover:-translate-y-0.5',
-                CARD_TONES[card.key],
-              )}
-            >
-              <div className='flex items-start justify-between gap-4'>
-                <div className='min-w-0 flex-1'>
-                  <p className='text-2xl'>{card.icon}</p>
-                  <h2 className='mt-3 text-xl font-black'>{card.label}</h2>
-                  <p className='mt-2 text-sm leading-6 opacity-80'>
-                    {card.description}
-                  </p>
-                </div>
-                <div className='shrink-0 rounded-2xl bg-white/60 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
-                  <p className='text-[11px] font-bold tracking-[1.2px] uppercase opacity-70'>
-                    Total
-                  </p>
-                  <p className='text-2xl font-black'>
-                    {card.summary?.total ?? 0}
-                  </p>
-                </div>
-              </div>
-
-              <div className='mt-5 grid grid-cols-3 gap-2 text-center'>
-                {(
-                  [
-                    ['Open', card.summary?.open ?? 0],
-                    ['Assigned', card.summary?.assigned ?? 0],
-                    ['Close', card.summary?.close ?? 0],
-                  ] as const
-                ).map(([label, value]) => (
-                  <div
-                    key={label}
-                    className='rounded-2xl bg-white/55 px-3 py-2 dark:bg-black/10'
-                  >
-                    <p className='text-[10px] font-bold tracking-[1.2px] uppercase opacity-70'>
-                      {label}
-                    </p>
-                    <p className='mt-1 text-lg font-black'>{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className='mt-2'>
-                <FlaggingMiniGrid counts={card.summary} />
-              </div>
-            </Link>
-          ))}
-        </div>
-
         {/* ─── QUICK ACCESS ─── */}
         <div className='rounded-3xl border border-(--border) bg-(--surface) p-5 shadow-sm'>
           <div className='flex flex-wrap items-center justify-between gap-3'>
@@ -507,9 +727,12 @@ export default function TicketManagementOverviewPage() {
               <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
                 Quick Access
               </p>
-              <h2 className='mt-1 text-xl font-black text-(--text-primary)'>
+              <h2 className='mt-1 text-lg font-black text-(--text-primary)'>
                 Shortcut ke Area Kerja
               </h2>
+              <p className='mt-1 text-sm text-(--text-muted)'>
+                Masuk langsung ke bucket yang sedang dipantau.
+              </p>
             </div>
             <div className='flex flex-wrap gap-2'>
               {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => (

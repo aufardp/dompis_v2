@@ -1,14 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  ChevronDown,
-  Flame,
-  ListChecks,
-  ShieldCheck,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { Ticket } from '@/app/types/ticket';
 import { JENIS_LABELS, normalizeJenis } from '@/app/config/jenis-tiket';
@@ -52,40 +45,14 @@ function StatusBadge({
   tone: string;
 }) {
   return (
-    <div className='rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/70'>
-      <p className={clsx('font-mono text-sm font-black', tone)}>
+    <div className='rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-900/70'>
+      <p className={clsx('font-mono text-xs font-black', tone)}>
         {value.toLocaleString()}
       </p>
-      <p className='text-[10px] font-semibold text-slate-500 dark:text-slate-400'>
+      <p className='text-[9px] font-semibold text-slate-500 dark:text-slate-400'>
         {label}
       </p>
     </div>
-  );
-}
-
-function FlagPill({
-  label,
-  value,
-  icon,
-  className,
-}: {
-  label: string;
-  value: number;
-  icon: ReactNode;
-  className: string;
-}) {
-  if (value <= 0) return null;
-
-  return (
-    <span
-      className={clsx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold',
-        className,
-      )}
-    >
-      {icon}
-      {label} {value.toLocaleString()}
-    </span>
   );
 }
 
@@ -145,33 +112,33 @@ export default function B2BGroupCard({
   return (
     <article
       className={clsx(
-        'rounded-xl border bg-white shadow-sm transition dark:bg-slate-950/70',
+        'rounded-2xl border bg-(--surface) shadow-sm transition',
         isZeroState
-          ? 'border-slate-200 opacity-55 dark:border-slate-800'
-          : 'border-slate-200 hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:hover:border-blue-800',
+          ? 'border-(--border) opacity-60'
+          : 'border-(--border) hover:border-blue-300 hover:shadow-md',
       )}
     >
       <button
         type='button'
         onClick={() => setExpanded((value) => !value)}
-        className='flex w-full items-start justify-between gap-3 p-4 text-left'
+        className='flex w-full items-start justify-between gap-3 p-3.5 text-left md:p-4'
       >
         <div className='flex min-w-0 gap-3'>
-          <div className='grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-base dark:bg-slate-900'>
+          <div className='grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-(--surface-2) text-sm ring-1 ring-(--border)'>
             {icon}
           </div>
           <div className='min-w-0'>
             <div className='flex items-center gap-2'>
-              <p className='truncate text-sm font-black text-slate-950 dark:text-slate-50'>
+              <p className='truncate text-[13px] font-black text-(--text-primary)'>
                 {label}
               </p>
               {activeCount > 0 && (
-                <span className='rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600 dark:bg-blue-950/40 dark:text-blue-300'>
+                <span className='rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'>
                   {activeCount} active
                 </span>
               )}
             </div>
-            <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
+            <p className='mt-0.5 text-[11px] text-(--text-secondary)'>
               {total.toLocaleString()} total tickets · {closeRate}% close rate
             </p>
           </div>
@@ -179,14 +146,14 @@ export default function B2BGroupCard({
 
         <ChevronDown
           className={clsx(
-            'mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform',
+            'mt-1 h-4 w-4 shrink-0 text-(--text-muted) transition-transform',
             expanded && 'rotate-180',
           )}
         />
       </button>
 
-      <div className='px-4 pb-4'>
-        <div className='grid grid-cols-3 gap-2'>
+      <div className='px-3.5 pb-3.5 md:px-4 md:pb-4'>
+        <div className='grid grid-cols-3 gap-1.5'>
           <StatusBadge label='Open' value={openCount} tone='text-amber-600' />
           <StatusBadge
             label='Assigned'
@@ -196,7 +163,7 @@ export default function B2BGroupCard({
           <StatusBadge label='Close' value={closeCount} tone='text-emerald-600' />
         </div>
 
-        <div className='mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800'>
+        <div className='mt-2.5 h-1.5 overflow-hidden rounded-full bg-(--surface-3)'>
           <div className='flex h-full'>
             <div className='bg-amber-400' style={{ width: `${openRate}%` }} />
             <div className='bg-blue-500' style={{ width: `${assignedRate}%` }} />
@@ -204,53 +171,26 @@ export default function B2BGroupCard({
           </div>
         </div>
 
-        <div className='mt-3 flex flex-wrap gap-1.5'>
-          <FlagPill
-            label='P1'
-            value={summary?.p1Count ?? 0}
-            icon={<Flame className='h-3 w-3' />}
-            className='bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
-          />
-          <FlagPill
-            label='Gamas'
-            value={summary?.gamasCount ?? 0}
-            icon={<AlertTriangle className='h-3 w-3' />}
-            className='bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-          />
-          <FlagPill
-            label='FFG'
-            value={summary?.ffgCount ?? 0}
-            icon={<ShieldCheck className='h-3 w-3' />}
-            className='bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-          />
-          <FlagPill
-            label='P+'
-            value={summary?.pPlusCount ?? 0}
-            icon={<ListChecks className='h-3 w-3' />}
-            className='bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/40 dark:text-fuchsia-300'
-          />
-        </div>
-
         {expanded && (
-          <div className='mt-4 border-t border-slate-200 pt-3 dark:border-slate-800'>
+          <div className='mt-3 border-t border-(--border) pt-2.5'>
             {breakdown.length > 0 ? (
-              <div className='space-y-1.5'>
-                {breakdown.slice(0, 4).map((item) => (
+              <div className='space-y-1'>
+                {breakdown.slice(0, 2).map((item) => (
                   <div
                     key={item.key}
-                    className='flex items-center justify-between rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-900'
+                    className='flex items-center justify-between rounded-lg px-2 py-1 text-xs hover:bg-(--surface-2)'
                   >
-                    <span className='text-slate-500 dark:text-slate-400'>
+                    <span className='text-(--text-secondary)'>
                       {item.label}
                     </span>
-                    <span className='font-mono font-bold text-slate-950 dark:text-slate-50'>
+                    <span className='font-mono font-bold text-(--text-primary)'>
                       {item.count.toLocaleString()}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400'>
+              <p className='rounded-lg bg-(--surface-2) px-3 py-2 text-xs text-(--text-secondary)'>
                 Detail jenis tiket mengikuti summary harian backend.
               </p>
             )}

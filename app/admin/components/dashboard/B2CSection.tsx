@@ -142,25 +142,24 @@ export default function B2CSection({
 
   return (
     <div className='space-y-4'>
-      {/* Section header with filter tabs */}
-      <div className='flex flex-wrap items-center justify-between gap-3'>
-        {/* Left: title */}
-        <div className='flex items-center gap-2'>
-          <div className='flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-blue-500 to-indigo-600 text-base shadow-sm'>
-            👥
-          </div>
-          <div>
-            <p className='text-sm font-bold text-slate-800 dark:text-slate-100'>
-              B2C Overview
-            </p>
-            <p className='text-[10px] text-slate-400 dark:text-slate-500'>
-              Customer Type Overview
-            </p>
+      <div className='flex flex-col gap-3 rounded-2xl border border-(--border) bg-(--surface) p-3.5 shadow-sm lg:flex-row lg:items-center lg:justify-between'>
+        <div className='space-y-1'>
+          <div className='flex items-center gap-2'>
+            <div className='grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-sm font-black text-white shadow-sm'>
+              C
+            </div>
+            <div>
+              <p className='text-sm font-black tracking-tight text-(--text-primary)'>
+                B2C Overview
+              </p>
+              <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+                Customer family · B2C / SQM / Unspec
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Right: filter tabs */}
-        <div className='flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800/80'>
+        <div className='flex flex-wrap items-center gap-1.5 rounded-2xl border border-(--border) bg-(--bg) p-1'>
           {filterTabs.map((tab) => {
             const count =
               tab.key === 'all'
@@ -175,18 +174,16 @@ export default function B2CSection({
                 type='button'
                 onClick={() => onSelectType?.(tab.key)}
                 className={[
-                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold',
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1.25 text-[11px] font-semibold',
                   'transition-all duration-150',
                   isActive
-                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
-                    : 'text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/60 dark:hover:text-slate-200',
+                    ? 'bg-(--surface-2) text-(--text-primary) shadow-sm ring-1 ring-(--border)'
+                    : 'text-(--text-secondary) hover:bg-(--surface) hover:text-(--text-primary)',
                 ].join(' ')}
               >
-                {tab.icon && <span>{tab.icon}</span>}
                 <span>{tab.label}</span>
                 <span
-                  className='rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white'
-                  style={{ background: isActive ? '#3b82f6' : '#94a3b8' }}
+                  className='rounded-full bg-(--border) px-1.5 py-0.5 text-[9px] font-bold text-(--text-secondary)'
                 >
                   {count}
                 </span>
@@ -196,7 +193,6 @@ export default function B2CSection({
         </div>
       </div>
 
-      {/* Summary banner */}
       <B2CSummaryCard
         total={data.summary.total}
         open={data.summary.open}
@@ -212,8 +208,7 @@ export default function B2CSection({
         isDailyScope={isDailyScope}
       />
 
-      {/* Tier cards */}
-      <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
+      <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
         {tierCards.map((tier) => {
           const d = data[tier.dataKey];
           return (

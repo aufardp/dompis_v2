@@ -29,26 +29,55 @@ export function parseWIBDateInput(
   if (!raw) return null;
 
   try {
-    // Handle DD/MM/YYYY HH:mm format (assumed WIB)
+    // Handle slash-based dates from spreadsheets.
+    // Supports both DD/MM/YYYY HH:mm and MM/DD/YY HH:mm.
     if (raw.includes('/')) {
-      const [day, month, yearAndTime] = raw.split('/');
-      const [yearRaw, time] = (yearAndTime || '').trim().split(/\s+/);
-      const yearNum = Number(String(yearRaw ?? '').trim());
-      const year =
-        String(yearRaw ?? '').trim().length <= 2 && Number.isFinite(yearNum)
-          ? String(yearNum <= 69 ? 2000 + yearNum : 1900 + yearNum)
-          : String(yearRaw ?? '').trim();
-      const [hour, minute] = time ? time.split(':') : ['0', '0'];
+      const parts = raw.split('/');
+      if (parts.length >= 3) {
+        const [firstRaw, secondRaw, yearAndTimeRaw] = parts;
+        const [yearRaw, timeRaw = ''] = String(yearAndTimeRaw || '')
+          .trim()
+          .split(/\s+/);
 
-      const dd = String(day || '').padStart(2, '0');
-      const mm = String(month || '').padStart(2, '0');
-      const yyyy = String(year || '').padStart(4, '0');
-      const hh = String(hour || '0').padStart(2, '0');
-      const mi = String(minute || '0').padStart(2, '0');
+        const firstNum = Number(String(firstRaw ?? '').trim());
+        const secondNum = Number(String(secondRaw ?? '').trim());
+        const yearNum = Number(String(yearRaw ?? '').trim());
+        const yearText = String(yearRaw ?? '').trim();
+        const year =
+          yearText.length <= 2 && Number.isFinite(yearNum)
+            ? String(yearNum <= 69 ? 2000 + yearNum : 1900 + yearNum)
+            : yearText;
 
-      const asWib = `${yyyy}-${mm}-${dd} ${hh}:${mi}:00`;
-      const d = fromZonedTime(asWib, WIB_TIMEZONE);
-      return isNaN(d.getTime()) ? null : d;
+        let day = String(firstRaw || '').trim();
+        let month = String(secondRaw || '').trim();
+
+        if (Number.isFinite(firstNum) && Number.isFinite(secondNum)) {
+          if (firstNum > 12 && secondNum <= 12) {
+            day = String(firstNum);
+            month = String(secondNum);
+          } else if (secondNum > 12 && firstNum <= 12) {
+            day = String(secondNum);
+            month = String(firstNum);
+          } else {
+            // Ambiguous dates default to MM/DD because the import file
+            // observed in production uses US spreadsheet formatting.
+            month = String(firstNum);
+            day = String(secondNum);
+          }
+        }
+
+        const [hour, minute] = timeRaw ? timeRaw.split(':') : ['0', '0'];
+
+        const dd = String(day || '').padStart(2, '0');
+        const mm = String(month || '').padStart(2, '0');
+        const yyyy = String(year || '').padStart(4, '0');
+        const hh = String(hour || '0').padStart(2, '0');
+        const mi = String(minute || '0').padStart(2, '0');
+
+        const asWib = `${yyyy}-${mm}-${dd} ${hh}:${mi}:00`;
+        const d = fromZonedTime(asWib, WIB_TIMEZONE);
+        return isNaN(d.getTime()) ? null : d;
+      }
     }
 
     // Explicit timezone in string -> parse as-is

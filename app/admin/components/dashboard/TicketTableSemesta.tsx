@@ -347,11 +347,13 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
   const rowOffset = 0;
 
   return (
-    <div className='space-y-3'>
-{/* Mobile */}
+    <div className='space-y-4'>
+      {/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
         {loading ? (
-          <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
+          <p className='py-8 text-center text-(--text-secondary)'>
+            Loading...
+          </p>
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-(--text-secondary)'>
             No tickets found
@@ -362,21 +364,21 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
               return (
                 <div
                   key={ticket.idTicket ?? ticket.ticket}
-                  className='group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 sm:p-4'
+                  className='group rounded-3xl border border-(--border) bg-(--surface) p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400/20 hover:shadow-md sm:p-4'
                 >
-                        <div className='flex items-start justify-between gap-2 sm:gap-3'>
+                  <div className='flex items-start justify-between gap-2 sm:gap-3'>
                           <div className='min-w-0 flex-1'>
                             <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
-                              <p className='truncate text-sm font-semibold text-slate-900 dark:text-white'>
+                              <p className='truncate text-sm font-semibold text-(--text-primary)'>
                                 {ticket.ticket || '-'}
                               </p>
-                              <span className='text-xs text-slate-500'>
+                              <span className='text-xs text-(--text-muted)'>
                                 {ticket.reportedDate
                                   ? formatDate(ticket.reportedDate)
                                   : '-'}
                               </span>
                             </div>
-                            <p className='mt-1 truncate text-sm text-slate-700 dark:text-slate-300'>
+                            <p className='mt-1 truncate text-sm text-(--text-secondary)'>
                               {ticket.summary || '-'}
                             </p>
                           </div>
@@ -396,52 +398,52 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                           </div>
                         </div>
 
-                        <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 dark:text-slate-300 sm:grid-cols-2'>
-                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
-                            <Hash className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                        <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-(--text-secondary) sm:grid-cols-2'>
+                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                            <Hash className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
                             <div className='min-w-0'>
-                              <p className='text-[11px] text-slate-500'>Service</p>
+                              <p className='text-[11px] text-(--text-muted)'>Service</p>
                               <p className='truncate font-semibold'>
                                 {ticket.serviceNo || '-'}
                               </p>
                             </div>
                           </div>
-                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
-                            <MapPin className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                            <MapPin className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
                             <div className='min-w-0'>
-                              <p className='text-[11px] text-slate-500'>Workzone</p>
+                              <p className='text-[11px] text-(--text-muted)'>Workzone</p>
                               <p className='truncate font-semibold'>
                                 {ticket.workzone || '-'}
                               </p>
                             </div>
                           </div>
-                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
-                            <User className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                            <User className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
                             <div className='min-w-0'>
-                              <p className='text-[11px] text-slate-500'>Type</p>
+                              <p className='text-[11px] text-(--text-muted)'>Type</p>
                               <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
                             </div>
                           </div>
-                          <div className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-slate-700/50'>
-                            <Clock3 className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                            <Clock3 className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
                             <div className='min-w-0'>
-                              <p className='text-[11px] text-slate-500'>Max TTR</p>
+                              <p className='text-[11px] text-(--text-muted)'>Max TTR</p>
                               <MaxTtrCell ticket={ticket} />
                             </div>
                           </div>
                         </div>
 
-                        <div className='mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800/50'>
+                        <div className='mt-3 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--bg) p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
                           <div className='min-w-0'>
-                            <p className='text-[11px] text-slate-500'>Customer</p>
-                            <p className='truncate text-sm font-semibold text-slate-900 dark:text-white'>
+                            <p className='text-[11px] text-(--text-muted)'>Customer</p>
+                            <p className='truncate text-sm font-semibold text-(--text-primary)'>
                               {ticket.contactName || '-'}
                             </p>
                           </div>
                           <div className='min-w-0 text-right sm:shrink-0'>
-                            <p className='text-[11px] text-slate-500'>Phone</p>
-                            <p className='inline-flex items-center gap-1 text-sm font-medium text-slate-700 dark:text-slate-300'>
-                              <Phone className='h-3.5 w-3.5 text-slate-500 sm:h-4 sm:w-4' />
+                            <p className='text-[11px] text-(--text-muted)'>Phone</p>
+                            <p className='inline-flex items-center gap-1 text-sm font-medium text-(--text-secondary)'>
+                              <Phone className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
                               <span className='tabular-nums'>
                                 {ticket.contactPhone || '-'}
                               </span>
@@ -451,15 +453,15 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
 
                         <div className='mt-3 flex items-center justify-between gap-3'>
                           <div className='min-w-0 flex-1'>
-                            <p className='text-[11px] text-slate-500'>Technician</p>
-                            <p className='truncate text-sm font-medium text-slate-800 dark:text-slate-200'>
+                            <p className='text-[11px] text-(--text-muted)'>Technician</p>
+                            <p className='truncate text-sm font-medium text-(--text-primary)'>
                               {ticket.technicianName || (
-                                <span className='text-slate-400 italic'>
+                                <span className='italic text-(--text-muted)'>
                                   Unassigned
                                 </span>
                               )}
                             </p>
-                            <p className='mt-0.5 text-xs text-slate-500'>
+                            <p className='mt-0.5 text-xs text-(--text-muted)'>
                               Jenis tiket: {ticket.jenisTiket || '-'}
                             </p>
                             <div className='mt-2 flex flex-wrap gap-2'>
@@ -478,7 +480,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                           </div>
                           <button
                             onClick={() => handleOpenDrawer(ticket)}
-                            className='flex shrink-0 items-center gap-1.5 rounded-xl border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/15 dark:hover:text-blue-400'
+                            className='flex shrink-0 items-center gap-1.5 rounded-2xl border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-500/5 hover:text-blue-600'
                           >
                             <Eye size={13} />
                             Detail
@@ -493,12 +495,17 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
 
       {/* Desktop */}
       <div className='hidden lg:block'>
-        <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
+        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
           {/* Table toolbar */}
-          <div className='bg-surface-2 flex flex-col gap-3 border-b border-(--border) px-4 py-3 lg:flex-row lg:items-center lg:justify-between'>
-            <p className='font-dm-sans text-xs text-(--text-secondary)'>
-              {pagination?.total ?? sortedTickets.length} tiket (Database Bank)
-            </p>
+          <div className='flex flex-col gap-3 border-b border-(--border) bg-(--surface-2) px-4 py-4 lg:flex-row lg:items-center lg:justify-between'>
+            <div>
+              <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                Live Table
+              </p>
+              <p className='mt-0.5 text-xs text-(--text-secondary)'>
+                {pagination?.total ?? sortedTickets.length} tiket in the current scope
+              </p>
+            </div>
 
             {hasDownload && (
               <div className='flex flex-wrap items-center gap-2'>
@@ -507,7 +514,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                   onChange={(e) =>
                     setDownloadFormat(e.target.value as 'csv' | 'xlsx')
                   }
-                  className='bg-surface h-9 rounded-lg border border-(--border) px-3 text-xs font-semibold text-(--text-primary) outline-none'
+                  className='h-9 rounded-2xl border border-(--border) bg-(--surface) px-3 text-xs font-semibold text-(--text-primary) outline-none'
                 >
                   <option value='csv'>CSV</option>
                   <option value='xlsx'>XLSX</option>
@@ -516,7 +523,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                   type='button'
                   onClick={handleDownload}
                   disabled={downloading}
-                  className='inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60'
+                  className='inline-flex h-9 items-center gap-2 rounded-2xl bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60'
                 >
                   {downloading ? (
                     <Loader2 className='h-3.5 w-3.5 animate-spin' />

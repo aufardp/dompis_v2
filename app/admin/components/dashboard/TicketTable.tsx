@@ -89,6 +89,7 @@ export interface AdminTicketTableProps {
     close: number;
   };
   tableLabel?: string;
+  highlightQuery?: string;
   flaggingFilter?: string[];
   downloadFilters?: {
     dept: 'all' | 'b2b' | 'b2c';
@@ -103,6 +104,8 @@ export interface AdminTicketTableProps {
     excludeSymptom?: string;
   };
 }
+
+type TableTicket = NonNullable<AdminTicketTableProps['tickets']>[number];
 
 interface SortConfig {
   field: SortField;
@@ -170,6 +173,7 @@ export default function TicketTable({
   pagination,
   tableLabel = 'B2C Tickets',
   tableSummary,
+  highlightQuery,
   downloadFilters,
 }: AdminTicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -183,6 +187,27 @@ export default function TicketTable({
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [downloadFormat, setDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
   const [downloading, setDownloading] = useState(false);
+  const normalizedHighlightQuery = (highlightQuery ?? '').trim().toLowerCase();
+
+  const isHighlighted = useCallback(
+    (ticket: TableTicket) => {
+      if (!normalizedHighlightQuery) return false;
+      const haystack = [
+        ticket.ticket,
+        ticket.serviceNo,
+        ticket.contactName,
+        ticket.summary,
+        ticket.workzone,
+        ticket.customerType,
+        ticket.jenisTiket,
+      ]
+        .map((value) => String(value ?? '').toLowerCase())
+        .filter(Boolean);
+
+      return haystack.some((value) => value.includes(normalizedHighlightQuery));
+    },
+    [normalizedHighlightQuery],
+  );
 
   const handleDownload = useCallback(async () => {
     if (!downloadFilters) return;
@@ -391,6 +416,7 @@ export default function TicketTable({
                   key={ticket.idTicket ?? ticket.ticket}
                   ticket={ticket}
                   onAssign={handleAssign}
+                  highlighted={isHighlighted(ticket)}
                 />
               ))}
             </div>
@@ -504,21 +530,22 @@ export default function TicketTable({
                               : 'On Track';
 
                     return (
-                      <TicketRow
-                        key={ticketId}
-                        ticket={ticket}
-                        onAssign={handleAssign}
-                        onDetail={onDetail}
-                        isExpanded={isExpanded}
-                        onToggleExpand={() => toggleExpand(ticketId as number)}
-                        rank={ticketInfo?.rank}
-                        ticketAge={ticketInfo?.ageFormatted}
-                        severity={ticketInfo?.severity}
-                        slaLabel={slaLabel}
-                        ttrCountdown={ttrCountdown}
-                      />
-                    );
-                  })
+                    <TicketRow
+                      key={ticketId}
+                      ticket={ticket}
+                      onAssign={handleAssign}
+                      onDetail={onDetail}
+                      isExpanded={isExpanded}
+                      onToggleExpand={() => toggleExpand(ticketId as number)}
+                      rank={ticketInfo?.rank}
+                      ticketAge={ticketInfo?.ageFormatted}
+                      severity={ticketInfo?.severity}
+                      slaLabel={slaLabel}
+                      ttrCountdown={ttrCountdown}
+                      highlighted={isHighlighted(ticket)}
+                    />
+                  );
+                })
                 )}
               </tbody>
             </table>

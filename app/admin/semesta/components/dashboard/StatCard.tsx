@@ -46,13 +46,13 @@ export default function StatCard({
   return (
     <div
       className={cn(
-        'group bg-surface relative overflow-hidden rounded-xl border border-(--border) p-4',
-        'transition-all duration-300 ease-in-out hover:scale-[1.02] hover:border-white/10',
+        'group relative overflow-hidden rounded-2xl border border-(--border) bg-(--surface) p-4',
+        'transition-all duration-300 ease-in-out hover:border-blue-400/20 hover:bg-(--surface-2)',
       )}
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 opacity-80',
+          'pointer-events-none absolute inset-0 opacity-75',
           'bg-gradient-to-br',
           v.accent,
         )}
@@ -62,7 +62,7 @@ export default function StatCard({
         <div className='min-w-0'>
           <div
             className={cn(
-              'font-outfit inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-[1.2px] uppercase',
+              'font-outfit inline-flex items-center gap-2 rounded-full border border-white/5 px-2.5 py-1 text-[10px] font-bold tracking-[1.2px] uppercase',
               v.pill,
             )}
           >
@@ -71,22 +71,22 @@ export default function StatCard({
           </div>
 
           {loading ? (
-            <div className='bg-surface-2 mt-3 h-9 w-28 animate-pulse rounded-lg' />
+            <div className='bg-surface-2 mt-3 h-10 w-28 animate-pulse rounded-xl' />
           ) : (
-            <div className='font-syne mt-3 text-3xl font-extrabold tracking-tight text-(--text-primary) md:text-4xl'>
+            <div className='font-syne mt-3 text-3xl font-extrabold tracking-tight text-(--text-primary) md:text-[2.5rem]'>
               {value.toLocaleString()}
             </div>
           )}
 
           {subtitle && (
-            <div className='font-outfit mt-1 text-xs text-(--text-muted)'>
+            <div className='font-outfit mt-1 text-xs leading-5 text-(--text-muted)'>
               {subtitle}
             </div>
           )}
         </div>
 
         <div className='hidden sm:block'>
-          <div className='font-outfit bg-surface-2 rounded-xl border border-(--border) px-3 py-2 text-xs font-semibold text-(--text-secondary)'>
+          <div className='font-outfit rounded-full border border-(--border) bg-(--bg) px-3 py-2 text-[10px] font-semibold tracking-[0.12em] text-(--text-secondary) uppercase'>
             KPI
           </div>
         </div>
