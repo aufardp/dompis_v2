@@ -110,13 +110,19 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
       <div className='space-y-4'>
         {groupedRows.map(([area, areaRows]) => {
           const isOpen = openAreas.has(area);
-          const areaOpen = areaRows.reduce((sum, row) => sum + row.totalOpen, 0);
-          const areaClose = areaRows.reduce((sum, row) => sum + row.totalClose, 0);
+          const areaOpen = areaRows.reduce(
+            (sum, row) => sum + row.totalOpen,
+            0,
+          );
+          const areaClose = areaRows.reduce(
+            (sum, row) => sum + row.totalClose,
+            0,
+          );
           const areaTotal = areaOpen + areaClose;
           return (
             <section
               key={area}
-              className='overflow-hidden rounded-[24px] border border-(--border) bg-(--surface) shadow-sm'
+              className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'
             >
               <button
                 type='button'

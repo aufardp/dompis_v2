@@ -941,12 +941,15 @@ export default function TechniciansPage() {
                         >
                           <option value=''>Semua Area</option>
                           {workzoneOptions.map(
-                            (opt: {
-                              id_sa: number;
-                              nama_sa: string | null;
-                            }) => (
+                            (
+                              opt: {
+                                id_sa: number;
+                                nama_sa: string | null;
+                              },
+                              index: number,
+                            ) => (
                               <option
-                                key={`${opt.id_sa}-${opt.nama_sa ?? 'area'}`}
+                                key={`${opt.id_sa}-${opt.nama_sa ?? 'area'}-${index}`}
                                 value={String(opt.id_sa)}
                               >
                                 {opt.nama_sa ?? `Area ${opt.id_sa}`}
