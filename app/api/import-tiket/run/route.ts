@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { createHash } from 'crypto';
 import prisma from '@/app/libs/prisma';
@@ -14,6 +15,7 @@ import { todayWibDateForDb, toWibString } from '@/lib/timezone';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import {
   TICKET_RAW_FIELDS,
+  TICKET_RAW_MAX_LENGTHS,
   FIELD_CANDIDATES,
   REQUIRED_FIELDS,
   validateDate,
@@ -88,6 +90,24 @@ function normalizeImportedStringValue(
   return trimmed;
 }
 
+function truncateByMaxLength(value: string | null, maxLength?: number): string | null {
+  if (value === null || maxLength === undefined) return value;
+  if (value.length <= maxLength) return value;
+  return value.slice(0, maxLength);
+}
+
+function sanitizeTicketRawPayload(data: Record<string, any>): Record<string, any> {
+  const sanitized = { ...data };
+
+  for (const [key, maxLength] of Object.entries(TICKET_RAW_MAX_LENGTHS)) {
+    const value = sanitized[key];
+    if (typeof value !== 'string') continue;
+    sanitized[key] = truncateByMaxLength(value, maxLength);
+  }
+
+  return sanitized;
+}
+
 function computeStableHash(payload: Record<string, unknown>): string {
   const stable: Record<string, unknown> = {};
   for (const key of Object.keys(payload).sort()) {
@@ -98,7 +118,15 @@ function computeStableHash(payload: Record<string, unknown>): string {
 
 export async function POST(req: Request) {
   try {
-    await protectApi(['admin', 'superadmin', 'super_admin']);
+    const actor = await protectApi(['admin', 'superadmin', 'super_admin']);
+    const uploader = await prisma.users.findUnique({
+      where: { id_user: actor.id_user },
+      select: { nama: true, username: true },
+    });
+    const uploadedBy =
+      uploader?.nama?.trim() ||
+      uploader?.username?.trim() ||
+      `User #${actor.id_user}`;
 
     const rateLimited = await enforceApiRateLimit(req, {
       namespace: 'import-tiket-run',
@@ -199,7 +227,9 @@ export async function POST(req: Request) {
         data.import_batch = batchName;
         data.synced_at = new Date();
 
-        parsedRows.push({ incident, data, raw: row, changedColumns: [] });
+        const sanitizedData = sanitizeTicketRawPayload(data);
+
+        parsedRows.push({ incident, data: sanitizedData, raw: row, changedColumns: [] });
       }
 
       if (parsedRows.length === 0) continue;
@@ -282,12 +312,29 @@ export async function POST(req: Request) {
       }
     }
 
-    await prisma.projection_request.create({
-      data: {
-        source: 'import-tiket',
-        syncBatchId: batchName,
-      },
-    });
+    try {
+      await prisma.$executeRaw(
+        Prisma.sql`INSERT INTO projection_request (source, sync_batch_id, uploaded_by)
+          VALUES ('import-tiket', ${batchName}, ${uploadedBy})`,
+      );
+    } catch (projectionError) {
+      const message = projectionError instanceof Error
+        ? projectionError.message.toLowerCase()
+        : '';
+      const canRetryWithoutUploader =
+        message.includes('uploaded_by') ||
+        message.includes('column') ||
+        message.includes('unknown column');
+
+      if (!canRetryWithoutUploader) {
+        throw projectionError;
+      }
+
+      await prisma.$executeRaw(
+        Prisma.sql`INSERT INTO projection_request (source, sync_batch_id)
+          VALUES ('import-tiket', ${batchName})`,
+      );
+    }
 
     await invalidateTicketsCache();
     broadcastTicketInvalidate('import-tiket');
@@ -301,6 +348,7 @@ export async function POST(req: Request) {
         failed,
         errors,
         import_batch: batchName,
+        uploaded_by: uploadedBy,
       },
       message: `Import berhasil. ${inserted} baru, ${updated} diperbarui, ${skipped} dilewati. Data akan muncul di board dalam ~1 menit.`,
     });

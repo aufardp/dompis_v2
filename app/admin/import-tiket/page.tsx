@@ -45,12 +45,14 @@ interface ImportResult {
   failed: number;
   errors: string[];
   import_batch: string;
+  uploaded_by?: string | null;
 }
 
 interface LastUploadInfo {
   import_batch: string;
   imported_at: string;
   row_count: number;
+  uploaded_by?: string | null;
 }
 
 const LOADING_PREVIEW_COLUMNS = TICKET_IMPORT_TEMPLATE_HEADERS.slice(0, 12);
@@ -314,6 +316,7 @@ export default function ImportTiketPage() {
         import_batch: json.data.import_batch,
         imported_at: new Date().toISOString(),
         row_count: preview.total_rows,
+        uploaded_by: json.data.uploaded_by ?? null,
       });
       setStep('result');
     } catch (e: any) {
@@ -439,7 +442,7 @@ export default function ImportTiketPage() {
                     className='truncate text-[11px] font-medium text-(--text-primary) md:whitespace-nowrap'
                     title={
                       lastUpload
-                        ? `${formatWibDate(lastUpload.imported_at)} • ${lastUpload.import_batch} • ${lastUpload.row_count.toLocaleString('id-ID')} rows`
+                        ? `${formatWibDate(lastUpload.imported_at)} • ${lastUpload.import_batch} • ${lastUpload.row_count.toLocaleString('id-ID')} rows${lastUpload.uploaded_by ? ` • ${lastUpload.uploaded_by}` : ''}`
                         : 'Belum ada upload'
                     }
                   >
@@ -478,6 +481,11 @@ export default function ImportTiketPage() {
                         {lastUpload
                           ? `Diunggah ${formatWibDate(lastUpload.imported_at)}`
                           : 'Belum ada batch tersimpan'}
+                      </p>
+                      <p className='mt-0.5 truncate text-[10px] text-(--text-secondary)'>
+                        {lastUpload?.uploaded_by
+                          ? `Oleh ${lastUpload.uploaded_by}`
+                          : 'Uploader belum tercatat'}
                       </p>
                     </div>
                     {lastUpload && (
@@ -903,6 +911,12 @@ export default function ImportTiketPage() {
                 Nama Batch:{' '}
                 <span className='font-mono font-medium text-slate-700 dark:text-slate-300'>
                   {result.import_batch}
+                </span>
+              </p>
+              <p className='mt-1 text-xs text-slate-500'>
+                Diunggah oleh:{' '}
+                <span className='font-medium text-slate-700 dark:text-slate-300'>
+                  {result.uploaded_by || lastUpload?.uploaded_by || 'Tidak diketahui'}
                 </span>
               </p>
             </div>

@@ -848,6 +848,7 @@ model projection_request {
   id            BigInt    @id @default(autoincrement())
   source        String    @db.VarChar(100)
   syncBatchId   String?   @map("sync_batch_id") @db.VarChar(100)
+  uploaded_by   String?   @db.VarChar(100)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(0)
   processedAt   DateTime? @map("processed_at") @db.Timestamp(0)
 

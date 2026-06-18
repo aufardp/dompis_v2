@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
@@ -10,14 +11,49 @@ export async function GET() {
   try {
     await protectApi(['admin', 'superadmin', 'super_admin']);
 
-    const latestProjection = await prisma.projection_request.findFirst({
-      where: { source: 'import-tiket', syncBatchId: { not: null } },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        syncBatchId: true,
-        createdAt: true,
-      },
-    });
+    let latestProjection: {
+      syncBatchId: string | null;
+      createdAt: Date;
+      uploaded_by?: string | null;
+    } | null = null;
+
+    try {
+      const rows = await prisma.$queryRaw<
+        Array<{
+          syncBatchId: string | null;
+          createdAt: Date;
+          uploaded_by: string | null;
+        }>
+      >(Prisma.sql`
+        SELECT
+          sync_batch_id AS syncBatchId,
+          created_at AS createdAt,
+          uploaded_by
+        FROM projection_request
+        WHERE source = 'import-tiket'
+          AND sync_batch_id IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+      latestProjection = rows[0] ?? null;
+    } catch {
+      const rows = await prisma.$queryRaw<
+        Array<{
+          syncBatchId: string | null;
+          createdAt: Date;
+        }>
+      >(Prisma.sql`
+        SELECT
+          sync_batch_id AS syncBatchId,
+          created_at AS createdAt
+        FROM projection_request
+        WHERE source = 'import-tiket'
+          AND sync_batch_id IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+      latestProjection = rows[0] ?? null;
+    }
 
     if (!latestProjection?.syncBatchId) {
       return NextResponse.json({
@@ -36,6 +72,7 @@ export async function GET() {
         import_batch: latestProjection.syncBatchId,
         imported_at: latestProjection.createdAt,
         row_count: rowCount,
+        uploaded_by: latestProjection.uploaded_by,
       },
     });
   } catch (error: unknown) {
