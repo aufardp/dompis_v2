@@ -117,7 +117,7 @@ export default function NotificationCenter({
                     Notifications
                   </p>
                   <p className='text-[11px] text-slate-500 dark:text-slate-300'>
-                    Customer inbox and diamond alerts
+                    Customer open tickets terbaru and diamond alerts
                   </p>
                 </div>
               </div>
@@ -211,7 +211,7 @@ export default function NotificationCenter({
                   </p>
                   <p className='mt-1 text-xs text-slate-500 dark:text-slate-300'>
                     {isInbox
-                      ? 'Ticket baru Customer yang perlu dibaca.'
+                      ? 'Customer open tickets terbaru yang perlu dicek.'
                       : 'Ticket Diamond yang perlu perhatian cepat.'}
                   </p>
                 </div>
@@ -224,12 +224,12 @@ export default function NotificationCenter({
                 <EmptyState
                   title={
                     isInbox
-                      ? 'No new customer tickets'
+                      ? 'No customer open tickets'
                       : 'No diamond alerts'
                   }
                   hint={
                     isInbox
-                      ? 'Ticket baru akan muncul di sini saat masuk ke bucket Customer.'
+                      ? 'Ticket Customer open terbaru akan muncul di sini sesuai urutan terbaru.'
                       : 'Alert diamond akan muncul saat ticket prioritas perlu perhatian.'
                   }
                 />

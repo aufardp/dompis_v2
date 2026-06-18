@@ -173,6 +173,20 @@ const ticketSearchSelect = {
   status_update: true,
 } as const;
 
+const ticketSearchContextSelect = {
+  id_ticket: true,
+  incident: true,
+  summary: true,
+  source_ticket: true,
+  jenis_tiket_1: true,
+  jenis_tiket_2: true,
+  classification_path: true,
+  customer_type: true,
+  customer_segment: true,
+  workzone: true,
+  status_update: true,
+} as const;
+
 type SearchTicketRow = {
   id_ticket: number;
   incident: string | null;
@@ -1328,6 +1342,39 @@ export class TicketService {
     });
 
     return Boolean(fallback);
+  }
+
+  static async findSearchCandidate(
+    incident: string,
+    role: string,
+    userId: number,
+    searchType?: SearchType,
+  ) {
+    const roleWhere = await this.buildWorkzoneWhere(role, userId);
+    const searchPhases = buildTicketSearchPhases(incident, searchType);
+    if (!searchPhases.primaryWhere) return null;
+
+    const primary = await prisma.ticket.findFirst({
+      where: {
+        ...roleWhere,
+        ...searchPhases.primaryWhere,
+      },
+      orderBy: { id_ticket: 'desc' },
+      select: ticketSearchContextSelect,
+    });
+
+    if (primary) return primary;
+
+    if (!searchPhases.fallbackWhere) return null;
+
+    return prisma.ticket.findFirst({
+      where: {
+        ...roleWhere,
+        ...searchPhases.fallbackWhere,
+      },
+      orderBy: { id_ticket: 'desc' },
+      select: ticketSearchContextSelect,
+    });
   }
 
   static async searchByContactName(

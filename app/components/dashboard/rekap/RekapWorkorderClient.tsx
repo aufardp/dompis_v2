@@ -214,7 +214,7 @@ function SummaryTile({
   const t = toneStyles[tone];
 
   return (
-    <div className={`rounded-xl border bg-(--surface) px-3 py-2.5 ${t.border}`}>
+    <div className={`rounded-xl border bg-(--surface) px-3 py-2 ${t.border}`}>
       <div className='flex items-center justify-between gap-2'>
         <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
           {label}
@@ -222,7 +222,7 @@ function SummaryTile({
         <div className={t.icon}>{icon}</div>
       </div>
       <div className='mt-1.5 flex items-end justify-between gap-2'>
-        <p className={`text-[1.6rem] leading-none font-black ${t.text}`}>
+        <p className={`text-[1.45rem] leading-none font-black ${t.text}`}>
           {value}
         </p>
         <p className='max-w-24 text-right text-[10px] leading-4 text-(--text-muted)'>
@@ -230,7 +230,7 @@ function SummaryTile({
         </p>
       </div>
       {label === 'Close' && cr !== undefined && (
-        <div className='mt-1.5 flex items-center gap-2'>
+        <div className='mt-1.25 flex items-center gap-2'>
           <div className='h-1.25 flex-1 overflow-hidden rounded-full bg-(--surface-3)'>
             <div
               className='h-full rounded-full transition-all'
@@ -283,13 +283,13 @@ function StatusPair({
 }) {
   return (
     <div className='grid gap-2 md:grid-cols-2'>
-      <div className='rounded-xl border border-red-500/15 bg-red-500/6 px-3 py-2.5 shadow-sm dark:bg-red-500/9'>
+      <div className='rounded-xl border border-red-500/15 bg-red-500/6 px-3 py-2 shadow-sm dark:bg-red-500/9'>
         <div className='flex items-start justify-between gap-2'>
           <div>
             <p className='text-[10px] font-semibold tracking-[0.18em] text-red-600/80 uppercase dark:text-red-300/80'>
               Open
             </p>
-            <p className='mt-1.5 text-[1.75rem] leading-none font-black text-red-700 dark:text-red-200'>
+            <p className='mt-1 text-[1.55rem] leading-none font-black text-red-700 dark:text-red-200'>
               {formatNumber(open)}
             </p>
           </div>
@@ -297,18 +297,18 @@ function StatusPair({
             Need action
           </div>
         </div>
-        <p className='mt-2 text-[10px] leading-4 text-red-700/70 dark:text-red-200/70'>
+        <p className='mt-1.5 text-[10px] leading-4 text-red-700/70 dark:text-red-200/70'>
           Ticket yang masih berjalan dan perlu diproses.
         </p>
       </div>
 
-      <div className='rounded-xl border border-emerald-500/15 bg-emerald-500/6 px-3 py-2.5 shadow-sm dark:bg-emerald-500/9'>
+      <div className='rounded-xl border border-emerald-500/15 bg-emerald-500/6 px-3 py-2 shadow-sm dark:bg-emerald-500/9'>
         <div className='flex items-start justify-between gap-2'>
           <div>
             <p className='text-[10px] font-semibold tracking-[0.18em] text-emerald-600/80 uppercase dark:text-emerald-300/80'>
               Close
             </p>
-            <p className='mt-1.5 text-[1.75rem] leading-none font-black text-emerald-700 dark:text-emerald-200'>
+            <p className='mt-1 text-[1.55rem] leading-none font-black text-emerald-700 dark:text-emerald-200'>
               {formatNumber(close)}
             </p>
           </div>
@@ -316,7 +316,7 @@ function StatusPair({
             {closeRate}% rate
           </div>
         </div>
-        <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-emerald-500/10 dark:bg-emerald-500/20'>
+        <div className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-emerald-500/10 dark:bg-emerald-500/20'>
           <div
             className='h-full rounded-full transition-all'
             style={{
@@ -330,7 +330,7 @@ function StatusPair({
             }}
           />
         </div>
-        <p className='mt-2 text-[10px] leading-4 text-emerald-700/70 dark:text-emerald-200/70'>
+        <p className='mt-1.5 text-[10px] leading-4 text-emerald-700/70 dark:text-emerald-200/70'>
           Ticket yang sudah selesai diproses dan terkonfirmasi.
         </p>
       </div>
@@ -409,11 +409,11 @@ export default function RekapWorkorderClient() {
   return (
     <div className='space-y-4'>
       <section className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
-        <div className='border-b border-(--border) bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.06),transparent_22%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.05),transparent_20%)] px-4 py-3 md:px-5 md:py-3.5'>
+        <div className='border-b border-(--border) bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.06),transparent_22%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.05),transparent_20%)] px-4 py-3 md:px-5 md:py-3'>
           <div className='flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between'>
             <div className='max-w-3xl'>
               <div className='flex flex-wrap items-center gap-2'>
-                <h2 className='text-[17px] font-black tracking-tight text-(--text-primary) md:text-[18px]'>
+                <h2 className='text-[16px] font-black tracking-tight text-(--text-primary) md:text-[17px]'>
                   {displayTitle}
                 </h2>
                 <span className='rounded-full border border-(--border) bg-surface px-2 py-0.5 text-[9px] font-semibold text-(--text-muted)'>
@@ -463,8 +463,8 @@ export default function RekapWorkorderClient() {
           </div>
         </div>
 
-        <div className='border-b border-(--border) px-4 py-3.5 md:px-5'>
-          <div className='grid gap-2.5 md:grid-cols-2 xl:grid-cols-5'>
+        <div className='border-b border-(--border) px-4 py-3 md:px-5'>
+          <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-5'>
             <SummaryTile
               label='Total WO'
               value={formatNumber(ks?.total ?? displaySummary.total)}
@@ -501,7 +501,7 @@ export default function RekapWorkorderClient() {
         </div>
 
         {ks && (
-          <div className='border-b border-(--border) px-4 py-3.5 md:px-5'>
+          <div className='border-b border-(--border) px-4 py-3 md:px-5'>
             <div className='mb-2.5 flex flex-wrap items-center justify-between gap-2'>
               <div>
                 <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'>
@@ -511,11 +511,11 @@ export default function RekapWorkorderClient() {
             </div>
 
             <div className='flex flex-wrap items-center gap-1.5'>
-              <div className='flex items-center gap-2 rounded-xl border border-blue-500/15 bg-blue-500/8 px-2.5 py-1.5 text-blue-900 dark:text-blue-100'>
+              <div className='flex items-center gap-2 rounded-xl border border-blue-500/15 bg-blue-500/8 px-2.5 py-1 text-blue-900 dark:text-blue-100'>
                 <span className='text-[9px] font-semibold tracking-[0.16em] uppercase text-blue-700/75 dark:text-blue-200/75'>
                   Total
                 </span>
-                <span className='text-[1.05rem] leading-none font-black text-blue-800 dark:text-blue-100'>
+                <span className='text-[1rem] leading-none font-black text-blue-800 dark:text-blue-100'>
                   {formatNumber(ks.total ?? 0)}
                 </span>
               </div>
@@ -537,7 +537,7 @@ export default function RekapWorkorderClient() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1.5'
+                  className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1'
                   style={{
                     borderLeftWidth: '3px',
                     borderLeftColor: item.accent,

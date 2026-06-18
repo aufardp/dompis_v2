@@ -296,6 +296,8 @@ export default function TicketManagementBucketPage({
     const value = Number(searchParams.get('ticketId') || 0);
     return Number.isFinite(value) && value > 0 ? value : undefined;
   }, [searchParams]);
+  const isFocusedTicketMode = Boolean(focusTicketId);
+  const defaultTicketPageLimit = isFocusedTicketMode ? 10 : 50;
   const effectiveSearchQuery = (searchQuery.trim() || routeSearchQuery.trim());
   const normalizedSearchQuery = effectiveSearchQuery.toLowerCase();
 
@@ -395,7 +397,7 @@ export default function TicketManagementBucketPage({
     ticketStatus: b2cTicketStatusFilter,
     flagging: b2cFlaggingFilter,
     page: b2cPage,
-    limit: activeTab === 'semua' ? 50 : 10,
+    limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
     validasiPage: b2cValidasiPage,
     enabled: activeTab !== 'b2b',
   });
@@ -408,7 +410,7 @@ export default function TicketManagementBucketPage({
     ticketStatus: b2bTicketStatusFilter,
     flagging: b2bFlaggingFilter,
     page: b2bPage,
-    limit: activeTab === 'semua' ? 50 : 10,
+    limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
     validasiPage: b2bValidasiPage,
     enabled: activeTab !== 'b2c',
   });
@@ -444,7 +446,9 @@ export default function TicketManagementBucketPage({
     includeClosed: true,
     page: closePage,
     limit: 15,
-    enabled: activeTab === 'close' || Boolean(effectiveSearchQuery),
+    enabled:
+      activeTab === 'close' ||
+      (Boolean(effectiveSearchQuery) && !focusTicketId),
   });
 
   const totals = useMemo(() => {

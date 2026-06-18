@@ -112,6 +112,32 @@ type FlaggingSummary = {
   pPlusCount: number;
 };
 
+type TicketManagementBucketSummary = {
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+};
+
+type TicketManagementOverviewSummary = {
+  totals: {
+    total: number;
+    b2c: number;
+    b2b: number;
+    unassigned: number;
+    assigned: number;
+    close: number;
+    ffgCount: number;
+    gamasCount: number;
+    p1Count: number;
+    pPlusCount: number;
+  };
+  cards: Record<
+    'kpiCustomer' | 'kpiProactive' | 'nonKpiUnspec' | 'nonTechnical' | 'sqmUpdate' | 'obsolete',
+    TicketManagementBucketSummary
+  >;
+};
+
 function normalizeCacheFilterValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return [...value]
@@ -1807,6 +1833,171 @@ export class DailyTicketService {
         ]);
 
         return { all, b2c, b2b };
+      },
+      DASHBOARD_CACHE_TTL,
+    );
+  }
+
+  static async getTicketManagementOverviewSummary(
+    role: string,
+    userId: number,
+    workzone?: string,
+  ): Promise<TicketManagementOverviewSummary> {
+    const cacheKey = `dashboard:ticket_management_overview_summary:${role}:${userId}:${workzone || 'all'}`;
+
+    return getOrSetCache(
+      cacheKey,
+      async () => {
+        const bucketDefs = [
+          { key: 'kpiCustomer', bucket: 'kpi_customer' as const },
+          { key: 'kpiProactive', bucket: 'kpi_proactive' as const },
+          { key: 'nonKpiUnspec', bucket: 'non_kpi_unspec' as const },
+          { key: 'nonTechnical', bucket: 'non_technical' as const },
+          { key: 'sqmUpdate', bucket: 'sqm_update' as const },
+          { key: 'obsolete', bucket: 'obsolete' as const },
+        ];
+
+        const closeFilters = {
+          ticketStatus: CLOSE_STATUS_VALUES,
+          includeClosed: true,
+        } as const;
+
+        const [allSummaries, b2cSummaries, b2bSummaries, allCloseSummaries] =
+          await Promise.all([
+            Promise.all(
+              bucketDefs.map(async ({ bucket }) => [
+                bucket,
+                await this.getDailyTicketSummary(role, userId, {
+                  workzone,
+                  operationalBucket: [bucket],
+                }),
+              ] as const),
+            ),
+            Promise.all(
+              bucketDefs.map(async ({ bucket }) => [
+                bucket,
+                await this.getDailyTicketSummary(role, userId, {
+                  workzone,
+                  dept: 'b2c',
+                  operationalBucket: [bucket],
+                }),
+              ] as const),
+            ),
+            Promise.all(
+              bucketDefs.map(async ({ bucket }) => [
+                bucket,
+                await this.getDailyTicketSummary(role, userId, {
+                  workzone,
+                  dept: 'b2b',
+                  operationalBucket: [bucket],
+                }),
+              ] as const),
+            ),
+            Promise.all(
+              bucketDefs.map(async ({ bucket }) => [
+                bucket,
+                await this.getDailyTicketSummary(role, userId, {
+                  workzone,
+                  operationalBucket: [bucket],
+                  ...closeFilters,
+                }),
+              ] as const),
+            ),
+          ]);
+
+        const all = Object.fromEntries(allSummaries) as unknown as Record<
+          (typeof bucketDefs)[number]['bucket'],
+          TicketManagementBucketSummary & {
+            ffgCount: number;
+            gamasCount: number;
+            p1Count: number;
+            pPlusCount: number;
+          }
+        >;
+        const b2c = Object.fromEntries(b2cSummaries) as unknown as Record<
+          (typeof bucketDefs)[number]['bucket'],
+          TicketManagementBucketSummary
+        >;
+        const b2b = Object.fromEntries(b2bSummaries) as unknown as Record<
+          (typeof bucketDefs)[number]['bucket'],
+          TicketManagementBucketSummary
+        >;
+        const closeMap = Object.fromEntries(allCloseSummaries) as unknown as Record<
+          (typeof bucketDefs)[number]['bucket'],
+          TicketManagementBucketSummary
+        >;
+
+        const totalAll = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.total ?? 0),
+          0,
+        );
+
+        const deptB2CTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(b2c[bucket]?.total ?? 0),
+          0,
+        );
+        const deptB2BTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(b2b[bucket]?.total ?? 0),
+          0,
+        );
+
+        const unassignedTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.open ?? 0),
+          0,
+        );
+
+        const assignedTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.assigned ?? 0),
+          0,
+        );
+
+        const closeTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(closeMap[bucket]?.close ?? 0),
+          0,
+        );
+
+        const ffgTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.ffgCount ?? 0),
+          0,
+        );
+
+        const gamasTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.gamasCount ?? 0),
+          0,
+        );
+
+        const p1Total = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.p1Count ?? 0),
+          0,
+        );
+
+        const pPlusTotal = bucketDefs.reduce(
+          (sum, { bucket }) => sum + Number(all[bucket]?.pPlusCount ?? 0),
+          0,
+        );
+
+        return {
+          totals: {
+            total: totalAll,
+            b2c: deptB2CTotal,
+            b2b: deptB2BTotal,
+            unassigned: unassignedTotal,
+            assigned: assignedTotal,
+            close: closeTotal,
+            ffgCount: ffgTotal,
+            gamasCount: gamasTotal,
+            p1Count: p1Total,
+            pPlusCount: pPlusTotal,
+          },
+          cards: {
+            kpiCustomer: { ...all.kpi_customer, close: closeMap.kpi_customer.close },
+            kpiProactive: { ...all.kpi_proactive, close: closeMap.kpi_proactive.close },
+            nonKpiUnspec: { ...all.non_kpi_unspec, close: closeMap.non_kpi_unspec.close },
+            nonTechnical: { ...all.non_technical, close: closeMap.non_technical.close },
+            sqmUpdate: { ...all.sqm_update, close: closeMap.sqm_update.close },
+            obsolete: { ...all.obsolete, close: closeMap.obsolete.close },
+          },
+        };
       },
       DASHBOARD_CACHE_TTL,
     );

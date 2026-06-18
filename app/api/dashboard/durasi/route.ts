@@ -239,7 +239,10 @@ async function getFilteredTickets(
     const allParams: any[] = [];
 
     for (const filters of filtersList) {
-      const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
+      const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
+        ...filters,
+        includeClosed: true,
+      });
       parts.push(`(SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_workzone) WHERE ${whereClause})`);
       allParams.push(...params);
     }
@@ -294,28 +297,18 @@ export async function GET(request: NextRequest) {
     const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
+      const overview = await DailyTicketService.getTicketManagementOverviewSummary(
         decoded.role,
         decoded.id_user,
       );
-
-      const all = summaryMatrix.all;
-
-      const kpiCustomerTotal = all.kpi_customer.total;
-      const kpiProactiveTotal = all.kpi_proactive.total;
-      const nonKpiUnspecTotal = all.non_kpi_unspec.total;
-      const nonTechnicalTotal = all.non_technical.total;
-      const sqmUpdateTotal = all.sqm_update.total;
-      const obsoleteTotal = all.obsolete.total;
-
       const kpiSummary = {
-        total: kpiCustomerTotal + kpiProactiveTotal + nonKpiUnspecTotal + nonTechnicalTotal + sqmUpdateTotal + obsoleteTotal,
-        kpiCustomer: kpiCustomerTotal,
-        kpiProactive: kpiProactiveTotal,
-        nonKpiUnspec: nonKpiUnspecTotal,
-        nonTechnical: nonTechnicalTotal,
-        sqmUpdate: sqmUpdateTotal,
-        obsolete: obsoleteTotal,
+        total: overview.totals.total,
+        kpiCustomer: overview.cards.kpiCustomer.total,
+        kpiProactive: overview.cards.kpiProactive.total,
+        nonKpiUnspec: overview.cards.nonKpiUnspec.total,
+        nonTechnical: overview.cards.nonTechnical.total,
+        sqmUpdate: overview.cards.sqmUpdate.total,
+        obsolete: overview.cards.obsolete.total,
       };
 
       const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket, today);

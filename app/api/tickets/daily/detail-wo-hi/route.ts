@@ -130,9 +130,12 @@ export async function GET(request: Request) {
         statusUpdate: status === 'assigned' ? 'assigned' : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        includeClosed: true,
       },
     );
-    const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere);
+    const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere, {
+      includeClosed: true,
+    });
     const statusWhere = buildStatusInseraWhere(status);
     const finalWhere = statusWhere
       ? { AND: [mainWhere, statusWhere] }
@@ -153,12 +156,23 @@ export async function GET(request: Request) {
         };
       }
 
-      // Summary counts by status (using both status and status_update)
-      const statusGroups = await prisma.ticket.groupBy({
-        by: ['status', 'status_update'],
-        where: mainWhere,
-        _count: { _all: true },
-      });
+      // Summary counts by status using the same filtered scope as the table.
+      const [statusGroups, orderedTickets] = await Promise.all([
+        prisma.ticket.groupBy({
+          by: ['status', 'status_update'],
+          where: finalWhere,
+          _count: { _all: true },
+        }),
+        prisma.ticket.findMany({
+          where: finalWhere,
+          orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
+          skip: offset,
+          take: limit,
+          include: {
+            users: { select: { nama: true, username: true } },
+          },
+        }),
+      ]);
       let open = 0, assigned = 0, onProgress = 0, pending = 0, close = 0;
       for (const g of statusGroups) {
         const count = g._count._all;
@@ -179,24 +193,21 @@ export async function GET(request: Request) {
       }
       const summary = { total, open, assigned: assigned + onProgress + pending, close };
 
-    const orderedTickets = await prisma.ticket.findMany({
-      where: finalWhere,
-      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
-      skip: offset,
-        take: limit,
-        include: {
-          users: { select: { nama: true, username: true } },
-        },
-      });
-
       const ticketIds = orderedTickets.map(t => t.id_ticket);
 
       // Latest status from ticket_status_history per ticket
-      const statusHistories = await prisma.ticket_status_history.findMany({
-        where: { ticket_id: { in: ticketIds } },
-        orderBy: { changed_at: 'desc' },
-        select: { ticket_id: true, new_status: true },
-      });
+      const [statusHistories, assignments] = await Promise.all([
+        prisma.ticket_status_history.findMany({
+          where: { ticket_id: { in: ticketIds } },
+          orderBy: { changed_at: 'desc' },
+          select: { ticket_id: true, new_status: true },
+        }),
+        prisma.ticket_assignment_history.findMany({
+          where: { ticket_id: { in: ticketIds }, is_active: true },
+          orderBy: { assigned_at: 'asc' },
+          select: { ticket_id: true, assigned_at: true },
+        }),
+      ]);
 
       const latestStatusPerTicket = new Map<number, string>();
       for (const h of statusHistories) {
@@ -204,13 +215,6 @@ export async function GET(request: Request) {
           latestStatusPerTicket.set(h.ticket_id, h.new_status);
         }
       }
-
-      // Earliest assignment from ticket_assignment_history per ticket
-      const assignments = await prisma.ticket_assignment_history.findMany({
-        where: { ticket_id: { in: ticketIds }, is_active: true },
-        orderBy: { assigned_at: 'asc' },
-        select: { ticket_id: true, assigned_at: true },
-      });
 
       const earliestAssignmentPerTicket = new Map<number, Date>();
       for (const a of assignments) {

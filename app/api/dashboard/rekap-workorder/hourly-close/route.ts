@@ -42,6 +42,7 @@ export async function GET(request: Request) {
       dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
       workzone: searchParams.get('workzone') || undefined,
       operationalBucket: rawBucket ? [rawBucket] : undefined,
+      includeClosed: true,
     };
 
     const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);

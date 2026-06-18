@@ -76,7 +76,7 @@ function StatPill({
   icon: ReactNode;
 }) {
   return (
-    <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+    <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2'>
       <div className='flex items-center justify-between gap-2'>
         <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
           {label}
@@ -84,7 +84,7 @@ function StatPill({
         <div className='text-(--text-muted)'>{icon}</div>
       </div>
       <div className='mt-2 flex items-end justify-between gap-3'>
-        <p className='text-lg leading-none font-bold text-(--text-primary)'>
+        <p className='text-[1rem] leading-none font-bold text-(--text-primary)'>
           {value}
         </p>
         <p className='text-right text-[11px] leading-tight text-(--text-secondary)'>
@@ -231,7 +231,7 @@ export default function RekapWorkorderHourlyClose({
       config={{ count: { label: 'Close', color: '#38bdf8' } }}
       className='p-0'
     >
-      <div className='border-b border-(--border) px-4 py-4 sm:px-5'>
+      <div className='border-b border-(--border) px-4 py-3 sm:px-5'>
         <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
           <div className='max-w-2xl'>
             <div className='flex flex-wrap items-center gap-2'>
@@ -242,7 +242,7 @@ export default function RekapWorkorderHourlyClose({
                 {dateLabel}
               </span>
             </div>
-            <h3 className='mt-1 text-lg font-bold text-(--text-primary)'>
+            <h3 className='mt-1 text-base font-semibold text-(--text-primary)'>
               Distribusi close workorder sepanjang hari
             </h3>
             <p className='mt-1 hidden text-sm leading-6 text-(--text-secondary) sm:block'>

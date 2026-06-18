@@ -625,8 +625,10 @@ async function buildOperationsSummaryResult(
     user.id_user,
     {
       ...filters,
+      includeClosed: true,
     },
   )) as Prisma.ticketWhereInput;
+  const activeWhere = DailyTicketService.buildMainTableWhere(where);
 
   const b2cWhere = withWhere(
     where,
@@ -658,7 +660,7 @@ async function buildOperationsSummaryResult(
     buildB2BGroupsOptimized(b2bRegulerWhere),
     buildServiceAreas(where),
     (() => {
-      const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(where);
+      const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere);
       return queryRawWithOptionalIndex<Array<{
         total: bigint;
         close_count: bigint;

@@ -441,22 +441,22 @@ export default function Sidebar({
                             const count =
                               item.key === 'kpi-customer'
                                 ? ticketManagementOverview?.cards.kpiCustomer
-                                    .total
+                                    ?.total
                                 : item.key === 'kpi-proactive'
                                   ? ticketManagementOverview?.cards.kpiProactive
-                                      .total
+                                      ?.total
                                   : item.key === 'non-kpi-unspec'
                                     ? ticketManagementOverview?.cards
-                                        .nonKpiUnspec.total
+                                        .nonKpiUnspec?.total
                                     : item.key === 'non-technical'
                                       ? ticketManagementOverview?.cards
-                                          .nonTechnical.total
+                                          .nonTechnical?.total
                                       : item.key === 'sqm-update'
                                         ? ticketManagementOverview?.cards
-                                            .sqmUpdate.total
+                                            .sqmUpdate?.total
                                         : item.key === 'obsolete'
                                           ? ticketManagementOverview?.cards
-                                              .obsolete.total
+                                              .obsolete?.total
                                           : undefined;
 
                             return (

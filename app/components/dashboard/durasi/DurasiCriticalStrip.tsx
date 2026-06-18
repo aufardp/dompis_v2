@@ -70,29 +70,28 @@ export default function DurasiCriticalStrip({ panels }: DurasiCriticalStripProps
   const summary = deriveCriticalSummary(panels);
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-4 py-2.5">
-        <div className="flex h-2 w-2 rounded-full bg-blue-500" />
-        <span className="text-xs font-medium text-(--text-muted)">Total Open</span>
-        <span className="text-base font-bold text-(--text-primary)">{summary.totalOpen}</span>
-      </div>
-      <div className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-4 py-2.5">
-        <div className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="flex items-center gap-2.5 rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-2.5 sm:px-4 sm:py-3">
+        <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+        <div className="min-w-0">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+            Worst area
+          </span>
+          <span className="block truncate text-[1.05rem] font-semibold text-(--text-primary)">
+            {summary.worstArea || '-'}
+          </span>
         </div>
-        <span className="text-xs font-medium text-(--text-muted)">Critical (bucket 5+)</span>
-        <span className="text-base font-bold text-red-500">{summary.criticalCount}</span>
       </div>
-      <div className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-4 py-2.5">
-        <div className="flex h-2 w-2 rounded-full bg-amber-500" />
-        <span className="text-xs font-medium text-(--text-muted)">Worst Area</span>
-        <span className="text-sm font-bold text-(--text-primary) truncate max-w-32">{summary.worstArea}</span>
-      </div>
-      <div className="flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-4 py-2.5">
-        <div className="flex h-2 w-2 rounded-full bg-violet-500" />
-        <span className="text-xs font-medium text-(--text-muted)">Most Loaded</span>
-        <span className="text-sm font-bold text-(--text-primary)">{summary.worstBucket}</span>
+      <div className="flex items-center gap-2.5 rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-2.5 sm:px-4 sm:py-3">
+        <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+        <div className="min-w-0">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+            Most loaded
+          </span>
+          <span className="block text-[1.05rem] font-semibold text-(--text-primary)">
+            {summary.worstBucket || '-'}
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -120,39 +120,14 @@ function buildSelectedBucketSummary(
 }
 
 function buildWorkboardSummary(
-  summaryMatrix: Awaited<ReturnType<typeof DailyTicketService.getKpiBucketSummaryMatrix>>,
+  overview: Awaited<ReturnType<typeof DailyTicketService.getTicketManagementOverviewSummary>>,
 ): WorkboardSummaryCounts {
-  const all = summaryMatrix.all;
-  const total =
-    all.kpi_customer.total +
-    all.kpi_proactive.total +
-    all.non_kpi_unspec.total +
-    all.non_technical.total +
-    all.sqm_update.total +
-    all.obsolete.total;
-  const open =
-    all.kpi_customer.open +
-    all.kpi_proactive.open +
-    all.non_kpi_unspec.open +
-    all.non_technical.open +
-    all.sqm_update.open +
-    all.obsolete.open;
-  const assigned =
-    all.kpi_customer.assigned +
-    all.kpi_proactive.assigned +
-    all.non_kpi_unspec.assigned +
-    all.non_technical.assigned +
-    all.sqm_update.assigned +
-    all.obsolete.assigned;
-  const close =
-    all.kpi_customer.close +
-    all.kpi_proactive.close +
-    all.non_kpi_unspec.close +
-    all.non_technical.close +
-    all.sqm_update.close +
-    all.obsolete.close;
-
-  return { total, open, assigned, close };
+  return {
+    total: overview.totals.total,
+    open: overview.totals.unassigned,
+    assigned: overview.totals.assigned,
+    close: overview.totals.close,
+  };
 }
 
 interface RekapResponse {
@@ -531,10 +506,11 @@ async function getFilteredRekapTickets(
   userId: number,
   syncDate: string,
 ): Promise<RekapTicketRow[]> {
-  const cacheKey = buildRekapTicketsCacheKey(role, userId, syncDate);
-  return getOrSetCache(cacheKey, async () => {
+    const cacheKey = buildRekapTicketsCacheKey(role, userId, syncDate);
+    return getOrSetCache(cacheKey, async () => {
     const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
       dept: 'all',
+      includeClosed: true,
     });
     const fullSql = `
     SELECT
@@ -609,29 +585,19 @@ export async function GET(request: NextRequest) {
     const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
+      const overview = await DailyTicketService.getTicketManagementOverviewSummary(
         decoded.role,
         decoded.id_user,
       );
-
-      const all = summaryMatrix.all;
-      const workboardSummary = buildWorkboardSummary(summaryMatrix);
-
-      const kpiCustomerTotal = all.kpi_customer.total;
-      const kpiProactiveTotal = all.kpi_proactive.total;
-      const nonKpiUnspecTotal = all.non_kpi_unspec.total;
-      const nonTechnicalTotal = all.non_technical.total;
-      const sqmUpdateTotal = all.sqm_update.total;
-      const obsoleteTotal = all.obsolete.total;
-
+      const workboardSummary = buildWorkboardSummary(overview);
       const kpiSummary = {
-        total: kpiCustomerTotal + kpiProactiveTotal + nonKpiUnspecTotal + nonTechnicalTotal + sqmUpdateTotal + obsoleteTotal,
-        kpiCustomer: kpiCustomerTotal,
-        kpiProactive: kpiProactiveTotal,
-        nonKpiUnspec: nonKpiUnspecTotal,
-        nonTechnical: nonTechnicalTotal,
-        sqmUpdate: sqmUpdateTotal,
-        obsolete: obsoleteTotal,
+        total: overview.totals.total,
+        kpiCustomer: overview.cards.kpiCustomer.total,
+        kpiProactive: overview.cards.kpiProactive.total,
+        nonKpiUnspec: overview.cards.nonKpiUnspec.total,
+        nonTechnical: overview.cards.nonTechnical.total,
+        sqmUpdate: overview.cards.sqmUpdate.total,
+        obsolete: overview.cards.obsolete.total,
       };
 
     const [ticketRowsAll, teknisiRows] = await Promise.all([

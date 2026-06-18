@@ -55,6 +55,33 @@ const KPI_ACCENT: Record<string, string> = {
   'Obsolete': '#f43f5e',
 };
 
+function SummaryCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: accent }}
+        />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+          {label}
+        </span>
+      </div>
+      <div className="mt-2 text-xl font-semibold tracking-tight text-(--text-primary)">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function formatNum(n: number): string {
   return new Intl.NumberFormat('id-ID').format(n);
 }
@@ -80,7 +107,7 @@ export default function DashboardDurasiClient() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="xl:col-span-2"><DurationPanelSkeleton /></div>
         <DurationPanelSkeleton />
         <DurationPanelSkeleton />
@@ -121,7 +148,7 @@ export default function DashboardDurasiClient() {
   const ks = data.kpiSummary;
   const summaryCards = ks
     ? [
-        { label: 'Total', value: formatNum(ks.total ?? 0), accent: 'from-blue-600 to-purple-600' },
+        { label: 'Total', value: formatNum(ks.total ?? 0), accent: '#2563eb' },
         { label: 'Customer', value: formatNum(ks.kpiCustomer), accent: KPI_ACCENT['Customer'] },
         { label: 'Proactive', value: formatNum(ks.kpiProactive), accent: KPI_ACCENT['Proactive'] },
         { label: 'Unspec', value: formatNum(ks.nonKpiUnspec), accent: KPI_ACCENT['Unspec'] },
@@ -132,55 +159,75 @@ export default function DashboardDurasiClient() {
     : [];
 
   return (
-    <div className="space-y-4">
-      {data.generatedAt && (
-        <DataFreshnessBadge generatedAt={data.generatedAt} onRefresh={() => refetch()} isRefreshing={isFetching} />
-      )}
-
-      {/* KPI Summary — left-accent border chips */}
-      {summaryCards.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {summaryCards.map((card) => {
-            const isGradient = card.accent.startsWith('from-');
-            return (
-              <div
-                key={card.label}
-                className={`flex items-center gap-2.5 rounded-lg border border-(--border) bg-(--surface) px-3 py-2 ${isGradient ? 'bg-linear-to-r text-white' : ''}`}
-                style={isGradient ? { background: 'linear-gradient(to right, #2563eb, #9333ea)' } : { borderLeftWidth: '3px', borderLeftColor: card.accent }}
-              >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
-                  {card.label}
-                </span>
-                <span className={`text-base font-bold leading-none ${isGradient ? 'text-white' : 'text-(--text-primary)'}`}>
-                  {card.value}
-                </span>
+    <div className="space-y-5">
+      <section className="rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase">
+              Monitoring Durasi
+            </p>
+            {data.generatedAt && (
+              <div className="shrink-0">
+                <DataFreshnessBadge
+                  generatedAt={data.generatedAt}
+                  onRefresh={() => refetch()}
+                  isRefreshing={isFetching}
+                />
               </div>
-            );
-          })}
+            )}
+          </div>
 
-          {/* KPI filter — dropdown */}
-          <div className="ml-auto flex items-center gap-2">
-            <select
-              value={selectedBucket}
-              onChange={(e) => setSelectedBucket(e.target.value)}
-              className="rounded-md border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              {BUCKET_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0 max-w-2xl">
+              <h1 className="text-xl font-semibold tracking-tight text-(--text-primary)">
+                Distribusi tiket per bucket durasi
+              </h1>
+              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-(--text-secondary)">
+                Tampilan ini memadatkan status durasi supaya pola open dan bucket kritis mudah dipindai tanpa elemen visual yang berlebihan.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 lg:min-w-[18rem]">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+                  Bucket view
+                </span>
+                <select
+                  value={selectedBucket}
+                  onChange={(e) => setSelectedBucket(e.target.value)}
+                  className="min-w-36 cursor-pointer rounded-lg border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {BUCKET_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+
+        {summaryCards.length > 0 && (
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+            {summaryCards.map((card) => (
+              <SummaryCard
+                key={card.label}
+                label={card.label}
+                value={card.value}
+                accent={card.accent}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Critical summary strip */}
       {data.panels.length > 0 && (
         <DurasiCriticalStrip panels={data.panels} />
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="xl:col-span-2">
           {getPanel('REGULER') && <TicketDurationPanel panel={getPanel('REGULER')!} />}
         </div>

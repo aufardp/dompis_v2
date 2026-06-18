@@ -402,6 +402,29 @@ export default function TicketManagementOverviewPage() {
   const selectedBucketCard = visibleCardData[0];
   const selectedBucketSummary = selectedBucketCard?.summary;
 
+  const bucketOverviewTotals = useMemo(
+    () =>
+      visibleCardData.reduce(
+        (acc, card) => {
+          const summary = card.summary;
+          if (!summary) return acc;
+
+          acc.total += summary.total ?? 0;
+          acc.open += summary.open ?? 0;
+          acc.assigned += summary.assigned ?? 0;
+          acc.close += summary.close ?? 0;
+          return acc;
+        },
+        {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          close: 0,
+        },
+      ),
+    [visibleCardData],
+  );
+
   const totalWorkboard = useMemo(
     () =>
       visibleCardData.reduce(
@@ -555,35 +578,41 @@ export default function TicketManagementOverviewPage() {
               <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
                 <HeroMetricCard
                   label='Open Workload'
-                  value={
-                    (opsSummary?.stats.unassigned ?? 0) +
-                    (opsSummary?.stats.assigned ?? 0)
-                  }
+                  value={bucketOverviewTotals.open}
                   helper='Aktif'
                   tone='blue'
                 />
                 <HeroMetricCard
                   label='Close'
-                  value={opsSummary?.stats.close ?? 0}
+                  value={bucketOverviewTotals.close}
                   helper='Hari Ini'
                   tone='emerald'
                 />
                 <HeroMetricCard
                   label='Assigned'
-                  value={opsSummary?.stats.assigned ?? 0}
+                  value={bucketOverviewTotals.assigned}
                   helper='On Progress'
                   tone='amber'
                 />
                 <HeroMetricCard
                   label='Unassigned'
-                  value={opsSummary?.stats.unassigned ?? 0}
+                  value={bucketOverviewTotals.open}
                   helper='Butuh Assign'
                   tone='slate'
                 />
                 <HeroMetricCard
                   label='Close Rate'
-                  value={`${opsSummary?.stats.total ? Math.round(((opsSummary.stats.close ?? 0) / opsSummary.stats.total) * 100) : 0}%`}
-                  helper='Dari Total Workboard'
+                  value={`${
+                    bucketOverviewTotals.total + bucketOverviewTotals.close > 0
+                      ? Math.round(
+                          (bucketOverviewTotals.close /
+                            (bucketOverviewTotals.total +
+                              bucketOverviewTotals.close)) *
+                            100,
+                        )
+                      : 0
+                  }%`}
+                  helper='Dari Total + Close'
                   tone='violet'
                 />
               </div>

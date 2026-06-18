@@ -47,7 +47,7 @@ export function useTicketManagementOverview(
     queryKey: [
       ...queryKeys.dashboard.all,
       'ticket-management-overview',
-      'v4',
+      'v5',
       workzone || 'all',
     ],
     staleTime: 30_000,
