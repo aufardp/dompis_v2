@@ -9,6 +9,7 @@ import { B2B_GROUPS } from '@/app/config/b2b-groups';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import TicketTableB2B from './TicketTableB2B';
 import TicketTableTabs from './TicketTableTabs';
 import type { Ticket } from '@/app/types/ticket';
@@ -88,6 +89,7 @@ export default function TicketManagementGroupPage({
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [page, setPage] = useState(1);
   const [validasiPage, setValidasiPage] = useState(1);
+  const [closePage, setClosePage] = useState(1);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
@@ -106,14 +108,28 @@ export default function TicketManagementGroupPage({
     validasiPage,
   });
 
+  const closePageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'b2b',
+    ticketGroup: [groupKey],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    page: closePage,
+    limit: 10,
+    validasiPage: 1,
+    includeValidasi: false,
+  });
+
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     setPage(1);
+    setClosePage(1);
   }, []);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
     setPage(1);
+    setClosePage(1);
   }, []);
 
   const handleAssignClick = useCallback(
@@ -192,7 +208,7 @@ export default function TicketManagementGroupPage({
                     ['Total', pageData.pagination.total],
                     ['Open', pageData.summary.open],
                     ['Assigned', pageData.summary.assigned],
-                    ['Close', pageData.summary.close],
+                    ['Close', closePageData.pagination.total],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -250,6 +266,7 @@ export default function TicketManagementGroupPage({
             validasiTickets={pageData.validasiTickets}
             totalCount={pageData.pagination.total}
             validasiTotalCount={pageData.validasiCount}
+            closeCount={closePageData.pagination.total}
             validasiPagination={{
               currentPage: pageData.validasiPagination.currentPage,
               totalPages: pageData.validasiPagination.totalPages,
@@ -257,6 +274,28 @@ export default function TicketManagementGroupPage({
               limit: pageData.validasiPagination.limit,
               onPageChange: setValidasiPage,
             }}
+            closeTable={
+              <TicketTableB2B
+                tickets={closePageData.tickets}
+                tableSummary={closePageData.summary}
+                loading={closePageData.loading}
+                isRefreshing={closePageData.isRefreshing}
+                onAssign={handleAssignClick}
+                highlightQuery={searchQuery}
+                pagination={{
+                  currentPage: closePageData.pagination.currentPage,
+                  totalPages: closePageData.pagination.totalPages,
+                  total: closePageData.pagination.total,
+                  limit: closePageData.pagination.limit,
+                  onPageChange: setClosePage,
+                }}
+                downloadFilters={{
+                  dept: 'b2b',
+                  ticketGroup: [groupKey],
+                  ticketStatus: CLOSE_STATUS_VALUES,
+                }}
+              />
+            }
             loading={pageData.loading}
             isRefreshing={pageData.isRefreshing}
             onAssign={handleAssignClick}

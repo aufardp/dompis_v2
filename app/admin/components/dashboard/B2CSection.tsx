@@ -75,6 +75,7 @@ interface B2CSectionProps {
   activeType?: TicketCtype | 'all';
   onSelectType?: (type: TicketCtype | 'all') => void;
   isDailyScope?: boolean; // NEW: indicates daily operational scope
+  loading?: boolean;
 }
 
 const filterTabs: {
@@ -137,6 +138,7 @@ export default function B2CSection({
   activeType = 'all',
   onSelectType,
   isDailyScope = true, // DEFAULT to true for daily operational scope
+  loading = false,
 }: B2CSectionProps) {
   const totalAll = data.summary.total;
 
@@ -194,6 +196,7 @@ export default function B2CSection({
       </div>
 
       <B2CSummaryCard
+        loading={loading}
         total={data.summary.total}
         open={data.summary.open}
         assigned={data.summary.assigned}

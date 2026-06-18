@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -9,7 +10,6 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   AlertCircle,
   ListOrdered,
   Clock,
@@ -157,6 +157,90 @@ function getFrozenCellBackground(rowIdx: number): string {
   }
 
   return 'var(--surface)';
+}
+
+function LoadingState() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading detail wo hi'
+    >
+      <div className='space-y-5'>
+        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='border-b border-(--border) bg-(--surface-2) px-4 py-4 md:px-6'>
+            <div className='flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+              <div className='max-w-3xl space-y-3'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <div className='h-7 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-7 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                </div>
+                <div className='h-7 w-72 rounded-full bg-slate-200 dark:bg-slate-800' />
+                <div className='h-4 w-96 max-w-full rounded-full bg-slate-100 dark:bg-slate-800/70' />
+              </div>
+              <div className='grid gap-2 sm:grid-cols-3 md:min-w-90'>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-3'
+                  >
+                    <div className='h-3 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-5 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className='border-b border-(--border) bg-(--surface) p-4 md:p-5'>
+            <div className='space-y-3'>
+              <div className='h-10 w-full max-w-3xl rounded-xl bg-slate-200 dark:bg-slate-800' />
+              <div className='flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between'>
+                <div className='flex flex-wrap items-center gap-3'>
+                  <div className='flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2'>
+                    <div className='h-3 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='h-7 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                  <div className='flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2'>
+                    <div className='h-3 w-14 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='h-7 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <div className='h-8 w-20 rounded-lg bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-8 w-16 rounded-lg bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-8 w-8 rounded-lg bg-slate-200 dark:bg-slate-800' />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className='relative overflow-auto rounded-b-3xl border border-(--border) bg-(--surface)'>
+            <div className='min-w-1050 p-4'>
+              <div className='grid gap-3'>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className='grid grid-cols-3 gap-3 rounded-xl border border-(--border) bg-(--surface-2) p-4 md:grid-cols-8'
+                  >
+                    <div className='h-4 w-32 rounded-full bg-slate-200 dark:bg-slate-800 md:col-span-1' />
+                    <div className='h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-800 md:col-span-1' />
+                    <div className='h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-800 md:col-span-1' />
+                    <div className='h-4 w-24 rounded-full bg-slate-200 dark:bg-slate-800 md:col-span-1' />
+                    <div className='hidden h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-800 md:block md:col-span-1' />
+                    <div className='hidden h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-800 md:block md:col-span-1' />
+                    <div className='hidden h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-800 md:block md:col-span-1' />
+                    <div className='hidden h-4 w-16 rounded-full bg-slate-200 dark:bg-slate-800 md:block md:col-span-1' />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </phantom-ui>
+  );
 }
 
 export default function DetailWoHiClient() {
@@ -504,12 +588,7 @@ export default function DetailWoHiClient() {
       )}
 
       {/* ═══ Loading ═══ */}
-      {isLoading && (
-        <div className='flex flex-col items-center justify-center gap-3 py-24'>
-          <Loader2 className='h-10 w-10 animate-spin text-(--text-muted)' />
-          <p className='text-sm text-(--text-secondary)'>Memuat data...</p>
-        </div>
-      )}
+      {isLoading && <LoadingState />}
 
       {/* ═══ Error ═══ */}
       {isError && !isLoading && (

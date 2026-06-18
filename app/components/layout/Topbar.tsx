@@ -16,7 +16,6 @@ import {
   Filter,
   ChevronDown,
   ChevronRight,
-  Loader2,
   BarChart3,
   Layers3,
   LayoutDashboard,
@@ -217,12 +216,16 @@ export default function Topbar({
                 ? '/admin'
                 : '/admin/semesta';
           const separator = targetPath.includes('?') ? '&' : '?';
+          const tabParam =
+            typeof result.tab === 'string' && result.tab.trim().length > 0
+              ? `&tab=${encodeURIComponent(result.tab)}`
+              : '';
           setSearchToast({
             type: 'success',
             message: `Tiket ditemukan di ${getBucketLabelFromPath(targetPath)}. Halaman bucket sedang dibuka.`,
           });
           await router.push(
-            `${targetPath}${separator}search=${encodeURIComponent(q)}`,
+            `${targetPath}${separator}search=${encodeURIComponent(q)}${tabParam}`,
           );
         } else {
           setSearchToast({
@@ -562,11 +565,10 @@ export default function Topbar({
 
       {isSearching && !isLocalSearch && (
         <div className='fixed inset-0 z-9999 flex items-center justify-center bg-black/30'>
-          <div className='bg-surface flex flex-col items-center gap-3 rounded-2xl border border-(--border) px-8 py-6 shadow-2xl'>
-            <Loader2 className='h-8 w-8 animate-spin text-blue-600' />
-            <p className='text-sm font-medium text-(--text-secondary)'>
-              Mencari tiket...
-            </p>
+          <div className='bg-surface flex min-w-72 flex-col gap-3 rounded-2xl border border-(--border) px-8 py-6 shadow-2xl'>
+            <div className='h-3 w-28 rounded-full bg-slate-200 dark:bg-slate-700' />
+            <div className='h-5 w-44 rounded-full bg-slate-200 dark:bg-slate-700' />
+            <div className='h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800' />
           </div>
         </div>
       )}

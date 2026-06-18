@@ -11,10 +11,10 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowLeft,
-  Loader2,
   BarChart3,
   RotateCcw,
 } from 'lucide-react';
+import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -591,10 +591,10 @@ export default function ImportPage() {
                   }
                 >
                   {loading ? (
-                    <>
-                      <Loader2 size={16} className='mr-2 animate-spin' />
+                    <span className='inline-flex items-center gap-2'>
+                      <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70' />
                       Memproses...
-                    </>
+                    </span>
                   ) : (
                     <>
                       <ArrowRight size={16} className='mr-2' />
@@ -790,22 +790,15 @@ export default function ImportPage() {
           {step === 3 && (
             <div className='space-y-6'>
               {importing && (
-                <div className='rounded-lg border border-slate-200 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800'>
-                  <div className='flex items-center gap-4'>
-                    <Loader2
-                      className='animate-spin text-teal-500'
-                      size={32}
-                    />
-                    <div className='flex-1'>
-                      <p className='font-medium text-slate-700 dark:text-slate-200'>
-                        Mengimport data...
-                      </p>
-                      <p className='text-sm text-slate-500'>
-                        Mohon tunggu, proses bisa memakan waktu beberapa menit
-                      </p>
+                <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Importing technician manhours'>
+                  <div className='rounded-lg border border-slate-200 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-800'>
+                    <div className='space-y-3'>
+                      <div className='h-4 w-48 rounded-full bg-slate-200 dark:bg-slate-700' />
+                      <div className='h-3 w-full rounded-full bg-slate-100 dark:bg-slate-700/70' />
+                      <div className='h-3 w-5/6 rounded-full bg-slate-100 dark:bg-slate-700/70' />
                     </div>
                   </div>
-                </div>
+                </phantom-ui>
               )}
 
               {importResult && (

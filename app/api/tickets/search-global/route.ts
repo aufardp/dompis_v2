@@ -30,20 +30,33 @@ async function resolveDailyBucketPath(
   userId: number,
   q: string,
   searchType?: SearchType,
-): Promise<BucketRoute | null> {
+): Promise<{
+  bucket: (typeof DAILY_BUCKET_ROUTES)[number]['bucket'];
+  path: BucketRoute;
+  tab: 'main' | 'validasi';
+} | null> {
   const hits = await Promise.all(
     DAILY_BUCKET_ROUTES.map(async (item) => {
-      const found = await DailyTicketService.hasDailyTicketHit(role, userId, {
-        dept: 'all',
+      const filters = {
+        dept: 'all' as const,
         search: q,
         searchType,
         operationalBucket: [item.bucket],
-      });
-      return { found, path: item.path };
+      };
+      const validasiHit = await DailyTicketService.hasDailyValidasiHit(
+        role,
+        userId,
+        filters,
+      );
+      if (validasiHit) return { found: true, path: item.path, bucket: item.bucket, tab: 'validasi' as const };
+
+      const found = await DailyTicketService.hasDailyTicketHit(role, userId, filters);
+      return { found, path: item.path, bucket: item.bucket, tab: 'main' as const };
     }),
   );
 
-  return hits.find((item) => item.found)?.path ?? null;
+  const hit = hits.find((item) => item.found);
+  return hit ? { bucket: hit.bucket, path: hit.path, tab: hit.tab } : null;
 }
 
 export async function GET(request: Request) {
@@ -55,7 +68,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ found: false, count: 0 });
     }
     const searchType = detectSearchType(q);
-    const [dailyPath, semestaFound] = await Promise.all([
+    const [dailyHit, semestaFound] = await Promise.all([
       resolveDailyBucketPath(user.role, user.id_user, q, searchType),
       (async () => {
         switch (searchType) {
@@ -69,11 +82,12 @@ export async function GET(request: Request) {
       })(),
     ]);
 
-    if (dailyPath) {
+    if (dailyHit) {
       return NextResponse.json({
         found: true,
         page: 'admin',
-        path: dailyPath,
+        path: dailyHit.path,
+        tab: dailyHit.tab,
         count: 1,
       });
     }

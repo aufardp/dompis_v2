@@ -6,6 +6,7 @@ import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getCache, setCache } from '@/lib/cache';
 import { parseSearchType } from '@/lib/search-intent';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -315,6 +316,13 @@ async function buildXlsx(data: any[], columns: string[], filename: string) {
 
 export async function GET(request: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'daily-tickets-export',
+      limit: 3,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'superadmin',
@@ -409,35 +417,42 @@ export async function GET(request: Request) {
       const totalPages = firstRes.totalPages ?? 1;
       const validasiTotalPages = firstRes.validasiTotalPages ?? 1;
       const pageCount = Math.max(totalPages, validasiTotalPages);
-      for (let p = 2; p <= pageCount; p++) {
-        const pageRes = await DailyTicketService.getDailyTicketTable(
-          user.role,
-          user.id_user,
-          {
-            page: p,
-            limit: FETCH_PAGE_SIZE,
-            dept,
-            search: search || undefined,
-            searchType,
-            workzone: workzone || undefined,
-            ctype: ctype || undefined,
-            startDate: startDate || undefined,
-            endDate: endDate || undefined,
-            validasiPage: p,
-            validasiLimit: FETCH_PAGE_SIZE,
-            includeValidasi: true,
-            includeSummary: false,
-            includeOptions: false,
-            ticketGroup: ticketGroupRaw,
-            operationalBucket: operationalBucketRaw,
-            anomalyBucket: anomalyBucketRaw,
-            regulerOnly: regulerOnlyRaw === 'true',
-            ticketStatus: ticketStatusRaw,
-            statusUpdate: statusUpdateRaw,
-          },
+      if (pageCount > 1) {
+        const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
+        const pageResults = await Promise.all(
+          remainingPages.map((p) =>
+            DailyTicketService.getDailyTicketTable(
+              user.role,
+              user.id_user,
+              {
+                page: p,
+                limit: FETCH_PAGE_SIZE,
+                dept,
+                search: search || undefined,
+                searchType,
+                workzone: workzone || undefined,
+                ctype: ctype || undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
+                validasiPage: p,
+                validasiLimit: FETCH_PAGE_SIZE,
+                includeValidasi: true,
+                includeSummary: false,
+                includeOptions: false,
+                ticketGroup: ticketGroupRaw,
+                operationalBucket: operationalBucketRaw,
+                anomalyBucket: anomalyBucketRaw,
+                regulerOnly: regulerOnlyRaw === 'true',
+                ticketStatus: ticketStatusRaw,
+                statusUpdate: statusUpdateRaw,
+              },
+            ),
+          ),
         );
-        allTickets.push(...(pageRes.data ?? []));
-        allTickets.push(...(pageRes.validasiTickets ?? []));
+        for (const pageRes of pageResults) {
+          allTickets.push(...(pageRes.data ?? []));
+          allTickets.push(...(pageRes.validasiTickets ?? []));
+        }
       }
 
       if (allTickets.length <= 500) {

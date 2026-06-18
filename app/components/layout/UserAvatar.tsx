@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithAuth, logoutUser } from '@/app/libs/fetcher';
@@ -73,9 +74,14 @@ export default function UserAvatar({ onPasswordChange }: Props) {
 
   if (loading) {
     return (
-      <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200'>
-        <div className='h-5 w-5 animate-spin rounded-full border-2 border-slate-400 border-t-transparent' />
-      </div>
+      <phantom-ui suppressHydrationWarning fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading user avatar'
+      >
+        <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-200' />
+      </phantom-ui>
     );
   }
 

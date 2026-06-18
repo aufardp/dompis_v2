@@ -150,7 +150,7 @@ export default function EvidenceGallery({
           />
           {!imgLoaded && !imgError && (
             <div className='absolute inset-0 flex items-center justify-center'>
-              <div className='h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+              <div className='h-3 w-24 rounded-full bg-white/15' />
             </div>
           )}
           {imgError && (

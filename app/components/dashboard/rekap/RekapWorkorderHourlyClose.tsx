@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -312,7 +313,30 @@ export default function RekapWorkorderHourlyClose({
       <div className='grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.95fr)]'>
         <div className='space-y-4'>
           {isLoading ? (
-            <div className='h-70 animate-pulse rounded-2xl border border-(--border) bg-(--surface-2) sm:h-90' />
+            <phantom-ui suppressHydrationWarning fallback-radius={8}
+              loading
+              animation='shimmer'
+              reveal={0.12}
+              loading-label='Loading hourly close chart'
+            >
+              <div className='h-70 rounded-2xl border border-(--border) bg-(--surface-2) sm:h-90'>
+                <div className='flex h-full flex-col gap-4 p-4'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div className='h-4 w-48 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='h-4 w-24 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                  <div className='mt-auto grid grid-cols-12 items-end gap-2'>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className='rounded-t-lg bg-slate-200 dark:bg-slate-800'
+                        style={{ height: `${30 + (i % 6) * 11}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </phantom-ui>
           ) : summary.total === 0 ? (
             <div className='flex h-70 items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-90'>
               <div className='max-w-sm'>

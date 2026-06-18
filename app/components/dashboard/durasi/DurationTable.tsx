@@ -29,7 +29,7 @@ const BUCKET_HEADER_COLORS = [
 ];
 
 export default function DurationTable({ areas, totals, buckets, showTotal }: DurationTableProps) {
-  const [expandedAreas, setExpandedAreas] = useState<Set<string>>(() => new Set(areas.map((a) => a.name)));
+  const [expandedAreas, setExpandedAreas] = useState<Set<string>>(() => new Set());
 
   const toggleArea = useCallback((name: string) => {
     setExpandedAreas((prev) => {

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -41,7 +42,17 @@ const TechnicianSummaryTable = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='h-64 animate-pulse rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800' />
+      <div className='rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'>
+        <div className='h-4 w-32 rounded-full bg-slate-200 dark:bg-slate-700' />
+        <div className='mt-4 space-y-3'>
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className='h-4 w-full rounded-full bg-slate-200 dark:bg-slate-700'
+            />
+          ))}
+        </div>
+      </div>
     ),
   },
 );
@@ -133,7 +144,7 @@ function getWorstTicketAge(tickets: { ageHours: number }[]): number {
 
 function SkeletonCard() {
   return (
-    <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
+    <div className='rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
       <div className='flex items-center gap-3'>
         <div className='h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-700' />
         <div className='flex-1 space-y-2'>
@@ -152,24 +163,39 @@ function SkeletonCard() {
 
 function LoadingSkeleton() {
   return (
-    <div className='space-y-6'>
-      <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-        {[...Array(4)].map((_, i) => (
-          <div
-            key={i}
-            className='animate-pulse rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'
-          >
-            <div className='h-4 w-24 rounded bg-slate-200 dark:bg-slate-700' />
-            <div className='mt-2 h-8 w-12 rounded bg-slate-200 dark:bg-slate-700' />
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading technician dashboard'
+    >
+      <div className='space-y-6'>
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
+          <div className='mb-4 h-4 w-44 rounded-full bg-slate-200 dark:bg-slate-700' />
+          <div className='grid grid-cols-2 gap-4 lg:grid-cols-5'>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className='rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40'
+              >
+                <div className='h-3 w-20 rounded-full bg-slate-200 dark:bg-slate-700' />
+                <div className='mt-3 h-8 w-14 rounded-full bg-slate-200 dark:bg-slate-700' />
+                <div className='mt-2 h-3 w-24 rounded-full bg-slate-100 dark:bg-slate-800' />
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800'>
+          <div className='mb-4 h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-700' />
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+            {[...Array(6)].map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        </div>
       </div>
-      <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-        {[...Array(6)].map((_, i) => (
-          <SkeletonCard key={i} />
-        ))}
-      </div>
-    </div>
+    </phantom-ui>
   );
 }
 
@@ -919,7 +945,10 @@ export default function TechniciansPage() {
                               id_sa: number;
                               nama_sa: string | null;
                             }) => (
-                              <option key={opt.id_sa} value={String(opt.id_sa)}>
+                              <option
+                                key={`${opt.id_sa}-${opt.nama_sa ?? 'area'}`}
+                                value={String(opt.id_sa)}
+                              >
                                 {opt.nama_sa ?? `Area ${opt.id_sa}`}
                               </option>
                             ),

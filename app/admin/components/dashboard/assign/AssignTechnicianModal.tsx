@@ -1,10 +1,66 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { useTechnicians } from '@/app/hooks/useTechnician';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import TechnicianCard from './TechnicianCard';
+
+function AssignTechnicianLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading technicians'
+    >
+      <div className='animate-in fade-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl duration-200'>
+        <div className='border-b bg-gray-50 px-6 py-5'>
+          <div className='flex items-start justify-between gap-3'>
+            <div className='min-w-0'>
+              <div className='h-5 w-48 rounded-full bg-slate-200' />
+              <div className='mt-2 h-3.5 w-40 rounded-full bg-slate-100' />
+            </div>
+            <div className='h-9 w-9 rounded-xl bg-slate-200' />
+          </div>
+          <div className='mt-3 flex flex-wrap items-center gap-2'>
+            <div className='h-7 w-32 rounded-full bg-slate-100' />
+            <div className='h-7 w-24 rounded-full bg-slate-100' />
+            <div className='h-7 w-28 rounded-full bg-slate-100' />
+          </div>
+        </div>
+        <div className='flex-1 space-y-4 overflow-y-auto px-6 py-5'>
+          <div className='h-11 rounded-xl bg-slate-100' />
+          <div className='space-y-3'>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className='rounded-2xl border border-slate-200 bg-slate-50 p-4'
+              >
+                <div className='flex items-center gap-3'>
+                  <div className='h-12 w-12 rounded-full bg-slate-200' />
+                  <div className='min-w-0 flex-1 space-y-2'>
+                    <div className='h-4 w-40 rounded-full bg-slate-200' />
+                    <div className='h-3.5 w-28 rounded-full bg-slate-100' />
+                  </div>
+                  <div className='h-5 w-16 rounded-full bg-slate-100' />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className='space-y-3 border-t bg-white px-6 py-5'>
+          <div className='flex gap-3'>
+            <div className='h-10 flex-1 rounded-xl bg-slate-100' />
+            <div className='h-10 flex-1 rounded-xl bg-slate-200' />
+          </div>
+          <div className='h-10 w-full rounded-xl bg-slate-100' />
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 interface Props {
   isOpen: boolean;
@@ -103,6 +159,10 @@ export default function AssignTechnicianModal({
   }, [technicians, searchTerm]);
 
   if (!isOpen) return null;
+
+  if (loading) {
+    return <AssignTechnicianLoading />;
+  }
 
   const handleSubmit = async () => {
     if (!selectedId) {
@@ -308,9 +368,7 @@ export default function AssignTechnicianModal({
 
           {/* Loading */}
           {loading && (
-            <div className='py-8 text-center text-sm text-gray-400'>
-              Loading technicians...
-            </div>
+            <AssignTechnicianLoading />
           )}
 
           {/* Empty */}

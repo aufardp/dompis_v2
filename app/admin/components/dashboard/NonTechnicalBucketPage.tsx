@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { queryKeys } from '@/app/libs/query-keys';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import TicketTable from './TicketTable';
 import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
@@ -36,6 +37,7 @@ export default function NonTechnicalBucketPage() {
   const [flaggingFilter, setFlaggingFilter] = useState<string[]>([]);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(null);
   const [validasiPage, setValidasiPage] = useState(1);
+  const [closePage, setClosePage] = useState(1);
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') || '');
@@ -66,6 +68,20 @@ export default function NonTechnicalBucketPage() {
     includeValidasi: true,
   });
 
+  const closePageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'all',
+    operationalBucket: ['non_technical'],
+    ticketType: ticketTypeFilter,
+    statusUpdate: statusUpdateFilter,
+    ticketStatus: CLOSE_STATUS_VALUES,
+    flagging: flaggingFilter,
+    page: closePage,
+    limit: 10,
+    includeValidasi: false,
+  });
+
   const tableSummary = useMemo(() => ({
     total: pagination?.total ?? tickets.length,
     open: summary?.open ?? 0,
@@ -76,6 +92,7 @@ export default function NonTechnicalBucketPage() {
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
     setPage(1);
+    setClosePage(1);
   }, []);
 
   const handlePageChange = useCallback((newPage: number) => {
@@ -145,7 +162,7 @@ export default function NonTechnicalBucketPage() {
                   {[
                     ['Total', pagination?.total ?? 0],
                     ['Open', summary?.open ?? 0],
-                    ['Close', summary?.close ?? 0],
+                    ['Close', closePageData.pagination.total],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -172,22 +189,26 @@ export default function NonTechnicalBucketPage() {
               ticketStatus={ticketStatusFilter}
               flagging={flaggingFilter}
               onTypeChange={(types) => {
-                setTicketTypeFilter(types);
-                setPage(1);
-              }}
-              onStatusChange={(statuses) => {
-                setStatusUpdateFilter(statuses);
-                setPage(1);
-              }}
-              onTicketStatusChange={(statuses) => {
-                setTicketStatusFilter(statuses);
-                setPage(1);
-              }}
-              onFlaggingChange={(flags) => {
-                setFlaggingFilter(flags);
-                setPage(1);
-              }}
-            />
+              setTicketTypeFilter(types);
+              setPage(1);
+              setClosePage(1);
+            }}
+            onStatusChange={(statuses) => {
+              setStatusUpdateFilter(statuses);
+              setPage(1);
+              setClosePage(1);
+            }}
+            onTicketStatusChange={(statuses) => {
+              setTicketStatusFilter(statuses);
+              setPage(1);
+              setClosePage(1);
+            }}
+            onFlaggingChange={(flags) => {
+              setFlaggingFilter(flags);
+              setPage(1);
+              setClosePage(1);
+            }}
+          />
           </div>
 
           <TicketTableTabs
@@ -217,6 +238,7 @@ export default function NonTechnicalBucketPage() {
             validasiTickets={validasiTickets}
             totalCount={pagination?.total}
             validasiTotalCount={validasiCount}
+            closeCount={closePageData.pagination.total}
             validasiPagination={{
               currentPage: validasiPagination.currentPage,
               totalPages: validasiPagination.totalPages,
@@ -224,6 +246,32 @@ export default function NonTechnicalBucketPage() {
               limit: validasiPagination.limit,
               onPageChange: setValidasiPage,
             }}
+            closeTable={
+              <TicketTable
+                tickets={closePageData.tickets}
+                loading={closePageData.loading}
+                isRefreshing={closePageData.isRefreshing}
+                onAssign={onAssign}
+                highlightQuery={searchQuery}
+                pagination={{
+                  currentPage: closePageData.pagination.currentPage,
+                  totalPages: closePageData.pagination.totalPages,
+                  total: closePageData.pagination.total,
+                  limit: closePageData.pagination.limit,
+                  onPageChange: setClosePage,
+                }}
+                tableLabel='Non Technical Close Tickets'
+                tableSummary={closePageData.summary}
+                downloadFilters={{
+                  dept: 'all',
+                  operationalBucket: ['non_technical'],
+                  ticketType: ticketTypeFilter,
+                  statusUpdate: statusUpdateFilter,
+                  ticketStatus: CLOSE_STATUS_VALUES,
+                  flagging: flaggingFilter,
+                }}
+              />
+            }
             loading={loading}
             isRefreshing={isRefreshing}
             onAssign={onAssign}

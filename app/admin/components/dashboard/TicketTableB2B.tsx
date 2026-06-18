@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
@@ -10,8 +11,6 @@ import TicketDetailDrawer from './TicketDetailDrawer';
 import {
   ChevronDown,
   ChevronUp,
-  Columns3,
-  X,
   Download,
   Loader2,
 } from 'lucide-react';
@@ -24,7 +23,6 @@ import {
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
 import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
-import TableLoadingSkeleton from './TableLoadingSkeleton';
 
 export type SortField =
   | 'ticket'
@@ -73,6 +71,7 @@ export interface AdminTicketTableB2BProps {
   }>;
   loading?: boolean;
   isRefreshing?: boolean;
+  searching?: boolean;
   onAssign?: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
   onBulkAssign?: (ticketIds: (string | number)[]) => void;
@@ -164,10 +163,127 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   status: true,
 };
 
+function TicketTableB2BLoadingMobile() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading B2B ticket list'
+    >
+      <div className='space-y-3'>
+        <div className='mb-2 flex items-center justify-between px-1'>
+          <div className='h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-800' />
+        </div>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+            className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950'
+          >
+            <div className='space-y-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div className='space-y-2'>
+                  <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-3 w-40 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                </div>
+                <div className='h-7 w-16 rounded-full bg-slate-100 dark:bg-slate-800' />
+              </div>
+              <div className='grid grid-cols-2 gap-2'>
+                {Array.from({ length: 4 }).map((__, cellIndex) => (
+                  <div
+                    key={cellIndex}
+                    className='rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60'
+                  >
+                    <div className='h-2.5 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-3 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                ))}
+              </div>
+              <div className='flex gap-2'>
+                <div className='h-8 flex-1 rounded-full bg-slate-200 dark:bg-slate-800' />
+                <div className='h-8 w-24 rounded-full bg-slate-100 dark:bg-slate-800/80' />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </phantom-ui>
+  );
+}
+
+function TicketTableB2BLoadingDesktop({ label }: { label: string }) {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label={`Loading ${label}`}
+    >
+      <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
+        <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
+          <div className='h-3.5 w-32 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='flex items-center gap-2'>
+            <div className='h-7 w-16 rounded-md bg-slate-200 dark:bg-slate-800' />
+            <div className='h-7 w-24 rounded-md bg-slate-200 dark:bg-slate-800' />
+          </div>
+        </div>
+        <div className='border-b border-(--border) px-4 py-3'>
+          <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='mt-2 h-3 w-56 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+        </div>
+        <div className='overflow-x-auto'>
+          <table className='w-full text-sm'>
+            <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
+              <tr>
+                <th className='w-12 px-3 py-2.5 text-center'>#</th>
+                <th className='px-3 py-2.5 text-center'>Ticket</th>
+                <th className='px-3 py-2.5 text-center'>Service</th>
+                <th className='px-3 py-2.5 text-center'>Customer</th>
+                <th className='px-3 py-2.5 text-center'>Address</th>
+                <th className='px-3 py-2.5 text-center'>Booking Date</th>
+                <th className='px-3 py-2.5 text-center'>Type</th>
+                <th className='px-3 py-2.5 text-center whitespace-nowrap'>
+                  Max TTR
+                </th>
+                <th className='px-3 py-2.5 text-center'>Age / SLA</th>
+                <th className='px-3 py-2.5 text-center'>Jenis Tiket</th>
+                <th className='px-3 py-2.5 text-center'>Workzone</th>
+                <th className='px-3 py-2.5 text-center'>Teknisi</th>
+                <th className='px-3 py-2.5 text-center'>Status Insera</th>
+                <th className='px-3 py-2.5 text-center'>Status Dompis</th>
+                <th className='px-3 py-2.5 text-center'>Aksi</th>
+              </tr>
+            </thead>
+            <tbody className='divide-y divide-(--border)'>
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <tr key={rowIndex} className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'>
+                  <td className='px-3 py-4'>
+                    <div className='h-3.5 w-6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  </td>
+                  {Array.from({ length: 14 }).map((__, cellIndex) => (
+                    <td key={cellIndex} className='px-3 py-4'>
+                      <div className='space-y-2'>
+                        <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                        <div className='h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
+
 export default function TicketTableB2B({
   tickets = [],
   loading = false,
   isRefreshing = false,
+  searching = false,
   onAssign,
   onDetail,
   onBulkAssign,
@@ -397,7 +513,16 @@ export default function TicketTableB2B({
       {/* Mobile */}
       <div className='block lg:hidden'>
         {loading && !isRefreshing ? (
-          <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
+          searching ? (
+            <div className='flex min-h-56 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary)'>
+              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-4 py-2 text-sm font-semibold'>
+                <Loader2 className='h-4 w-4 animate-spin' />
+                Mencari tiket...
+              </div>
+            </div>
+          ) : (
+            <TicketTableB2BLoadingMobile />
+          )
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-(--text-secondary)'>
             No tickets found
@@ -443,158 +568,164 @@ export default function TicketTableB2B({
 
       {/* Desktop */}
       <div className='hidden lg:block'>
-        <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
-          {/* Table toolbar */}
-          <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
-            <p className='text-xs text-(--text-secondary)'>
-              {pagination?.total ?? sortedTickets.length} tiket
-            </p>
-            {downloadFilters && (
-              <div className='flex items-center gap-2'>
-                <select
-                  value={downloadFormat}
-                  onChange={(e) =>
-                    setDownloadFormat(e.target.value as 'csv' | 'xlsx')
-                  }
-                  className='bg-surface rounded border border-(--border) px-1.5 py-1 text-xs text-(--text-secondary)'
-                  suppressHydrationWarning
-                >
-                  <option value='xlsx'>XLSX</option>
-                  <option value='csv'>CSV</option>
-                </select>
-                <button
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className='flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
-                >
-                  {downloading ? (
-                    <Loader2 size={14} className='animate-spin' />
+        {loading && !isRefreshing ? (
+          searching ? (
+            <div className='flex min-h-72 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm'>
+              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-5 py-2.5 text-sm font-semibold'>
+                <Loader2 className='h-4 w-4 animate-spin' />
+                Mencari tiket...
+              </div>
+            </div>
+          ) : (
+            <TicketTableB2BLoadingDesktop label='B2B tickets' />
+          )
+        ) : (
+          <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
+            <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
+              <p className='text-xs text-(--text-secondary)'>
+                {pagination?.total ?? sortedTickets.length} tiket
+              </p>
+              {downloadFilters && (
+                <div className='flex items-center gap-2'>
+                  <select
+                    value={downloadFormat}
+                    onChange={(e) =>
+                      setDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                    }
+                    className='bg-surface rounded border border-(--border) px-1.5 py-1 text-xs text-(--text-secondary)'
+                    suppressHydrationWarning
+                  >
+                    <option value='xlsx'>XLSX</option>
+                    <option value='csv'>CSV</option>
+                  </select>
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className='flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
+                  >
+                    {downloading ? (
+                      <Loader2 size={14} className='animate-spin' />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    Download
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {tableSummary && (
+              <TicketTableSummaryBar label='B2B Tickets' {...tableSummary} />
+            )}
+
+            <div className='overflow-x-auto'>
+              <table className='w-full text-sm'>
+                <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
+                  <tr>
+                    <th className='w-12 px-3 py-2.5 text-center'>#</th>
+                    {renderSortableHeader('Ticket', 'ticket')}
+                    {renderSortableHeader('Service', 'serviceNo')}
+                    {renderSortableHeader('Customer', 'contactName')}
+                    <th className='px-3 py-2.5 text-center'>Address</th>
+                    {renderSortableHeader('Booking Date', 'bookingDate')}
+                    {renderSortableHeader('Type', 'customerType')}
+                    <th className='px-3 py-2.5 text-center whitespace-nowrap'>
+                      Max TTR
+                    </th>
+                    {renderSortableHeader('Age / SLA', 'age')}
+                    {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
+                    {renderSortableHeader('Workzone', 'workzone')}
+                    {renderSortableHeader('Teknisi', 'technicianName')}
+                    <th
+                      className='px-3 py-2.5 text-center'
+                      suppressHydrationWarning
+                    >
+                      Status Insera
+                    </th>
+                    <th
+                      className='px-3 py-2.5 text-center'
+                      suppressHydrationWarning
+                    >
+                      Status Dompis
+                    </th>
+                    <th className='px-3 py-2.5 text-center'>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-(--border)'>
+                  {sortedTickets.length === 0 ? (
+                    <TableEmptyState
+                      colSpan={15}
+                      message='Tidak ada tiket ditemukan'
+                    />
                   ) : (
-                    <Download size={14} />
+                    pageTickets.map((ticket) => {
+                      const ticketId = ticket.idTicket ?? ticket.ticket;
+                      const isExpanded = expandedTicketId === ticketId;
+                      const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
+                      const ttrCountdown = computeTtrCountdown(ticket);
+                      const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
+                        !ttrCountdown
+                          ? 'On Track'
+                          : ttrCountdown.status === 'overdue'
+                            ? 'Overdue'
+                            : ttrCountdown.status === 'critical'
+                              ? 'Overdue'
+                              : ttrCountdown.status === 'warning'
+                                ? 'At Risk'
+                                : 'On Track';
+
+                      return (
+                        <TicketRowB2B
+                          key={ticketId}
+                          ticket={ticket}
+                          onAssign={handleAssign}
+                          onDetail={onDetail}
+                          isExpanded={isExpanded}
+                          onToggleExpand={() =>
+                            toggleExpand(ticketId as number)
+                          }
+                          rank={ticketInfo?.rank}
+                          ticketAge={ticketInfo?.ageFormatted}
+                          severity={ticketInfo?.severity}
+                          slaLabel={slaLabel}
+                          ttrCountdown={ttrCountdown}
+                          highlighted={isHighlighted(ticket)}
+                        />
+                      );
+                    })
                   )}
-                  Download
-                </button>
+                </tbody>
+              </table>
+            </div>
+
+            {pagination && pagination.totalPages > 1 && (
+              <div className='bg-surface flex flex-col items-center gap-3 border-t border-(--border) px-5 py-3 sm:flex-row sm:justify-between'>
+                <p className='text-xs text-(--text-secondary)'>
+                  Showing{' '}
+                  <span className='font-semibold text-(--text-primary)'>
+                    {(pagination.currentPage - 1) * (pagination.limit ?? 10) +
+                      1}
+                    –
+                    {Math.min(
+                      pagination.currentPage * (pagination.limit ?? 10),
+                      pagination.total,
+                    )}
+                  </span>{' '}
+                  of{' '}
+                  <span className='font-semibold text-(--text-primary)'>
+                    {pagination.total}
+                  </span>{' '}
+                  tiket
+                </p>
+                <Pagination
+                  currentPage={pagination.currentPage}
+                  totalPages={pagination.totalPages}
+                  onPageChange={pagination.onPageChange}
+                />
               </div>
             )}
           </div>
-
-          {/* ← ADDED: Summary bar */}
-          {tableSummary && (
-            <TicketTableSummaryBar label='B2B Tickets' {...tableSummary} />
-          )}
-
-          <div className='overflow-x-auto'>
-            <table className='w-full text-sm'>
-              <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
-                <tr>
-                  {/* Checkbox all */}
-                  <th className='w-12 px-3 py-2.5 text-center'>#</th>
-                  {renderSortableHeader('Ticket', 'ticket')}
-                  {renderSortableHeader('Service', 'serviceNo')}
-                  {renderSortableHeader('Customer', 'contactName')}
-                  <th className='px-3 py-2.5 text-center'>Address</th>
-                  {renderSortableHeader('Booking Date', 'bookingDate')}
-                  {renderSortableHeader('Type', 'customerType')}
-                  <th className='px-3 py-2.5 text-center whitespace-nowrap'>
-                    Max TTR
-                  </th>
-                  {renderSortableHeader('Age / SLA', 'age')}
-                  {renderSortableHeader('Jenis Tiket', 'jenisTiket')}
-                  {renderSortableHeader('Workzone', 'workzone')}
-                  {renderSortableHeader('Teknisi', 'technicianName')}
-                  <th
-                    className='px-3 py-2.5 text-center'
-                    suppressHydrationWarning
-                  >
-                    Status Insera
-                  </th>
-                  <th
-                    className='px-3 py-2.5 text-center'
-                    suppressHydrationWarning
-                  >
-                    Status Dompis
-                  </th>
-                  {/* Action */}
-                  <th className='px-3 py-2.5 text-center'>Aksi</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-(--border)'>
-                {loading && !isRefreshing ? (
-                  <tr>
-                    <td colSpan={15}>
-                      <TableLoadingSkeleton rows={6} cols={15} />
-                    </td>
-                  </tr>
-                ) : sortedTickets.length === 0 ? (
-                  <TableEmptyState
-                    colSpan={15}
-                    message='Tidak ada tiket ditemukan'
-                  />
-                ) : (
-                  pageTickets.map((ticket) => {
-                    const ticketId = ticket.idTicket ?? ticket.ticket;
-                    const isExpanded = expandedTicketId === ticketId;
-                    const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
-                    const ttrCountdown = computeTtrCountdown(ticket);
-                    const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
-                      !ttrCountdown
-                        ? 'On Track'
-                        : ttrCountdown.status === 'overdue'
-                          ? 'Overdue'
-                          : ttrCountdown.status === 'critical'
-                            ? 'Overdue'
-                            : ttrCountdown.status === 'warning'
-                              ? 'At Risk'
-                              : 'On Track';
-
-                    return (
-                      <TicketRowB2B
-                        key={ticketId}
-                        ticket={ticket}
-                        onAssign={handleAssign}
-                        onDetail={onDetail}
-                        isExpanded={isExpanded}
-                      onToggleExpand={() => toggleExpand(ticketId as number)}
-                      rank={ticketInfo?.rank}
-                      ticketAge={ticketInfo?.ageFormatted}
-                      severity={ticketInfo?.severity}
-                      slaLabel={slaLabel}
-                      ttrCountdown={ttrCountdown}
-                      highlighted={isHighlighted(ticket)}
-                    />
-                  );
-                })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination inside card */}
-          {pagination && pagination.totalPages > 1 && (
-            <div className='bg-surface flex flex-col items-center gap-3 border-t border-(--border) px-5 py-3 sm:flex-row sm:justify-between'>
-              <p className='text-xs text-(--text-secondary)'>
-                Showing{' '}
-                <span className='font-semibold text-(--text-primary)'>
-                  {(pagination.currentPage - 1) * (pagination.limit ?? 10) + 1}–
-                  {Math.min(
-                    pagination.currentPage * (pagination.limit ?? 10),
-                    pagination.total,
-                  )}
-                </span>{' '}
-                of{' '}
-                <span className='font-semibold text-(--text-primary)'>
-                  {pagination.total}
-                </span>{' '}
-                tiket
-              </p>
-              <Pagination
-                currentPage={pagination.currentPage}
-                totalPages={pagination.totalPages}
-                onPageChange={pagination.onPageChange}
-              />
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Detail Drawer */}

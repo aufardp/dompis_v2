@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -20,6 +21,37 @@ const ALL_HOURS = Array.from({ length: 24 }, (_, i) => ({
   label: `${String(i).padStart(2, '0')}:00`,
   count: 0,
 }));
+
+function HourlyChartLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading hourly chart'
+    >
+      <div className='min-h-[340px]'>
+        <div className='mb-3 flex items-start justify-between gap-3'>
+          <div className='space-y-2'>
+            <div className='h-3.5 w-44 rounded-full bg-slate-200 dark:bg-slate-800' />
+            <div className='h-3 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+          </div>
+        </div>
+        <div className='h-[260px] rounded-xl border border-slate-200 bg-slate-100/80 p-4 dark:border-slate-800 dark:bg-slate-900/70'>
+          <div className='flex h-full items-end gap-2'>
+            {Array.from({ length: 12 }).map((_, index) => (
+              <div
+                key={index}
+                className='flex-1 rounded-t-lg bg-gradient-to-t from-slate-200 via-slate-100 to-slate-100 dark:from-slate-700 dark:via-slate-800 dark:to-slate-800'
+                style={{ height: `${30 + (index % 6) * 11}%` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 export default function HourlyChart({
   workzone,
@@ -76,7 +108,7 @@ export default function HourlyChart({
       </div>
 
       {isLoading ? (
-        <div className='bg-surface-2 h-[260px] w-full animate-pulse rounded-xl' />
+        <HourlyChartLoading />
       ) : (
         <div className='h-[260px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
           <ResponsiveContainer width='100%' height='100%'>

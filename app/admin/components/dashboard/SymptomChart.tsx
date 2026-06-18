@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -20,6 +21,45 @@ const MAX_LABEL_LENGTH = 30;
 function truncateLabel(val: string) {
   if (val.length <= MAX_LABEL_LENGTH) return val;
   return val.slice(0, MAX_LABEL_LENGTH) + '...';
+}
+
+function SymptomChartLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading symptom chart'
+    >
+      <div className='min-h-[380px]'>
+        <div className='mb-3 flex items-start justify-between gap-3'>
+          <div className='space-y-2'>
+            <div className='h-3.5 w-40 rounded-full bg-slate-200 dark:bg-slate-800' />
+            <div className='h-3 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+          </div>
+        </div>
+        <div className='grid h-[300px] grid-cols-[160px_1fr] gap-3 rounded-xl border border-slate-200 bg-slate-100/80 p-4 dark:border-slate-800 dark:bg-slate-900/70'>
+          <div className='flex flex-col justify-between gap-3'>
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className='h-3.5 rounded-full bg-slate-200 dark:bg-slate-800'
+                style={{ width: `${70 + (index % 3) * 10}%` }}
+              />
+            ))}
+          </div>
+          <div className='flex flex-col justify-between gap-3'>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className='flex items-center gap-3'>
+                <div className='h-3 flex-1 rounded-full bg-slate-200 dark:bg-slate-800' />
+                <div className='h-3 w-10 rounded-full bg-slate-100 dark:bg-slate-700/70' />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </phantom-ui>
+  );
 }
 
 export default function SymptomChart({
@@ -75,7 +115,7 @@ export default function SymptomChart({
       </div>
 
       {isLoading ? (
-        <div className='bg-surface-2 h-[300px] w-full animate-pulse rounded-xl' />
+        <SymptomChartLoading />
       ) : isEmpty ? (
         <div className='flex h-[300px] items-center justify-center'>
           <p className='text-xs text-(--text-muted)'>No symptom data available</p>

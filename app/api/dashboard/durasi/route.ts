@@ -240,7 +240,7 @@ async function getFilteredTickets(
 
     for (const filters of filtersList) {
       const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, filters);
-      parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause})`);
+      parts.push(`(SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_workzone) WHERE ${whereClause})`);
       allParams.push(...params);
     }
 

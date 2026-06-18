@@ -1,3 +1,4 @@
+import '@aejkatappaja/phantom-ui';
 import { cn } from '@/app/libs/utils';
 
 export type StatCardVariant = 'total' | 'open' | 'progress' | 'closed';
@@ -71,7 +72,14 @@ export default function StatCard({
           </div>
 
           {loading ? (
-            <div className='bg-surface-2 mt-3 h-10 w-28 animate-pulse rounded-xl' />
+            <phantom-ui suppressHydrationWarning fallback-radius={8}
+              loading
+              animation='shimmer'
+              reveal={0.12}
+              loading-label={`Loading ${title}`}
+            >
+              <div className='bg-surface-2 mt-3 h-10 w-28 rounded-xl' />
+            </phantom-ui>
           ) : (
             <div className='font-syne mt-3 text-3xl font-extrabold tracking-tight text-(--text-primary) md:text-[2.5rem]'>
               {value.toLocaleString()}

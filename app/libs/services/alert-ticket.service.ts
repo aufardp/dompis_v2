@@ -3,6 +3,7 @@ import { todayWibDateForDb } from '@/lib/timezone';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { getJenisWhereClause } from '@/app/config/jenis-tiket';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
 export type AlertDiamondTicket = {
   idTicket: number;
@@ -71,8 +72,16 @@ export class AlertTicketService {
       sync_date: todayWib,
       // Only Diamond tickets
       customer_type: 'HVC_DIAMOND',
-      // Exclude closed tickets
-      status_update: statusFilter,
+      // Exclude closed tickets by status OR status_update
+      AND: [
+        {
+          OR: [
+            { status: { notIn: CLOSE_STATUS_VALUES } },
+            { status: null },
+          ],
+        },
+        { status_update: statusFilter },
+      ],
       ...workzoneWhere,
     };
 
@@ -145,7 +154,15 @@ export class AlertTicketService {
     const where: Record<string, any> = {
       sync_date: todayWib,
       customer_type: 'HVC_DIAMOND',
-      status_update: { notIn: ['close', 'closed'] },
+      AND: [
+        {
+          OR: [
+            { status: { notIn: CLOSE_STATUS_VALUES } },
+            { status: null },
+          ],
+        },
+        { status_update: { notIn: ['close', 'closed'] } },
+      ],
       ...workzoneWhere,
     };
 

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -24,7 +25,15 @@ import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 
 const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
   ssr: false,
-  loading: () => <div className='bg-surface-2 h-24 animate-pulse rounded-xl' />,
+  loading: () => (
+    <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading stats cards'>
+      <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className='h-24 rounded-xl border border-(--border) bg-(--surface)' />
+        ))}
+      </div>
+    </phantom-ui>
+  ),
 });
 
 const TicketTypeChart = dynamic(
@@ -32,7 +41,9 @@ const TicketTypeChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading ticket type chart'>
+        <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -42,7 +53,9 @@ const WorkzoneChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading workzone chart'>
+        <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -52,7 +65,9 @@ const TicketTrendChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface-2 h-80 animate-pulse rounded-xl' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading ticket trend chart'>
+        <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -67,7 +82,9 @@ const TicketTableSemesta = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface-2 h-[420px] animate-pulse rounded-xl' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading semesta tickets'>
+        <div className='h-[420px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -77,7 +94,9 @@ const DateRangePicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface-2 h-10 w-[220px] animate-pulse rounded-lg' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading date range picker'>
+        <div className='h-10 w-[220px] rounded-lg border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -88,14 +107,16 @@ const KpiStrip = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='flex gap-3 overflow-x-auto pb-2'>
-        {Array.from({ length: 8 }, (_, i) => (
-          <div
-            key={i}
-            className='bg-surface h-[104px] w-[180px] shrink-0 animate-pulse rounded-xl border border-(--border)'
-          />
-        ))}
-      </div>
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading KPI strip'>
+        <div className='flex gap-3 overflow-x-auto pb-2'>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div
+              key={i}
+              className='h-[104px] w-[180px] shrink-0 rounded-xl border border-(--border) bg-(--surface)'
+            />
+          ))}
+        </div>
+      </phantom-ui>
     ),
   },
 );
@@ -105,7 +126,9 @@ const TrendByJenisChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface h-[340px] animate-pulse rounded-xl border border-(--border)' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading trend by jenis chart'>
+        <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -115,7 +138,9 @@ const B2cB2bTrendChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface h-[340px] animate-pulse rounded-xl border border-(--border)' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading B2C B2B trend chart'>
+        <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -125,7 +150,9 @@ const WorkzoneAnalysisTable = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface h-[320px] animate-pulse rounded-xl border border-(--border)' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading workzone analysis table'>
+        <div className='h-[320px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -135,7 +162,9 @@ const TopGaulList = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface h-[260px] animate-pulse rounded-xl border border-(--border)' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading top GAUL list'>
+        <div className='h-[260px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );
@@ -145,7 +174,9 @@ const TopLapulList = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='bg-surface h-[260px] animate-pulse rounded-xl border border-(--border)' />
+      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading top LAPUL list'>
+        <div className='h-[260px] rounded-xl border border-(--border) bg-(--surface)' />
+      </phantom-ui>
     ),
   },
 );

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -52,22 +53,29 @@ function getPercentageTextColor(percentage: number): string {
 
 function LoadingSkeleton() {
   return (
-    <div className='space-y-4'>
-      {[...Array(5)].map((_, i) => (
-        <div
-          key={i}
-          className='animate-pulse rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
-        >
-          <div className='flex items-center gap-4'>
-            <div className='h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-700' />
-            <div className='flex-1 space-y-2'>
-              <div className='h-4 w-32 rounded bg-slate-200 dark:bg-slate-700' />
-              <div className='h-3 w-24 rounded bg-slate-200 dark:bg-slate-700' />
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading attendance summary'
+    >
+      <div className='space-y-4'>
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className='rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
+          >
+            <div className='flex items-center gap-4'>
+              <div className='h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-700' />
+              <div className='flex-1 space-y-2'>
+                <div className='h-4 w-32 rounded-full bg-slate-200 dark:bg-slate-700' />
+                <div className='h-3 w-24 rounded-full bg-slate-200 dark:bg-slate-700' />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </phantom-ui>
   );
 }
 
@@ -356,7 +364,7 @@ export default function MonthlyAttendancePage() {
                           [...Array(5)].map((_, i) => (
                             <tr key={i}>
                               <td colSpan={7} className='px-4 py-4'>
-                                <div className='h-6 animate-pulse rounded bg-slate-200 dark:bg-slate-700' />
+                                <div className='h-6 rounded bg-slate-200 dark:bg-slate-700' />
                               </td>
                             </tr>
                           ))

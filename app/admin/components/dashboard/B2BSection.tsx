@@ -25,6 +25,7 @@ interface B2BSectionProps {
       pPlusCount?: number;
     }
   >;
+  loading?: boolean;
   summary: {
     total: number;
     open: number;
@@ -42,6 +43,7 @@ interface B2BSectionProps {
 export default function B2BSection({
   groupedData,
   groupSummaries,
+  loading = false,
   summary,
 }: B2BSectionProps) {
   const groupMap = new Map<string, Ticket[]>();
@@ -86,6 +88,7 @@ export default function B2BSection({
               icon={group.icon}
               tickets={tickets}
               summary={groupSummaries?.[group.key]}
+              loading={loading}
             />
           );
         })}

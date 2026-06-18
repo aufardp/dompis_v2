@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
@@ -25,93 +26,132 @@ export async function GET(request: Request) {
     ]);
     const workzone = new URL(request.url).searchParams.get('workzone') || undefined;
 
-    const cacheKey = `ticket_mgmt_overview:v4:${user.role}:${user.id_user}:${workzone || 'all'}`;
+    const cacheKey = `ticket_mgmt_overview:v5:${user.role}:${user.id_user}:${workzone || 'all'}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
-        user.role,
-        user.id_user,
-        { workzone },
+      const bucketDefs = [
+        { key: 'kpiCustomer', bucket: 'kpi_customer' as const },
+        { key: 'kpiProactive', bucket: 'kpi_proactive' as const },
+        { key: 'nonKpiUnspec', bucket: 'non_kpi_unspec' as const },
+        { key: 'nonTechnical', bucket: 'non_technical' as const },
+        { key: 'sqmUpdate', bucket: 'sqm_update' as const },
+        { key: 'obsolete', bucket: 'obsolete' as const },
+      ];
+
+      const closeFilters = {
+        ticketStatus: CLOSE_STATUS_VALUES,
+        includeClosed: true,
+      } as const;
+
+      const [allSummaries, b2cSummaries, b2bSummaries, allCloseSummaries] =
+        await Promise.all([
+        Promise.all(
+          bucketDefs.map(async ({ bucket }) => [
+            bucket,
+            await DailyTicketService.getDailyTicketSummary(
+              user.role,
+              user.id_user,
+              { workzone, operationalBucket: [bucket] },
+            ),
+          ] as const),
+        ),
+        Promise.all(
+          bucketDefs.map(async ({ bucket }) => [
+            bucket,
+            await DailyTicketService.getDailyTicketSummary(
+              user.role,
+              user.id_user,
+              { workzone, dept: 'b2c', operationalBucket: [bucket] },
+            ),
+          ] as const),
+        ),
+        Promise.all(
+          bucketDefs.map(async ({ bucket }) => [
+            bucket,
+            await DailyTicketService.getDailyTicketSummary(
+              user.role,
+              user.id_user,
+              { workzone, dept: 'b2b', operationalBucket: [bucket] },
+            ),
+          ] as const),
+        ),
+        Promise.all(
+          bucketDefs.map(async ({ bucket }) => [
+            bucket,
+            await DailyTicketService.getDailyTicketSummary(
+              user.role,
+              user.id_user,
+              { workzone, operationalBucket: [bucket], ...closeFilters },
+            ),
+          ] as const),
+        ),
+      ]);
+
+      const all = Object.fromEntries(allSummaries) as Record<
+        (typeof bucketDefs)[number]['bucket'],
+        Awaited<ReturnType<typeof DailyTicketService.getDailyTicketSummary>>
+      >;
+      const b2c = Object.fromEntries(b2cSummaries) as Record<
+        (typeof bucketDefs)[number]['bucket'],
+        Awaited<ReturnType<typeof DailyTicketService.getDailyTicketSummary>>
+      >;
+      const b2b = Object.fromEntries(b2bSummaries) as Record<
+        (typeof bucketDefs)[number]['bucket'],
+        Awaited<ReturnType<typeof DailyTicketService.getDailyTicketSummary>>
+      >;
+      const closeMap = Object.fromEntries(allCloseSummaries) as Record<
+        (typeof bucketDefs)[number]['bucket'],
+        Awaited<ReturnType<typeof DailyTicketService.getDailyTicketSummary>>
+      >;
+
+      const totalAll = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.total ?? 0),
+        0,
       );
 
-      const all = summaryMatrix.all;
-      const b2c = summaryMatrix.b2c;
-      const b2b = summaryMatrix.b2b;
+      const deptB2CTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(b2c[bucket]?.total ?? 0),
+        0,
+      );
+      const deptB2BTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(b2b[bucket]?.total ?? 0),
+        0,
+      );
 
-      const totalAll =
-        all.kpi_customer.total +
-        all.kpi_proactive.total +
-        all.non_kpi_unspec.total +
-        all.non_technical.total +
-        all.sqm_update.total +
-        all.obsolete.total;
+      const unassignedTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.open ?? 0),
+        0,
+      );
 
-      const deptB2CTotal =
-        b2c.kpi_customer.total +
-        b2c.kpi_proactive.total +
-        b2c.non_kpi_unspec.total +
-        b2c.non_technical.total;
-      const deptB2BTotal =
-        b2b.kpi_customer.total +
-        b2b.kpi_proactive.total +
-        b2b.non_kpi_unspec.total +
-        b2b.non_technical.total;
+      const assignedTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.assigned ?? 0),
+        0,
+      );
 
-      const unassignedTotal =
-        all.kpi_customer.open +
-        all.kpi_proactive.open +
-        all.non_kpi_unspec.open +
-        all.non_technical.open +
-        all.sqm_update.open +
-        all.obsolete.open;
+      const closeTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(closeMap[bucket]?.close ?? 0),
+        0,
+      );
 
-      const assignedTotal =
-        all.kpi_customer.assigned +
-        all.kpi_proactive.assigned +
-        all.non_kpi_unspec.assigned +
-        all.non_technical.assigned +
-        all.sqm_update.assigned +
-        all.obsolete.assigned;
+      const ffgTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.ffgCount ?? 0),
+        0,
+      );
 
-      const closeTotal =
-        all.kpi_customer.close +
-        all.kpi_proactive.close +
-        all.non_kpi_unspec.close +
-        all.non_technical.close +
-        all.sqm_update.close +
-        all.obsolete.close;
+      const gamasTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.gamasCount ?? 0),
+        0,
+      );
 
-      const ffgTotal =
-        all.kpi_customer.ffgCount +
-        all.kpi_proactive.ffgCount +
-        all.non_kpi_unspec.ffgCount +
-        all.non_technical.ffgCount +
-        all.sqm_update.ffgCount +
-        all.obsolete.ffgCount;
+      const p1Total = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.p1Count ?? 0),
+        0,
+      );
 
-      const gamasTotal =
-        all.kpi_customer.gamasCount +
-        all.kpi_proactive.gamasCount +
-        all.non_kpi_unspec.gamasCount +
-        all.non_technical.gamasCount +
-        all.sqm_update.gamasCount +
-        all.obsolete.gamasCount;
-
-      const p1Total =
-        all.kpi_customer.p1Count +
-        all.kpi_proactive.p1Count +
-        all.non_kpi_unspec.p1Count +
-        all.non_technical.p1Count +
-        all.sqm_update.p1Count +
-        all.obsolete.p1Count;
-
-      const pPlusTotal =
-        all.kpi_customer.pPlusCount +
-        all.kpi_proactive.pPlusCount +
-        all.non_kpi_unspec.pPlusCount +
-        all.non_technical.pPlusCount +
-        all.sqm_update.pPlusCount +
-        all.obsolete.pPlusCount;
+      const pPlusTotal = bucketDefs.reduce(
+        (sum, { bucket }) => sum + Number(all[bucket]?.pPlusCount ?? 0),
+        0,
+      );
 
       return {
         totals: {
@@ -127,12 +167,12 @@ export async function GET(request: Request) {
           pPlusCount: pPlusTotal,
         },
         cards: {
-          kpiCustomer: all.kpi_customer,
-          kpiProactive: all.kpi_proactive,
-          nonKpiUnspec: all.non_kpi_unspec,
-          nonTechnical: all.non_technical,
-          sqmUpdate: all.sqm_update,
-          obsolete: all.obsolete,
+          kpiCustomer: { ...all.kpi_customer, close: closeMap.kpi_customer.close },
+          kpiProactive: { ...all.kpi_proactive, close: closeMap.kpi_proactive.close },
+          nonKpiUnspec: { ...all.non_kpi_unspec, close: closeMap.non_kpi_unspec.close },
+          nonTechnical: { ...all.non_technical, close: closeMap.non_technical.close },
+          sqmUpdate: { ...all.sqm_update, close: closeMap.sqm_update.close },
+          obsolete: { ...all.obsolete, close: closeMap.obsolete.close },
         },
       };
     }, CACHE_TTL_SECONDS);

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -91,12 +92,19 @@ function getStatusColor(
 
 function LoadingSkeleton() {
   return (
-    <div className='space-y-6'>
-      <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-6'>
-        <div className='h-8 w-48 rounded bg-slate-200' />
-        <div className='mt-4 h-4 w-32 rounded bg-slate-200' />
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading attendance detail'
+    >
+      <div className='space-y-6'>
+        <div className='rounded-xl border border-slate-200 bg-white p-6'>
+          <div className='h-8 w-48 rounded-full bg-slate-200' />
+          <div className='mt-4 h-4 w-32 rounded-full bg-slate-200' />
+        </div>
       </div>
-    </div>
+    </phantom-ui>
   );
 }
 

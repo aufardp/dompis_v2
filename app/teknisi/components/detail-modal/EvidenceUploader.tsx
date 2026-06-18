@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import Image from 'next/image';
 
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
+  onPreviewFilesChange?: (files: File[]) => void;
   onRemoveImage: (index: number) => void;
   previewUrls: string[];
   uploading: boolean;
@@ -53,6 +53,7 @@ const formatMB = (bytes: number): string => {
 
 export default function EvidenceUploader({
   onFilesChange,
+  onPreviewFilesChange,
   onRemoveImage,
   previewUrls,
   uploading,
@@ -207,6 +208,7 @@ export default function EvidenceUploader({
 
     // Step 4: Auto compress images before passing to parent (dengan timeout 15 detik)
     if (filesToAdd.length > 0) {
+      onPreviewFilesChange?.(filesToAdd);
       setCompressing(true);
       try {
         const compressed = await Promise.all(
@@ -298,13 +300,10 @@ export default function EvidenceUploader({
         <div className='grid grid-cols-3 gap-2 sm:grid-cols-3'>
           {previewUrls.map((url, idx) => (
             <div key={url} className='relative aspect-square'>
-              <Image
+              <img
                 src={url}
                 alt={`Preview ${idx + 1}`}
-                fill
-                sizes='(max-width: 640px) 33vw, 25vw'
-                unoptimized
-                className='rounded-lg border object-cover dark:border-slate-700'
+                className='h-full w-full rounded-lg border object-cover dark:border-slate-700'
               />
               <button
                 type='button'

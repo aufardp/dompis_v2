@@ -18,7 +18,7 @@ export default function TableEmptyState({
           className={`flex flex-col items-center justify-center gap-3 ${heightClass} text-gray-500`}
         >
           {loading && (
-            <div className='h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600' />
+            <div className='h-2 w-24 rounded-full bg-gray-200 dark:bg-gray-700' />
           )}
           <span>{message}</span>
         </div>

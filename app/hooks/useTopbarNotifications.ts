@@ -120,7 +120,7 @@ export function useTopbarNotifications(workzone?: string) {
   const query = useQuery({
     queryKey,
     staleTime: 15_000,
-    refetchInterval: 45_000,
+    refetchInterval: 120_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnMount: true,

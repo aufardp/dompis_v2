@@ -74,8 +74,8 @@ export default function DashboardDurasiClient() {
       }
       return res.json();
     },
-    refetchInterval: 60000,
-    staleTime: 30000,
+    refetchInterval: 300000,
+    staleTime: 120000,
   });
 
   if (isLoading) {

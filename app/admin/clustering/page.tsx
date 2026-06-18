@@ -422,8 +422,14 @@ export default function ClusteringPage() {
 
           <div className='p-4 md:p-5'>
             {assignmentsLoading ? (
-              <div className='py-8 text-center text-(--text-secondary)'>
-                Loading...
+              <div className='space-y-3'>
+                <div className='h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-800' />
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className='h-14 rounded-xl border border-(--border) bg-slate-100/70 dark:bg-slate-800/70'
+                  />
+                ))}
               </div>
             ) : (
               <div className='overflow-x-auto'>
@@ -541,7 +547,7 @@ export default function ClusteringPage() {
                     className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-primary) focus:border-blue-500 focus:outline-none disabled:opacity-50'
                   >
                     {sasLoading ? (
-                      <option>Loading...</option>
+                      <option>Memuat area...</option>
                     ) : serviceAreas.length === 0 ? (
                       <option value=''>Tidak ada SA yang dikelola</option>
                     ) : (
@@ -588,8 +594,14 @@ export default function ClusteringPage() {
 
           <div className='p-4 md:p-5'>
             {clustersLoading ? (
-              <div className='py-8 text-center text-(--text-secondary)'>
-                Loading...
+              <div className='space-y-3'>
+                <div className='h-4 w-44 rounded-full bg-slate-200 dark:bg-slate-800' />
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className='h-14 rounded-xl border border-(--border) bg-slate-100/70 dark:bg-slate-800/70'
+                  />
+                ))}
               </div>
             ) : (
               <div className='overflow-x-auto'>
@@ -807,8 +819,13 @@ export default function ClusteringPage() {
 
               {/* Technician list */}
               {plotModalLoading ? (
-                <div className='py-8 text-center text-sm text-(--text-secondary)'>
-                  Loading...
+                <div className='space-y-2'>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className='h-12 rounded-lg border border-(--border) bg-slate-100/70 dark:bg-slate-800/70'
+                    />
+                  ))}
                 </div>
               ) : filteredTeknisi.length === 0 ? (
                 <div className='py-8 text-center text-sm text-(--text-secondary)'>

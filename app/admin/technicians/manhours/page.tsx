@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import Link from 'next/link';
@@ -13,7 +14,6 @@ import {
   Award,
   Upload,
   X,
-  Loader2,
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
@@ -64,23 +64,30 @@ interface FilterState {
  */
 function LoadingSkeleton() {
   return (
-    <div className='space-y-4'>
-      <div className='animate-pulse rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
-        <div className='h-4 w-32 rounded bg-slate-200 dark:bg-slate-700' />
-        <div className='mt-4 space-y-2'>
-          <div className='h-3 w-full rounded bg-slate-200 dark:bg-slate-700' />
-          <div className='h-3 w-3/4 rounded bg-slate-200 dark:bg-slate-700' />
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading technician manhours'
+    >
+      <div className='space-y-4'>
+        <div className='rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800'>
+          <div className='h-4 w-32 rounded-full bg-slate-200 dark:bg-slate-700' />
+          <div className='mt-4 space-y-2'>
+            <div className='h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700' />
+            <div className='h-3 w-3/4 rounded-full bg-slate-200 dark:bg-slate-700' />
+          </div>
         </div>
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className='rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
+          >
+            <div className='h-4 w-full rounded-full bg-slate-200 dark:bg-slate-700' />
+          </div>
+        ))}
       </div>
-      {[...Array(5)].map((_, i) => (
-        <div
-          key={i}
-          className='animate-pulse rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800'
-        >
-          <div className='h-4 w-full rounded bg-slate-200 dark:bg-slate-700' />
-        </div>
-      ))}
-    </div>
+    </phantom-ui>
   );
 }
 
@@ -387,7 +394,7 @@ export default function ManHoursPage() {
                 disabled={loading}
                 className='w-full bg-teal-600 hover:bg-teal-700'
               >
-                {loading ? 'Loading...' : 'Tampilkan'}
+                {loading ? 'Memproses...' : 'Tampilkan'}
               </Button>
             </div>
           </div>

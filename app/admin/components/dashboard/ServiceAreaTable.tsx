@@ -1,3 +1,4 @@
+import '@aejkatappaja/phantom-ui';
 import { memo } from 'react';
 
 interface ServiceArea {
@@ -11,7 +12,73 @@ interface ServiceArea {
   hvcDiamond: number;
 }
 
-function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
+function ServiceAreaTable({
+  areas,
+  loading,
+}: {
+  areas: ServiceArea[];
+  loading?: boolean;
+}) {
+  if (loading) {
+    return (
+      <phantom-ui suppressHydrationWarning fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading service areas'
+      >
+        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='border-b border-(--border) px-4 py-4'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div className='space-y-2'>
+                <div className='h-3.5 w-44 rounded-full bg-slate-200 dark:bg-slate-800' />
+                <div className='h-3 w-72 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+              </div>
+              <div className='h-7 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+            </div>
+          </div>
+
+          <div className='overflow-x-auto'>
+            <div className='min-w-[860px]'>
+              <div className='grid grid-cols-8 border-b border-(--border) bg-surface-2 px-4 py-3'>
+                {Array.from({ length: 8 }, (_, i) => (
+                  <div key={i} className='h-3 w-full rounded-full bg-slate-200 dark:bg-slate-800' />
+                ))}
+              </div>
+
+              <div className='space-y-0'>
+                {Array.from({ length: 5 }, (_, row) => (
+                  <div
+                    key={row}
+                    className='grid grid-cols-8 items-center px-4 py-3.5 text-sm'
+                  >
+                    {Array.from({ length: 8 }, (_, col) => (
+                      <div
+                        key={col}
+                        className='h-4 rounded-full bg-slate-100 dark:bg-slate-800/70'
+                        style={{ width: `${60 - ((row + col) % 4) * 10}%` }}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </phantom-ui>
+    );
+  }
+
+  if (areas.length === 0) {
+    return (
+      <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+        <div className='py-8 text-center text-sm text-(--text-secondary)'>
+          No service areas found
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
       <div className='border-b border-(--border) px-4 py-4'>
@@ -83,11 +150,6 @@ function ServiceAreaTable({ areas }: { areas: ServiceArea[] }) {
         </div>
       </div>
 
-      {areas.length === 0 && (
-        <div className='py-8 text-center text-sm text-(--text-secondary)'>
-          No service areas found
-        </div>
-      )}
     </div>
   );
 }

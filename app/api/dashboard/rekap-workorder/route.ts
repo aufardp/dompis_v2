@@ -507,7 +507,7 @@ function buildRekapResponse(
 
   return {
     title: 'REKAP WORKORDER ASSURANCE',
-    subtitle: '[REGULER - HVC - SQM]',
+    subtitle: '',
     timestamp: new Date().toISOString(),
     syncDate,
     rows,
@@ -560,7 +560,7 @@ async function getFilteredRekapTickets(
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt
-    FROM ticket t
+    FROM ticket t FORCE INDEX (idx_ticket_workzone)
     JOIN service_area sa ON sa.nama_sa = t.workzone
     JOIN area a          ON a.id_area = sa.area_id
     LEFT JOIN branch b   ON b.id_branch = a.branch_id
@@ -599,7 +599,7 @@ export async function GET(request: NextRequest) {
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
       return NextResponse.json({
         rows: [], totals: {}, timestamp: new Date().toISOString(), syncDate: today,
-        title: 'REKAP WORKORDER ASSURANCE', subtitle: '[REGULER - HVC - SQM]',
+        title: 'REKAP WORKORDER ASSURANCE', subtitle: '',
         kpiSummary: { total: 0, kpiCustomer: 0, kpiProactive: 0, nonKpiUnspec: 0, nonTechnical: 0, sqmUpdate: 0, obsolete: 0 },
         workboardSummary: { total: 0, open: 0, assigned: 0, close: 0 },
         selectedBucket: bucket,

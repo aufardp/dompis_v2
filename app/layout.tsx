@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import '@aejkatappaja/phantom-ui/ssr.css';
 import './globals.css';
 import Providers from './providers';
 import type { Viewport } from 'next';

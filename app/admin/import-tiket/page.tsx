@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import '@aejkatappaja/phantom-ui';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Upload,
@@ -11,8 +12,9 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowLeft,
-  Loader2,
   RotateCcw,
+  Clock3,
+  ChevronDown,
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
@@ -45,6 +47,168 @@ interface ImportResult {
   import_batch: string;
 }
 
+interface LastUploadInfo {
+  import_batch: string;
+  imported_at: string;
+  row_count: number;
+}
+
+const LOADING_PREVIEW_COLUMNS = TICKET_IMPORT_TEMPLATE_HEADERS.slice(0, 12);
+
+function formatWibDate(value: string): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date(value));
+}
+
+function ImportPreviewLoadingPanel({ mappedCount }: { mappedCount: number }) {
+  return (
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading import preview'
+    >
+      <div className='space-y-4'>
+        <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
+          <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
+            <p className='text-2xl font-bold'>1,248</p>
+            <p className='text-xs text-slate-500'>Total Baris</p>
+          </div>
+          <div className='rounded-2xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/20'>
+            <p className='text-2xl font-bold text-green-700 dark:text-green-400'>
+              1,120
+            </p>
+            <p className='text-xs text-green-600 dark:text-green-500'>Valid</p>
+          </div>
+          <div className='rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/20'>
+            <p className='text-2xl font-bold text-red-700 dark:text-red-400'>
+              128
+            </p>
+            <p className='text-xs text-red-600 dark:text-red-500'>
+              Gagal Validasi
+            </p>
+          </div>
+          <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950'>
+            <p className='text-2xl font-bold'>{mappedCount}</p>
+            <p className='text-xs text-slate-500'>Kolom Ter Mapping</p>
+          </div>
+        </div>
+
+        <div className='rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/20'>
+          <p className='text-sm font-medium text-amber-800 dark:text-amber-400'>
+            Field wajib belum ter mapping
+          </p>
+          <p className='mt-1 text-xs text-amber-700 dark:text-amber-500'>
+            INCIDENT, STATUS, REPORTED DATE, WORKZONE
+          </p>
+        </div>
+
+        <div className='rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950'>
+          <div className='flex items-center justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800'>
+            <div>
+              <h2 className='text-sm font-semibold'>Mapping Kolom</h2>
+              <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
+                Daftar mapping import tiket
+              </p>
+            </div>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-slate-600 uppercase dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'>
+              Expand
+            </span>
+          </div>
+          <div className='divide-y divide-slate-100 dark:divide-slate-800'>
+            {LOADING_PREVIEW_COLUMNS.map((header, index) => (
+              <div
+                key={`${header}-${index}`}
+                className='flex items-center gap-3 px-4 py-2.5'
+              >
+                <span className='w-40 shrink-0 truncate text-sm font-medium text-slate-700 dark:text-slate-300'>
+                  {header}
+                </span>
+                <ArrowRight className='h-3.5 w-3.5 shrink-0 text-slate-400' />
+                <div className='h-9 w-full rounded-lg border border-slate-300 bg-slate-100 dark:border-slate-700 dark:bg-slate-900' />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className='rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950'>
+          <div className='border-b border-slate-200 p-4 dark:border-slate-800'>
+            <h2 className='text-sm font-semibold'>
+              Preview (20 baris pertama)
+            </h2>
+            <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
+              Fokus ke 12 kolom inti. Baris yang panjang akan membungkus teks
+              agar tetap terbaca tanpa merapat.
+            </p>
+          </div>
+          <div className='overflow-x-auto bg-slate-50/40 dark:bg-slate-950/40'>
+            <table className='w-full min-w-7xl table-fixed border-separate border-spacing-0 text-left text-xs'>
+              <colgroup>
+                <col className='w-14' />
+                <col className='w-40' />
+                <col className='w-28' />
+                <col className='w-105' />
+                <col className='w-36' />
+                <col className='w-40' />
+                <col className='w-32' />
+                <col className='w-32' />
+                <col className='w-36' />
+                <col className='w-32' />
+                <col className='w-28' />
+                <col className='w-28' />
+                <col className='w-36' />
+              </colgroup>
+              <thead>
+                <tr className='border-b border-slate-100 dark:border-slate-800'>
+                  <th className='sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-3 font-semibold text-slate-500 shadow-[1px_0_0_0_rgba(148,163,184,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300'>
+                    #
+                  </th>
+                  {LOADING_PREVIEW_COLUMNS.map((h) => (
+                    <th
+                      key={h}
+                      className='border-b border-slate-100 px-3 py-3 align-top font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-300'
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className='divide-y divide-slate-100 dark:divide-slate-800'>
+                {Array.from({ length: 6 }).map((_, rowIndex) => (
+                  <tr
+                    key={rowIndex}
+                    className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'
+                  >
+                    <td className='sticky left-0 z-10 bg-white px-3 py-2 font-medium text-slate-400 shadow-[1px_0_0_0_rgba(148,163,184,0.12)] dark:bg-slate-950 dark:text-slate-500'>
+                      {rowIndex + 1}
+                    </td>
+                    {LOADING_PREVIEW_COLUMNS.map((header) => (
+                      <td
+                        key={`${header}-${rowIndex}`}
+                        className='px-3 py-3 align-top'
+                      >
+                        <div className='space-y-2'>
+                          <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                          <div className='h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
+
 export default function ImportTiketPage() {
   const [step, setStep] = useState<Step>('upload');
   const [file, setFile] = useState<File | null>(null);
@@ -53,6 +217,8 @@ export default function ImportTiketPage() {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [lastUpload, setLastUpload] = useState<LastUploadInfo | null>(null);
+  const [lastUploadExpanded, setLastUploadExpanded] = useState(false);
   const [error, setError] = useState('');
   const [mappingCollapsed, setMappingCollapsed] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +228,22 @@ export default function ImportTiketPage() {
     if (text.length <= max) return text;
     return `${text.slice(0, max - 1)}…`;
   }, []);
+
+  const fetchLastUpload = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth('/api/import-tiket/last-upload');
+      if (!res) return;
+      const json = await res.json();
+      if (!json.success) return;
+      setLastUpload(json.data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLastUpload();
+  }, [fetchLastUpload]);
 
   const handleFileSelect = useCallback(async (selectedFile: File | null) => {
     if (!selectedFile) return;
@@ -128,6 +310,11 @@ export default function ImportTiketPage() {
       if (!json.success) throw new Error(json.message);
 
       setResult(json.data);
+      setLastUpload({
+        import_batch: json.data.import_batch,
+        imported_at: new Date().toISOString(),
+        row_count: preview.total_rows,
+      });
       setStep('result');
     } catch (e: any) {
       setError(e.message || 'Gagal import file');
@@ -212,7 +399,7 @@ export default function ImportTiketPage() {
     <AdminLayout>
       <div className='mx-auto max-w-5xl space-y-6 p-4 sm:p-6'>
         <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='flex flex-col gap-5 border-b border-(--border) bg-(--surface-2) px-5 py-5 md:px-6 lg:flex-row lg:items-end lg:justify-between'>
+          <div className='flex flex-col gap-4 border-b border-(--border) bg-(--surface-2) px-5 py-4 md:px-6 lg:flex-row lg:items-start lg:justify-between'>
             <div className='max-w-3xl space-y-3'>
               <div className='flex flex-wrap items-center gap-2'>
                 <span className='rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-blue-500 uppercase'>
@@ -232,16 +419,86 @@ export default function ImportTiketPage() {
                 </p>
               </div>
             </div>
-            <Link
-              href='/admin'
-              className='inline-flex items-center rounded-full border border-(--border) bg-(--surface) px-4 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/30 hover:text-blue-500'
-            >
-              ← Kembali ke Dashboard
-            </Link>
+              <div className='flex flex-col items-end gap-2 lg:pt-1'>
+              <button
+                type='button'
+                onClick={() => setLastUploadExpanded((current) => !current)}
+                className='group inline-flex w-full max-w-[22rem] items-center gap-2 rounded-2xl border border-(--border) bg-(--surface) px-3 py-1.5 text-left shadow-sm transition hover:border-blue-400/30 hover:bg-blue-500/[0.04] md:max-w-[28rem]'
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    lastUpload ? 'bg-emerald-500' : 'bg-(--text-muted)/40'
+                  }`}
+                />
+                <Clock3 className='h-3.5 w-3.5 shrink-0 text-(--text-muted)' />
+                <div className='min-w-0 flex-1'>
+                  <p className='truncate text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                    Last upload
+                  </p>
+                  <p
+                    className='truncate text-[11px] font-medium text-(--text-primary) md:whitespace-nowrap'
+                    title={
+                      lastUpload
+                        ? `${formatWibDate(lastUpload.imported_at)} • ${lastUpload.import_batch} • ${lastUpload.row_count.toLocaleString('id-ID')} rows`
+                        : 'Belum ada upload'
+                    }
+                  >
+                    {lastUpload
+                      ? `${formatWibDate(lastUpload.imported_at)} • ${lastUpload.import_batch} • ${lastUpload.row_count.toLocaleString('id-ID')} rows`
+                      : 'Belum ada upload'}
+                  </p>
+                </div>
+                <ChevronDown
+                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-(--text-muted) transition-transform ${
+                    lastUploadExpanded ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+              <div
+                className={`grid w-full max-w-[22rem] overflow-hidden transition-[grid-template-rows,opacity,transform] duration-300 ease-out md:max-w-[28rem] ${
+                  lastUploadExpanded
+                    ? 'grid-rows-[1fr] opacity-100 translate-y-0'
+                    : 'grid-rows-[0fr] opacity-0 -translate-y-1'
+                }`}
+              >
+                <div className='min-h-0 overflow-hidden rounded-2xl border border-(--border) bg-(--surface) px-2.5 py-1 shadow-sm'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <div className='min-w-0'>
+                      <p className='truncate text-[9px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                        Detail batch
+                      </p>
+                      <p
+                        className='truncate text-[10px] text-(--text-secondary)'
+                        title={
+                          lastUpload
+                            ? `Diunggah ${formatWibDate(lastUpload.imported_at)}`
+                            : 'Belum ada batch tersimpan'
+                        }
+                      >
+                        {lastUpload
+                          ? `Diunggah ${formatWibDate(lastUpload.imported_at)}`
+                          : 'Belum ada batch tersimpan'}
+                      </p>
+                    </div>
+                    {lastUpload && (
+                      <span className='rounded-full border border-(--border) bg-(--bg) px-2 py-0.5 text-[9px] font-semibold text-(--text-secondary)'>
+                        {lastUpload.row_count.toLocaleString('id-ID')} rows
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Link
+                href='/admin'
+                className='inline-flex items-center rounded-full border border-(--border) bg-(--surface) px-4 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/30 hover:text-blue-500'
+              >
+                ← Kembali ke Dashboard
+              </Link>
+            </div>
           </div>
 
-          <div className='grid gap-3 px-5 py-4 sm:grid-cols-3 md:px-6'>
-            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-3'>
+          <div className='grid gap-3 px-5 py-2.5 sm:grid-cols-3 md:px-6'>
+            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-2.5'>
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Step 1
               </p>
@@ -249,7 +506,7 @@ export default function ImportTiketPage() {
                 Template
               </p>
             </div>
-            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-3'>
+            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-2.5'>
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Step 2
               </p>
@@ -257,7 +514,7 @@ export default function ImportTiketPage() {
                 Preview & Mapping
               </p>
             </div>
-            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-3'>
+            <div className='rounded-2xl border border-(--border) bg-(--bg) px-4 py-2.5'>
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Step 3
               </p>
@@ -269,8 +526,8 @@ export default function ImportTiketPage() {
         </div>
 
         <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='border-b border-(--border) bg-(--surface-2) px-5 py-4 md:px-6'>
-            <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3.5 md:px-6'>
+            <div className='flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between'>
               <div className='space-y-2'>
                 <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                   Template Excel final
@@ -293,7 +550,7 @@ export default function ImportTiketPage() {
                 Download Template Excel
               </Button>
             </div>
-            <div className='mt-4 flex flex-wrap gap-2'>
+            <div className='mt-3.5 flex flex-wrap gap-2'>
               {TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS.map((header) => (
                 <span
                   key={header}
@@ -343,12 +600,7 @@ export default function ImportTiketPage() {
               </div>
             )}
 
-            {loading && (
-              <div className='flex items-center justify-center gap-3 py-12 text-slate-500'>
-                <Loader2 className='h-5 w-5 animate-spin' />
-                <span className='text-sm'>Memproses file...</span>
-              </div>
-            )}
+            {loading && <ImportPreviewLoadingPanel mappedCount={mappedCount} />}
 
             {preview && !loading && (
               <>
@@ -504,12 +756,12 @@ export default function ImportTiketPage() {
                           </p>
                         </div>
                         <div className='overflow-x-auto bg-slate-50/40 dark:bg-slate-950/40'>
-                          <table className='w-full min-w-[1480px] table-fixed border-separate border-spacing-0 text-left text-xs'>
+                          <table className='w-full min-w-370 table-fixed border-separate border-spacing-0 text-left text-xs'>
                             <colgroup>
                               <col className='w-14' />
                               <col className='w-40' />
                               <col className='w-28' />
-                              <col className='w-[420px]' />
+                              <col className='w-105' />
                               <col className='w-36' />
                               <col className='w-40' />
                               <col className='w-32' />
@@ -550,9 +802,11 @@ export default function ImportTiketPage() {
                                       title={String(
                                         row[mapping[h] ?? h] ?? '-',
                                       )}
-                                      className='px-3 py-3 align-top leading-5 break-words whitespace-normal text-slate-700 dark:text-slate-200'
+                                      className='px-3 py-3 align-top leading-5 wrap-break-word whitespace-normal text-slate-700 dark:text-slate-200'
                                     >
-                                      {truncatePreviewCell(row[mapping[h] ?? h])}
+                                      {truncatePreviewCell(
+                                        row[mapping[h] ?? h],
+                                      )}
                                     </td>
                                   ))}
                                 </tr>
@@ -583,7 +837,7 @@ export default function ImportTiketPage() {
                           >
                             {importing ? (
                               <>
-                                <Loader2 className='mr-1.5 h-4 w-4 animate-spin' />
+                                <span className='mr-1.5 inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70' />
                                 Mengimport...
                               </>
                             ) : (

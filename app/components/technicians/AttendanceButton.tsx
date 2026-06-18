@@ -101,7 +101,7 @@ export default function AttendanceButton(props: AttendanceButtonProps) {
   if (loading) {
     return (
       <div className='flex items-center gap-2'>
-        <div className='h-6 w-20 animate-pulse rounded-full bg-slate-200' />
+        <div className='h-6 w-20 rounded-full bg-slate-200' />
       </div>
     );
   }

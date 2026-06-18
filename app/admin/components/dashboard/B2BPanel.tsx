@@ -6,6 +6,7 @@ import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
 import {
   countStatusBuckets,
+  CLOSE_STATUS_VALUES,
   isTicketClosed,
   isTicketInWork,
   isTicketOpenLike,
@@ -105,6 +106,7 @@ const B2BPanel = memo(function B2BPanel({
   const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<string[]>([]);
   const [b2bPage, setB2bPage] = useState(1);
   const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
+  const [b2bClosePage, setB2bClosePage] = useState(1);
   const b2bSectionRef = useRef<HTMLDivElement>(null);
   const b2bTableRef = useRef<HTMLDivElement>(null);
 
@@ -122,28 +124,45 @@ const B2BPanel = memo(function B2BPanel({
     validasiLimit: 10,
   });
 
+  const b2bClosePageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'b2b',
+    ticketType: b2bTicketTypeFilter,
+    statusUpdate: b2bHasilVisitFilter,
+    ticketStatus: CLOSE_STATUS_VALUES,
+    flagging: b2bFlaggingFilter,
+    page: b2bClosePage,
+    limit: 10,
+    includeValidasi: false,
+  });
+
   const handleB2bTicketTypeChange = useCallback((types: string[]) => {
     setB2bTicketTypeFilter(types);
     setB2bPage(1);
     setB2bValidasiPage(1);
+    setB2bClosePage(1);
   }, []);
 
   const handleB2bTicketStatusChange = useCallback((statuses: string[]) => {
     setB2bTicketStatusFilter(statuses);
     setB2bPage(1);
     setB2bValidasiPage(1);
+    setB2bClosePage(1);
   }, []);
 
   const handleB2bHasilVisitChange = useCallback((statuses: string[]) => {
     setB2bHasilVisitFilter(statuses);
     setB2bPage(1);
     setB2bValidasiPage(1);
+    setB2bClosePage(1);
   }, []);
 
   const handleB2bFlaggingChange = useCallback((flags: string[]) => {
     setB2bFlaggingFilter(flags);
     setB2bPage(1);
     setB2bValidasiPage(1);
+    setB2bClosePage(1);
   }, []);
 
   const b2bGroupedData = useMemo(() => {
@@ -190,7 +209,7 @@ const B2BPanel = memo(function B2BPanel({
       total: b2bPageData.pagination.total,
       open: source.open,
       assigned: source.assigned,
-      close: source.close,
+      close: b2bClosePageData.pagination.total,
       regulerCount: 0,
       sqmCount: 0,
       ffgCount: source.ffgCount ?? 0,
@@ -198,7 +217,12 @@ const B2BPanel = memo(function B2BPanel({
       p1Count: source.p1Count ?? 0,
       pPlusCount: source.pPlusCount ?? 0,
     };
-  }, [b2bSummaryFromApi, clientB2bSummary, b2bPageData.pagination.total]);
+  }, [
+    b2bSummaryFromApi,
+    clientB2bSummary,
+    b2bPageData.pagination.total,
+    b2bClosePageData.pagination.total,
+  ]);
 
   const isValidationTicket = useCallback((t: TicketTableItem) => {
     const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
@@ -272,6 +296,7 @@ const B2BPanel = memo(function B2BPanel({
       <B2BSection
         groupedData={b2bGroupedData}
         groupSummaries={b2bGroupsFromApi}
+        loading={b2bPageData.loading && !b2bPageData.isRefreshing}
         summary={b2bSectionSummary}
       />
       <FilterBarB2B
@@ -296,6 +321,7 @@ const B2BPanel = memo(function B2BPanel({
               flaggingFilter={b2bFlaggingFilter}
               loading={b2bPageData.loading}
               isRefreshing={b2bPageData.isRefreshing}
+              searching={Boolean(searchQuery.trim())}
               onAssign={onAssign}
               downloadFilters={{
                 dept: 'b2b',
@@ -317,6 +343,7 @@ const B2BPanel = memo(function B2BPanel({
           validasiTickets={b2bPageData.validasiTickets}
           totalCount={b2bPageData.pagination.total}
           validasiTotalCount={b2bPageData.validasiCount}
+          closeCount={b2bClosePageData.pagination.total}
           validasiPagination={{
             currentPage: b2bPageData.validasiPagination.currentPage,
             totalPages: b2bPageData.validasiPagination.totalPages,
@@ -324,6 +351,31 @@ const B2BPanel = memo(function B2BPanel({
             limit: b2bPageData.validasiPagination.limit,
             onPageChange: setB2bValidasiPage,
           }}
+          closeTable={
+            <TicketTableB2B
+              tickets={b2bClosePageData.tickets}
+              tableSummary={b2bClosePageData.summary}
+              flaggingFilter={b2bFlaggingFilter}
+              loading={b2bClosePageData.loading}
+              isRefreshing={b2bClosePageData.isRefreshing}
+              searching={Boolean(searchQuery.trim())}
+              onAssign={onAssign}
+              downloadFilters={{
+                dept: 'b2b',
+                ticketType: b2bTicketTypeFilter,
+                statusUpdate: b2bHasilVisitFilter,
+                ticketStatus: CLOSE_STATUS_VALUES,
+                flagging: b2bFlaggingFilter,
+              }}
+              pagination={{
+                currentPage: b2bClosePageData.pagination.currentPage,
+                totalPages: b2bClosePageData.pagination.totalPages,
+                total: b2bClosePageData.pagination.total,
+                limit: b2bClosePageData.pagination.limit,
+                onPageChange: setB2bClosePage,
+              }}
+            />
+          }
           loading={b2bPageData.loading}
           isRefreshing={b2bPageData.isRefreshing}
           onAssign={onAssign}

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import TicketRowSemesta from './TicketRowSemesta';
@@ -33,7 +34,6 @@ import {
 } from '../../../components/tickets/helpers';
 import { formatDate } from '../../../components/tickets/helpers';
 import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
-import TableLoadingSkeleton from './TableLoadingSkeleton';
 import MaxTtrCell from './MaxTtrCell';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
@@ -195,6 +195,115 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   statusDompis: true,
 };
 
+function TicketTableSemestaLoadingMobile() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading semesta tickets'
+    >
+      <div className='space-y-3'>
+        <div className='mb-2 flex items-center justify-between px-1'>
+          <div className='h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-800' />
+        </div>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+            className='rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950'
+          >
+            <div className='flex items-start justify-between gap-3'>
+              <div className='space-y-2'>
+                <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+                <div className='h-3 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+              </div>
+              <div className='h-7 w-16 rounded-full bg-slate-100 dark:bg-slate-800' />
+            </div>
+            <div className='mt-4 grid grid-cols-2 gap-2'>
+              {Array.from({ length: 6 }).map((__, cellIndex) => (
+                <div
+                  key={cellIndex}
+                  className='rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60'
+                >
+                  <div className='h-2.5 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  <div className='mt-2 h-3 w-4/5 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                </div>
+              ))}
+            </div>
+            <div className='mt-3 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800' />
+          </div>
+        ))}
+      </div>
+    </phantom-ui>
+  );
+}
+
+function TicketTableSemestaLoadingDesktop({ label }: { label: string }) {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label={`Loading ${label}`}
+    >
+      <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+        <div className='flex flex-col gap-3 border-b border-(--border) bg-(--surface-2) px-4 py-4 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='space-y-2'>
+            <div className='h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+            <div className='h-3 w-56 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+          </div>
+          <div className='flex items-center gap-2'>
+            <div className='h-9 w-24 rounded-2xl bg-slate-200 dark:bg-slate-800' />
+            <div className='h-9 w-32 rounded-2xl bg-slate-200 dark:bg-slate-800' />
+          </div>
+        </div>
+        <div className='overflow-x-auto'>
+          <table className='w-full text-sm'>
+            <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
+              <tr>
+                <th className='w-10 px-3 py-3 text-center'>#</th>
+                <th className='w-16 px-3 py-3 text-center'>No</th>
+                <th className='px-3 py-3 text-center'>Ticket</th>
+                <th className='px-3 py-3 text-center'>Service</th>
+                <th className='px-3 py-3 text-center'>Customer</th>
+                <th className='px-3 py-3 text-center'>Address</th>
+                <th className='px-3 py-3 text-center'>Booking Date</th>
+                <th className='px-3 py-3 text-center'>Type</th>
+                <th className='px-3 py-3 text-center'>Max TTR</th>
+                <th className='px-3 py-3 text-center'>Age / SLA</th>
+                <th className='px-3 py-3 text-center'>Jenis Tiket</th>
+                <th className='px-3 py-3 text-center'>Workzone</th>
+                <th className='px-3 py-3 text-center'>Teknisi</th>
+                <th className='px-3 py-3 text-center'>Status Insera</th>
+                <th className='px-3 py-3 text-center'>Status Dompis</th>
+                <th className='px-3 py-3 text-center'>Aksi</th>
+              </tr>
+            </thead>
+            <tbody className='divide-y divide-(--border)'>
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <tr
+                  key={rowIndex}
+                  className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'
+                >
+                  {Array.from({ length: 16 }).map((__, cellIndex) => (
+                    <td key={cellIndex} className='px-3 py-4'>
+                      <div className='space-y-2'>
+                        <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                        <div className='h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
+
 export default function TicketTableSemesta({
   tickets = [],
   loading = false,
@@ -351,9 +460,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       {/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
         {loading ? (
-          <p className='py-8 text-center text-(--text-secondary)'>
-            Loading...
-          </p>
+          <TicketTableSemestaLoadingMobile />
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-(--text-secondary)'>
             No tickets found
@@ -578,7 +685,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                 {loading ? (
                   <tr>
                     <td colSpan={16}>
-                      <TableLoadingSkeleton rows={6} cols={16} />
+                      <TicketTableSemestaLoadingDesktop label='semesta tickets' />
                     </td>
                   </tr>
                 ) : sortedTickets.length === 0 ? (

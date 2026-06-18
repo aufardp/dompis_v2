@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import '@aejkatappaja/phantom-ui';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
 import { getJenisStyle } from '@/app/config/jenis-tiket';
 import { getStatusColor } from '../../../components/tickets/helpers';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import TableLoadingSkeleton from './TableLoadingSkeleton';
 import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
 import { calculateAgeInHours } from '@/app/libs/tickets/sort';
 
@@ -44,19 +44,119 @@ interface TicketTableValidasiProps {
   };
   loading?: boolean;
   isRefreshing?: boolean;
+  highlightQuery?: string;
+  searching?: boolean;
 }
 
 const MOBILE_PAGE_SIZE = 5;
+
+function TicketTableValidasiLoadingMobile() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading validation tickets'
+    >
+      <div className='space-y-4'>
+        <div className='mb-3 flex items-center justify-between px-1'>
+          <div className='h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-800' />
+        </div>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+          className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'
+          >
+            <div className='space-y-4'>
+              <div className='flex items-start justify-between gap-4'>
+                <div className='space-y-3'>
+                  <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-3 w-40 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                </div>
+                <div className='h-7 w-16 rounded-full bg-slate-100 dark:bg-slate-800' />
+              </div>
+              <div className='grid grid-cols-2 gap-3'>
+                {Array.from({ length: 4 }).map((__, cellIndex) => (
+                  <div
+                    key={cellIndex}
+                    className='rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/60'
+                  >
+                    <div className='h-2.5 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-3 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                ))}
+              </div>
+              <div className='h-11 rounded-2xl bg-slate-100 dark:bg-slate-800' />
+            </div>
+          </div>
+        ))}
+      </div>
+    </phantom-ui>
+  );
+}
+
+function TicketTableValidasiLoadingDesktop() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading validation table'
+    >
+      <div className='rounded-2xl border border-(--border) bg-(--surface) shadow-sm'>
+        <div className='flex items-center justify-between border-b border-(--border) bg-(--surface-2) px-4 py-3'>
+          <div className='h-3.5 w-40 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-48 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+        </div>
+        <div className='overflow-x-auto'>
+          <table className='w-full text-sm'>
+            <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
+              <tr>
+                {Array.from({ length: 13 }).map((_, index) => (
+                  <th key={index} className='px-3 py-3 text-center'>
+                    <div className='mx-auto h-3 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className='divide-y divide-(--border)'>
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <tr
+                  key={rowIndex}
+                  className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'
+                >
+                  {Array.from({ length: 13 }).map((__, cellIndex) => (
+                    <td key={cellIndex} className='px-3 py-5'>
+                      <div className='space-y-3'>
+                        <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                        <div className='h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 export default function TicketTableValidasi({
   tickets,
   pagination,
   loading,
   isRefreshing,
+  highlightQuery,
+  searching = false,
 }: TicketTableValidasiProps) {
   const [mobilePage, setMobilePage] = useState(1);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
+  const normalizedHighlightQuery = (highlightQuery ?? '').trim().toLowerCase();
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const sortedTickets = useMemo(() => {
     return [...tickets].sort((a, b) => {
@@ -88,6 +188,44 @@ export default function TicketTableValidasi({
         (mobilePage - 1) * MOBILE_PAGE_SIZE,
         mobilePage * MOBILE_PAGE_SIZE,
       );
+
+  const isHighlighted = useCallback(
+    (ticket: TicketRow) => {
+      if (!normalizedHighlightQuery) return false;
+      const haystack = [
+        ticket.ticket,
+        ticket.serviceNo,
+        ticket.contactName,
+        ticket.contactPhone,
+        ticket.jenisTiket,
+        ticket.worklogSummary,
+        ticket.status,
+        ticket.status_update,
+      ]
+        .map((value) => String(value ?? '').toLowerCase())
+        .filter(Boolean);
+
+      return haystack.some((value) => value.includes(normalizedHighlightQuery));
+    },
+    [normalizedHighlightQuery],
+  );
+
+  useEffect(() => {
+    if (!normalizedHighlightQuery) return;
+    if (loading || isRefreshing) return;
+
+    const root = rootRef.current;
+    if (!root) return;
+
+    const hit = root.querySelector<HTMLElement>('[data-search-highlight="true"]');
+    if (!hit) return;
+
+    const timer = window.requestAnimationFrame(() => {
+      hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    return () => window.cancelAnimationFrame(timer);
+  }, [loading, isRefreshing, normalizedHighlightQuery, page, mobilePage, pageTickets.length, mobilePageTickets.length]);
 
   const renderTtrCountdown = (ticket: TicketRow) => {
     const ttr = computeTtrCountdown(ticket);
@@ -131,11 +269,20 @@ export default function TicketTableValidasi({
   };
 
   return (
-    <div className='space-y-3'>
+    <div ref={rootRef} className='space-y-3'>
       {/* Mobile */}
       <div className='block lg:hidden'>
         {loading && !isRefreshing ? (
-          <p className='py-8 text-center text-(--text-secondary)'>Loading...</p>
+          searching ? (
+            <div className='flex min-h-56 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary)'>
+              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-4 py-2 text-sm font-semibold'>
+                <Loader2 className='h-4 w-4 animate-spin' />
+                Mencari tiket...
+              </div>
+            </div>
+          ) : (
+            <TicketTableValidasiLoadingMobile />
+          )
         ) : sortedTickets.length === 0 ? (
           <div className='flex flex-col items-center justify-center gap-3 rounded-xl border border-(--border) bg-(--surface) p-8 text-(--text-secondary)'>
             <span>Tidak ada tiket untuk divalidasi</span>
@@ -161,6 +308,7 @@ export default function TicketTableValidasi({
               {mobilePageTickets.map((ticket, idx) => (
                 <div
                   key={ticket.idTicket ?? idx}
+                  data-search-highlight={isHighlighted(ticket) ? 'true' : undefined}
                   className='bg-surface rounded-xl border border-(--border) p-4'
                 >
                   <div>
@@ -185,9 +333,9 @@ export default function TicketTableValidasi({
                         {ticket.jenisTiket}
                       </span>
                     )}
-                    <span
-                      className={
-                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
+                        <span
+                          className={
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
                         getStatusColor(ticket.status ?? '')
                       }
                     >
@@ -266,7 +414,16 @@ export default function TicketTableValidasi({
           </div>
 
           {loading && !isRefreshing ? (
-            <TableLoadingSkeleton rows={6} cols={12} />
+            searching ? (
+              <div className='flex min-h-72 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm'>
+                <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-5 py-2.5 text-sm font-semibold'>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  Mencari tiket...
+                </div>
+              </div>
+            ) : (
+              <TicketTableValidasiLoadingDesktop />
+            )
           ) : sortedTickets.length === 0 ? (
             <div className='flex flex-col items-center justify-center gap-3 rounded-2xl border border-(--border) bg-(--surface) p-12 text-(--text-secondary)'>
               <span className='text-sm font-medium'>
@@ -305,10 +462,11 @@ export default function TicketTableValidasi({
                       const rowNum =
                         (effectivePage - 1) * effectiveLimit + idx + 1;
                       return (
-                        <tr
-                          key={ticket.idTicket ?? idx}
-                          className='transition-colors hover:bg-(--surface-2)'
-                        >
+                <tr
+                  key={ticket.idTicket ?? idx}
+                  data-search-highlight={isHighlighted(ticket) ? 'true' : undefined}
+                  className='transition-colors hover:bg-(--surface-2)'
+                >
                           <td className='px-3 py-3 text-center'>
                             <span className='font-mono text-sm font-bold text-(--text-secondary)'>
                               {rowNum}

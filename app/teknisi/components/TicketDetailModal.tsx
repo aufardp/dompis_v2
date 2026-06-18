@@ -24,6 +24,7 @@ import EvidenceGallery from './detail-modal/EvidenceGallery';
 import AddressEditor from './detail-modal/AddressEditor';
 import DeviceEditor from './detail-modal/DeviceEditor';
 import { getMaxTtrInfo } from './TeknisiDashboard/utils/ttr';
+import { filesToDataUrls } from './detail-modal/file-preview';
 
 interface Props {
   ticket: Ticket;
@@ -341,7 +342,15 @@ export default function TicketDetailModal({
     }
 
     setSelectedFiles(files);
-    setPreviewUrls(files.map((f) => URL.createObjectURL(f)));
+    void filesToDataUrls(files)
+      .then(setPreviewUrls)
+      .catch(() => setPreviewUrls([]));
+  }, []);
+
+  const handlePreviewFilesChange = useCallback((files: File[]) => {
+    void filesToDataUrls(files)
+      .then(setPreviewUrls)
+      .catch(() => setPreviewUrls([]));
   }, []);
 
   const handleRemoveImage = useCallback(
@@ -357,6 +366,8 @@ export default function TicketDetailModal({
     },
     [selectedFiles, previewUrls],
   );
+
+  useEffect(() => undefined, []);
 
   // Callback untuk warning dari EvidenceUploader
   const handleUploadWarning = useCallback((warning: string | null) => {
@@ -862,6 +873,7 @@ export default function TicketDetailModal({
                 <div id='evidence-uploader'>
                   <EvidenceUploader
                     onFilesChange={handleFileChange}
+                    onPreviewFilesChange={handlePreviewFilesChange}
                     onRemoveImage={handleRemoveImage}
                     previewUrls={previewUrls}
                     uploading={uploading}

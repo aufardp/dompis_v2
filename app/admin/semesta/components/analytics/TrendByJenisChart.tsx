@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import '@aejkatappaja/phantom-ui';
 import {
   BarChart,
   Bar,
@@ -59,7 +60,21 @@ export default function TrendByJenisChart({
       </div>
 
       {loading ? (
-        <div className="bg-surface-2 mx-4 mb-4 h-[240px] animate-pulse rounded-xl" />
+        <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading trend chart'>
+          <div className="mx-4 mb-4 h-[240px] rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+            <div className="flex h-full items-end gap-2">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <div key={index} className="flex-1 space-y-2">
+                  <div
+                    className="mx-auto rounded-t-lg bg-slate-200 dark:bg-white/10"
+                    style={{ height: `${25 + (index % 4) * 14}%` }}
+                  />
+                  <div className="h-3 rounded-full bg-slate-200 dark:bg-white/10" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </phantom-ui>
       ) : (
         <div className="h-[280px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0">
           <ResponsiveContainer width="100%" height="100%">

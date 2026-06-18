@@ -157,6 +157,7 @@ export default function RekapWorkorderTable({
     detailMode === 'kpi_proactive' || detailMode === 'sqm_update';
   const isUnspecMode = detailMode === 'non_kpi_unspec';
   const isCustomerMode = detailMode === 'kpi_customer';
+  const tableCompact = true;
   const modeLabel =
     detailMode === 'kpi_customer'
       ? 'Customer detail view'
@@ -337,10 +338,10 @@ export default function RekapWorkorderTable({
                 <td
                   key={sub}
                   className={clsx(
-                    'px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap',
+                    'px-1.5 py-1.5 text-center font-mono text-[10px] whitespace-nowrap',
                     (keyIndex > 0 || groupIndex > 0) &&
                       subIndex === 0 &&
-                      'border-l border-(--border)/60 pl-3',
+                      'border-l border-(--border)/60 pl-2',
                     bold && 'font-bold',
                     color,
                   )}
@@ -367,7 +368,7 @@ export default function RekapWorkorderTable({
         <Fragment key={`${prefix}-${bkt.key}`}>
           <td
             className={clsx(
-              'px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap',
+              'px-1.5 py-1.5 text-center font-mono text-[10px] whitespace-nowrap',
               bold && 'font-bold',
               'text-rose-600 dark:text-rose-300',
             )}
@@ -376,7 +377,7 @@ export default function RekapWorkorderTable({
           </td>
           <td
             className={clsx(
-              'px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap',
+              'px-1.5 py-1.5 text-center font-mono text-[10px] whitespace-nowrap',
               bold && 'font-bold',
               'text-emerald-600 dark:text-emerald-300',
             )}
@@ -388,16 +389,89 @@ export default function RekapWorkorderTable({
     });
   }
 
+  function renderDetailHeaderRows() {
+    if (!detailColumns) return null;
+    return detailColumns.groups.map((group, groupIndex) => {
+      const style =
+        DETAIL_GROUP_STYLE[group.segment] ?? DETAIL_GROUP_STYLE.b2c;
+      const subLabels: string[] = (group as any).subLabels ?? [
+        'Open',
+        'Close',
+      ];
+      return (
+        <Fragment key={`detail-header-${group.label}`}>
+          {group.keys.map((key, keyIndex) => (
+            <th
+              key={`${group.segment}-${key}`}
+              className={clsx(
+                'px-2 py-2 text-center text-[10px] font-black tracking-[0.2em] whitespace-nowrap uppercase',
+                style.band,
+                (groupIndex > 0 || keyIndex > 0) && 'border-l border-(--border)/60',
+              )}
+              colSpan={subLabels.length}
+            >
+              {key.replace(/-/g, ' ')}
+            </th>
+          ))}
+        </Fragment>
+      );
+    });
+  }
+
+  function renderDetailSubHeaderRows() {
+    if (!detailColumns) return null;
+    return detailColumns.groups.flatMap((group, groupIndex) => {
+      const style =
+        DETAIL_GROUP_STYLE[group.segment] ?? DETAIL_GROUP_STYLE.b2c;
+      const subLabels: string[] = (group as any).subLabels ?? [
+        'Open',
+        'Close',
+      ];
+      return group.keys.flatMap((key, keyIndex) =>
+        subLabels.map((sub, subIndex) => (
+          <th
+            key={`${group.segment}-${key}-${sub}`}
+            className={clsx(
+              'px-2 py-2 text-center text-[10px] font-semibold whitespace-nowrap uppercase',
+              style.subBand,
+              style.text,
+              (groupIndex > 0 || keyIndex > 0) &&
+                subIndex === 0 &&
+                'border-l border-(--border)/60',
+            )}
+          >
+            {sub}
+          </th>
+        )),
+      );
+    });
+  }
+
   const detailColCount = detailColumns
     ? detailColumns.totalCols
     : BUCKETS.length * 2;
   const tableMinWidth = detailColumns
-    ? Math.max(1320, 520 + detailColCount * (isCustomerMode ? 84 : 72))
-    : 1080;
-  const baseColumnWidths = [260, 86, 86, 86, 86, 92, 86];
-  const detailColumnWidth = detailColumns ? (isCustomerMode ? 84 : 76) : 84;
+    ? Math.max(
+        isCustomerMode ? 1120 : 1040,
+        420 + detailColCount * (isCustomerMode ? 48 : 44),
+      )
+    : 920;
+  const baseColumnWidths = tableCompact
+    ? [182, 64, 64, 64, 60, 68, 60]
+    : [260, 86, 86, 86, 86, 92, 86];
+  const detailColumnWidth = detailColumns ? (isCustomerMode ? 48 : 44) : 84;
   const headerRowSpan = isDetail && detailColumns ? 3 : 2;
   const detailGroups = detailColumns?.groups ?? [];
+  const summaryHeaderClass =
+    'px-1.5 py-2 text-center text-[9px] font-bold tracking-[0.14em] text-(--text-secondary) uppercase leading-tight';
+  const summaryCellClass =
+    'px-1.5 py-2 text-center font-mono text-[11px] whitespace-nowrap';
+  const areaHeaderClass =
+    'sticky left-0 z-30 w-44 bg-(--surface-2)/95 px-3 py-2 text-left text-[9px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase backdrop-blur';
+  const areaCellClass =
+    'sticky left-0 z-10 bg-(--surface-2)/95 px-3 py-2 backdrop-blur';
+  const workzoneCellClass =
+    'sticky left-0 bg-(--surface-2)/90 py-1.5 pr-2 pl-5 backdrop-blur';
 
   function aggregateAreaDetail(areaRows: SARow[]): DetailGroup {
     const acc: DetailGroup = { b2c: {}, b2b: {} };
@@ -546,43 +620,43 @@ export default function RekapWorkorderTable({
           <thead>
             <tr className='border-b border-(--border) bg-(--surface-2)/80 text-(--text-primary)'>
               <th
-                className='sticky left-0 z-30 w-60 bg-(--surface-2)/95 px-4 py-3 text-left text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase backdrop-blur'
+                className={areaHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Service Area
               </th>
               <th
-                className='w-20 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Open
               </th>
               <th
-                className='w-20 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Close
               </th>
               <th
-                className='w-20 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Total
               </th>
               <th
-                className='w-20 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Tek
               </th>
               <th
-                className='w-24 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Load
               </th>
               <th
-                className='w-20 px-2 py-3 text-center text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'
+                className={summaryHeaderClass}
                 rowSpan={headerRowSpan}
               >
                 Close %
@@ -596,7 +670,7 @@ export default function RekapWorkorderTable({
                     return (
                       <th
                         key={group.label}
-                        className={`px-2 py-2 text-center text-[10px] font-black tracking-[0.24em] whitespace-nowrap uppercase ${style.band} ${
+                        className={`px-1.5 py-1.5 text-center text-[9px] font-black tracking-[0.16em] whitespace-nowrap uppercase leading-tight ${style.band} ${
                           groupIndex > 0 ? 'border-l border-(--border)/60' : ''
                         }`}
                         colSpan={group.keys.length * subLen}
@@ -608,7 +682,7 @@ export default function RekapWorkorderTable({
                 : BUCKETS.map((bkt, groupIndex) => (
                     <th
                       key={bkt.key}
-                      className={`px-2 py-2 text-center text-[10px] font-black tracking-[0.24em] whitespace-nowrap uppercase ${
+                      className={`px-1.5 py-1.5 text-center text-[9px] font-black tracking-[0.16em] whitespace-nowrap uppercase leading-tight ${
                         groupIndex > 0 ? 'border-l border-(--border)/60' : ''
                       }`}
                       colSpan={2}
@@ -618,23 +692,30 @@ export default function RekapWorkorderTable({
                   ))}
             </tr>
             <tr className='border-b border-(--border) bg-(--surface-2)/80 text-(--text-muted)'>
-              {BUCKETS.flatMap((bkt, groupIndex) => [
-                <th
-                  key={`${bkt.key}-open`}
-                  className={`px-2 py-2 text-center text-[10px] font-semibold whitespace-nowrap text-(--text-secondary) ${
-                    groupIndex > 0 ? 'border-l border-(--border)/60' : ''
-                  }`}
-                >
-                  Open
-                </th>,
-                <th
-                  key={`${bkt.key}-close`}
-                  className='px-2 py-2 text-center text-[10px] font-semibold whitespace-nowrap text-(--text-secondary)'
-                >
-                  Close
-                </th>,
-              ])}
+              {isDetail && detailColumns
+                ? renderDetailHeaderRows()
+                : BUCKETS.flatMap((bkt, groupIndex) => [
+                    <th
+                      key={`${bkt.key}-open`}
+                      className={`px-1.5 py-1.5 text-center text-[9px] font-semibold whitespace-nowrap text-(--text-secondary) ${
+                        groupIndex > 0 ? 'border-l border-(--border)/60' : ''
+                      }`}
+                    >
+                      Open
+                    </th>,
+                    <th
+                      key={`${bkt.key}-close`}
+                      className='px-1.5 py-1.5 text-center text-[9px] font-semibold whitespace-nowrap text-(--text-secondary)'
+                    >
+                      Close
+                    </th>,
+                  ])}
             </tr>
+            {isDetail && detailColumns && (
+              <tr className='border-b border-(--border) bg-(--surface-2)/75 text-(--text-muted)'>
+                {renderDetailSubHeaderRows()}
+              </tr>
+            )}
           </thead>
 
           <tbody>
@@ -655,9 +736,9 @@ export default function RekapWorkorderTable({
                     className='cursor-pointer border-y border-(--border) bg-(--surface-2)/75 transition-colors select-none hover:bg-(--surface-2)/90'
                     onClick={() => toggleArea(area)}
                   >
-                    <td className='sticky left-0 z-10 bg-(--surface-2)/95 px-4 py-3 backdrop-blur'>
-                      <div className='flex items-center justify-between gap-2'>
-                        <span className='text-[11px] font-black tracking-[0.2em] text-(--text-primary) uppercase'>
+                    <td className={areaCellClass}>
+                      <div className='flex items-center justify-between gap-1.5'>
+                        <span className='text-[10px] font-black tracking-[0.16em] text-(--text-primary) uppercase'>
                           {area}
                         </span>
                         <ChevronDown
@@ -669,19 +750,19 @@ export default function RekapWorkorderTable({
                         />
                       </div>
                     </td>
-                    <td className='px-2 py-3 text-center font-mono text-[12px] font-semibold whitespace-nowrap text-rose-600 dark:text-rose-300'>
+                    <td className={clsx(summaryCellClass, 'font-semibold text-rose-600 dark:text-rose-300')}>
                       {areaOpen}
                     </td>
-                    <td className='px-2 py-3 text-center font-mono text-[12px] font-semibold whitespace-nowrap text-emerald-600 dark:text-emerald-300'>
+                    <td className={clsx(summaryCellClass, 'font-semibold text-emerald-600 dark:text-emerald-300')}>
                       {areaClose}
                     </td>
-                    <td className='px-2 py-3 text-center font-mono text-[12px] font-semibold whitespace-nowrap text-(--text-primary)'>
+                    <td className={clsx(summaryCellClass, 'font-semibold text-(--text-primary)')}>
                       {areaOpen + areaClose}
                     </td>
-                    <td className='px-2 py-3 text-center font-mono text-[12px] whitespace-nowrap text-(--text-secondary)'>
+                    <td className={clsx(summaryCellClass, 'text-(--text-secondary)')}>
                       {areaRows.reduce((sum, r) => sum + r.teknisiMasuk, 0)}
                     </td>
-                    <td className='px-2 py-3 text-center whitespace-nowrap'>
+                    <td className='px-1.5 py-2 text-center whitespace-nowrap'>
                       {(() => {
                         const tek = areaRows.reduce(
                           (sum, r) => sum + r.teknisiMasuk,
@@ -691,7 +772,10 @@ export default function RekapWorkorderTable({
                           tek > 0 ? (areaOpen / tek).toFixed(1) : '0.0';
                         return (
                           <span
-                            className='inline-flex min-w-14 justify-center rounded-full border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[11px] font-bold'
+                            className={clsx(
+                              'inline-flex justify-center rounded-full border border-(--border) bg-(--bg) font-mono font-bold',
+                              'min-w-11 px-1.5 py-0.5 text-[10px]',
+                            )}
                             style={loadToneStyle(areaOpen, tek)}
                           >
                             {load}
@@ -699,7 +783,7 @@ export default function RekapWorkorderTable({
                         );
                       })()}
                     </td>
-                    <td className='px-2 py-3 text-center text-[11px] font-semibold whitespace-nowrap text-(--text-secondary)'>
+                    <td className={clsx(summaryCellClass, 'text-[10px] font-semibold text-(--text-secondary)')}>
                       {areaOpen + areaClose > 0
                         ? Math.round((areaClose / (areaOpen + areaClose)) * 100)
                         : 0}
@@ -742,34 +826,37 @@ export default function RekapWorkorderTable({
                       return (
                         <Fragment key={row.saName}>
                           <tr className='border-b border-(--border) bg-(--surface) hover:bg-(--surface-2)'>
-                            <td className='sticky left-0 z-10 bg-(--surface) px-4 py-3'>
+                            <td className='sticky left-0 z-10 bg-(--surface) px-3 py-2'>
                               <div className='min-w-0'>
                                 <p
-                                  className='truncate text-[13px] font-semibold text-(--text-primary)'
+                                  className='truncate text-[12px] font-semibold text-(--text-primary)'
                                   title={row.saName}
                                 >
                                   {row.saName}
                                 </p>
-                                <p className='text-[11px] text-(--text-muted)'>
+                                <p className='text-[10px] text-(--text-muted)'>
                                   {row.workzones.length} workzone
                                 </p>
                               </div>
                             </td>
-                            <td className='px-2 py-3 text-center font-mono text-[12px] font-semibold whitespace-nowrap text-rose-600 dark:text-rose-300'>
+                            <td className={clsx(summaryCellClass, 'font-semibold text-rose-600 dark:text-rose-300')}>
                               {row.totalOpen}
                             </td>
-                            <td className='px-2 py-3 text-center font-mono text-[12px] font-semibold whitespace-nowrap text-emerald-600 dark:text-emerald-300'>
+                            <td className={clsx(summaryCellClass, 'font-semibold text-emerald-600 dark:text-emerald-300')}>
                               {row.totalClose}
                             </td>
-                            <td className='px-2 py-3 text-center font-mono text-[12px] whitespace-nowrap text-(--text-secondary)'>
+                            <td className={clsx(summaryCellClass, 'text-(--text-secondary)')}>
                               {row.grandTotal}
                             </td>
-                            <td className='px-2 py-3 text-center font-mono text-[12px] whitespace-nowrap text-(--text-secondary)'>
+                            <td className={clsx(summaryCellClass, 'text-(--text-secondary)')}>
                               {row.teknisiMasuk}
                             </td>
-                            <td className='px-2 py-3 text-center whitespace-nowrap'>
+                            <td className='px-1.5 py-2 text-center whitespace-nowrap'>
                               <span
-                                className='inline-flex min-w-14 justify-center rounded-full border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[11px] font-bold'
+                                className={clsx(
+                                  'inline-flex justify-center rounded-full border border-(--border) bg-(--bg) font-mono font-bold',
+                                  'min-w-11 px-1.5 py-0.5 text-[10px]',
+                                )}
                                 style={loadToneStyle(
                                   row.totalOpen,
                                   row.teknisiMasuk,
@@ -778,7 +865,7 @@ export default function RekapWorkorderTable({
                                 {row.woPerTeknisi}
                               </span>
                             </td>
-                            <td className='px-2 py-3 text-center text-[11px] font-semibold whitespace-nowrap text-(--text-secondary)'>
+                            <td className={clsx(summaryCellClass, 'text-[10px] font-semibold text-(--text-secondary)')}>
                               {closeRate}%
                             </td>
                             {isDetail && detailColumns
@@ -800,9 +887,9 @@ export default function RekapWorkorderTable({
                               key={`${row.saName}-${wz.workzone}`}
                               className='border-b border-(--border)/60 bg-(--surface-2)/35'
                             >
-                              <td className='sticky left-0 bg-(--surface-2)/90 py-2 pr-3 pl-8 backdrop-blur'>
-                                <div className='flex items-center gap-2'>
-                                  <div className='h-1.5 w-14 overflow-hidden rounded-full bg-(--surface-3)'>
+                              <td className={workzoneCellClass}>
+                                <div className='flex items-center gap-1.5'>
+                                  <div className='h-1.5 w-10 overflow-hidden rounded-full bg-(--surface-3)'>
                                     <div
                                       className='h-full rounded-full bg-blue-500'
                                       style={{
@@ -810,18 +897,18 @@ export default function RekapWorkorderTable({
                                       }}
                                     />
                                   </div>
-                                  <span className='max-w-30 truncate text-[11px] text-(--text-muted)'>
+                                  <span className='max-w-24 truncate text-[10px] text-(--text-muted)'>
                                     {wz.workzone}
                                   </span>
                                 </div>
                               </td>
-                              <td className='px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap text-rose-500'>
+                              <td className={clsx(summaryCellClass, 'text-rose-500')}>
                                 {formatCell(wz.totalOpen)}
                               </td>
-                              <td className='px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap text-emerald-500'>
+                              <td className={clsx(summaryCellClass, 'text-emerald-500')}>
                                 {formatCell(wz.totalClose)}
                               </td>
-                              <td colSpan={4 + detailColCount} />
+                              <td colSpan={5 + detailColCount} />
                             </tr>
                           ))}
                         </Fragment>
@@ -834,27 +921,27 @@ export default function RekapWorkorderTable({
 
           <tfoot>
             <tr className='border-t-2 border-(--border) bg-(--surface-2) font-bold text-(--text-primary)'>
-              <td className='sticky left-0 z-20 bg-(--surface-2)/95 px-4 py-3 text-right text-[10px] tracking-[0.18em] text-(--text-secondary) uppercase backdrop-blur'>
+              <td className={clsx(areaHeaderClass, 'z-20 text-right')}>
                 Total
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold whitespace-nowrap text-rose-500'>
+              <td className={clsx(summaryCellClass, 'font-bold text-rose-500')}>
                 {totals.open}
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold whitespace-nowrap text-emerald-500'>
+              <td className={clsx(summaryCellClass, 'font-bold text-emerald-500')}>
                 {totals.close}
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold whitespace-nowrap text-(--text-primary)'>
+              <td className={clsx(summaryCellClass, 'font-bold text-(--text-primary)')}>
                 {totals.grand}
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold whitespace-nowrap text-(--text-primary)'>
+              <td className={clsx(summaryCellClass, 'font-bold text-(--text-primary)')}>
                 {totals.teknisi}
               </td>
-              <td className='px-2 py-3 text-center font-mono font-bold whitespace-nowrap text-(--text-primary)'>
+              <td className={clsx(summaryCellClass, 'font-bold text-(--text-primary)')}>
                 {totals.teknisi > 0
                   ? (totals.open / totals.teknisi).toFixed(1)
                   : '0.0'}
               </td>
-              <td className='px-2 py-3 text-center text-[11px] font-bold whitespace-nowrap text-(--text-secondary)'>
+              <td className={clsx(summaryCellClass, 'text-[10px] font-bold text-(--text-secondary)')}>
                 {totals.grand > 0
                   ? Math.round((totals.close / totals.grand) * 100)
                   : 0}

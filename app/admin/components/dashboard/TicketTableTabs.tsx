@@ -39,9 +39,11 @@ interface TicketTableTabsProps {
   section: string;
   accentColor: string;
   mainTable: ReactNode;
+  closeTable?: ReactNode;
   tickets: TicketTableRow[];
   validasiTickets?: TicketTableRow[];
   totalCount?: number;
+  closeCount?: number;
   validasiTotalCount?: number;
   validasiPagination?: {
     currentPage: number;
@@ -52,6 +54,7 @@ interface TicketTableTabsProps {
   };
   loading?: boolean;
   isRefreshing?: boolean;
+  searching?: boolean;
   onAssign?: (ticketId: number | string) => void;
   forceMainTabKey?: string;
 }
@@ -60,19 +63,24 @@ export default function TicketTableTabs({
   section,
   accentColor,
   mainTable,
+  closeTable,
   tickets,
   validasiTickets = [],
   totalCount,
+  closeCount,
   validasiTotalCount,
   validasiPagination,
   loading,
   isRefreshing,
+  searching,
   onAssign,
   forceMainTabKey,
 }: TicketTableTabsProps) {
   const STORAGE_KEY = `admin:tab:${section}`;
 
-  const [activeTab, setActiveTab] = useState<'main' | 'validasi'>('main');
+  const [activeTab, setActiveTab] = useState<'main' | 'validasi' | 'close'>(
+    'main',
+  );
   const [mounted, setMounted] = useState(false);
 
   // Hydration-safe localStorage read
@@ -82,11 +90,13 @@ export default function TicketTableTabs({
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === 'validasi') {
         setActiveTab(saved);
+      } else if (saved === 'close' && closeTable) {
+        setActiveTab(saved);
       }
     } catch {
       // ignore
     }
-  }, [STORAGE_KEY]);
+  }, [STORAGE_KEY, closeTable]);
 
   // Persist tab selection
   useEffect(() => {
@@ -103,6 +113,11 @@ export default function TicketTableTabs({
     setActiveTab('main');
   }, [forceMainTabKey]);
 
+  useEffect(() => {
+    if (activeTab !== 'close' || closeTable) return;
+    setActiveTab('main');
+  }, [activeTab, closeTable]);
+
   // Validasi tickets are fetched server-side with their own WHERE clause.
   // Condition: (status_update = 'close' OR worklog_summary = 'Tech Closed') AND status != 'closed'
   // (no longer filtered client-side — avoid pagination mismatch)
@@ -118,10 +133,19 @@ export default function TicketTableTabs({
       label: 'Tabel Validasi',
       count: validasiTotalCount ?? validasiTickets.length,
     },
+    ...(closeTable
+      ? [
+          {
+            key: 'close' as const,
+            label: 'Close',
+            count: closeCount ?? 0,
+          },
+        ]
+      : []),
   ];
 
   return (
-    <div className='space-y-3'>
+    <div className='space-y-4'>
       {/* Tab bar */}
       <div className='flex items-center gap-2 overflow-x-auto rounded-2xl border border-(--border) bg-(--surface) p-2 [-webkit-overflow-scrolling:touch]'>
         {tabs.map((tab) => {
@@ -158,7 +182,7 @@ export default function TicketTableTabs({
       </div>
 
       {/* Tab content with fade transition */}
-      <div className='relative min-h-50'>
+      <div className='relative min-h-64 pt-1'>
         {activeTab === 'main' && (
           <div className='animate-in fade-in duration-200'>{mainTable}</div>
         )}
@@ -169,8 +193,12 @@ export default function TicketTableTabs({
               pagination={validasiPagination}
               loading={loading}
               isRefreshing={isRefreshing}
+              searching={searching}
             />
           </div>
+        )}
+        {activeTab === 'close' && closeTable && (
+          <div className='animate-in fade-in duration-200'>{closeTable}</div>
         )}
       </div>
     </div>

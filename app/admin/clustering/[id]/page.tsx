@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterDetail } from '@/app/hooks/useClusterDetail';
 import { useClusterAssignment } from '@/app/hooks/useClusterAssignment';
@@ -330,9 +331,43 @@ export default function ClusterDetailPage() {
   if (loading) {
     return (
       <AdminLayout>
-        <div className='flex items-center justify-center py-20'>
-          <div className='text-(--text-secondary)'>Loading...</div>
-        </div>
+        <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading cluster detail'>
+          <div className='space-y-6'>
+            <div className='flex items-center justify-between'>
+              <div className='space-y-3'>
+                <div className='h-4 w-32 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-8 w-72 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-3 w-56 rounded-full bg-slate-200 dark:bg-white/10' />
+              </div>
+              <div className='h-8 w-24 rounded-full bg-slate-200 dark:bg-white/10' />
+            </div>
+
+            <div className='grid gap-6 lg:grid-cols-2'>
+              <div className='rounded-2xl border border-(--border) bg-(--surface) p-5'>
+                <div className='h-5 w-32 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='mt-4 space-y-3'>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className='h-11 rounded-xl bg-slate-100 dark:bg-white/5'
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className='rounded-2xl border border-(--border) bg-(--surface) p-5'>
+                <div className='h-5 w-40 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='mt-4 space-y-3'>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className='h-11 rounded-xl bg-slate-100 dark:bg-white/5'
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </phantom-ui>
       </AdminLayout>
     );
   }

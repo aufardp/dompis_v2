@@ -91,6 +91,7 @@ type TicketFilters = {
   includeValidasi?: boolean;
   includeSummary?: boolean;
   includeOptions?: boolean;
+  includeClosed?: boolean;
   globalScope?: boolean;
   sort?: 'asc' | 'desc';
 };
@@ -236,12 +237,29 @@ function applyTicketStatusWhere(
 
   if (statuses.length === 0) return;
 
-  where.AND = [
-    ...(where.AND ?? []),
-    {
-      status: { in: statuses },
-    },
-  ];
+  const closeStatuses = statuses.filter((status) =>
+    CLOSE_STATUS_VALUES.includes(status),
+  );
+  const nonCloseStatuses = statuses.filter(
+    (status) => !CLOSE_STATUS_VALUES.includes(status),
+  );
+
+  const clauses: Record<string, any>[] = [];
+
+  if (nonCloseStatuses.length > 0) {
+    clauses.push({ status: { in: nonCloseStatuses } });
+  }
+
+  if (closeStatuses.length > 0) {
+    clauses.push({ status: { in: closeStatuses } });
+  }
+
+  if (clauses.length === 1) {
+    where.AND = [...(where.AND ?? []), clauses[0]];
+    return;
+  }
+
+  where.AND = [...(where.AND ?? []), { OR: clauses }];
 }
 
 function applyTicketTypeWhere(
@@ -455,7 +473,7 @@ function isMissingIndexError(error: unknown): boolean {
   return message.includes('Code: `1176`') || /doesn't exist in table/i.test(message);
 }
 
-function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]] {
+export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]] {
   const conditions: string[] = [];
   const params: any[] = [];
 
@@ -1155,30 +1173,27 @@ export class DailyTicketService {
 
   static buildMainTableWhere(
     where: Record<string, any>,
+    options?: { includeClosed?: boolean },
   ): Prisma.ticketWhereInput {
+    if (options?.includeClosed) {
+      return where;
+    }
+
     return {
       ...where,
       AND: [
         ...(where.AND ?? []),
         {
           OR: [
-            { status: { in: [...CLOSE_STATUS_VALUES] } },
-            {
-              AND: [
-                {
-                  OR: [
-                    { worklog_summary: null },
-                    { worklog_summary: '' },
-                    {
-                      NOT: {
-                        worklog_summary: { contains: 'Tech Closed' },
-                      },
-                    },
-                  ],
-                },
-                { status_update: { not: 'close' } },
-              ],
-            },
+            { status: { notIn: [...CLOSE_STATUS_VALUES] } },
+            { status: null },
+          ],
+        },
+        {
+          OR: [
+            { status_update: { notIn: ['close', 'closed'] } },
+            { status_update: null },
+            { status_update: '' },
           ],
         },
       ],
@@ -1487,6 +1502,7 @@ export class DailyTicketService {
     const includeValidasi = filters?.includeValidasi !== false;
     const includeSummary = filters?.includeSummary !== false;
     const includeOptions = filters?.includeOptions !== false;
+    const includeClosed = filters?.includeClosed === true;
     const safePage = Math.max(1, Math.floor(page));
     const safeLimit = Math.min(250, Math.max(1, Math.floor(limit)));
     const offset = (safePage - 1) * safeLimit;
@@ -1514,7 +1530,9 @@ export class DailyTicketService {
         })
       : null;
 
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed,
+    });
     const validasiBaseWhere = includeValidasi
       ? this.buildValidasiBaseWhere(where)
       : null;
@@ -1627,7 +1645,9 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ): Promise<number[]> {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed: filters?.includeClosed === true,
+    });
     const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
     const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
       `SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_daily_board) WHERE ${whereClause}`,
@@ -1643,7 +1663,9 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ): Promise<[string, any[]]> {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed: filters?.includeClosed === true,
+    });
     return buildSqlWhereClause(mainTableWhere);
   }
 
@@ -1653,7 +1675,9 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ) {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed: filters?.includeClosed === true,
+    });
     const validasiBaseWhere = this.buildValidasiBaseWhere(where);
 
     const [total, summary, flaggingSummary] = await Promise.all([
@@ -1688,6 +1712,23 @@ export class DailyTicketService {
     return Boolean(ticket);
   }
 
+  static async hasDailyValidasiHit(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ) {
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
+    const validasiWhere = this.buildValidasiBaseWhere(where);
+    if (!validasiWhere) return false;
+
+    const ticket = await prisma.ticket.findFirst({
+      where: validasiWhere,
+      select: { id_ticket: true },
+    });
+
+    return Boolean(ticket);
+  }
+
   static async getKpiBucketSummaryMatrix(
     role: string,
     userId: number,
@@ -1707,49 +1748,33 @@ export class DailyTicketService {
           });
 
           const summary = {} as BucketSummaryMap;
-          const mainTableWhere = this.buildMainTableWhere(where);
+            const mainTableWhere = this.buildMainTableWhere(where, {
+              includeClosed: filters?.includeClosed === true,
+            });
           for (const bucket of KPI_SUMMARY_BUCKETS) {
+            let finalWhere: Prisma.ticketWhereInput;
+
             if (bucket === 'kpi_customer') {
               const bucketWhere = await this.buildDailyTicketWhere(role, userId, {
                 ...filters,
                 dept,
                 operationalBucket: ['kpi_customer'],
               });
-              const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere);
-              const rows = await prisma.ticket.findMany({
-                where: {
-                  AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
-                },
-                select: {
-                  status: true,
-                  status_update: true,
-                  guarantee_status: true,
-                  ticket_id_gamas: true,
-                  flagging_manja: true,
-                },
+              const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere, {
+                includeClosed: filters?.includeClosed === true,
               });
-              summary[bucket] = summarizeBucketRows(rows);
-              continue;
+              finalWhere = {
+                AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
+              };
+            } else if (bucket === 'non_technical') {
+              finalWhere = {
+                AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
+              };
+            } else {
+              finalWhere = mainTableWhere;
             }
 
-            if (bucket === 'non_technical') {
-              const rows = await prisma.ticket.findMany({
-                where: {
-                  AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
-                },
-                select: {
-                  status: true,
-                  status_update: true,
-                  guarantee_status: true,
-                  ticket_id_gamas: true,
-                  flagging_manja: true,
-                },
-              });
-              summary[bucket] = summarizeBucketRows(rows);
-              continue;
-            }
-
-            const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+            const [whereClause, params] = buildSqlWhereClause(finalWhere);
             const selectSql = buildBucketSummarySelect(bucket);
             const sqlWithIndex = `
               SELECT
@@ -2095,10 +2120,7 @@ export class DailyTicketService {
       });
     };
 
-    let rows = await fetchRows(scopedWhere);
-    if (rows.length === 0) {
-      rows = await fetchRows({});
-    }
+    const rows = await fetchRows(scopedWhere);
 
     const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
 
@@ -2131,7 +2153,9 @@ export class DailyTicketService {
     const where = hasSpecificBucket
       ? await this.buildDailyTicketWhere(role, userId, filters)
       : await this.buildDetailWoHiWhere(role, userId, filters);
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed: filters?.includeClosed === true,
+    });
     const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
     const { start, end } = getTodayWibRange();
     const currentHourWib = toZonedTime(new Date(), 'Asia/Jakarta').getHours();
@@ -2177,7 +2201,9 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ): Promise<Array<{ symptom: string; count: number }>> {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
-    const mainTableWhere = this.buildMainTableWhere(where);
+    const mainTableWhere = this.buildMainTableWhere(where, {
+      includeClosed: filters?.includeClosed === true,
+    });
     const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
     const sql = `
       SELECT

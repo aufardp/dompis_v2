@@ -4,6 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { parseSearchType } from '@/lib/search-intent';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,13 @@ function buildFilename(
 
 export async function GET(request: Request) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'tickets-export',
+      limit: 3,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'superadmin',
@@ -140,7 +148,6 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
-    const pageSize = toInt(searchParams.get('limit'), 100);
     const dept = searchParams.get('dept') || undefined;
     const search = searchParams.get('search') || '';
     const searchType = parseSearchType(searchParams.get('searchType'));
@@ -151,7 +158,7 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
 
-    const first = await TicketService.getTickets(user.role, user.id_user, {
+    const tickets = await TicketService.getExportTickets(user.role, user.id_user, {
       search,
       searchType,
       workzone,
@@ -161,29 +168,8 @@ export async function GET(request: Request) {
       ticketType,
       startDate,
       endDate,
-      page: 1,
-      limit: pageSize,
-      sort: 'desc',
+      maxRows: 10000,
     });
-
-    let tickets = [...(first.data ?? [])];
-    for (let page = 2; page <= first.totalPages; page++) {
-      const next = await TicketService.getTickets(user.role, user.id_user, {
-        search,
-        searchType,
-        workzone,
-        ctype,
-        statusUpdate,
-        dept,
-        ticketType,
-        startDate,
-        endDate,
-        page,
-        limit: pageSize,
-        sort: 'desc',
-      });
-      tickets.push(...(next.data ?? []));
-    }
 
     const columns = getTicketColumns();
     const rows = buildRows(tickets);

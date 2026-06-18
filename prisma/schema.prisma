@@ -348,6 +348,9 @@ model ticket {
   @@index([sync_date, status_update, booking_date, customer_type], map: "idx_ticket_daily_board")
   @@index([sync_date, status_update, reported_date, customer_type], map: "idx_ticket_daily_validasi")
   @@index([synced_at, id_ticket], map: "idx_ticket_active_refresh_synced")
+  @@index([customer_segment], map: "idx_ticket_customer_segment")
+  @@index([source_ticket], map: "idx_ticket_source_ticket")
+  @@index([closed_at], map: "idx_ticket_closed_at")
 }
 
 model ticket_activity_log {
@@ -752,6 +755,7 @@ model ticket_tracking {
   @@index([assigned_by], map: "ticket_tracking_assigned_by_fkey")
   @@index([assigned_to])
   @@index([usersId_user], map: "ticket_tracking_usersId_user_fkey")
+  @@index([assigned_to, closed_at], map: "idx_ticket_tracking_assigned_closed")
 }
 
 model user_sa {

@@ -675,16 +675,6 @@ async function buildOperationsSummaryResult(
 
   const focusRow = focusRaw?.[0];
 
-  const summaryMatrix = await DailyTicketService.getKpiBucketSummaryMatrix(
-    user.role,
-    user.id_user,
-    filters,
-  );
-
-  const allSummary = summaryMatrix.all;
-  const b2cSummaryCounts = summaryMatrix.b2c;
-  const b2bSummaryCounts = summaryMatrix.b2b;
-
   const focusCounts = {
     diamond: Number(focusRow?.diamond ?? 0),
     p1: Number(focusRow?.p1 ?? 0),
@@ -713,50 +703,14 @@ async function buildOperationsSummaryResult(
     summary: b2cStats.summary,
   };
 
-  const b2cTotal =
-    b2cSummaryCounts.kpi_customer.total +
-    b2cSummaryCounts.kpi_proactive.total +
-    b2cSummaryCounts.non_kpi_unspec.total +
-    b2cSummaryCounts.non_technical.total +
-    b2cSummaryCounts.sqm_update.total +
-    b2cSummaryCounts.obsolete.total;
-  const b2bTotal =
-    b2bSummaryCounts.kpi_customer.total +
-    b2bSummaryCounts.kpi_proactive.total +
-    b2bSummaryCounts.non_kpi_unspec.total +
-    b2bSummaryCounts.non_technical.total +
-    b2bSummaryCounts.sqm_update.total +
-    b2bSummaryCounts.obsolete.total;
+  const b2cTotal = b2cStats.summary.total;
+  const b2bTotal = b2bSummary.total;
 
   const overallSummary = {
-    total:
-      allSummary.kpi_customer.total +
-      allSummary.kpi_proactive.total +
-      allSummary.non_kpi_unspec.total +
-      allSummary.non_technical.total +
-      allSummary.sqm_update.total +
-      allSummary.obsolete.total,
-    unassigned:
-      allSummary.kpi_customer.open +
-      allSummary.kpi_proactive.open +
-      allSummary.non_kpi_unspec.open +
-      allSummary.non_technical.open +
-      allSummary.sqm_update.open +
-      allSummary.obsolete.open,
-    assigned:
-      allSummary.kpi_customer.assigned +
-      allSummary.kpi_proactive.assigned +
-      allSummary.non_kpi_unspec.assigned +
-      allSummary.non_technical.assigned +
-      allSummary.sqm_update.assigned +
-      allSummary.obsolete.assigned,
-    close:
-      allSummary.kpi_customer.close +
-      allSummary.kpi_proactive.close +
-      allSummary.non_kpi_unspec.close +
-      allSummary.non_technical.close +
-      allSummary.sqm_update.close +
-      allSummary.obsolete.close,
+    total: b2cStats.summary.total + b2bSummary.total,
+    unassigned: b2cStats.summary.open + b2bSummary.open,
+    assigned: b2cStats.summary.assigned + b2bSummary.assigned,
+    close: b2cStats.summary.close + b2bSummary.close,
   };
 
   return {

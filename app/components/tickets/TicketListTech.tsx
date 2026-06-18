@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useEffect, useState } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -10,6 +11,41 @@ import { getStatusColor } from './helpers';
 
 interface Props {
   limit?: number;
+}
+
+function TicketListTechLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading technical ticket list'
+    >
+      <div className='grid gap-4'>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={index}
+            className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm'
+          >
+            <div className='flex items-start justify-between gap-4'>
+              <div className='min-w-0 flex-1'>
+                <div className='mb-2 flex flex-wrap items-center gap-2'>
+                  <div className='h-4 w-24 rounded-full bg-slate-200' />
+                  <div className='h-5 w-20 rounded-full bg-slate-100' />
+                  <div className='h-5 w-16 rounded-full bg-slate-100' />
+                </div>
+                <div className='h-4 w-5/6 rounded-full bg-slate-200' />
+                <div className='mt-2 grid grid-cols-2 gap-2'>
+                  <div className='h-3.5 rounded-full bg-slate-100' />
+                  <div className='h-3.5 rounded-full bg-slate-100' />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </phantom-ui>
+  );
 }
 
 export default function TicketListTech({ limit }: Props) {
@@ -39,11 +75,7 @@ export default function TicketListTech({ limit }: Props) {
   }, [limit]);
 
   if (loading) {
-    return (
-      <div className='flex items-center justify-center py-8'>
-        <div className='h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent'></div>
-      </div>
-    );
+    return <TicketListTechLoading />;
   }
 
   if (error)

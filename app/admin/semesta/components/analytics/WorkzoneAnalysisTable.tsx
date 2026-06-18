@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useMemo, useState, useCallback } from 'react';
 import { cn } from '@/app/libs/utils';
 import { ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
@@ -32,15 +33,54 @@ function Badge({ value, color }: { value: number; color: string }) {
   );
 }
 
-function SkeletonRow() {
+function WorkzoneAnalysisLoading() {
   return (
-    <tr>
-      {Array.from({ length: 9 }, (_, i) => (
-        <td key={i} className="px-3 py-3">
-          <div className="bg-surface-2 h-5 w-full animate-pulse rounded" />
-        </td>
-      ))}
-    </tr>
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading workzone analysis'
+    >
+      <div className='overflow-hidden rounded-xl border border-(--border) bg-(--surface)'>
+        <div className='flex items-center justify-between px-4 pt-4 pb-3'>
+          <div className='space-y-2'>
+            <div className='h-3.5 w-44 rounded-full bg-slate-200 dark:bg-slate-800' />
+            <div className='h-3 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+          </div>
+          <div className='h-8 w-20 rounded-lg bg-slate-100 dark:bg-slate-800/70' />
+        </div>
+
+        <div className='overflow-x-auto'>
+          <table className='w-full text-left text-[12px]'>
+            <thead>
+              <tr className='border-b border-(--border)'>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <th key={i} className='px-3 py-3'>
+                    <div className='h-3 w-full rounded-full bg-slate-200 dark:bg-slate-800' />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 5 }, (_, row) => (
+                <tr key={row} className='border-b border-(--border)/50'>
+                  {Array.from({ length: 9 }, (_, col) => (
+                    <td key={col} className='px-3 py-4'>
+                      <div
+                        className='h-5 rounded-full bg-slate-100 dark:bg-slate-800/70'
+                        style={{
+                          width: `${70 - ((row + col) % 4) * 10}%`,
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </phantom-ui>
   );
 }
 
@@ -107,6 +147,10 @@ export default function WorkzoneAnalysisTable({
     return sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
   };
 
+  if (loading) {
+    return <WorkzoneAnalysisLoading />;
+  }
+
   return (
     <div className="bg-surface overflow-hidden rounded-xl border border-(--border)">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
@@ -149,68 +193,69 @@ export default function WorkzoneAnalysisTable({
             </tr>
           </thead>
           <tbody>
-            {loading
-              ? Array.from({ length: 5 }, (_, i) => <SkeletonRow key={i} />)
-              : sorted.map((row) => (
-                  <tr
-                    key={row.workzone}
-                    className="border-b border-(--border)/50 transition hover:bg-white/[0.02]"
-                  >
-                    <td className="px-3 py-3 font-semibold text-(--text-primary)">
-                      {row.workzone}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-(--text-primary)">
-                          {row.total.toLocaleString('en-US')}
-                        </span>
-                        <div className="bg-surface-2 h-1.5 w-16 overflow-hidden rounded-full">
-                          <div
-                            className="h-full rounded-full bg-blue-400 transition-all"
-                            style={{
-                              width: `${(row.total / maxTotal) * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge value={row.gamas} color="bg-cyan-500/10 text-cyan-300" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge value={row.sqm} color="bg-violet-500/10 text-violet-300" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge value={row.sqmCcan} color="bg-purple-500/10 text-purple-300" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge value={row.unspec} color="bg-slate-500/10 text-slate-300" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge value={row.unspecB2b} color="bg-red-500/10 text-red-300" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge
-                        value={row.gaul}
-                        color={
-                          row.gaul > 0
-                            ? 'bg-amber-500/15 text-amber-300'
-                            : 'text-(--text-muted)'
-                        }
+            {sorted.map((row) => (
+              <tr
+                key={row.workzone}
+                className='border-b border-(--border)/50 transition hover:bg-white/[0.02]'
+              >
+                <td className='px-3 py-3 font-semibold text-(--text-primary)'>
+                  {row.workzone}
+                </td>
+                <td className='px-3 py-3'>
+                  <div className='flex items-center gap-2'>
+                    <span className='font-semibold text-(--text-primary)'>
+                      {row.total.toLocaleString('en-US')}
+                    </span>
+                    <div className='bg-surface-2 h-1.5 w-16 overflow-hidden rounded-full'>
+                      <div
+                        className='h-full rounded-full bg-blue-400 transition-all'
+                        style={{
+                          width: `${(row.total / maxTotal) * 100}%`,
+                        }}
                       />
-                    </td>
-                    <td className="px-3 py-3">
-                      <Badge
-                        value={row.lapul}
-                        color={
-                          row.lapul > 0
-                            ? 'bg-orange-500/15 text-orange-300'
-                            : 'text-(--text-muted)'
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))}
+                    </div>
+                  </div>
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge value={row.gamas} color='bg-cyan-500/10 text-cyan-300' />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge value={row.sqm} color='bg-violet-500/10 text-violet-300' />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge
+                    value={row.sqmCcan}
+                    color='bg-purple-500/10 text-purple-300'
+                  />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge value={row.unspec} color='bg-slate-500/10 text-slate-300' />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge value={row.unspecB2b} color='bg-red-500/10 text-red-300' />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge
+                    value={row.gaul}
+                    color={
+                      row.gaul > 0
+                        ? 'bg-amber-500/15 text-amber-300'
+                        : 'text-(--text-muted)'
+                    }
+                  />
+                </td>
+                <td className='px-3 py-3'>
+                  <Badge
+                    value={row.lapul}
+                    color={
+                      row.lapul > 0
+                        ? 'bg-orange-500/15 text-orange-300'
+                        : 'text-(--text-muted)'
+                    }
+                  />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

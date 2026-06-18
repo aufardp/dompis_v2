@@ -1,8 +1,42 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import type { EvidenceItem } from './types';
 import Image from 'next/image';
 import EvidenceGallery from '../EvidenceGallery';
+
+function EvidenceSectionLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading evidence photos'
+    >
+      <div className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+        <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-slate-700'>
+          <div className='h-4 w-4 rounded-full bg-slate-200 dark:bg-slate-700' />
+          <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-700' />
+          <div className='ml-auto h-4 w-12 rounded-full bg-slate-100 dark:bg-slate-700' />
+        </div>
+
+        <div className='grid grid-cols-2 gap-2'>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className='relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-700/40'
+            >
+              <div className='absolute inset-0 bg-slate-200/70 dark:bg-slate-700/40' />
+              <div className='absolute right-0 bottom-0 left-0 bg-black/20 px-2 py-1'>
+                <div className='h-2.5 w-5/6 rounded-full bg-white/60' />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 interface EvidenceSectionProps {
   evidence: EvidenceItem[];
@@ -50,10 +84,7 @@ export function EvidenceSection({
       </div>
 
       {loading ? (
-        <div className='flex items-center gap-2 py-4 text-sm text-slate-400'>
-          <div className='h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500' />
-          Memuat evidence...
-        </div>
+        <EvidenceSectionLoading />
       ) : evidence.length === 0 ? (
         <p className='py-2 text-sm text-slate-400'>Tidak ada evidence foto</p>
       ) : (

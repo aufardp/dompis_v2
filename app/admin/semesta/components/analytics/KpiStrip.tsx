@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useMemo } from 'react';
 import { cn } from '@/app/libs/utils';
 import { AlertTriangle, Repeat, Shield } from 'lucide-react';
@@ -33,8 +34,8 @@ const CARDS: CardDef[] = [
 function KpiCardSkeleton() {
   return (
     <div className="bg-surface group relative flex shrink-0 flex-col gap-2 overflow-hidden rounded-xl border border-(--border) p-4 w-[180px]">
-      <div className="bg-surface-2 h-5 w-20 animate-pulse rounded-full" />
-      <div className="bg-surface-2 mt-1 h-8 w-16 animate-pulse rounded-lg" />
+      <div className="bg-surface-2 h-5 w-20 rounded-full" />
+      <div className="bg-surface-2 mt-1 h-8 w-16 rounded-lg" />
     </div>
   );
 }
@@ -85,17 +86,24 @@ export default function KpiStrip({
   );
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-      {loading || !kpi
-        ? skeletonCards
-        : CARDS.map((def) => (
-            <KpiCard
-              key={def.key}
-              def={def}
-              value={kpi[def.key] ?? 0}
-              total={total}
-            />
-          ))}
-    </div>
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading={loading || !kpi}
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading KPI strip'
+    >
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+        {loading || !kpi
+          ? skeletonCards
+          : CARDS.map((def) => (
+              <KpiCard
+                key={def.key}
+                def={def}
+                value={kpi[def.key] ?? 0}
+                total={total}
+              />
+            ))}
+      </div>
+    </phantom-ui>
   );
 }

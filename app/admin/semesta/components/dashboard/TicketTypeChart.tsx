@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import {
   Bar,
   BarChart,
@@ -36,7 +37,21 @@ export default function TicketTypeChart({
       </div>
 
       {loading ? (
-        <div className='bg-surface-2 h-[260px] w-full animate-pulse rounded-xl' />
+        <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading ticket type chart'>
+          <div className='h-[260px] rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900'>
+            <div className='flex h-full items-end gap-4'>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className='flex-1 space-y-2'>
+                  <div
+                    className='mx-auto rounded-t-xl bg-slate-200 dark:bg-white/10'
+                    style={{ height: `${30 + index * 10}%` }}
+                  />
+                  <div className='h-3 rounded-full bg-slate-200 dark:bg-white/10' />
+                </div>
+              ))}
+            </div>
+          </div>
+        </phantom-ui>
       ) : (
         <div className='h-[260px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
           <ResponsiveContainer width='100%' height='100%'>

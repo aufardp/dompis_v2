@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Download, MapPin } from 'lucide-react';
+import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import Select from '@/app/components/form/Select';
@@ -32,6 +33,66 @@ type PerfRow = {
   closed_count: number;
   avg_resolve_time_hours: number | null;
 };
+
+function LoadingTable() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading performance table'>
+      <div className='space-y-4'>
+        <div className='grid gap-3 sm:grid-cols-3'>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900'
+            >
+              <div className='h-3 w-24 rounded-full bg-slate-200 dark:bg-white/10' />
+              <div className='mt-3 h-8 w-20 rounded-full bg-slate-200 dark:bg-white/10' />
+            </div>
+          ))}
+        </div>
+
+        <div className='overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'>
+          <div className='h-11 border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-700/60' />
+          <div className='divide-y divide-slate-100 dark:divide-slate-700'>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className='grid grid-cols-6 gap-4 px-4 py-4'
+              >
+                <div className='h-4 w-44 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-4 w-24 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-4 w-28 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-4 w-16 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-4 w-16 rounded-full bg-slate-200 dark:bg-white/10' />
+                <div className='h-8 w-24 rounded-full bg-slate-200 dark:bg-white/10' />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
+
+function LoadingModal() {
+  return (
+    <div className='flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800'>
+      <div className='border-b border-slate-200 px-6 py-4 dark:border-slate-700'>
+        <div className='h-5 w-64 rounded-full bg-slate-200 dark:bg-white/10' />
+        <div className='mt-2 h-3 w-40 rounded-full bg-slate-200 dark:bg-white/10' />
+      </div>
+      <div className='p-6'>
+        <div className='space-y-3'>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className='h-4 w-full rounded-full bg-slate-200 dark:bg-white/10'
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function TechnicianPerformancePage() {
   const now = new Date();
@@ -269,11 +330,8 @@ export default function TechnicianPerformancePage() {
               <tbody className='divide-y divide-slate-100 dark:divide-slate-700'>
                 {loading ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className='px-4 py-10 text-center text-slate-400 dark:text-slate-500'
-                    >
-                      Loading...
+                    <td colSpan={6} className='px-4 py-5'>
+                      <LoadingTable />
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
@@ -357,8 +415,8 @@ export default function TechnicianPerformancePage() {
             {/* Content */}
             <div className='flex-1 overflow-y-auto'>
               {detailModal.loading ? (
-                <div className='flex items-center justify-center py-16 text-slate-400'>
-                  Loading...
+                <div className='p-6'>
+                  <LoadingModal />
                 </div>
               ) : detailModal.tickets.length === 0 ? (
                 <div className='flex items-center justify-center py-16 text-slate-400'>

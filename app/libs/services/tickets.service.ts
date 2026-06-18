@@ -12,10 +12,11 @@ import { ActorContext } from '@/app/types/ticket';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { differenceInCalendarDays, endOfDay, format, startOfDay, startOfMonth, subDays } from 'date-fns';
 import { AttendanceService } from './attendance.service';
-import { CUSTOMER_TYPES, getSlaHours } from '@/app/config/customer-types';
+import { CUSTOMER_TYPES } from '@/app/config/customer-types';
 import { toWibString, toWibDateString, getTodayWibRange } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
+import { buildSqlWhereClause } from './daily-ticket.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -684,6 +685,82 @@ export class TicketService {
 
       data: tickets.map(mapTicket),
     };
+  }
+
+  static async getExportTickets(
+    role: string,
+    userId: number,
+    filters?: TicketFilters & { maxRows?: number },
+  ) {
+    const {
+      search = '',
+      searchType,
+      statusUpdate,
+      dept,
+      ticketType,
+      workzone,
+      ctype,
+      startDate,
+      endDate,
+      maxRows = 10000,
+    } = filters ?? {};
+
+    const safeLimit = Math.min(maxRows, Math.max(1, Math.floor(maxRows)));
+    const where = await this.buildTicketWhere(role, userId, {
+      search,
+      statusUpdate,
+      dept,
+      ticketType,
+      workzone,
+      ctype,
+      startDate,
+      endDate,
+      searchType,
+    });
+
+    const tickets = await prisma.ticket.findMany({
+      where,
+      select: {
+        id_ticket: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        owner_group: true,
+        service_type: true,
+        service_no: true,
+        contact_name: true,
+        contact_phone: true,
+        booking_date: true,
+        workzone: true,
+        customer_type: true,
+        customer_segment: true,
+        jenis_tiket_2: true,
+        flagging_manja: true,
+        guarantee_status: true,
+        status_update: true,
+        status_date: true,
+        status: true,
+        worklog_summary: true,
+        symptom: true,
+        alamat: true,
+        device_name: true,
+        pending_dompis: true,
+        source_ticket: true,
+        description_solution_dompis: true,
+        rca: true,
+        sub_rca: true,
+        closed_at: true,
+        teknisi_user_id: true,
+        ticket_id_gamas: true,
+        users: {
+          select: { nama: true },
+        },
+      },
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
+      take: safeLimit,
+    });
+
+    return tickets.map(mapTicket);
   }
 
   static async getSemestaAnalyticsV2(
@@ -1477,7 +1554,6 @@ export class TicketService {
 
     this.applyDashboardFilters(baseWhere, opts);
 
-    const now = new Date();
     const slaExpiredWhere = {
       ...baseWhere,
       OR: [{ status_update: null }, { status_update: { not: 'close' } }],
@@ -1486,41 +1562,49 @@ export class TicketService {
       },
     };
 
-    const tickets = await prisma.ticket.findMany({
-      where: slaExpiredWhere,
-      select: {
-        id_ticket: true,
-        incident: true,
-        customer_type: true,
-        reported_date: true,
-        status_update: true,
-        teknisi_user_id: true,
-        workzone: true,
-        contact_name: true,
-        service_no: true,
-        users: { select: { nama: true } },
-      },
-      orderBy: { reported_date: 'asc' },
-      take: 500,
-    });
+    const [whereClause, params] = buildSqlWhereClause(slaExpiredWhere);
 
-    // ── SLA-based filtering happens after fetch ─────────────────────
-    const expiredTickets = tickets.filter((ticket: any) => {
-      if (!ticket.reported_date) return false;
-      const slaHours = getSlaHours(ticket.customer_type);
-      const reportedDate = new Date(ticket.reported_date);
-      const hoursElapsed =
-        (now.getTime() - reportedDate.getTime()) / (1000 * 60 * 60);
-      return hoursElapsed > slaHours;
-    });
+    const sql = `
+      SELECT
+        t.id_ticket, t.incident, t.customer_type, t.reported_date,
+        t.status_update, t.teknisi_user_id, t.workzone, t.contact_name, t.service_no,
+        u.nama AS technician_name
+      FROM ticket t
+      LEFT JOIN users u ON u.id_user = t.teknisi_user_id
+      WHERE ${whereClause}
+        AND TIMESTAMPDIFF(MINUTE, t.reported_date, NOW()) >
+          CASE
+            WHEN LOWER(TRIM(t.customer_type)) IN ('hvc_diamond', 'hvc diamond', 'diamond') THEN 180
+            WHEN LOWER(TRIM(t.customer_type)) IN ('hvc_platinum', 'hvc platinum', 'platinum') THEN 360
+            WHEN LOWER(TRIM(t.customer_type)) IN ('hvc_gold', 'hvc gold', 'gold') THEN 720
+            ELSE 1440
+          END
+      ORDER BY t.reported_date ASC
+      LIMIT 500
+    `;
 
-    return expiredTickets.map((t: any) => ({
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        id_ticket: number;
+        incident: string;
+        customer_type: string | null;
+        reported_date: Date | null;
+        status_update: string | null;
+        teknisi_user_id: number | null;
+        workzone: string | null;
+        contact_name: string | null;
+        service_no: string | null;
+        technician_name: string | null;
+      }>
+    >(sql, ...params);
+
+    return rows.map((t) => ({
       idTicket: t.id_ticket,
       ticket: t.incident,
       customerType: t.customer_type,
       reportedDate: t.reported_date,
       status: t.status_update,
-      technicianName: t.users?.nama,
+      technicianName: t.technician_name,
       teknisiUserId: t.teknisi_user_id,
       workzone: t.workzone,
       contactName: t.contact_name,

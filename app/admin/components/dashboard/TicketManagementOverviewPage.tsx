@@ -8,14 +8,12 @@ import { RefreshCw } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
-import { useOpenDiamondTickets } from '@/app/hooks/useOpenDiamondTickets';
 import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
 } from '@/app/config/ticket-management-nav';
-import { DiamondAlertBanner } from './AlertBanner';
 import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
@@ -329,9 +327,6 @@ export default function TicketManagementOverviewPage() {
     isInProgress,
     triggerSync,
   } = useSyncStatus(30_000);
-  const { tickets: diamondTickets, loading: diamondLoading } =
-    useOpenDiamondTickets(workzone || undefined);
-
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzone(value);
   }, []);
@@ -475,22 +470,6 @@ export default function TicketManagementOverviewPage() {
     ],
     [opsSummary?.focusCounts],
   );
-
-  const expiredTickets = useMemo<ExpiredTicket[]>(() => {
-    if (!diamondTickets) return [];
-    return diamondTickets.map((t) => ({
-      ticketId: t.ticketId,
-      customerType: t.customerType,
-      reportedAt: t.reportedAt,
-      status: t.status,
-      overdueHours: Math.max(
-        0,
-        (Date.now() - t.reportedAt.getTime()) / 3600000,
-      ),
-      workzone: t.workzone,
-      idTicket: t.idTicket,
-    }));
-  }, [diamondTickets]);
 
   return (
     <AdminLayout
@@ -689,14 +668,6 @@ export default function TicketManagementOverviewPage() {
           </div>
         </section>
 
-        {/* ─── DIAMOND ALERT ─── */}
-        {expiredTickets.length > 0 && (
-          <DiamondAlertBanner
-            tickets={expiredTickets}
-            onAssign={handleAssign}
-          />
-        )}
-
         {/* ─── HOURLY CHART ─── */}
         <HourlyChart workzone={workzone || undefined} bucket={selectedBucket} />
 
@@ -714,7 +685,10 @@ export default function TicketManagementOverviewPage() {
               title: 'Service Area Performance',
               defaultOpen: false,
               children: (
-                <ServiceAreaTable areas={opsSummary?.serviceAreas ?? []} />
+                <ServiceAreaTable
+                  areas={opsSummary?.serviceAreas ?? []}
+                  loading={isLoading && !opsSummary?.serviceAreas?.length}
+                />
               ),
             },
           ]}

@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDateWIB, getSlaHours } from '@/app/utils/datetime';
@@ -17,6 +18,39 @@ interface ExpiredTicket {
 
 interface TicketAgeAlarmProps {
   onTicketClick?: (ticketId: number) => void;
+}
+
+function TicketAgeAlarmLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading expired tickets'
+    >
+      <div className='rounded-xl border border-red-200 bg-red-50 p-4'>
+        <div className='mb-3 flex items-center justify-between gap-3'>
+          <div className='flex items-center gap-2'>
+            <div className='h-5 w-5 rounded-full bg-red-200' />
+            <div className='h-4 w-40 rounded-full bg-red-200' />
+          </div>
+          <div className='h-3.5 w-24 rounded-full bg-red-100' />
+        </div>
+        <div className='space-y-2'>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className='grid grid-cols-5 gap-2 rounded-lg border border-red-100 bg-white/70 px-2 py-2'
+            >
+              {Array.from({ length: 5 }).map((__, cellIndex) => (
+                <div key={cellIndex} className='h-3 rounded-full bg-red-100' />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </phantom-ui>
+  );
 }
 
 export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
@@ -59,16 +93,7 @@ export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
   };
 
   if (loading) {
-    return (
-      <div className='rounded-xl border border-red-200 bg-red-50 p-4'>
-        <div className='flex items-center gap-2'>
-          <div className='h-5 w-5 animate-spin rounded-full border-2 border-red-500 border-t-transparent'></div>
-          <span className='text-sm text-red-700'>
-            Loading expired tickets...
-          </span>
-        </div>
-      </div>
-    );
+    return <TicketAgeAlarmLoading />;
   }
 
   if (expiredTickets.length === 0) {

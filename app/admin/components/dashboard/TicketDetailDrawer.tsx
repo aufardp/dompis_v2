@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, AlertTriangle, Shield } from 'lucide-react';
@@ -19,6 +20,93 @@ import { TabCustomer } from './ticket-detail/TabCustomer';
 import { TabTeknis } from './ticket-detail/TabTeknis';
 import { TabSLA } from './ticket-detail/TabSLA';
 import TrackingTimeline from './ticket-detail/TrackingTimeline';
+
+function TicketDetailDrawerLoading() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading ticket detail'
+    >
+      <div className='flex h-full flex-col'>
+        <div className='sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900'>
+          <div className='mb-3 flex items-center justify-between'>
+            <div className='flex items-center gap-2'>
+              <div className='h-6 w-32 rounded-full bg-slate-200 dark:bg-slate-800' />
+              <div className='h-7 w-20 rounded-full bg-slate-100 dark:bg-slate-800' />
+              <div className='h-7 w-16 rounded-full bg-slate-100 dark:bg-slate-800' />
+            </div>
+            <div className='h-9 w-9 rounded-lg bg-slate-200 dark:bg-slate-800' />
+          </div>
+
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <div className='space-y-2'>
+              <div className='h-4 w-40 rounded-full bg-slate-200 dark:bg-slate-800' />
+              <div className='h-3.5 w-64 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+            </div>
+          </div>
+
+          <div className='mt-3 rounded-xl border-2 border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60'>
+            <div className='h-4 w-36 rounded-full bg-slate-200 dark:bg-slate-800' />
+            <div className='mt-2 h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800/70' />
+            <div className='mt-2 h-3 w-5/6 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+          </div>
+
+          <div className='mt-3 flex border-b border-slate-200 dark:border-slate-700'>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className='relative px-4 py-2.5 text-xs font-medium text-slate-400'
+              >
+                <div className='h-3.5 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className='flex-1 overflow-y-auto bg-slate-50 px-5 py-4 dark:bg-slate-950'>
+          <div className='space-y-4'>
+            <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900'>
+              <div className='h-4 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+              <div className='mt-4 grid gap-3 sm:grid-cols-2'>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className='rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60'
+                  >
+                    <div className='h-3 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-3.5 w-5/6 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className='rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900'>
+              <div className='h-4 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+              <div className='mt-4 space-y-3'>
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className='rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60'
+                  >
+                    <div className='h-3 w-32 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-3 w-4/5 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-linear-to-t from-white to-slate-50 px-5 py-4 shadow-lg dark:border-slate-800 dark:from-slate-900 dark:to-slate-950'>
+          <div className='h-12 flex-1 rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800' />
+          <div className='h-12 flex-1 rounded-xl bg-slate-200 dark:bg-slate-700' />
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 export default function TicketDetailDrawer({
   open,
@@ -305,16 +393,7 @@ export default function TicketDetailDrawer({
             </div>
           </div>
         ) : (
-          <div className='flex flex-1 items-center justify-center'>
-            <div className='flex flex-col items-center gap-3 text-slate-400'>
-              {loading ? (
-                <div className='h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500' />
-              ) : (
-                <div className='h-8 w-8 rounded-full border-2 border-slate-200' />
-              )}
-              <p className='text-sm'>Loading...</p>
-            </div>
-          </div>
+          <TicketDetailDrawerLoading />
         )}
       </div>
     </div>

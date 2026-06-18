@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import {
+  CLOSE_STATUS_VALUES,
   isTicketClosed,
   isTicketInWork,
   isTicketOpenLike,
@@ -150,6 +151,7 @@ const B2CPanel = memo(function B2CPanel({
   const [b2cFlaggingFilter, setB2cFlaggingFilter] = useState<string[]>([]);
   const [b2cPage, setB2cPage] = useState(1);
   const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
+  const [b2cClosePage, setB2cClosePage] = useState(1);
   const b2cSectionRef = useRef<HTMLDivElement>(null);
   const b2cTableRef = useRef<HTMLDivElement>(null);
 
@@ -168,28 +170,46 @@ const B2CPanel = memo(function B2CPanel({
     validasiLimit: 10,
   });
 
+  const b2cClosePageData = useDailyTicketPage({
+    search: searchQuery,
+    workzone: workzoneFilter || undefined,
+    dept: 'b2c',
+    ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
+    ticketType: b2cTicketTypeFilter,
+    statusUpdate: b2cHasilVisitFilter,
+    ticketStatus: CLOSE_STATUS_VALUES,
+    flagging: b2cFlaggingFilter,
+    page: b2cClosePage,
+    limit: 10,
+    includeValidasi: false,
+  });
+
   const handleB2cTicketTypeChange = useCallback((types: string[]) => {
     setB2cTicketTypeFilter(types);
     setB2cPage(1);
     setB2cValidasiPage(1);
+    setB2cClosePage(1);
   }, []);
 
   const handleB2cTicketStatusChange = useCallback((statuses: string[]) => {
     setB2cTicketStatusFilter(statuses);
     setB2cPage(1);
     setB2cValidasiPage(1);
+    setB2cClosePage(1);
   }, []);
 
   const handleB2cHasilVisitChange = useCallback((statuses: string[]) => {
     setB2cHasilVisitFilter(statuses);
     setB2cPage(1);
     setB2cValidasiPage(1);
+    setB2cClosePage(1);
   }, []);
 
   const handleB2cFlaggingChange = useCallback((flags: string[]) => {
     setB2cFlaggingFilter(flags);
     setB2cPage(1);
     setB2cValidasiPage(1);
+    setB2cClosePage(1);
   }, []);
 
   const isValidationTicket = useCallback((_t: Ticket) => false, []);
@@ -300,6 +320,7 @@ const B2CPanel = memo(function B2CPanel({
         summary: {
           ...b2cStatsFromApi.summary,
           total: b2cPageData.pagination.total,
+          close: b2cClosePageData.pagination.total,
         },
       };
     }
@@ -308,13 +329,19 @@ const B2CPanel = memo(function B2CPanel({
       summary: {
         ...b2cDailySummary,
         total: b2cPageData.pagination.total,
+        close: b2cClosePageData.pagination.total,
       },
       reguler: { total: 0, open: 0, assigned: 0, close: 0, customerCount: 0, sqmCount: 0, unspecCount: 0, ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 },
       hvcGold: { total: 0, open: 0, assigned: 0, close: 0, customerCount: 0, sqmCount: 0, unspecCount: 0, ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 },
       hvcPlatinum: { total: 0, open: 0, assigned: 0, close: 0, customerCount: 0, sqmCount: 0, unspecCount: 0, ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 },
       hvcDiamond: { total: 0, open: 0, assigned: 0, close: 0, customerCount: 0, sqmCount: 0, unspecCount: 0, ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 },
     };
-  }, [b2cStatsFromApi, b2cDailySummary, b2cPageData.pagination.total]);
+  }, [
+    b2cStatsFromApi,
+    b2cDailySummary,
+    b2cPageData.pagination.total,
+    b2cClosePageData.pagination.total,
+  ]);
 
   return (
     <div ref={b2cSectionRef} className='flex flex-col gap-4 space-y-3 md:space-y-4'>
@@ -322,6 +349,7 @@ const B2CPanel = memo(function B2CPanel({
         data={b2cSectionData}
         activeType={ctypeFilter}
         onSelectType={onSelectType}
+        loading={b2cPageData.loading && !b2cPageData.isRefreshing}
       />
       <FilterBarB2C
         ticketType={b2cTicketTypeFilter}
@@ -346,6 +374,7 @@ const B2CPanel = memo(function B2CPanel({
               flaggingFilter={b2cFlaggingFilter}
               loading={b2cPageData.loading}
               isRefreshing={b2cPageData.isRefreshing}
+              searching={Boolean(searchQuery.trim())}
               onAssign={onAssign}
               downloadFilters={{
                 dept: 'b2c',
@@ -367,6 +396,7 @@ const B2CPanel = memo(function B2CPanel({
           validasiTickets={b2cPageData.validasiTickets}
           totalCount={b2cPageData.pagination.total}
           validasiTotalCount={b2cPageData.validasiCount}
+          closeCount={b2cClosePageData.pagination.total}
           validasiPagination={{
             currentPage: b2cPageData.validasiPagination.currentPage,
             totalPages: b2cPageData.validasiPagination.totalPages,
@@ -374,6 +404,31 @@ const B2CPanel = memo(function B2CPanel({
             limit: b2cPageData.validasiPagination.limit,
             onPageChange: setB2cValidasiPage,
           }}
+          closeTable={
+            <TicketTable
+              tickets={b2cClosePageData.tickets}
+              tableSummary={b2cClosePageData.summary}
+              flaggingFilter={b2cFlaggingFilter}
+              loading={b2cClosePageData.loading}
+              isRefreshing={b2cClosePageData.isRefreshing}
+              searching={Boolean(searchQuery.trim())}
+              onAssign={onAssign}
+              downloadFilters={{
+                dept: 'b2c',
+                ticketType: b2cTicketTypeFilter,
+                statusUpdate: b2cHasilVisitFilter,
+                ticketStatus: CLOSE_STATUS_VALUES,
+                flagging: b2cFlaggingFilter,
+              }}
+              pagination={{
+                currentPage: b2cClosePageData.pagination.currentPage,
+                totalPages: b2cClosePageData.pagination.totalPages,
+                total: b2cClosePageData.pagination.total,
+                limit: b2cClosePageData.pagination.limit,
+                onPageChange: setB2cClosePage,
+              }}
+            />
+          }
           loading={b2cPageData.loading}
           isRefreshing={b2cPageData.isRefreshing}
           onAssign={onAssign}

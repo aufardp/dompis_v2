@@ -32,6 +32,7 @@ type DailyTicketPageFilters = {
   validasiLimit?: number;
   enabled?: boolean;
   includeValidasi?: boolean;
+  includeClosed?: boolean;
 };
 
 type PaginationInfo = {
@@ -74,6 +75,7 @@ export function useDailyTicketPage({
   validasiLimit = 10,
   enabled = true,
   includeValidasi = true,
+  includeClosed = false,
 }: DailyTicketPageFilters) {
   const searchType = detectSearchType(search);
   const queryKey = queryKeys.tickets.daily({
@@ -100,6 +102,7 @@ export function useDailyTicketPage({
     validasiPage,
     validasiLimit,
     includeValidasi,
+    includeClosed,
   });
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -118,6 +121,7 @@ export function useDailyTicketPage({
         sort: 'desc',
       });
       if (!includeValidasi) params.set('includeValidasi', 'false');
+      if (includeClosed) params.set('includeClosed', 'true');
 
       const normalizedSearch = search?.trim();
       if (normalizedSearch) {

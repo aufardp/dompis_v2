@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback } from 'react';
 import Pagination from '../tables/Pagination';
 import TicketRow from './TicketRow';
@@ -14,6 +15,100 @@ import {
   sortByPriority,
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
+
+function TicketTableLoadingMobile() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading ticket list'
+    >
+      <div className='space-y-3'>
+        <div className='mb-2 flex items-center justify-between px-1'>
+          <div className='h-3.5 w-28 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-20 rounded-full bg-slate-200 dark:bg-slate-800' />
+        </div>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+            className='rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950'
+          >
+            <div className='space-y-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div className='space-y-2'>
+                  <div className='h-3.5 w-24 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  <div className='h-3 w-40 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                </div>
+                <div className='h-7 w-16 rounded-full bg-slate-100 dark:bg-slate-800' />
+              </div>
+              <div className='grid grid-cols-2 gap-2'>
+                {Array.from({ length: 4 }).map((__, cellIndex) => (
+                  <div
+                    key={cellIndex}
+                    className='rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60'
+                  >
+                    <div className='h-2.5 w-12 rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='mt-2 h-3 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                  </div>
+                ))}
+              </div>
+              <div className='h-10 rounded-2xl bg-slate-100 dark:bg-slate-800' />
+            </div>
+          </div>
+        ))}
+      </div>
+    </phantom-ui>
+  );
+}
+
+function TicketTableLoadingDesktop() {
+  return (
+    <phantom-ui suppressHydrationWarning fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading ticket table'
+    >
+      <div className='overflow-hidden rounded-xl border bg-white shadow-sm'>
+        <div className='flex items-center justify-between border-b bg-gray-50 px-4 py-3'>
+          <div className='h-3.5 w-32 rounded-full bg-slate-200 dark:bg-slate-800' />
+          <div className='h-3.5 w-20 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+        </div>
+        <div className='overflow-x-auto'>
+          <table className='w-full text-sm'>
+            <thead className='bg-gray-50 text-xs font-semibold tracking-wide text-gray-500 uppercase'>
+              <tr>
+                {Array.from({ length: 14 }).map((_, index) => (
+                  <th key={index} className='px-3 py-3 text-center'>
+                    <div className='mx-auto h-3 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <tr
+                  key={rowIndex}
+                  className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'
+                >
+                  {Array.from({ length: 14 }).map((__, cellIndex) => (
+                    <td key={cellIndex} className='px-3 py-4'>
+                      <div className='space-y-2'>
+                        <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
+                        <div className='h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </phantom-ui>
+  );
+}
 
 export type SortField =
   | 'ticket'
@@ -200,7 +295,7 @@ export default function TicketTable({
       {/* Mobile */}
       <div className='block space-y-3 lg:hidden'>
         {loading ? (
-          <p className='py-8 text-center text-gray-500'>Loading...</p>
+          <TicketTableLoadingMobile />
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-gray-500'>No tickets found</p>
         ) : (
@@ -240,7 +335,11 @@ export default function TicketTable({
               </thead>
               <tbody>
                 {loading ? (
-                  <TableEmptyState colSpan={14} message='Loading' />
+                  <tr>
+                    <td colSpan={14}>
+                      <TicketTableLoadingDesktop />
+                    </td>
+                  </tr>
                 ) : sortedTickets.length === 0 ? (
                   <TableEmptyState colSpan={14} message='No tickets found' />
                 ) : (

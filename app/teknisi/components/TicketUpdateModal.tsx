@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
+import { filesToDataUrls } from './detail-modal/file-preview';
 
 interface Props {
   ticket: Ticket;
@@ -52,13 +54,28 @@ export default function TicketUpdateModal({
     }
 
     setSelectedFiles(files);
-    setPreviewUrls(files.map((f) => URL.createObjectURL(f)));
+    void filesToDataUrls(files)
+      .then(setPreviewUrls)
+      .catch(() => setPreviewUrls([]));
+  }, []);
+
+  const handlePreviewFilesChange = useCallback((files: File[]) => {
+    void filesToDataUrls(files)
+      .then(setPreviewUrls)
+      .catch(() => setPreviewUrls([]));
   }, []);
 
   const handleRemoveImage = useCallback((index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
-    setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
+    setSelectedFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      return next;
+    });
+    setPreviewUrls((prev) => {
+      return prev.filter((_, i) => i !== index);
+    });
   }, []);
+
+  useEffect(() => undefined, []);
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const uploadEvidence = async () => {
@@ -272,6 +289,7 @@ export default function TicketUpdateModal({
               {/* Use EvidenceUploader component */}
               <EvidenceUploader
                 onFilesChange={handleFileChange}
+                onPreviewFilesChange={handlePreviewFilesChange}
                 onRemoveImage={handleRemoveImage}
                 previewUrls={previewUrls}
                 uploading={uploading}

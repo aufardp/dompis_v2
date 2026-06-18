@@ -1,5 +1,6 @@
 'use client';
 
+import '@aejkatappaja/phantom-ui';
 import {
   AreaChart,
   Area,
@@ -41,7 +42,14 @@ export default function B2cB2bTrendChart({
       </div>
 
       {loading ? (
-        <div className="bg-surface-2 mx-4 mb-4 h-[240px] animate-pulse rounded-xl" />
+        <phantom-ui suppressHydrationWarning fallback-radius={8}
+          loading
+          animation='shimmer'
+          reveal={0.12}
+          loading-label='Loading B2C B2B trend chart'
+        >
+          <div className="bg-surface-2 mx-4 mb-4 h-[240px] rounded-xl" />
+        </phantom-ui>
       ) : (
         <div className="h-[280px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0">
           <ResponsiveContainer width="100%" height="100%">
