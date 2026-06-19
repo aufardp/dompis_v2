@@ -250,8 +250,8 @@ export default function ImportTiketPage() {
   const handleFileSelect = useCallback(async (selectedFile: File | null) => {
     if (!selectedFile) return;
     const ext = selectedFile.name.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
-      setError('Format file harus .xlsx, .xls, atau .csv');
+    if (!['csv', 'xlsx', 'xls'].includes(ext ?? '')) {
+      setError('Format file harus .csv, .xlsx, atau .xls');
       return;
     }
 
@@ -327,35 +327,20 @@ export default function ImportTiketPage() {
   }, [file, preview, mapping]);
 
   const handleDownloadTemplate = useCallback(async () => {
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      [...TICKET_IMPORT_TEMPLATE_HEADERS],
-      TICKET_IMPORT_TEMPLATE_HEADERS.map((header) =>
-        TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS.includes(
-          header as (typeof TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS)[number],
-        )
-          ? 'WAJIB'
-          : '',
-      ),
-    ]);
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Template');
-    worksheet['!cols'] = TICKET_IMPORT_TEMPLATE_HEADERS.map(() => ({
-      wch: 22,
-    }));
-
-    const buffer = XLSX.write(workbook, {
-      type: 'array',
-      bookType: 'xlsx',
-    }) as ArrayBuffer;
-    const blob = new Blob([buffer], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
+    const headerLine = TICKET_IMPORT_TEMPLATE_HEADERS.join(',');
+    const hintLine = TICKET_IMPORT_TEMPLATE_HEADERS.map((h) =>
+      TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS.includes(
+        h as (typeof TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS)[number],
+      )
+        ? 'WAJIB'
+        : '',
+    ).join(',');
+    const csvContent = `\uFEFF${headerLine}\n${hintLine}\n`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'template_import_tiket_raw.xlsx';
+    link.download = 'template_import_tiket_raw.csv';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -417,7 +402,7 @@ export default function ImportTiketPage() {
                   Import data tiket
                 </h1>
                 <p className='mt-2 max-w-2xl text-sm leading-6 text-(--text-secondary)'>
-                  Upload file Excel/CSV, preview mapping, validate columns, lalu
+                  Upload file CSV/Excel, preview mapping, validate columns, lalu
                   jalankan import ke ticket_raw dan projection.
                 </p>
               </div>
@@ -538,7 +523,7 @@ export default function ImportTiketPage() {
             <div className='flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between'>
               <div className='space-y-2'>
                 <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                  Template Excel final
+                  Template CSV final
                 </p>
                 <h2 className='text-lg font-semibold text-(--text-primary)'>
                   Unduh header resmi agar file langsung terbaca
@@ -555,7 +540,7 @@ export default function ImportTiketPage() {
                 className='shrink-0'
               >
                 <Download className='h-4 w-4' />
-                Download Template Excel
+                Download Template CSV
               </Button>
             </div>
             <div className='mt-3.5 flex flex-wrap gap-2'>
@@ -585,19 +570,19 @@ export default function ImportTiketPage() {
               <input
                 ref={fileInputRef}
                 type='file'
-                accept='.xlsx,.xls,.csv'
+                accept='.csv,.xlsx,.xls'
                 className='hidden'
                 onChange={(e) => handleFileSelect(e.target.files?.[0] ?? null)}
               />
               <Upload className='mb-4 h-10 w-10 text-(--text-muted)' />
               <p className='text-sm font-medium text-(--text-secondary)'>
-                Drop file Excel/CSV di sini
+                Drop file CSV/Excel di sini
               </p>
               <p className='mt-1 text-xs text-(--text-muted)'>
                 atau klik untuk memilih file
               </p>
               <p className='mt-4 text-xs text-(--text-muted)'>
-                Format: .xlsx, .xls, .csv (maks 50MB)
+                Format: .csv, .xlsx, .xls (maks 50MB)
               </p>
             </div>
 

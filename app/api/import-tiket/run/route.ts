@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import { createHash } from 'crypto';
 import prisma from '@/app/libs/prisma';
 import { randomBytes } from 'crypto';
@@ -13,6 +13,7 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { todayWibDateForDb, toWibString } from '@/lib/timezone';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { runProjection } from '@/lib/projection';
 import {
   TICKET_RAW_FIELDS,
   TICKET_RAW_MAX_LENGTHS,
@@ -21,8 +22,11 @@ import {
   validateDate,
 } from '@/app/libs/ticket-raw-columns';
 import { parseWIBDateInput } from '@/app/utils/datetime';
+import { logger } from '@/lib/observability/logger';
 
 const BATCH_SIZE = 100;
+const MAX_ROWS = 10000;
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const SOURCE_TABLE_NAME = 'import_tiket';
 const DATE_STRING_FIELDS: Set<string> = new Set([
   'reported_date',
@@ -149,6 +153,8 @@ export async function POST(req: Request) {
     }
 
     if (!file) throw new ApiError(400, 'File tidak ditemukan');
+    if (file.size > MAX_FILE_SIZE)
+      throw new ApiError(400, `File terlalu besar (maks ${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB)`);
     if (!mappingJson) throw new ApiError(400, 'Mapping kolom tidak ditemukan');
 
     const mapping: Record<string, string | null> = JSON.parse(mappingJson);
@@ -175,20 +181,20 @@ export async function POST(req: Request) {
       batchName = `${batchName}_${count + 1}`;
     }
 
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(Buffer.from(buffer), {
-      type: 'buffer',
-      cellDates: true,
-    });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
-      raw: false,
-      dateNF: 'yyyy-mm-dd hh:mm:ss',
-      defval: null,
+    const csvText = await file.text();
+    if (!csvText.trim()) throw new ApiError(400, 'File CSV kosong');
+
+    const parseResult = Papa.parse<Record<string, any>>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
     });
 
+    const rows = parseResult.data;
     if (rows.length === 0)
-      throw new ApiError(400, 'File Excel kosong atau tidak valid');
+      throw new ApiError(400, 'File CSV kosong atau tidak valid');
+    if (rows.length > MAX_ROWS)
+      throw new ApiError(413, `Maksimal ${MAX_ROWS.toLocaleString('id-ID')} baris per import. File Anda memiliki ${rows.length.toLocaleString('id-ID')} baris.`);
 
     let inserted = 0;
     let updated = 0;
@@ -337,6 +343,20 @@ export async function POST(req: Request) {
     }
 
     await invalidateTicketsCache();
+
+    try {
+      const projectionResult = await runProjection(undefined, {
+        syncBatchId: batchName,
+        mode: 'incremental',
+      });
+      const processed = projectionResult && typeof projectionResult === 'object' && 'processed' in projectionResult
+        ? (projectionResult as any).processed
+        : 0;
+      logger.info(`Projection selesai: ${processed} tiket diproses untuk batch ${batchName}`);
+    } catch (projectionError) {
+      logger.warn(`Projection after import gagal untuk batch ${batchName}: ${String(projectionError)}`);
+    }
+
     broadcastTicketInvalidate('import-tiket');
 
     return NextResponse.json({
@@ -350,7 +370,7 @@ export async function POST(req: Request) {
         import_batch: batchName,
         uploaded_by: uploadedBy,
       },
-      message: `Import berhasil. ${inserted} baru, ${updated} diperbarui, ${skipped} dilewati. Data akan muncul di board dalam ~1 menit.`,
+      message: `Import berhasil. ${inserted} baru, ${updated} diperbarui, ${skipped} dilewati. Data sedang diproses ke tabel utama.`,
     });
   } catch (error: unknown) {
     return NextResponse.json(

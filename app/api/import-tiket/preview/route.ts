@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError, getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
@@ -12,6 +12,17 @@ import {
   autoDetectMapping,
   validateDate,
 } from '@/app/libs/ticket-raw-columns';
+
+const MAX_PREVIEW_ROWS = 20;
+
+function parseCsvRows(text: string): Record<string, any>[] {
+  const result = Papa.parse<Record<string, any>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false,
+  });
+  return result.data;
+}
 
 export async function POST(req: Request) {
   try {
@@ -30,22 +41,13 @@ export async function POST(req: Request) {
     if (file.size > 50 * 1024 * 1024)
       throw new ApiError(400, 'File terlalu besar (maks 50MB)');
 
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(Buffer.from(buffer), {
-      type: 'buffer',
-      cellDates: true,
-    });
+    const csvText = await file.text();
+    if (!csvText.trim()) throw new ApiError(400, 'File CSV kosong');
 
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
-      raw: false,
-      dateNF: 'yyyy-mm-dd hh:mm:ss',
-      defval: null,
-    });
+    const rows: Record<string, any>[] = parseCsvRows(csvText);
 
     if (rows.length === 0)
-      throw new ApiError(400, 'File Excel kosong atau tidak valid');
+      throw new ApiError(400, 'File CSV kosong atau tidak valid');
 
     const headers = Object.keys(rows[0] ?? {});
     const autoMapping = autoDetectMapping(headers);
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const sample = rows.slice(0, 20).map((row) => {
+    const sample = rows.slice(0, MAX_PREVIEW_ROWS).map((row) => {
       const mapped: Record<string, any> = {};
       for (const header of headers) {
         const target = autoMapping[header];
