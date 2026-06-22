@@ -1,7 +1,6 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import Link from 'next/link';
 import {
@@ -170,7 +169,14 @@ export default function ManHoursPage() {
   /**
    * Fetch data from API
    */
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const fetchData = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     setError(null);
 
@@ -199,13 +205,15 @@ export default function ManHoursPage() {
       if (!jsonData.success) {
         throw new Error(jsonData.message || 'Gagal mengambil data');
       }
+      if (!mountedRef.current) return;
 
       setData(jsonData);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err.message || 'Terjadi kesalahan saat mengambil data');
       setData(null);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [filters.dateFrom, filters.dateTo, filters.sto, filters.name]);
 

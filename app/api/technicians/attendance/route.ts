@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
     const currentUserServiceAreas = await prisma.user_sa.findMany({
       where: { user_id: currentUserId },
       select: { sa_id: true },
+      take: 100,
     });
 
     const currentUserSaIds: number[] = currentUserServiceAreas
@@ -132,6 +133,7 @@ export async function GET(request: NextRequest) {
       const techniciansInSameArea = await prisma.user_sa.findMany({
         where: { sa_id: { in: currentUserSaIds } },
         select: { user_id: true },
+        take: 500,
       });
 
       technicianIds = Array.from(

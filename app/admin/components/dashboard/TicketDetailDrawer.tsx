@@ -1,9 +1,9 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { X, AlertTriangle, Shield } from 'lucide-react';
+import { X, AlertTriangle, Shield, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import type {
@@ -20,6 +20,8 @@ import { TabCustomer } from './ticket-detail/TabCustomer';
 import { TabTeknis } from './ticket-detail/TabTeknis';
 import { TabSLA } from './ticket-detail/TabSLA';
 import TrackingTimeline from './ticket-detail/TrackingTimeline';
+import ReopenTicketModal from './ReopenTicketModal';
+import { useAdminToast } from './admin-toast';
 
 function TicketDetailDrawerLoading() {
   return (
@@ -124,6 +126,10 @@ export default function TicketDetailDrawer({
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [reopenLoading, setReopenLoading] = useState(false);
+  const { showSuccess, showError } = useAdminToast();
+  const router = useRouter();
 
   useEffect(() => {
     if (open) setActiveTab('umum');
@@ -144,6 +150,51 @@ export default function TicketDetailDrawer({
 
   const ttrDeadline = useMemo(() => pickTtrDeadline(ticket), [ticket]);
   const ttrLabel = formatTtrDelta(ttrDeadline);
+  const canReopen = useMemo(() => {
+    if (!ticket) return false;
+    const raw = getTicketStatusRaw(ticket);
+    return raw.includes('close') || raw.includes('closed');
+  }, [ticket]);
+
+  const handleReopenConfirm = async () => {
+    if (!ticket?.idTicket || reopenLoading) return;
+
+    setReopenLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/tickets/reopen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: ticket.idTicket }),
+      });
+      const payload = await res?.json().catch(() => null);
+
+      if (!res || !res.ok || !payload?.success) {
+        showError(
+          'Reopen ticket gagal',
+          payload?.message ?? 'Ticket tidak berhasil direopen.',
+        );
+        return;
+      }
+
+      showSuccess(
+        'Reopen ticket berhasil',
+        ticket?.ticket
+          ? `Ticket ${ticket.ticket} kembali ke open.`
+          : 'Ticket kembali ke open.',
+        { persist: true },
+      );
+      router.refresh();
+    } catch (e) {
+      console.error('Reopen ticket error:', e);
+      showError(
+        'Reopen ticket gagal',
+        'Terjadi kesalahan saat memproses reopen ticket.',
+      );
+    } finally {
+      setReopenLoading(false);
+      setReopenModalOpen(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || !ticket?.idTicket) {
@@ -232,7 +283,9 @@ export default function TicketDetailDrawer({
                         'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm',
                         ticket.flaggingManja === 'P1'
                           ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-400'
-                          : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400',
+                          : ticket.flaggingManja === 'P+'
+                            ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400'
+                            : 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-300',
                       )}
                     >
                       <AlertTriangle size={12} />
@@ -240,7 +293,9 @@ export default function TicketDetailDrawer({
                         ? 'Manja HI'
                         : ticket.flaggingManja === 'P+'
                           ? 'Manja H+'
-                        : ticket.flaggingManja}
+                          : ticket.flaggingManja === 'EXPIRED'
+                            ? 'Manja Expired'
+                            : ticket.flaggingManja}
                     </span>
                   )}
                   {ticket.flaggingDatin && (
@@ -299,6 +354,24 @@ export default function TicketDetailDrawer({
                 </div>
               )}
 
+              {ticket.sqmUpdateReason && (
+                <div className='mt-3 rounded-xl border-2 border-violet-200 bg-violet-50 p-4 shadow-sm dark:border-violet-500/20 dark:bg-violet-500/10'>
+                  <div className='flex items-start gap-3'>
+                    <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-500/20'>
+                      <AlertTriangle size={18} className='text-violet-600 dark:text-violet-300' />
+                    </div>
+                    <div className='flex-1'>
+                      <h4 className='text-sm font-bold text-violet-900 dark:text-violet-100'>
+                        SQM Update Reason
+                      </h4>
+                      <p className='mt-1 text-sm text-violet-800 dark:text-violet-200'>
+                        {ticket.sqmUpdateReason}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className='mt-3 flex border-b border-slate-200 dark:border-slate-700'>
                 {TAB_LIST.map((tab) => (
                   <button
@@ -349,6 +422,17 @@ export default function TicketDetailDrawer({
             </div>
 
             <div className='sticky bottom-0 flex gap-3 border-t border-slate-200 bg-linear-to-t from-white to-slate-50 px-5 py-4 shadow-lg dark:border-slate-800 dark:from-slate-900 dark:to-slate-950'>
+              {canReopen && (
+                <button
+                  onClick={() => setReopenModalOpen(true)}
+                  className='flex-1 rounded-xl border-2 border-sky-300 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition-all hover:border-sky-400 hover:bg-sky-100 active:scale-[0.98] dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15'
+                >
+                  <span className='inline-flex items-center justify-center gap-2'>
+                    <RotateCcw size={16} />
+                    Reopen Ticket
+                  </span>
+                </button>
+              )}
               {onEdit && (
                 <button
                   onClick={() => onEdit(ticket)}
@@ -396,6 +480,16 @@ export default function TicketDetailDrawer({
           <TicketDetailDrawerLoading />
         )}
       </div>
+      <ReopenTicketModal
+        open={reopenModalOpen}
+        onClose={() => {
+          if (reopenLoading) return;
+          setReopenModalOpen(false);
+        }}
+        onConfirm={handleReopenConfirm}
+        ticketCode={ticket?.ticket}
+        loading={reopenLoading}
+      />
     </div>
   );
 

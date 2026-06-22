@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -388,14 +387,14 @@ export default function SemestaPage() {
     }
     if (pagination.total > 0) {
       setSearchToast({
-        message: `${pagination.total} tiket ditemukan`,
+        message: `${pagination.total} tiket`,
         type: 'success',
       });
       window.requestAnimationFrame(() => {
         tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     } else {
-      setSearchToast({ message: 'Tiket tidak ditemukan', type: 'error' });
+      setSearchToast({ message: 'Tidak ditemukan', type: 'error' });
     }
   }, [searchQuery, ticketsLoading, ticketsRefreshing, pagination.total]);
 

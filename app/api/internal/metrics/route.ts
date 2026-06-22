@@ -58,6 +58,8 @@ async function collectPrometheusMetrics(): Promise<string> {
     dompis_projection_last_batch_duration_ms: { help: 'Most recent projection batch duration in ms', type: 'gauge' },
     dompis_projection_rows_per_second: { help: 'Most recent projection throughput in rows per second', type: 'gauge' },
     dompis_projection_pipeline_lag_ms: { help: 'Most recent projection end-to-end lag in ms', type: 'gauge' },
+    dompis_projection_never_projected_total: { help: 'Raw rows that have never been projected', type: 'gauge' },
+    dompis_projection_oldest_pending_age_ms: { help: 'Age in milliseconds of the oldest unprojected raw row', type: 'gauge' },
     dompis_worker_running: { help: 'Worker running state', type: 'gauge' },
     dompis_worker_consecutive_errors: { help: 'Worker consecutive errors', type: 'gauge' },
     dompis_worker_circuit_open: { help: 'Worker circuit breaker open state (1=open)', type: 'gauge' },
@@ -120,6 +122,8 @@ async function collectPrometheusMetrics(): Promise<string> {
     skippedRecords?: number;
     failedRecords?: number;
     checkpoint?: string | null;
+    neverProjectedCount?: number;
+    oldestPendingAgeMs?: number | null;
   };
 
   if (syncHealth.lastSyncTime) {
@@ -141,6 +145,8 @@ async function collectPrometheusMetrics(): Promise<string> {
 
   const projectionBacklog = parseProjectionCheckpointMeta(projectionHealth.checkpoint);
   lines.push(`dompis_projection_backlog ${projectionBacklog.neverProjected ?? 0}`);
+  lines.push(`dompis_projection_never_projected_total ${projectionHealth.neverProjectedCount ?? projectionBacklog.neverProjected ?? 0}`);
+  lines.push(`dompis_projection_oldest_pending_age_ms ${projectionHealth.oldestPendingAgeMs ?? projectionBacklog.oldestPendingAgeMs ?? 0}`);
 
   // Ingestion totals
   lines.push(`dompis_ingestion_records_total{status="inserted"} ${syncHealth.insertedCount ?? 0}`);

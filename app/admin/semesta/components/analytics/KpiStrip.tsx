@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useMemo } from 'react';
 import { cn } from '@/app/libs/utils';
 import { AlertTriangle, Repeat, Shield } from 'lucide-react';

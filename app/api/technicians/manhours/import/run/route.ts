@@ -136,40 +136,59 @@ export async function POST(req: Request) {
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
 
+      // Pre-collect incidents untuk batch ini (satu query batch, bukan N)
+      const batchIncidents: string[] = [];
+      const batchRowMeta: Array<{
+        row: Record<string, any>;
+        incident: string;
+        teknisiId: number;
+        closedAt: Date;
+      }> = [];
+
       for (const row of batch) {
+        const incident = findColumn(row, INCIDENT_COLUMN_CANDIDATES)?.trim();
+        if (!incident) {
+          skipped++;
+          continue;
+        }
+
+        const statusFromExcel = (
+          findColumn(row, STATUS_COLUMN_CANDIDATES) ?? ''
+        ).toUpperCase();
+        if (onlyClosed && !['CLOSED', 'CLOSE', 'SELESAI'].includes(statusFromExcel)) {
+          skipped++;
+          continue;
+        }
+
+        const techName = findColumn(row, TECH_COLUMN_CANDIDATES);
+        const teknisiId = techName ? nameToIdMap[techName] : undefined;
+        if (!teknisiId) {
+          skipped++;
+          continue;
+        }
+
+        const rawDate = findColumn(row, RESOLVE_DATE_COLUMN_CANDIDATES);
+        const closedAt = parseDate(rawDate);
+        if (!closedAt) {
+          skipped++;
+          continue;
+        }
+
+        batchIncidents.push(incident);
+        batchRowMeta.push({ row, incident, teknisiId, closedAt });
+      }
+
+      // Pre-fetch existing tickets untuk batch ini
+      const batchExistingTickets = await prisma.ticket.findMany({
+        where: { incident: { in: batchIncidents } },
+        select: { id_ticket: true, incident: true, status_update: true },
+      });
+      const batchTicketMap = new Map(
+        batchExistingTickets.map((t: { incident: string; id_ticket: number; status_update: string | null }) => [t.incident, t]),
+      );
+
+      for (const { row, incident, teknisiId, closedAt } of batchRowMeta) {
         try {
-          const incident = findColumn(row, INCIDENT_COLUMN_CANDIDATES)?.trim();
-          if (!incident) {
-            skipped++;
-            continue;
-          }
-
-          const statusFromExcel = (
-            findColumn(row, STATUS_COLUMN_CANDIDATES) ?? ''
-          ).toUpperCase();
-          if (onlyClosed && !['CLOSED', 'CLOSE', 'SELESAI'].includes(statusFromExcel)) {
-            skipped++;
-            continue;
-          }
-
-          const techName = findColumn(row, TECH_COLUMN_CANDIDATES);
-          const teknisiId = techName ? nameToIdMap[techName] : undefined;
-
-          // Skip jika tidak ada mapping teknisi
-          if (!teknisiId) {
-            skipped++;
-            continue;
-          }
-
-          // Parse RESOLVE DATE
-          const rawDate = findColumn(row, RESOLVE_DATE_COLUMN_CANDIDATES);
-          const closedAt = parseDate(rawDate);
-          if (!closedAt) {
-            skipped++;
-            continue;
-          }
-
-          // Build ticket data
           const ticketData = {
             teknisi_user_id: teknisiId,
             jenis_tiket: defaultJenis,
@@ -212,14 +231,10 @@ export async function POST(req: Request) {
             gaul: findColumn(row, ['GAUL']),
           };
 
-          // Upsert: INSERT atau UPDATE
-          const existing = await prisma.ticket.findUnique({
-            where: { incident: incident },
-            select: { id_ticket: true, status_update: true },
-          });
+          // Upsert: INSERT atau UPDATE (gunakan cache, bukan query per-row)
+          const existing = batchTicketMap.get(incident);
 
           if (existing) {
-            // Jangan timpa tiket yang sedang on_progress/pending via workflow
             if (
               WORKFLOW_PROTECTED_STATUSES.has(
                 (existing.status_update ?? '').toLowerCase().trim(),

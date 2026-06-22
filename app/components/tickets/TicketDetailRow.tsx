@@ -43,6 +43,7 @@ interface TicketDetail {
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
   pendingDompis?: string | null;
+  sqmUpdateReason?: string | null;
   rca?: string | null;
   subRca?: string | null;
   teknisiUserId?: number | null;
@@ -195,10 +196,11 @@ export default function TicketDetailRow({ ticket }: TicketDetailRowProps) {
               <DetailItem label='Symptom' value={ticket.symptom} />
               <DetailItem label='RCA' value={ticket.rca} />
               <DetailItem label='Sub RCA' value={ticket.subRca} />
-              <DetailItem label='Technician' value={ticket.technicianName} />
-              <DetailItem label='Pending' value={ticket.pendingDompis} />
-            </div>
-          </div>
+          <DetailItem label='Technician' value={ticket.technicianName} />
+          <DetailItem label='Pending' value={ticket.pendingDompis} />
+          <DetailItem label='SQM Update Reason' value={ticket.sqmUpdateReason} />
+        </div>
+      </div>
         </div>
       </td>
     </tr>

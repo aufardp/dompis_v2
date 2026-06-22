@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage } from '@/app/libs/apiError';
 import {
   calculateManhours,
   getManhourConfigs,
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: error.message || 'Terjadi kesalahan saat export data manhours',
+        message: getErrorMessage(error, 'Terjadi kesalahan saat export data manhours'),
       },
       { status: 500 },
     );

@@ -87,6 +87,7 @@ export async function GET(req: NextRequest) {
       async () => {
         // Get admin's service areas to filter teknisi
         const adminSaRows = await prisma.user_sa.findMany({
+          take: 50,
           where: { user_id: user.id_user },
           select: { sa_id: true },
         });
@@ -98,6 +99,7 @@ export async function GET(req: NextRequest) {
         let teknisiIds: number[] = [];
         if (adminSaIds.length > 0) {
           const techSa = await prisma.user_sa.findMany({
+            take: 1000,
             where: { sa_id: { in: adminSaIds } },
             select: { user_id: true },
           });
@@ -111,6 +113,7 @@ export async function GET(req: NextRequest) {
         } else {
           // Superadmin gets all teknisi
           const allTech = await prisma.users.findMany({
+            take: 1000,
             where: { roles: { is: { key: 'teknisi' } } },
             select: { id_user: true },
           });
@@ -123,6 +126,7 @@ export async function GET(req: NextRequest) {
 
         // Fetch only filtered teknisi
         const teknisiList = await prisma.users.findMany({
+          take: 1000,
           where: { id_user: { in: teknisiIds } },
           select: { id_user: true, nama: true, nik: true },
           orderBy: { nama: 'asc' },

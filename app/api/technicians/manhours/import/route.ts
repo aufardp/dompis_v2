@@ -63,6 +63,31 @@ async function batchUpsert(
     errors: [] as string[],
   };
 
+  // Pre-fetch: validasi teknisi (satu query batch, bukan per-row)
+  const allTechIds = [...new Set(rows.map((r) => r.teknisi_user_id))];
+  const validTechs = await prisma.users.findMany({
+    where: { id_user: { in: allTechIds }, role_id: 4 },
+    select: { id_user: true },
+  });
+  const validTechSet = new Set(validTechs.map((t: { id_user: number }) => t.id_user));
+
+  // Pre-fetch: ticket existing berdasarkan incident (satu query batch, bukan per-row)
+  const allIncidents = rows.map((r) => r.incident);
+  const existingTickets = await prisma.ticket.findMany({
+    where: { INCIDENT: { in: allIncidents } },
+    select: {
+      INCIDENT: true,
+      id_ticket: true,
+      status_update: true,
+      rca: true,
+      sub_rca: true,
+      teknisi_user_id: true,
+    },
+  });
+  const existingTicketMap: Map<string, any> = new Map(
+    existingTickets.map((t: any) => [t.INCIDENT, t]),
+  );
+
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const chunk = rows.slice(i, i + BATCH_SIZE);
 
@@ -77,12 +102,7 @@ async function batchUpsert(
           continue;
         }
 
-        const techExists = await prisma.users.findFirst({
-          where: { id_user: row.teknisi_user_id, role_id: 4 },
-          select: { id_user: true },
-        });
-
-        if (!techExists) {
+        if (!validTechSet.has(row.teknisi_user_id)) {
           result.errors.push(
             `${row.incident}: teknisi ID ${row.teknisi_user_id} tidak ditemukan`,
           );
@@ -90,16 +110,7 @@ async function batchUpsert(
           continue;
         }
 
-        const existing = await prisma.ticket.findUnique({
-          where: { INCIDENT: row.incident },
-          select: {
-            id_ticket: true,
-            status_update: true,
-            rca: true,
-            sub_rca: true,
-            teknisi_user_id: true,
-          },
-        });
+        const existing = existingTicketMap.get(row.incident);
 
         if (existing) {
           const updateData: any = {

@@ -297,6 +297,7 @@ function mapTicket(t: any) {
     maxTtrPlatinum: null,
     maxTtrDiamond: null,
     pendingDompis: t.pending_dompis,
+    sqmUpdateReason: t.sqm_update_reason,
     teknisiUserId: t.teknisi_user_id,
     rca: t.rca,
     subRca: t.sub_rca,
@@ -669,6 +670,7 @@ export class TicketService {
           alamat: true,
           device_name: true,
           pending_dompis: true,
+          sqm_update_reason: true,
           source_ticket: true,
           description_solution_dompis: true,
           rca: true,
@@ -759,6 +761,7 @@ export class TicketService {
         alamat: true,
         device_name: true,
         pending_dompis: true,
+        sqm_update_reason: true,
         source_ticket: true,
         description_solution_dompis: true,
         rca: true,
@@ -1504,17 +1507,6 @@ export class TicketService {
       select: { id_user: true, nama: true, nik: true },
       orderBy: { nama: 'asc' },
     });
-  }
-
-  static async getCustomerType() {
-    const tickets = await prisma.ticket.findMany({
-      select: { customer_type: true },
-      distinct: ['customer_type'],
-      where: { customer_type: { not: null } },
-      orderBy: { customer_type: 'asc' },
-    });
-
-    return tickets.map((t: any) => ({ customerType: t.customer_type }));
   }
 
   // ── Workflow Delegation ───────────────────────────────────────────────────────

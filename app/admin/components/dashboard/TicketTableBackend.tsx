@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';

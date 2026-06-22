@@ -563,7 +563,7 @@ export default function RekapWorkorderTable({
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div>
             <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-muted) uppercase'>
-              Workboard table
+              Area matrix
             </p>
             <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
               {modeLabel}
@@ -577,13 +577,13 @@ export default function RekapWorkorderTable({
           </div>
           <div className='flex flex-wrap items-center gap-2'>
             <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
-              Area hierarchy
+              Hierarchy
             </span>
             <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
-              Open / Close
+              Open vs Close
             </span>
             <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
-              {totals.grand.toLocaleString('id-ID')} total
+              {totals.grand.toLocaleString('id-ID')} WO
             </span>
           </div>
         </div>

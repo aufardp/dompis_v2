@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import {
   AreaChart,
   Area,

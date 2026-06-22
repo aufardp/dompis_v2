@@ -9,7 +9,12 @@ import {
 } from '@/lib/classify-jenis-vlookup';
 import { recordProjectionMetric, setProjectionStatus } from '@/lib/sync-metrics/metrics';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
-import { isTicketClosed, normalizeStatusUpdate, CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import {
+  isTicketClosed,
+  isOpenExternalStatus,
+  normalizeStatusUpdate,
+  CLOSE_STATUS_VALUES,
+} from '@/app/libs/ticket-utils';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 
@@ -23,15 +28,6 @@ const PROTECTED_STATES = new Set([
   'pending',
   'close',
   'closed',
-]);
-
-const OPEN_EXTERNAL_STATES = new Set([
-  'new',
-  'draft',
-  'analysis',
-  'pending',
-  'backend',
-  'open',
 ]);
 
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('PROJECTION_BATCH_SIZE', 1000);
@@ -102,7 +98,7 @@ export function resolveProjectionStatusUpdate(
 ): StatusUpdateResolution | null {
   const current = (currentStatusUpdate ?? '').trim().toLowerCase();
   const external = (externalStatus ?? '').trim().toLowerCase();
-  const isExternalOpenLike = OPEN_EXTERNAL_STATES.has(external);
+  const isExternalOpenLike = isOpenExternalStatus(external);
 
   if (current && PROTECTED_STATES.has(current)) {
     return { protected: true };
@@ -677,6 +673,7 @@ async function prepareProjectionItems(
       source_ticket: r.source_ticket as string | null,
       realm: r.realm as string | null,
       summary: r.summary as string | null,
+      symptom: r.symptom as string | null,
     })),
   );
 
@@ -1508,6 +1505,7 @@ export async function backfillJenisTiket(
         source_ticket: true,
         realm: true,
         summary: true,
+        symptom: true,
       },
       take: batchSize,
       skip,
@@ -1524,6 +1522,7 @@ export async function backfillJenisTiket(
       source_ticket: t.source_ticket,
       realm: t.realm,
       summary: t.summary,
+      symptom: t.symptom ?? null,
     }));
 
     const results = await batchClassifyJenisFromVlookup(inputs);

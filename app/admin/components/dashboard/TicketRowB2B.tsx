@@ -1,7 +1,17 @@
 'use client';
 
-import { RefreshCw, UserPlus, ChevronDown, ChevronUp, Eye, Tag, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  RefreshCw,
+  UserPlus,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  ShieldAlert,
+  Tag,
+  X,
+} from 'lucide-react';
+import { memo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import CustomerTypeBadge from '../../../components/tickets/CustomerTypeBadge';
 import { getStatusColor, getMaxTtr } from '../../../components/tickets/helpers';
@@ -17,6 +27,8 @@ import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
 import TtrCountdownBadge from './TtrCountdownBadge';
 import SqmUpdateModal from './SqmUpdateModal';
+import BypassCloseModal from './BypassCloseModal';
+import { useAdminToast } from './admin-toast';
 
 export interface TicketRowProps {
   ticket: {
@@ -47,17 +59,19 @@ export interface TicketRowProps {
     guaranteeStatus?: string | null;
     status_update?: string | null;
     ticketIdGamas?: string | null;
+    sqmUpdateReason?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
+  onToggleExpand?: (ticketId: number | string) => void;
   rank?: number;
   ticketAge?: string;
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
   ttrCountdown?: TtrCountdown | null;
   highlighted?: boolean;
+  showBypassClose?: boolean;
 }
 
 const SLA_STYLES = {
@@ -124,7 +138,7 @@ function formatStackedLabelParts(labelValue: string | null | undefined) {
   };
 }
 
-export default function TicketRowB2B({
+function TicketRowB2B({
   ticket,
   onAssign,
   onDetail,
@@ -136,6 +150,7 @@ export default function TicketRowB2B({
   slaLabel,
   ttrCountdown,
   highlighted = false,
+  showBypassClose = false,
 }: TicketRowProps) {
   const severityStyles = SEVERITY_COLORS[severity];
   const isClosed = isTicketClosed(ticket.status_update ?? ticket.status_update);
@@ -170,13 +185,17 @@ export default function TicketRowB2B({
     if (onDetail) {
       onDetail(ticket.idTicket ?? ticket.ticket ?? '');
     } else {
-      onToggleExpand?.();
+      onToggleExpand?.(ticket.idTicket ?? ticket.ticket ?? '');
     }
   };
 
   const [sqmModalOpen, setSqmModalOpen] = useState(false);
+  const [bypassModalOpen, setBypassModalOpen] = useState(false);
+  const [bypassLoading, setBypassLoading] = useState(false);
+  const { showSuccess, showError } = useAdminToast();
+  const router = useRouter();
 
-  const handleSqmConfirm = async (reason: string) => {
+  const handleSqmConfirm = async (reason: string, description: string) => {
     const currentSummary = ticket.summary ?? '';
     try {
       const res = await fetch('/api/tickets/update', {
@@ -184,17 +203,75 @@ export default function TicketRowB2B({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticketId: ticket.idTicket,
-          patch: { summary: `[SQM-UPDATE][${reason}] ${currentSummary}` },
+          patch: {
+            summary: `[SQM-UPDATE][${reason}] ${currentSummary}`.trim(),
+            sqmUpdateReason: description,
+          },
         }),
       });
+
+      const payload = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const err = await res.json();
-        console.error('SQM Update failed:', err);
+        showError(
+          'SQM update gagal',
+          payload?.message ?? 'Ticket tidak berhasil ditandai SQM-UPDATE.',
+        );
         return;
       }
-      window.location.reload();
+
+      showSuccess(
+        'SQM update berhasil',
+        ticket.ticket
+          ? `Ticket ${ticket.ticket} sudah ditandai SQM-UPDATE.`
+          : 'Ticket sudah ditandai SQM-UPDATE.',
+        { persist: true },
+      );
+      setSqmModalOpen(false);
+      router.refresh();
     } catch (e) {
-      console.error('SQM Update error:', e);
+      showError(
+        'SQM update gagal',
+        'Terjadi kesalahan saat memproses SQM-UPDATE.',
+      );
+    }
+  };
+
+  const handleBypassClose = async () => {
+    if (!ticket.idTicket || bypassLoading) return;
+
+    setBypassLoading(true);
+    try {
+      const res = await fetch('/api/tickets/bypass-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: ticket.idTicket }),
+      });
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok || !payload?.success) {
+        showError(
+          'Bypass close gagal',
+          payload?.message ?? 'Ticket tidak berhasil di-bypass close.',
+        );
+        return;
+      }
+
+      showSuccess(
+        'Bypass close berhasil',
+        ticket.ticket ? `Ticket ${ticket.ticket} sudah masuk validasi.` : 'Ticket sudah masuk validasi.',
+        { persist: true },
+      );
+      router.refresh();
+    } catch (e) {
+      console.error('Bypass close error:', e);
+      showError(
+        'Bypass close gagal',
+        'Terjadi kesalahan saat memproses bypass close.',
+      );
+    } finally {
+      setBypassLoading(false);
+      setBypassModalOpen(false);
     }
   };
 
@@ -308,13 +385,17 @@ export default function TicketRowB2B({
                 'mt-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
                 flagLabel === 'P1'
                   ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                  : flagLabel === 'P+'
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
               )}
             >
               {flagLabel === 'P1'
                 ? 'Manja HI'
                 : flagLabel === 'P+'
                   ? 'Manja H+'
+                  : flagLabel === 'EXPIRED'
+                    ? 'Manja Expired'
                   : flagLabel}
             </span>
           )}
@@ -478,6 +559,15 @@ export default function TicketRowB2B({
           </button>
         ) : (
           <div className='inline-flex overflow-hidden rounded-xl border border-(--border) shadow-sm'>
+            {showBypassClose && (
+              <button
+                onClick={() => setBypassModalOpen(true)}
+                className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-50 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-500/15 dark:hover:text-amber-200'
+                title='Bypass Close'
+              >
+                <ShieldAlert size={13} />
+              </button>
+            )}
             {isSqmTicket && !hasSqmUpdate && (
               <button
                 onClick={() => setSqmModalOpen(true)}
@@ -497,17 +587,38 @@ export default function TicketRowB2B({
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         ticketId: ticket.idTicket,
-                        patch: { summary: currentSummary.replace(/^\[SQM-UPDATE\]\[.*?\]\s*/, '').replace(/^\[SQM-UPDATE\]\s*/, '') },
+                        patch: {
+                          summary: currentSummary
+                            .replace(/^\[SQM-UPDATE\]\[.*?\]\s*/, '')
+                            .replace(/^\[SQM-UPDATE\]\s*/, ''),
+                          sqmUpdateReason: null,
+                        },
                       }),
                     });
+                    const payload = await res.json().catch(() => null);
+
                     if (!res.ok) {
-                      const err = await res.json();
-                      console.error('SQM Update cancel failed:', err);
+                      showError(
+                        'SQM update gagal',
+                        payload?.message ??
+                          'SQM-UPDATE pada ticket ini tidak dapat dibatalkan.',
+                      );
                       return;
                     }
-                    window.location.reload();
+
+                    showSuccess(
+                      'SQM update dibatalkan',
+                      ticket.ticket
+                        ? `Ticket ${ticket.ticket} kembali normal.`
+                        : 'Ticket kembali normal.',
+                      { persist: true },
+                    );
+                    router.refresh();
                   } catch (e) {
-                    console.error('SQM Update cancel error:', e);
+                    showError(
+                      'SQM update gagal',
+                      'Terjadi kesalahan saat membatalkan SQM-UPDATE.',
+                    );
                   }
                 }}
                 className='bg-surface flex items-center gap-1.5 border-r border-(--border) px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-500/15 dark:hover:text-rose-300'
@@ -544,6 +655,15 @@ export default function TicketRowB2B({
       onClose={() => setSqmModalOpen(false)}
       onConfirm={handleSqmConfirm}
     />
+    <BypassCloseModal
+      open={bypassModalOpen}
+      onClose={() => setBypassModalOpen(false)}
+      onConfirm={handleBypassClose}
+      ticketCode={ticket.ticket}
+      loading={bypassLoading}
+  />
   </>
   );
 }
+
+export default memo(TicketRowB2B);

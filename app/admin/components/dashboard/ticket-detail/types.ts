@@ -41,6 +41,7 @@ export interface TicketDetail {
   solution?: string | null;
   descriptionActualSolution?: string | null;
   descriptionSolutionDompis?: string | null;
+  sqmUpdateReason?: string | null;
   channel?: string | null;
   witel?: string | null;
   incidentDomain?: string | null;

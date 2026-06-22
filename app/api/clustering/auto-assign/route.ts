@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     const userSAs = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       select: { sa_id: true },
+      take: 100,
     });
 
     if (userSAs.length === 0) {

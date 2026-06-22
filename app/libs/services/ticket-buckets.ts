@@ -110,6 +110,7 @@ export function buildOperationalBucketWhere(
                     containsAny('jenis_tiket_1', ['unknown']),
                     containsAny('jenis_tiket_2', ['unknown']),
                     containsAny('jenis_tiket_1', ['permintaan', 'infracare', 'billing', 'digital_spbu', 'digital spbu', 'non numbering']),
+                    containsAny('symptom', ['Z_NN_01_001']),
                     containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
                   ],
                 },
@@ -122,6 +123,7 @@ export function buildOperationalBucketWhere(
                 { jenis_tiket_1: ' ' },
                 containsAny('jenis_tiket_1', ['unknown']),
                 containsAny('jenis_tiket_2', ['unknown']),
+                containsAny('symptom', ['Z_NN_01_001']),
                 containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
               ],
             },
@@ -171,6 +173,7 @@ export function buildOperationalBucketWhere(
     flagClauses.push({
       OR: [
         containsAny('jenis_tiket_1', ['permintaan', 'infracare', 'billing', 'digital_spbu', 'digital spbu', 'non numbering']),
+        containsAny('symptom', ['Z_NN_01_001']),
         containsAny('jenis_tiket_2', ['digital_spbu', 'digital spbu']),
       ],
     });

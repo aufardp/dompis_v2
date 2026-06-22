@@ -3,6 +3,7 @@ import '@aejkatappaja/phantom-ui/ssr.css';
 import './globals.css';
 import Providers from './providers';
 import type { Viewport } from 'next';
+import { Suspense } from 'react';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -47,7 +48,11 @@ export default function RootLayout({
         />
       </head>
       <body className='antialiased'>
-        <Providers>{children}</Providers>
+        <Providers>
+          <Suspense fallback={null}>
+            {children}
+          </Suspense>
+        </Providers>
       </body>
     </html>
   );

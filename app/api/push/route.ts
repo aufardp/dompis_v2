@@ -5,6 +5,7 @@ import { pushSpreadsheet } from '@/lib/google-sheets/push';
 import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
+import { protectApi } from '@/app/libs/protectApi';
 
 async function handlePush() {
   try {
@@ -62,10 +63,12 @@ async function handlePush() {
 }
 
 export async function GET() {
+  await protectApi(['admin', 'superadmin', 'super_admin']);
   return handlePush();
 }
 
 export async function POST(req: Request) {
+  await protectApi(['admin', 'superadmin', 'super_admin']);
   const rateLimited = await enforceApiRateLimit(req, {
     namespace: 'push',
     limit: 10,

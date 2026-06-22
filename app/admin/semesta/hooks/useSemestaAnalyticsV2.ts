@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { queryKeys } from '@/app/libs/query-keys';
 
 export type SemestaAnalyticsV2Kpi = {
   total: number;
@@ -83,7 +84,7 @@ export type SemestaAnalyticsV2Filters = {
 
 export function useSemestaAnalyticsV2(filters: SemestaAnalyticsV2Filters) {
   const query = useQuery({
-    queryKey: ['semesta-analytics-v2', filters],
+    queryKey: queryKeys.dashboard.semestaSummary({ version: 2, ...filters }),
     staleTime: 120_000,
     gcTime: 300_000,
     queryFn: async () => {
@@ -107,5 +108,6 @@ export function useSemestaAnalyticsV2(filters: SemestaAnalyticsV2Filters) {
     loading: query.isLoading,
     refetching: query.isRefetching,
     error: query.error instanceof Error ? query.error.message : null,
+    refresh: query.refetch,
   };
 }

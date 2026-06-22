@@ -16,6 +16,7 @@ export async function GET() {
 
     if (user.role === 'super_admin' || user.role === 'superadmin') {
       const serviceAreas = await prisma.service_area.findMany({
+        take: 500,
         select: { id_sa: true, nama_sa: true },
         orderBy: { nama_sa: 'asc' },
         distinct: ['id_sa'],
@@ -30,6 +31,7 @@ export async function GET() {
     }
 
     const userSas = await prisma.user_sa.findMany({
+      take: 500,
       where: { user_id: user.id_user },
       select: {
         sa_id: true,

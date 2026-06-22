@@ -9,9 +9,21 @@ interface PanelData {
   grandTotal?: number;
 }
 
+interface KpiSummaryCounts {
+  total: number;
+  open: number;
+  assigned: number;
+  unassigned: number;
+  close: number;
+  kpiCustomer: number;
+  kpiProactive: number;
+  nonKpiUnspec: number;
+  nonTechnical: number;
+  sqmUpdate: number;
+  obsolete: number;
+}
+
 interface CriticalSummary {
-  totalOpen: number;
-  criticalCount: number;
   worstArea: string;
   worstBucket: string;
 }
@@ -24,8 +36,6 @@ const BUCKET_LABELS: Record<string, string> = {
 };
 
 function deriveCriticalSummary(panels: PanelData[]): CriticalSummary {
-  let totalOpen = 0;
-  let criticalCount = 0;
   let worstArea = '';
   let maxAreaOpen = 0;
   const bucketSums: Record<number, number> = {};
@@ -38,14 +48,9 @@ function deriveCriticalSummary(panels: PanelData[]): CriticalSummary {
         worstArea = area.name;
       }
     }
-    for (const sa of panel.areas.flatMap(a => a.sas)) {
-      totalOpen += sa.counts.reduce((s, v) => s + v, 0);
-    }
+
     panel.totals.forEach((total, idx) => {
       bucketSums[idx] = (bucketSums[idx] ?? 0) + total;
-      if (idx >= 3) {
-        criticalCount += total;
-      }
     });
   }
 
@@ -59,39 +64,81 @@ function deriveCriticalSummary(panels: PanelData[]): CriticalSummary {
     }
   }
 
-  return { totalOpen, criticalCount, worstArea, worstBucket };
+  return { worstArea, worstBucket };
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+  note,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  note?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+          {label}
+        </span>
+      </div>
+      <div className="mt-2 text-xl font-semibold tracking-tight text-(--text-primary)">
+        {value}
+      </div>
+      {note && (
+        <div className="mt-1 text-[11px] text-(--text-muted)">
+          {note}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface DurasiCriticalStripProps {
   panels: PanelData[];
+  summary: KpiSummaryCounts;
+  bucketLabel: string;
+  isAllBucket: boolean;
 }
 
-export default function DurasiCriticalStrip({ panels }: DurasiCriticalStripProps) {
-  const summary = deriveCriticalSummary(panels);
+export default function DurasiCriticalStrip({ panels, summary, bucketLabel, isAllBucket }: DurasiCriticalStripProps) {
+  const critical = deriveCriticalSummary(panels);
+  const openLabel = isAllBucket ? 'Open' : `Open in ${bucketLabel}`;
+  const closeLabel = isAllBucket ? 'Close' : `Close in ${bucketLabel}`;
+  const worstAreaLabel = isAllBucket ? 'Worst area' : `Worst area in ${bucketLabel}`;
+  const mostLoadedLabel = isAllBucket ? 'Most loaded' : `Most loaded in ${bucketLabel}`;
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <div className="flex items-center gap-2.5 rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-2.5 sm:px-4 sm:py-3">
-        <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-        <div className="min-w-0">
-          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
-            Worst area
-          </span>
-          <span className="block truncate text-[1.05rem] font-semibold text-(--text-primary)">
-            {summary.worstArea || '-'}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2.5 rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-2.5 sm:px-4 sm:py-3">
-        <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-        <div className="min-w-0">
-          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
-            Most loaded
-          </span>
-          <span className="block text-[1.05rem] font-semibold text-(--text-primary)">
-            {summary.worstBucket || '-'}
-          </span>
-        </div>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCard
+          label={openLabel}
+          value={new Intl.NumberFormat('id-ID').format(summary.open)}
+          accent="#2563eb"
+          note="ticket aktif dalam scope bucket"
+        />
+        <StatCard
+          label={closeLabel}
+          value={new Intl.NumberFormat('id-ID').format(summary.close)}
+          accent="#e11d48"
+          note="ticket closed dalam scope bucket"
+        />
+        <StatCard
+          label={worstAreaLabel}
+          value={critical.worstArea || '-'}
+          accent="#f59e0b"
+          note="service area dengan beban tertinggi"
+        />
+        <StatCard
+          label={mostLoadedLabel}
+          value={critical.worstBucket || '-'}
+          accent="#7c3aed"
+          note="bucket durasi paling padat"
+        />
       </div>
     </div>
   );

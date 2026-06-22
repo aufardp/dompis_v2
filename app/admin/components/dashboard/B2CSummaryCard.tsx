@@ -1,4 +1,3 @@
-import '@aejkatappaja/phantom-ui';
 import { memo } from 'react';
 import { Info } from 'lucide-react';
 

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { format } from 'date-fns';
-import '@aejkatappaja/phantom-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
@@ -23,6 +24,7 @@ import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
 import TicketTableValidasi from './TicketTableValidasi';
+import { FlaggingSummaryRow, TicketTypeBreakdownStrip } from './TicketBreakdownComponents';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -42,22 +44,6 @@ type TicketData = {
   teknisiUserId?: number;
 };
 
-type TicketTypeBreakdown = {
-  key: string;
-  label: string;
-  total?: number;
-  open?: number;
-  assigned?: number;
-  close?: number;
-};
-
-type FlaggingCounts = {
-  ffgCount?: number;
-  gamasCount?: number;
-  p1Count?: number;
-  pPlusCount?: number;
-};
-
 type BucketPageProps = {
   title: string;
   description: string;
@@ -66,6 +52,10 @@ type BucketPageProps = {
   operationalBucket?: string[];
   regulerOnly?: boolean;
   anomalyBucket?: string[];
+  ticketTypeFilter?: string[];
+  statusUpdateFilter?: string[];
+  ticketStatusFilter?: string[];
+  flaggingFilter?: string[];
   showDateFilter?: boolean;
   disableLocalSearch?: boolean;
   extraWorkboard?: {
@@ -75,6 +65,7 @@ type BucketPageProps = {
     symptom: string;
     dept?: 'all' | 'b2b' | 'b2c';
   };
+  headerSlot?: ReactNode;
 };
 
 function patchTicketAssignmentInCache(
@@ -127,120 +118,6 @@ const TONE_CLASSES: Record<BucketPageProps['tone'], string> = {
     'bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300',
 };
 
-function FlaggingSummaryRow({
-  counts,
-  compact = false,
-}: {
-  counts: FlaggingCounts;
-  compact?: boolean;
-}) {
-  const items = [
-    ['Manja HI', counts.p1Count, 'text-red-600 dark:text-red-300'],
-    ['Manja H+', counts.pPlusCount, 'text-amber-600 dark:text-amber-300'],
-    ['FFG', counts.ffgCount, 'text-violet-600 dark:text-violet-300'],
-    ['GAMAS', counts.gamasCount, 'text-sky-600 dark:text-sky-300'],
-  ] as const;
-
-  return (
-    <div
-      className={clsx(
-        'grid gap-2',
-        compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-4',
-      )}
-    >
-      {items.map(([label, value, color]) => (
-        <div
-          key={label}
-          className='rounded-2xl border border-(--border) bg-(--bg) px-2 py-2 text-center shadow-sm'
-        >
-          <p className='text-[9px] font-bold tracking-[1px] text-(--text-muted) uppercase'>
-            {label}
-          </p>
-          <p className={clsx('mt-0.5 text-sm font-black', color)}>
-            {Number(value ?? 0).toLocaleString('id-ID')}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TicketTypeBreakdownStrip({
-  title,
-  items,
-  activeKeys,
-}: {
-  title: string;
-  items: TicketTypeBreakdown[];
-  activeKeys: string[];
-}) {
-  const visibleItems = items.filter((item) => Number(item.total ?? 0) > 0);
-
-  return (
-    <div className='rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-[11px] font-bold tracking-[1.3px] text-(--text-muted) uppercase'>
-          {title}
-        </p>
-        <span className='text-[11px] font-semibold text-(--text-muted)'>
-          {visibleItems.length} jenis
-        </span>
-      </div>
-
-      {visibleItems.length > 0 ? (
-        <div className='mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3'>
-          {visibleItems.map((item) => {
-            const active = activeKeys.includes(item.key);
-            return (
-              <div
-                key={item.key}
-                className={clsx(
-                  'rounded-2xl border px-3 py-2 transition-colors',
-                  active
-                    ? 'border-emerald-300 bg-emerald-500/10'
-                    : 'border-(--border) bg-(--bg)',
-                )}
-              >
-                <div className='flex items-start justify-between gap-3'>
-                  <p className='min-w-0 truncate text-xs font-black text-(--text-primary)'>
-                    {item.label}
-                  </p>
-                  <span className='shrink-0 text-sm font-black text-(--text-primary)'>
-                    {Number(item.total ?? 0).toLocaleString('id-ID')}
-                  </span>
-                </div>
-                <div className='mt-2 grid grid-cols-3 gap-1 text-center'>
-                  {[
-                    ['Open', item.open],
-                    ['Assigned', item.assigned],
-                    ['Close', item.close],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className='rounded-xl border border-(--border) bg-(--surface) px-1.5 py-1'
-                    >
-                      <p className='text-[9px] font-bold tracking-[0.8px] text-(--text-muted) uppercase'>
-                        {label}
-                      </p>
-                      <p className='text-xs font-black text-(--text-primary)'>
-                        {Number(value ?? 0).toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className='mt-2 text-xs font-semibold text-(--text-muted)'>
-          Belum ada jenis_tiket_2 untuk kombinasi filter ini.
-        </p>
-      )}
-    </div>
-  );
-}
-
 export default function TicketManagementBucketPage({
   title,
   description,
@@ -249,15 +126,25 @@ export default function TicketManagementBucketPage({
   operationalBucket = [],
   regulerOnly,
   anomalyBucket = [],
+  ticketTypeFilter = [],
+  statusUpdateFilter = [],
+  ticketStatusFilter = [],
+  flaggingFilter = [],
   showDateFilter,
   disableLocalSearch = false,
   extraWorkboard,
+  headerSlot,
 }: BucketPageProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
   const [workzoneFilter, setWorkzoneFilter] = useState('');
   const [dateRange, setDateRange] = useState<DateRange>();
   const isUnspecBucket = operationalBucket.includes('non_kpi_unspec');
+  const canBypassClose =
+    operationalBucket.includes('kpi_proactive') ||
+    operationalBucket.includes('sqm_update');
   const [activeTab, setActiveTab] = useState<
     'semua' | 'unspecOhi' | 'b2c' | 'b2b' | 'validasi' | 'close'
   >('semua');
@@ -388,31 +275,39 @@ export default function TicketManagementBucketPage({
     startDate: startDateStr,
     endDate: endDateStr,
   } as const;
+  const fetchDailyOptions =
+    activeTab === 'b2c' || activeTab === 'b2b';
+  const fetchValidasiTickets =
+    fetchDailyOptions || activeTab === 'validasi' || Boolean(effectiveSearchQuery);
 
   const b2cPageData = useDailyTicketPage({
     ...sharedFilters,
     dept: 'b2c',
-    ticketType: b2cTicketTypeFilter,
-    statusUpdate: b2cHasilVisitFilter,
-    ticketStatus: b2cTicketStatusFilter,
-    flagging: b2cFlaggingFilter,
+    ticketType: [...ticketTypeFilter, ...b2cTicketTypeFilter],
+    statusUpdate: [...statusUpdateFilter, ...b2cHasilVisitFilter],
+    ticketStatus: [...ticketStatusFilter, ...b2cTicketStatusFilter],
+    flagging: [...flaggingFilter, ...b2cFlaggingFilter],
     page: b2cPage,
     limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
     validasiPage: b2cValidasiPage,
     enabled: activeTab !== 'b2b',
+    includeOptions: fetchDailyOptions,
+    includeValidasiTickets: fetchValidasiTickets,
   });
 
   const b2bPageData = useDailyTicketPage({
     ...sharedFilters,
     dept: 'b2b',
-    ticketType: b2bTicketTypeFilter,
-    statusUpdate: b2bHasilVisitFilter,
-    ticketStatus: b2bTicketStatusFilter,
-    flagging: b2bFlaggingFilter,
+    ticketType: [...ticketTypeFilter, ...b2bTicketTypeFilter],
+    statusUpdate: [...statusUpdateFilter, ...b2bHasilVisitFilter],
+    ticketStatus: [...ticketStatusFilter, ...b2bTicketStatusFilter],
+    flagging: [...flaggingFilter, ...b2bFlaggingFilter],
     page: b2bPage,
     limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
     validasiPage: b2bValidasiPage,
     enabled: activeTab !== 'b2c',
+    includeOptions: fetchDailyOptions,
+    includeValidasiTickets: fetchValidasiTickets,
   });
 
   const extraWorkboardPageData = useDailyTicketPage({
@@ -423,7 +318,13 @@ export default function TicketManagementBucketPage({
     operationalBucket,
     regulerOnly,
     anomalyBucket,
+    ticketType: ticketTypeFilter,
+    statusUpdate: statusUpdateFilter,
+    ticketStatus: ticketStatusFilter,
+    flagging: flaggingFilter,
     includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
     startDate: startDateStr,
     endDate: endDateStr,
     page: extraWorkboardPage,
@@ -441,14 +342,17 @@ export default function TicketManagementBucketPage({
     regulerOnly,
     anomalyBucket,
     excludeSymptom: extraWorkboard?.symptom,
+    ticketType: ticketTypeFilter,
+    statusUpdate: statusUpdateFilter,
     ticketStatus: CLOSE_STATUS_VALUES,
+    flagging: flaggingFilter,
     includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
     includeClosed: true,
     page: closePage,
     limit: 15,
-    enabled:
-      activeTab === 'close' ||
-      (Boolean(effectiveSearchQuery) && !focusTicketId),
+    enabled: true,
   });
 
   const totals = useMemo(() => {
@@ -553,7 +457,16 @@ export default function TicketManagementBucketPage({
     setB2cPage(1);
     setSemuaPage(1);
     setClosePage(1);
-  }, []);
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) nextParams.set('search', trimmedQuery);
+    else nextParams.delete('search');
+    const nextUrl = nextParams.toString()
+      ? `${pathname}?${nextParams.toString()}`
+      : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
@@ -608,8 +521,7 @@ export default function TicketManagementBucketPage({
     queryClient.invalidateQueries({
       predicate: (query) =>
         Array.isArray(query.queryKey) &&
-        (query.queryKey[0] === queryKeys.tickets.all[0] ||
-          query.queryKey[0] === queryKeys.dashboard.all[0]),
+        query.queryKey[0] === queryKeys.tickets.all[0],
       refetchType: 'active',
     });
   }, [queryClient]);
@@ -994,6 +906,11 @@ export default function TicketManagementBucketPage({
                     </div>
                     <FlaggingSummaryRow counts={totals} />
                   </div>
+                  {headerSlot && (
+                    <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+                      {headerSlot}
+                    </div>
+                  )}
                 </div>
 
                 <div className='border-t border-(--border) bg-(--surface)'>
@@ -1077,6 +994,7 @@ export default function TicketManagementBucketPage({
                     isRefreshing={extraWorkboardPageData.isRefreshing}
                     searching={Boolean(effectiveSearchQuery)}
                     onAssign={onExtraAssign}
+                    showBypassClose={canBypassClose}
                     highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage:
@@ -1112,6 +1030,7 @@ export default function TicketManagementBucketPage({
                   isRefreshing={mergedLoading}
                   searching={Boolean(effectiveSearchQuery)}
                   onAssign={onCombinedAssign}
+                  showBypassClose={canBypassClose}
                   highlightQuery={effectiveSearchQuery}
                   pagination={{
                     currentPage: semuaPage,
@@ -1153,6 +1072,7 @@ export default function TicketManagementBucketPage({
                 isRefreshing={extraWorkboardPageData.isRefreshing}
                 searching={Boolean(effectiveSearchQuery)}
                 onAssign={onExtraAssign}
+                showBypassClose={canBypassClose}
                 highlightQuery={effectiveSearchQuery}
                 pagination={{
                   currentPage: extraWorkboardPageData.pagination.currentPage,
@@ -1204,14 +1124,15 @@ export default function TicketManagementBucketPage({
                 forceMainTabKey={searchQuery.trim()}
                 searching={Boolean(effectiveSearchQuery)}
                 mainTable={
-                  <TicketTable
-                    tickets={b2cPageData.tickets}
-                    tableSummary={b2cPageData.summary}
-                    loading={b2cPageData.loading}
-                    isRefreshing={b2cPageData.isRefreshing}
-                    searching={Boolean(effectiveSearchQuery)}
-                    onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
-                    highlightQuery={effectiveSearchQuery}
+                <TicketTable
+                  tickets={b2cPageData.tickets}
+                  tableSummary={b2cPageData.summary}
+                  loading={b2cPageData.loading}
+                  isRefreshing={b2cPageData.isRefreshing}
+                  searching={Boolean(effectiveSearchQuery)}
+                  onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
+                  showBypassClose={canBypassClose}
+                  highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2cPageData.pagination.currentPage,
                       totalPages: b2cPageData.pagination.totalPages,
@@ -1283,14 +1204,15 @@ export default function TicketManagementBucketPage({
                 forceMainTabKey={searchQuery.trim()}
                 searching={Boolean(effectiveSearchQuery)}
                 mainTable={
-                  <TicketTableB2B
-                    tickets={b2bPageData.tickets}
-                    tableSummary={b2bPageData.summary}
-                    loading={b2bPageData.loading}
-                    isRefreshing={b2bPageData.isRefreshing}
-                    searching={Boolean(effectiveSearchQuery)}
-                    onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
-                    highlightQuery={effectiveSearchQuery}
+                <TicketTableB2B
+                  tickets={b2bPageData.tickets}
+                  tableSummary={b2bPageData.summary}
+                  loading={b2bPageData.loading}
+                  isRefreshing={b2bPageData.isRefreshing}
+                  searching={Boolean(effectiveSearchQuery)}
+                  onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
+                  showBypassClose={canBypassClose}
+                  highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2bPageData.pagination.currentPage,
                       totalPages: b2bPageData.pagination.totalPages,
@@ -1389,6 +1311,7 @@ export default function TicketManagementBucketPage({
                 isRefreshing={closePageData.isRefreshing}
                 searching={Boolean(effectiveSearchQuery)}
                 onAssign={onCombinedAssign}
+                showBypassClose={canBypassClose}
                 highlightQuery={effectiveSearchQuery}
                 pagination={{
                   currentPage: closePageData.pagination.currentPage,

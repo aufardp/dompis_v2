@@ -279,7 +279,7 @@ function buildFocusCountsRawSql(
       SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
       SUM(CASE WHEN guarantee_status = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
       SUM(CASE WHEN pending_dompis IS NOT NULL AND pending_dompis != '' THEN 1 ELSE 0 END) AS carry_over
-    FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
+    FROM ticket
     WHERE ${whereClause}
   `;
   const sqlWithoutIndex = `
@@ -314,7 +314,7 @@ function buildB2BGroupsRawSql(
       SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
       SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-    FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
+    FROM ticket
     WHERE ${whereClause}
     GROUP BY jenis_tiket_1, status, status_update
   `;
@@ -351,7 +351,7 @@ function buildB2CSummaryRawSql(
       SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
       SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-    FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
+    FROM ticket
     WHERE ${whereClause}
     GROUP BY customer_type, status, status_update, COALESCE(jenis_tiket_2, jenis_tiket_1)
   `;
@@ -370,7 +370,6 @@ function buildB2CSummaryRawSql(
     WHERE ${whereClause}
     GROUP BY customer_type, status, status_update, COALESCE(jenis_tiket_2, jenis_tiket_1)
   `;
-
   return [sqlWithIndex, sqlWithoutIndex, params];
 }
 
@@ -391,7 +390,7 @@ function buildServiceAreasRawSql(
       SUM(CASE WHEN customer_type = 'HVC_GOLD' THEN 1 ELSE 0 END) AS hvc_gold,
       SUM(CASE WHEN customer_type = 'HVC_PLATINUM' THEN 1 ELSE 0 END) AS hvc_platinum,
       SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS hvc_diamond
-    FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
+    FROM ticket
     WHERE ${whereClause}
     GROUP BY workzone
     ORDER BY total DESC
@@ -415,7 +414,6 @@ function buildServiceAreasRawSql(
     ORDER BY total DESC
     LIMIT 10
   `;
-
   return [sqlWithIndex, sqlWithoutIndex, params];
 }
 
@@ -429,7 +427,7 @@ function buildStatusCountsRawSql(
       status,
       status_update,
       COUNT(*) AS total
-    FROM ticket FORCE INDEX (idx_ticket_sync_workzone_statusupdate)
+    FROM ticket
     WHERE ${whereClause}
     GROUP BY status, status_update
   `;

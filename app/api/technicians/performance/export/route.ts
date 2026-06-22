@@ -102,6 +102,7 @@ export async function GET(req: NextRequest) {
           };
 
           const rows = await prisma.ticket.findMany({
+            take: 10000,
             where,
             include: { users: { select: { nama: true, nik: true } } },
             orderBy: { closed_at: 'desc' },
@@ -148,6 +149,7 @@ export async function GET(req: NextRequest) {
         // summary
         const technicianRoleId = 4;
         const adminSaRows = await prisma.user_sa.findMany({
+          take: 50,
           where: { user_id: user.id_user },
           select: { sa_id: true },
         });
@@ -159,6 +161,7 @@ export async function GET(req: NextRequest) {
           adminSaIds.length > 0
             ? await prisma.user_sa
                 .findMany({
+                  take: 1000,
                   where: { sa_id: { in: adminSaIds } },
                   select: { user_id: true },
                 })
@@ -171,18 +174,21 @@ export async function GET(req: NextRequest) {
                 ])
             : await prisma.users
                 .findMany({
+                  take: 1000,
                   where: { role_id: technicianRoleId },
                   select: { id_user: true },
                 })
                 .then((rows: { id_user: number }[]) => rows.map((r: { id_user: number }) => r.id_user));
 
         const technicians = await prisma.users.findMany({
+          take: 1000,
           where: { id_user: { in: technicianIds }, role_id: technicianRoleId },
           select: { id_user: true, nama: true, nik: true },
           orderBy: { nama: 'asc' },
         });
 
         const techSa = await prisma.user_sa.findMany({
+          take: 1000,
           where: { user_id: { in: technicianIds } },
           include: { service_area: { select: { nama_sa: true } } },
         });

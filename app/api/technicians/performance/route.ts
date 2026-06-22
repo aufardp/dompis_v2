@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
     const result = await getOrSetCache(cacheKey, async () => {
       // Technician universe
       const adminSaRows = await prisma.user_sa.findMany({
+        take: 50,
         where: { user_id: user.id_user },
         select: { sa_id: true },
       }) as unknown as AdminSaRow[];
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
         adminSaIds.length > 0
           ? await prisma.user_sa
               .findMany({
+                take: 1000,
                 where: { sa_id: { in: adminSaIds } },
                 select: { user_id: true },
               })
@@ -114,6 +116,7 @@ export async function GET(req: NextRequest) {
               ])
           : await prisma.users
               .findMany({
+                take: 1000,
                 where: { role_id: technicianRoleId },
                 select: { id_user: true },
               })
@@ -133,6 +136,7 @@ export async function GET(req: NextRequest) {
 
       // Workzones per technician
       const techSa = await prisma.user_sa.findMany({
+        take: 1000,
         where: { user_id: { in: technicianIds } },
         include: { service_area: { select: { nama_sa: true } } },
       }) as unknown as TechSaRow[];
@@ -167,6 +171,7 @@ export async function GET(req: NextRequest) {
       }
 
       const technicians = await prisma.users.findMany({
+        take: 1000,
         where: {
           id_user: { in: finalTechnicianIds },
           role_id: technicianRoleId,

@@ -1,7 +1,7 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import OnlinePresenceHeartbeat from '@/app/components/monitoring/OnlinePresenceHeartbeat';
 
@@ -18,6 +18,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         },
       }),
   );
+
+  useEffect(() => {
+    import('@aejkatappaja/phantom-ui');
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { cn } from '@/app/libs/utils';
 import { AlertTriangle } from 'lucide-react';
 import type { TopGaulService } from '../../hooks/useSemestaAnalyticsV2';

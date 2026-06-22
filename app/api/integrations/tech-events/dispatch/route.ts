@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
     const events = await prisma.tech_event_outbox.findMany({
       where: { id: { in: ids }, status: 'SENDING' },
       orderBy: { created_at: 'asc' },
+      take: 100,
     });
 
     const payload: TechEventWebhookBatch = {

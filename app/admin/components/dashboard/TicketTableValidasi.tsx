@@ -1,15 +1,16 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
 import { getJenisStyle } from '@/app/config/jenis-tiket';
 import { getStatusColor } from '../../../components/tickets/helpers';
 import { formatDateTimeFullWIB } from '@/app/utils/datetime';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
 import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
 import { calculateAgeInHours } from '@/app/libs/tickets/sort';
+import ReopenTicketModal from './ReopenTicketModal';
+import { useAdminToast } from './admin-toast';
 
 interface TicketRow {
   idTicket?: number;
@@ -50,13 +51,19 @@ interface TicketTableValidasiProps {
 
 const MOBILE_PAGE_SIZE = 5;
 
-function TicketTableValidasiLoadingMobile() {
+function TicketTableValidasiLoadingMobile({
+  loadingLabel = 'Loading validation tickets',
+}: {
+  loadingLabel?: string;
+}) {
   return (
-    <phantom-ui suppressHydrationWarning fallback-radius={8}
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
-      loading-label='Loading validation tickets'
+      loading-label={loadingLabel}
     >
       <div className='space-y-4'>
         <div className='mb-3 flex items-center justify-between px-1'>
@@ -66,7 +73,7 @@ function TicketTableValidasiLoadingMobile() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-          className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'
+            className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950'
           >
             <div className='space-y-4'>
               <div className='flex items-start justify-between gap-4'>
@@ -96,13 +103,19 @@ function TicketTableValidasiLoadingMobile() {
   );
 }
 
-function TicketTableValidasiLoadingDesktop() {
+function TicketTableValidasiLoadingDesktop({
+  loadingLabel = 'Loading validation table',
+}: {
+  loadingLabel?: string;
+}) {
   return (
-    <phantom-ui suppressHydrationWarning fallback-radius={8}
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
-      loading-label='Loading validation table'
+      loading-label={loadingLabel}
     >
       <div className='rounded-2xl border border-(--border) bg-(--surface) shadow-sm'>
         <div className='flex items-center justify-between border-b border-(--border) bg-(--surface-2) px-4 py-3'>
@@ -113,7 +126,7 @@ function TicketTableValidasiLoadingDesktop() {
           <table className='w-full text-sm'>
             <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
               <tr>
-                {Array.from({ length: 13 }).map((_, index) => (
+                {Array.from({ length: 14 }).map((_, index) => (
                   <th key={index} className='px-3 py-3 text-center'>
                     <div className='mx-auto h-3 w-16 rounded-full bg-slate-200 dark:bg-slate-800' />
                   </th>
@@ -126,7 +139,7 @@ function TicketTableValidasiLoadingDesktop() {
                   key={rowIndex}
                   className='odd:bg-white even:bg-slate-50/60 dark:odd:bg-slate-950 dark:even:bg-slate-900/60'
                 >
-                  {Array.from({ length: 13 }).map((__, cellIndex) => (
+                  {Array.from({ length: 14 }).map((__, cellIndex) => (
                     <td key={cellIndex} className='px-3 py-5'>
                       <div className='space-y-3'>
                         <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
@@ -154,6 +167,10 @@ export default function TicketTableValidasi({
 }: TicketTableValidasiProps) {
   const [mobilePage, setMobilePage] = useState(1);
   const [page, setPage] = useState(1);
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [reopenLoading, setReopenLoading] = useState(false);
+  const [reopenTarget, setReopenTarget] = useState<TicketRow | null>(null);
+  const { showSuccess, showError } = useAdminToast();
   const PAGE_SIZE = 10;
   const normalizedHighlightQuery = (highlightQuery ?? '').trim().toLowerCase();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -217,7 +234,9 @@ export default function TicketTableValidasi({
     const root = rootRef.current;
     if (!root) return;
 
-    const hit = root.querySelector<HTMLElement>('[data-search-highlight="true"]');
+    const hit = root.querySelector<HTMLElement>(
+      '[data-search-highlight="true"]',
+    );
     if (!hit) return;
 
     const timer = window.requestAnimationFrame(() => {
@@ -225,7 +244,15 @@ export default function TicketTableValidasi({
     });
 
     return () => window.cancelAnimationFrame(timer);
-  }, [loading, isRefreshing, normalizedHighlightQuery, page, mobilePage, pageTickets.length, mobilePageTickets.length]);
+  }, [
+    loading,
+    isRefreshing,
+    normalizedHighlightQuery,
+    page,
+    mobilePage,
+    pageTickets.length,
+    mobilePageTickets.length,
+  ]);
 
   const renderTtrCountdown = (ticket: TicketRow) => {
     const ttr = computeTtrCountdown(ticket);
@@ -239,7 +266,7 @@ export default function TicketTableValidasi({
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-green-600 dark:text-green-400';
     return (
-      <span className={`text-xs font-mono font-semibold ${colorClass}`}>
+      <span className={`font-mono text-xs font-semibold ${colorClass}`}>
         {ttr.label}
       </span>
     );
@@ -262,10 +289,56 @@ export default function TicketTableValidasi({
           ? 'text-amber-600 dark:text-amber-400'
           : 'text-green-600 dark:text-green-400';
     return (
-      <span className={`text-xs font-mono font-semibold ${severity}`}>
+      <span className={`font-mono text-xs font-semibold ${severity}`}>
         {label}
       </span>
     );
+  };
+
+  const handleReopenClick = (ticket: TicketRow) => {
+    setReopenTarget(ticket);
+    setReopenModalOpen(true);
+  };
+
+  const handleReopenConfirm = async () => {
+    if (!reopenTarget?.idTicket || reopenLoading) return;
+
+    setReopenLoading(true);
+    try {
+      const res = await fetch('/api/tickets/reopen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: reopenTarget.idTicket }),
+      });
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok || !payload?.success) {
+        showError(
+          'Reopen ticket gagal',
+          payload?.message ?? 'Ticket tidak berhasil direopen.',
+        );
+        return;
+      }
+
+      showSuccess(
+        'Reopen ticket berhasil',
+        reopenTarget?.ticket
+          ? `Ticket ${reopenTarget.ticket} kembali ke open.`
+          : 'Ticket kembali ke open.',
+        { persist: true },
+      );
+      window.location.reload();
+    } catch (e) {
+      console.error('Reopen ticket error:', e);
+      showError(
+        'Reopen ticket gagal',
+        'Terjadi kesalahan saat memproses reopen ticket.',
+      );
+    } finally {
+      setReopenLoading(false);
+      setReopenModalOpen(false);
+      setReopenTarget(null);
+    }
   };
 
   return (
@@ -273,16 +346,9 @@ export default function TicketTableValidasi({
       {/* Mobile */}
       <div className='block lg:hidden'>
         {loading && !isRefreshing ? (
-          searching ? (
-            <div className='flex min-h-56 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary)'>
-              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-4 py-2 text-sm font-semibold'>
-                <Loader2 className='h-4 w-4 animate-spin' />
-                Mencari tiket...
-              </div>
-            </div>
-          ) : (
-            <TicketTableValidasiLoadingMobile />
-          )
+          <TicketTableValidasiLoadingMobile
+            loadingLabel={searching ? 'Searching tickets' : undefined}
+          />
         ) : sortedTickets.length === 0 ? (
           <div className='flex flex-col items-center justify-center gap-3 rounded-xl border border-(--border) bg-(--surface) p-8 text-(--text-secondary)'>
             <span>Tidak ada tiket untuk divalidasi</span>
@@ -308,7 +374,9 @@ export default function TicketTableValidasi({
               {mobilePageTickets.map((ticket, idx) => (
                 <div
                   key={ticket.idTicket ?? idx}
-                  data-search-highlight={isHighlighted(ticket) ? 'true' : undefined}
+                  data-search-highlight={
+                    isHighlighted(ticket) ? 'true' : undefined
+                  }
                   className='bg-surface rounded-xl border border-(--border) p-4'
                 >
                   <div>
@@ -333,9 +401,9 @@ export default function TicketTableValidasi({
                         {ticket.jenisTiket}
                       </span>
                     )}
-                        <span
-                          className={
-                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
+                    <span
+                      className={
+                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
                         getStatusColor(ticket.status ?? '')
                       }
                     >
@@ -372,15 +440,14 @@ export default function TicketTableValidasi({
                         {ticket.worklogSummary || '-'}
                       </p>
                     </div>
-                    <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
-                      <AlertTriangle
-                        size={12}
-                        className='text-amber-600 dark:text-amber-400'
-                      />
-                      <span className='text-[10px] font-semibold text-amber-700 dark:text-amber-400'>
-                        Menunggu Dorong Lensa
-                      </span>
-                    </div>
+                    <button
+                      type='button'
+                      onClick={() => handleReopenClick(ticket)}
+                      className='inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-sky-700 transition hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25'
+                    >
+                      <RotateCcw size={12} />
+                      <span className='text-[10px] font-semibold'>Reopen</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -414,16 +481,9 @@ export default function TicketTableValidasi({
           </div>
 
           {loading && !isRefreshing ? (
-            searching ? (
-              <div className='flex min-h-72 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm'>
-                <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-5 py-2.5 text-sm font-semibold'>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  Mencari tiket...
-                </div>
-              </div>
-            ) : (
-              <TicketTableValidasiLoadingDesktop />
-            )
+            <TicketTableValidasiLoadingDesktop
+              loadingLabel={searching ? 'Searching tickets' : undefined}
+            />
           ) : sortedTickets.length === 0 ? (
             <div className='flex flex-col items-center justify-center gap-3 rounded-2xl border border-(--border) bg-(--surface) p-12 text-(--text-secondary)'>
               <span className='text-sm font-medium'>
@@ -444,16 +504,11 @@ export default function TicketTableValidasi({
                       <th className='px-3 py-2.5 text-center'>Type</th>
                       <th className='px-3 py-2.5 text-center'>Max TTR</th>
                       <th className='px-3 py-2.5 text-center'>Age / SLA</th>
-                      <th className='px-3 py-2.5 text-center'>
-                        Status Dompis
-                      </th>
-                      <th className='px-3 py-2.5 text-center'>
-                        Status Insera
-                      </th>
+                      <th className='px-3 py-2.5 text-center'>Status Dompis</th>
+                      <th className='px-3 py-2.5 text-center'>Status Insera</th>
                       <th className='px-3 py-2.5 text-center'>Teknisi</th>
-                      <th className='px-3 py-2.5 text-center'>
-                        Worklog
-                      </th>
+                      <th className='px-3 py-2.5 text-center'>Worklog</th>
+                      <th className='px-3 py-2.5 text-center'>Aksi</th>
                       <th className='px-3 py-2.5 text-center'>Status</th>
                     </tr>
                   </thead>
@@ -462,11 +517,13 @@ export default function TicketTableValidasi({
                       const rowNum =
                         (effectivePage - 1) * effectiveLimit + idx + 1;
                       return (
-                <tr
-                  key={ticket.idTicket ?? idx}
-                  data-search-highlight={isHighlighted(ticket) ? 'true' : undefined}
-                  className='transition-colors hover:bg-(--surface-2)'
-                >
+                        <tr
+                          key={ticket.idTicket ?? idx}
+                          data-search-highlight={
+                            isHighlighted(ticket) ? 'true' : undefined
+                          }
+                          className='transition-colors hover:bg-(--surface-2)'
+                        >
                           <td className='px-3 py-3 text-center'>
                             <span className='font-mono text-sm font-bold text-(--text-secondary)'>
                               {rowNum}
@@ -560,19 +617,31 @@ export default function TicketTableValidasi({
                             </span>
                           </td>
                           <td className='px-3 py-3 text-center'>
-                            <span className='text-xs text-(--text-secondary) max-w-[120px] truncate inline-block align-middle'>
+                            <span className='inline-block max-w-[120px] truncate align-middle text-xs text-(--text-secondary)'>
                               {ticket.worklogSummary || '-'}
                             </span>
                           </td>
                           <td className='px-3 py-3 text-center'>
-                            <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
-                              <AlertTriangle
-                                size={12}
-                                className='text-amber-600 dark:text-amber-400'
-                              />
-                              <span className='text-xs font-semibold text-amber-700 dark:text-amber-400'>
-                                Menunggu Dorong Lensa
-                              </span>
+                            <button
+                              type='button'
+                              onClick={() => handleReopenClick(ticket)}
+                              className='inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 font-semibold text-white shadow-sm transition hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400'
+                            >
+                              <RotateCcw size={12} />
+                              <span className='text-xs'>Reopen</span>
+                            </button>
+                          </td>
+                          <td className='px-3 py-3 text-center'>
+                            <div className='flex flex-col items-center gap-2'>
+                              <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
+                                <AlertTriangle
+                                  size={12}
+                                  className='text-amber-600 dark:text-amber-400'
+                                />
+                                <span className='text-xs font-semibold text-amber-700 dark:text-amber-400'>
+                                  Menunggu Dorong Insera
+                                </span>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -607,6 +676,17 @@ export default function TicketTableValidasi({
           )}
         </div>
       </div>
+      <ReopenTicketModal
+        open={reopenModalOpen}
+        onClose={() => {
+          if (reopenLoading) return;
+          setReopenModalOpen(false);
+          setReopenTarget(null);
+        }}
+        onConfirm={handleReopenConfirm}
+        ticketCode={reopenTarget?.ticket}
+        loading={reopenLoading}
+      />
     </div>
   );
 }

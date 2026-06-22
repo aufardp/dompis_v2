@@ -1,5 +1,6 @@
 import { logger } from '@/lib/observability/logger';
 import redis, { ensureRedisReady } from '@/lib/redis';
+import { gzipSync, gunzipSync } from 'node:zlib';
 
 export interface CacheOptions {
   ttl?: number;
@@ -22,6 +23,23 @@ const MAX_CACHE_BYTES = Number.isFinite(
   ? Number.parseInt(process.env.CACHE_MAX_BYTES || '', 10)
   : DEFAULT_MAX_CACHE_BYTES;
 
+function stringifyCacheValue<T>(data: T): string {
+  return JSON.stringify(data, (_key, value) =>
+    typeof value === 'bigint' ? Number(value) : value,
+  );
+}
+
+function encodeCompressedPayload(payload: string): string {
+  const compressed = gzipSync(Buffer.from(payload, 'utf8'));
+  return `gz:${compressed.toString('base64')}`;
+}
+
+function decodeCompressedPayload(payload: string): string {
+  const encoded = payload.slice(3);
+  const compressed = Buffer.from(encoded, 'base64');
+  return gunzipSync(compressed).toString('utf8');
+}
+
 export async function getCache<T>(key: string): Promise<T | null> {
   if (!(await ensureRedisReady())) {
     return null;
@@ -30,7 +48,8 @@ export async function getCache<T>(key: string): Promise<T | null> {
   try {
     const data = await redis.get(key);
     if (!data) return null;
-    return JSON.parse(data) as T;
+    const raw = data.startsWith('gz:') ? decodeCompressedPayload(data) : data;
+    return JSON.parse(raw) as T;
   } catch (error) {
     logger.error('[Cache] Error getting key:', { key, error: String(error) });
     return null;
@@ -47,19 +66,28 @@ export async function setCache<T>(
   }
 
   try {
-    const payload = JSON.stringify(data);
+    const payload = stringifyCacheValue(data);
     const byteLength = Buffer.byteLength(payload, 'utf8');
-    if (byteLength > MAX_CACHE_BYTES) {
+    const encodedPayload =
+      byteLength > MAX_CACHE_BYTES ? encodeCompressedPayload(payload) : payload;
+    const encodedBytes = Buffer.byteLength(encodedPayload, 'utf8');
+
+    if (encodedBytes > MAX_CACHE_BYTES) {
       if (process.env.CACHE_DEBUG_SKIPS === 'true') {
-        logger.warn('[Cache] Skip large payload:', { key, bytes: byteLength, max: MAX_CACHE_BYTES });
+        logger.warn('[Cache] Skip large payload:', {
+          key,
+          bytes: encodedBytes,
+          rawBytes: byteLength,
+          max: MAX_CACHE_BYTES,
+        });
       }
       return false;
     }
 
-    await redis.setex(key, ttl, payload);
+    await redis.setex(key, ttl, encodedPayload);
     return true;
   } catch (error) {
-    logger.error('[Cache] Error setting key:', { key, error: String(error) });
+    logger.error('[Cache] Error setting key:', error, { key });
     return false;
   }
 }

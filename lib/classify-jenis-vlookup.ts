@@ -120,6 +120,7 @@ export interface JenisVlookupInput {
   source_ticket: string | null;
   realm: string | null;
   summary: string | null;
+  symptom?: string | null;
 }
 
 export interface JenisVlookupResult {
@@ -168,7 +169,12 @@ function checkNonNumberingOverride(
   input: JenisVlookupInput,
 ): JenisVlookupResult | null {
   const serviceType = (input.service_type ?? '').trim().toUpperCase();
-  if (serviceType === 'NON-NUMBERING' || serviceType === 'NON NUMBERING') {
+  const symptom = (input.symptom ?? '').trim().toUpperCase();
+  if (
+    serviceType === 'NON-NUMBERING' ||
+    serviceType === 'NON NUMBERING' ||
+    symptom === 'Z_NN_01_001'
+  ) {
     return {
       jenis_tiket_1: 'NON NUMBERING',
       jenis_tiket_2: 'NON NUMBERING',

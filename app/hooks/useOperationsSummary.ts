@@ -64,12 +64,14 @@ type OperationsSummaryFilters = {
   search?: string;
   workzone?: string;
   dept?: 'all' | 'b2b' | 'b2c';
+  enabled?: boolean;
 };
 
 export function useOperationsSummary({
   search,
   workzone,
   dept,
+  enabled = true,
 }: OperationsSummaryFilters) {
   const normalizedSearch = search?.trim() || undefined;
   const searchType = detectSearchType(normalizedSearch);
@@ -88,6 +90,7 @@ export function useOperationsSummary({
     queryKey: queryKeys.dashboard.operations(filters),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.search) {

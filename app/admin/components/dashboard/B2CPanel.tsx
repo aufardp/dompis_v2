@@ -10,6 +10,7 @@ import {
   isTicketOpenLike,
   normalizeStatusUpdate,
 } from '@/app/libs/ticket-utils';
+import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import B2CSection from './B2CSection';
 import { FilterBarB2C } from './filterbarb2c';
 import TicketTableTabs from './TicketTableTabs';
@@ -135,6 +136,11 @@ function getB2CSummaryBucket(jenis?: string | null): 'customer' | 'sqm' | 'unspe
   return 'unspec';
 }
 
+function isB2CSegmentTicket(ticket: Ticket): boolean {
+  const seg = (ticket.customerSegment ?? '').toUpperCase();
+  return ['DCS', 'PL-TSEL'].includes(seg);
+}
+
 const B2CPanel = memo(function B2CPanel({
   searchQuery,
   workzoneFilter,
@@ -152,6 +158,9 @@ const B2CPanel = memo(function B2CPanel({
   const [b2cPage, setB2cPage] = useState(1);
   const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
   const [b2cClosePage, setB2cClosePage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'main' | 'validasi' | 'close'>(
+    'main',
+  );
   const b2cSectionRef = useRef<HTMLDivElement>(null);
   const b2cTableRef = useRef<HTMLDivElement>(null);
 
@@ -168,6 +177,7 @@ const B2CPanel = memo(function B2CPanel({
     limit: 10,
     validasiPage: b2cValidasiPage,
     validasiLimit: 10,
+    includeValidasiTickets: activeTab === 'validasi',
   });
 
   const b2cClosePageData = useDailyTicketPage({
@@ -182,6 +192,8 @@ const B2CPanel = memo(function B2CPanel({
     page: b2cClosePage,
     limit: 10,
     includeValidasi: false,
+    includeOptions: false,
+    enabled: activeTab === 'close',
   });
 
   const handleB2cTicketTypeChange = useCallback((types: string[]) => {
@@ -212,56 +224,67 @@ const B2CPanel = memo(function B2CPanel({
     setB2cClosePage(1);
   }, []);
 
-  const isValidationTicket = useCallback((_t: Ticket) => false, []);
-
-  const ticketTableData = useMemo(
-    () => tickets.filter((t) => !isValidationTicket(t)).map(mapTicketForTable),
+  const b2cBaseTickets = useMemo(
+    () => tickets.filter(isB2CSegmentTicket),
     [tickets],
   );
 
-  const b2cTicketTableData = useMemo(() => ticketTableData
-    .filter((t) => {
-      const seg = (t.customerSegment ?? '').toUpperCase();
-      const b2cSegments = ['DCS', 'PL-TSEL'];
-      return b2cSegments.includes(seg);
-    })
-    .filter((t) => {
-      if (ctypeFilter === 'all') return true;
-      const ct = (t.ctype || t.customerType || '').toUpperCase();
-      return ct === ctypeFilter;
-    })
-    .filter((t) => {
-      if (b2cTicketTypeFilter.length === 0) return true;
-      const rawJenis = String(t.jenisTiket ?? '').trim();
-      return b2cTicketTypeFilter.some((filter) => {
-        const rawFilter = String(filter ?? '').trim();
-        return rawJenis === rawFilter || normalizeJenis(rawJenis) === normalizeJenis(rawFilter);
-      });
-    })
-    .filter((t) => {
-      if (b2cHasilVisitFilter.length === 0) return true;
-      if (b2cHasilVisitFilter.includes('close') && isTicketClosed(t.status_update)) return true;
-      const status = normalizeStatusUpdate(t.status_update);
-      return b2cHasilVisitFilter.some((f) => {
-        if (f === 'close') return false;
-        return status === f;
-      });
-    })
-    .filter((t) => {
-      if (b2cFlaggingFilter.length === 0) return true;
-      return b2cFlaggingFilter.some((f) => {
-        if (f === 'FFG') return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
-        if (f === 'GAMAS') {
-          const value = String(t.ticketIdGamas ?? '').trim();
-          return value.length > 0 && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(value.toLowerCase());
-        }
-        return t.flaggingManja === f;
-      });
-    })
-    .filter((t) => {
-      if (b2cTicketStatusFilter.length === 0) return true;
-      return b2cTicketStatusFilter.includes(String(t.status ?? '').trim());
-    }), [ticketTableData, ctypeFilter, b2cTicketTypeFilter, b2cHasilVisitFilter, b2cFlaggingFilter, b2cTicketStatusFilter]);
+  const b2cTicketTableData = useMemo(() => {
+    const rows: TicketTableItem[] = [];
+    for (const ticket of b2cBaseTickets) {
+      if (ctypeFilter !== 'all') {
+        const ct = (ticket.ctype || ticket.customerType || '').toUpperCase();
+        if (ct !== ctypeFilter) continue;
+      }
+
+      if (b2cTicketTypeFilter.length > 0) {
+        const rawJenis = String(ticket.jenisTiket ?? '').trim();
+        const hasTypeMatch = b2cTicketTypeFilter.some((filter) => {
+          const rawFilter = String(filter ?? '').trim();
+          return rawJenis === rawFilter || normalizeJenis(rawJenis) === normalizeJenis(rawFilter);
+        });
+        if (!hasTypeMatch) continue;
+      }
+
+      if (b2cHasilVisitFilter.length > 0) {
+        const status = normalizeStatusUpdate(ticket.status_update);
+        const hasVisitMatch = b2cHasilVisitFilter.some((f) => {
+          if (f === 'close') return isTicketClosed(status);
+          return status === f;
+        });
+        if (!hasVisitMatch) continue;
+      }
+
+      if (b2cFlaggingFilter.length > 0) {
+        const hasFlagMatch = b2cFlaggingFilter.some((f) => {
+          if (f === 'FFG') {
+            return String(ticket.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+          }
+          if (f === 'GAMAS') {
+            const value = String(ticket.ticketIdGamas ?? '').trim();
+            return value.length > 0 && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(value.toLowerCase());
+          }
+          return getEffectiveFlaggingLabel(ticket) === f;
+        });
+        if (!hasFlagMatch) continue;
+      }
+
+      if (b2cTicketStatusFilter.length > 0) {
+        const status = String(ticket.status ?? '').trim();
+        if (!b2cTicketStatusFilter.includes(status)) continue;
+      }
+
+      rows.push(mapTicketForTable(ticket));
+    }
+    return rows;
+  }, [
+    b2cBaseTickets,
+    ctypeFilter,
+    b2cTicketTypeFilter,
+    b2cHasilVisitFilter,
+    b2cFlaggingFilter,
+    b2cTicketStatusFilter,
+  ]);
 
   const b2cTableSummary = useMemo(() => {
     const serverSummary = b2cPageData.summary;
@@ -274,27 +297,29 @@ const B2CPanel = memo(function B2CPanel({
       };
     }
 
-    const breakdown = {
-      total: b2cTicketTableData.length,
-      open: b2cTicketTableData.filter((t) => isTicketOpenLike(t.status_update)).length,
-      assigned: b2cTicketTableData.filter((t) => isTicketInWork(t.status_update)).length,
-      close: b2cTicketTableData.filter((t) => isTicketClosed(t.status_update)).length,
+    let open = 0;
+    let assigned = 0;
+    let close = 0;
+    for (const ticket of b2cTicketTableData) {
+      if (isTicketClosed(ticket.status_update)) close++;
+      else if (isTicketInWork(ticket.status_update)) assigned++;
+      else if (isTicketOpenLike(ticket.status_update)) open++;
+    }
+    return {
+      total: b2cPageData.pagination.total,
+      open,
+      assigned,
+      close,
     };
-    return { ...breakdown, total: b2cPageData.pagination.total };
   }, [b2cPageData.summary, b2cTicketTableData, b2cPageData.pagination.total]);
 
   const b2cDailySummary = useMemo(() => {
-    const b2cTickets = tickets.filter((t) => {
-      const seg = (t.customerSegment ?? '').toUpperCase();
-      const b2cSegments = ['DCS', 'PL-TSEL'];
-      return b2cSegments.includes(seg);
-    });
     const summary = {
-      total: b2cTickets.length, open: 0, assigned: 0, close: 0,
+      total: b2cBaseTickets.length, open: 0, assigned: 0, close: 0,
       gamasCount: 0, customerCount: 0, sqmCount: 0, unspecCount: 0,
       ffgCount: 0, p1Count: 0, pPlusCount: 0,
     };
-    for (const t of b2cTickets) {
+    for (const t of b2cBaseTickets) {
       if (isTicketClosed(t.status_update)) summary.close++;
       else if (isTicketInWork(t.status_update)) summary.assigned++;
       else summary.open++;
@@ -307,11 +332,12 @@ const B2CPanel = memo(function B2CPanel({
       const normalized = String(raw ?? '').trim();
       if (normalized && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(normalized.toLowerCase())) summary.gamasCount++;
       if (t.guaranteeStatus?.toLowerCase() === 'guarantee') summary.ffgCount++;
-      if (t.flaggingManja === 'P1') summary.p1Count++;
-      if (t.flaggingManja === 'P+') summary.pPlusCount++;
+      const flag = getEffectiveFlaggingLabel(t);
+      if (flag === 'P1') summary.p1Count++;
+      if (flag === 'P+') summary.pPlusCount++;
     }
     return summary;
-  }, [tickets]);
+  }, [b2cBaseTickets]);
 
   const b2cSectionData = useMemo(() => {
     if (b2cStatsFromApi) {
@@ -367,6 +393,7 @@ const B2CPanel = memo(function B2CPanel({
         <TicketTableTabs
           section='b2c'
           accentColor='#10b981'
+          onTabChange={setActiveTab}
           mainTable={
             <TicketTable
               tickets={b2cPageData.tickets}

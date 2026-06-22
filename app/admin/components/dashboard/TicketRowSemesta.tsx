@@ -187,7 +187,9 @@ export default function TicketRowSemesta({
                   'rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide',
                   flagLabel === 'P1'
                     ? 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                    : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                    : flagLabel === 'P+'
+                      ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                      : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
                 )}
                 title='Flagging Manja'
               >
@@ -195,6 +197,8 @@ export default function TicketRowSemesta({
                   ? 'Manja HI'
                   : flagLabel === 'P+'
                     ? 'Manja H+'
+                    : flagLabel === 'EXPIRED'
+                      ? 'Manja Expired'
                     : flagLabel}
               </span>
             )}

@@ -53,6 +53,7 @@ export async function GET(req: Request) {
 
     // 3. Ambil semua teknisi di SA yang sama
     const techInSa = await prisma.user_sa.findMany({
+      take: 500,
       where: { sa_id: cluster.sa_id },
       select: { user_id: true },
     });
@@ -71,6 +72,7 @@ export async function GET(req: Request) {
 
     // 4. Filter hanya teknisi dengan role_id = 4 (teknisi)
     const teknisiUsers = await prisma.users.findMany({
+      take: 500,
       where: {
         id_user: { in: allTechIds },
         role_id: 4,
@@ -86,6 +88,7 @@ export async function GET(req: Request) {
       : new Date().toISOString().split('T')[0];
     
     const presentIds = await prisma.technician_attendance.findMany({
+      take: 500,
       where: {
         technician_id: { in: teknisiUsers.map((t: { id_user: number }) => t.id_user) },
         date: targetDate,
@@ -108,6 +111,7 @@ export async function GET(req: Request) {
     const targetDateEnd = new Date(targetDate + 'T23:59:59.999Z');
     
     const workloads = await prisma.ticket.findMany({
+      take: 500,
       where: {
         teknisi_user_id: { in: teknisiHadir.map((t: { id_user: number }) => t.id_user) },
         workzone: workzoneName,
@@ -135,6 +139,7 @@ export async function GET(req: Request) {
 
     // 7. Ambil teknisi yang sudah di-plot ke cluster ini hari ini
     const existingPlot = await prisma.cluster_assignment.findMany({
+      take: 500,
       where: { cluster_id: clusterId, assigned_date: targetDate, is_active: true },
       select: { teknisi_id: true },
     });

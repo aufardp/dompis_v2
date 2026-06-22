@@ -82,6 +82,9 @@ export async function GET(request: Request) {
       validasiPage: toPositiveInt(searchParams.get('validasiPage'), 1, 10_000),
       validasiLimit: toPositiveInt(searchParams.get('validasiLimit'), 10, 50),
       includeValidasi: searchParams.get('includeValidasi') === 'false' ? false : true,
+      includeValidasiTickets:
+        searchParams.get('includeValidasiTickets') === 'false' ? false : true,
+      includeOptions: searchParams.get('includeOptions') === 'false' ? false : true,
       includeClosed: searchParams.get('includeClosed') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
     };

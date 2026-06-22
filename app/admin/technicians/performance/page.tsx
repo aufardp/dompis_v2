@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Download, MapPin } from 'lucide-react';
-import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import Select from '@/app/components/form/Select';
@@ -115,7 +114,14 @@ export default function TechnicianPerformancePage() {
     loading: boolean;
   }>({ open: false, techName: '', techId: null, tickets: [], loading: false });
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const fetchData = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     setError(null);
 
@@ -137,15 +143,17 @@ export default function TechnicianPerformancePage() {
       if (!json?.success) {
         throw new Error(json?.message || 'Failed to load performance');
       }
+      if (!mountedRef.current) return;
 
       setRows((json.data?.rows || []) as PerfRow[]);
       setUserWorkzones((json.data?.userWorkzones || []) as string[]);
     } catch (e: any) {
+      if (!mountedRef.current) return;
       setError(e?.message || 'Failed to load performance');
       setRows([]);
       setUserWorkzones([]);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [month, year, workzone]);
 

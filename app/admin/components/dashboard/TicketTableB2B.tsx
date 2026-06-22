@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
@@ -22,7 +21,10 @@ import {
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
-import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
+import {
+  computeTtrCountdown,
+  type TtrCountdown,
+} from '@/app/hooks/useTtrCountdown';
 
 export type SortField =
   | 'ticket'
@@ -74,6 +76,7 @@ export interface AdminTicketTableB2BProps {
   searching?: boolean;
   onAssign?: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
+  showBypassClose?: boolean;
   onBulkAssign?: (ticketIds: (string | number)[]) => void;
   pagination?: {
     currentPage: number;
@@ -286,6 +289,7 @@ export default function TicketTableB2B({
   searching = false,
   onAssign,
   onDetail,
+  showBypassClose = false,
   onBulkAssign,
   pagination,
   tableSummary,
@@ -394,8 +398,10 @@ export default function TicketTableB2B({
     }));
   }, []);
 
-  const toggleExpand = useCallback((ticketId: number) => {
-    setExpandedTicketId((prev) => (prev === ticketId ? null : ticketId));
+  const toggleExpand = useCallback((ticketId: number | string) => {
+    const numericId = Number(ticketId);
+    if (!Number.isFinite(numericId)) return;
+    setExpandedTicketId((prev) => (prev === numericId ? null : numericId));
   }, []);
 
   // Fetch ticket detail when drawer opens
@@ -485,6 +491,14 @@ export default function TicketTableB2B({
   );
 
   const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
+  const ticketCountdowns = useMemo(() => {
+    const map = new Map<number, TtrCountdown | null>();
+    for (const ticket of tickets) {
+      if (typeof ticket.idTicket !== 'number') continue;
+      map.set(ticket.idTicket, computeTtrCountdown(ticket));
+    }
+    return map;
+  }, [tickets]);
   const handleAssign = onAssign ?? (() => {});
 
   // Selection helpers
@@ -548,6 +562,7 @@ export default function TicketTableB2B({
                   ticket={ticket}
                   onAssign={handleAssign}
                   highlighted={isHighlighted(ticket)}
+                  showBypassClose={showBypassClose}
                 />
               ))}
             </div>
@@ -662,7 +677,8 @@ export default function TicketTableB2B({
                       const ticketId = ticket.idTicket ?? ticket.ticket;
                       const isExpanded = expandedTicketId === ticketId;
                       const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
-                      const ttrCountdown = computeTtrCountdown(ticket);
+                      const ttrCountdown =
+                        ticketCountdowns.get(ticket.idTicket ?? -1) ?? null;
                       const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
                         !ttrCountdown
                           ? 'On Track'
@@ -680,10 +696,9 @@ export default function TicketTableB2B({
                           ticket={ticket}
                           onAssign={handleAssign}
                           onDetail={onDetail}
+                          showBypassClose={showBypassClose}
                           isExpanded={isExpanded}
-                          onToggleExpand={() =>
-                            toggleExpand(ticketId as number)
-                          }
+                          onToggleExpand={toggleExpand}
                           rank={ticketInfo?.rank}
                           ticketAge={ticketInfo?.ageFormatted}
                           severity={ticketInfo?.severity}

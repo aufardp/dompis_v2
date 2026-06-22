@@ -58,6 +58,7 @@ function getFlaggingLabel(ticket: {
   const flaggingManja = String(ticket.flaggingManja ?? '').trim();
   if (flaggingManja === 'P1') return 'P1';
   if (flaggingManja === 'P+') return 'P+';
+  if (flaggingManja === 'EXPIRED') return 'EXPIRED';
 
   const guarantee = String(ticket.guaranteeStatus ?? '').trim().toLowerCase();
   if (guarantee === 'guarantee') return 'FFG';

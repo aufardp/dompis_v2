@@ -40,9 +40,9 @@ const technicianCache = new Map<number, TechnicianSnapshot>();
 async function commitAndInvalidate<T>(promise: Promise<T>): Promise<T> {
   const result = await promise;
 
-  // Ensure cache is cleared before returning to route handlers
-  // so SSE broadcast + client refresh won't read stale Redis data.
-  await invalidateTicketsCache();
+  // Fire-and-forget: cache invalidation is best-effort and should not
+  // block the mutation response path.
+  void invalidateTicketsCache();
 
   return result;
 }
@@ -682,6 +682,23 @@ async function applyPatchFields(
     });
 
     patchChanges.push('pendingDompis');
+  }
+
+  // sqmUpdateReason — store separately so it remains stable even if the
+  // Prisma client on the running process has not been regenerated yet.
+  if (patch.sqmUpdateReason !== undefined) {
+    if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
+
+    const reason = cleanNullableString(patch.sqmUpdateReason);
+    const reasonDb = reason == null ? null : truncate255(reason);
+
+    await tx.$executeRaw`
+      UPDATE ticket
+      SET sqm_update_reason = ${reasonDb}
+      WHERE id_ticket = ${ticketId}
+    `;
+
+    patchChanges.push('sqmUpdateReason');
   }
 
   // workzone — admin-only, validates SA access and technician eligibility
@@ -1373,6 +1390,7 @@ export class TicketWorkflowService {
       'symptom',
       'alamat',
       'pendingDompis',
+      'sqmUpdateReason',
     ] as const;
 
     const allowedKeys =

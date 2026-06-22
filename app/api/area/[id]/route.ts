@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAreaById } from "@/app/libs/services/area.service";
+import { getErrorMessage } from '@/app/libs/apiError';
 
 export async function GET(
    req: Request,
@@ -23,7 +24,7 @@ export async function GET(
       });
    } catch (error: any) {
       return NextResponse.json(
-         { success: false, message: error.message },
+         { success: false, message: getErrorMessage(error, 'Server Error') },
          { status: 500 },
       );
    }

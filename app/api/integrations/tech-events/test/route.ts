@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { postTechEvents } from '@/app/libs/integrations/techEvents';
+import { protectApi } from '@/app/libs/protectApi';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 function computeBackoffMs(attempt: number) {
@@ -23,6 +24,8 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+
+  await protectApi();
 
   const rateLimited = await enforceApiRateLimit(req, {
     namespace: 'tech-events-test',

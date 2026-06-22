@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useEffect } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
@@ -74,8 +73,6 @@ export default function TicketUpdateModal({
       return prev.filter((_, i) => i !== index);
     });
   }, []);
-
-  useEffect(() => undefined, []);
 
   // ── Upload ────────────────────────────────────────────────────────────────
   const uploadEvidence = async () => {

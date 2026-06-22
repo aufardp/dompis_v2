@@ -201,11 +201,13 @@ export async function GET(request: Request) {
           where: { ticket_id: { in: ticketIds } },
           orderBy: { changed_at: 'desc' },
           select: { ticket_id: true, new_status: true },
+          take: 1000,
         }),
         prisma.ticket_assignment_history.findMany({
           where: { ticket_id: { in: ticketIds }, is_active: true },
           orderBy: { assigned_at: 'asc' },
           select: { ticket_id: true, assigned_at: true },
+          take: 1000,
         }),
       ]);
 

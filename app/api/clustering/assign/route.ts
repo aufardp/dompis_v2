@@ -32,6 +32,7 @@ export async function GET(req: Request) {
 
     // Get user's managed SAs
     const userSas = await prisma.user_sa.findMany({
+      take: 100,
       where: { user_id: user.id_user },
       select: { sa_id: true },
     });
@@ -46,6 +47,7 @@ export async function GET(req: Request) {
 
     // Get clusters for the SA(s)
     const clusters = await prisma.cluster.findMany({
+      take: 500,
       where: {
         sa_id: { in: saIds },
         is_active: true,
@@ -60,6 +62,7 @@ export async function GET(req: Request) {
 
     // Get assignments for the date
     const assignments = await prisma.cluster_assignment.findMany({
+      take: 1000,
       where: {
         cluster_id: { in: clusterIds },
         assigned_date: date,

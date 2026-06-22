@@ -1,5 +1,9 @@
 import { createHash } from 'crypto';
-import { ExternalRow, NormalizedExternalRow, IdentityResolution } from '../external-db/types';
+import {
+  ExternalRow,
+  NormalizedExternalRow,
+  IdentityResolution,
+} from '../external-db/types';
 
 export interface StrictIdentityResolution {
   primaryIdentity: string | null;
@@ -49,7 +53,10 @@ function toSnakeCase(str: string): string {
     .toLowerCase();
 }
 
-export function normalizeExternalRow(row: ExternalRow, sourceTable: string): NormalizedExternalRow {
+export function normalizeExternalRow(
+  row: ExternalRow,
+  sourceTable: string,
+): NormalizedExternalRow {
   const normalized: Record<string, unknown> = {};
   const rawPayload: Record<string, unknown> = {};
 
@@ -60,14 +67,15 @@ export function normalizeExternalRow(row: ExternalRow, sourceTable: string): Nor
 
     // Check if this column has a direct mapping
     const hasDirectMapping = !!COLUMN_MAPPING[key];
-    
+
     // If direct mapping exists, use it; otherwise convert to snake_case
-    const normalizedKey = hasDirectMapping 
-      ? COLUMN_MAPPING[key] 
+    const normalizedKey = hasDirectMapping
+      ? COLUMN_MAPPING[key]
       : toSnakeCase(key);
-    
+
     // Convert Date objects to MySQL datetime string without timezone conversion
-    const processedValue = value instanceof Date ? toMySQLDateString(value) : (value ?? null);
+    const processedValue =
+      value instanceof Date ? toMySQLDateString(value) : (value ?? null);
     normalized[normalizedKey] = processedValue;
     rawPayload[key] = processedValue;
   }
@@ -79,7 +87,9 @@ export function normalizeExternalRow(row: ExternalRow, sourceTable: string): Nor
   } as NormalizedExternalRow;
 }
 
-export function resolveIdentity(row: NormalizedExternalRow): IdentityResolution {
+export function resolveIdentity(
+  row: NormalizedExternalRow,
+): IdentityResolution {
   const resolution = resolveIdentityStrict(row);
   return {
     primaryIdentity: resolution.primaryIdentity ?? '',
@@ -88,13 +98,15 @@ export function resolveIdentity(row: NormalizedExternalRow): IdentityResolution 
   };
 }
 
-export function resolveIdentityStrict(row: NormalizedExternalRow): StrictIdentityResolution {
+export function resolveIdentityStrict(
+  row: NormalizedExternalRow,
+): StrictIdentityResolution {
   const incident = String(row.incident || '').trim() || null;
   const externalTicketId = String(row.external_ticket_id || '').trim() || null;
   const serviceNo = String(row.service_no || '').trim() || null;
   const customerId = String(row.customer_id || '').trim() || null;
-  const reportedDate = row.reported_date 
-    ? String(row.reported_date).trim() 
+  const reportedDate = row.reported_date
+    ? String(row.reported_date).trim()
     : null;
 
   let primaryIdentity: string | null = null;
@@ -131,7 +143,8 @@ export function computeSourceHash(row: NormalizedExternalRow): string {
   for (const key of Object.keys(row).sort()) {
     if (key === '_sourceTable' || key === '_rawPayload') continue;
     const value = row[key as keyof NormalizedExternalRow];
-    stablePayload[key] = value instanceof Date ? toMySQLDateString(value) : value ?? null;
+    stablePayload[key] =
+      value instanceof Date ? toMySQLDateString(value) : (value ?? null);
   }
 
   return createHash('sha256')
@@ -157,36 +170,64 @@ export interface ValidationError {
   severity: 'error' | 'warn';
 }
 
-export function validateExternalRow(row: Record<string, unknown>): ValidationError[] {
+export function validateExternalRow(
+  row: Record<string, unknown>,
+): ValidationError[] {
   const errors: ValidationError[] = [];
 
   if (!row || typeof row !== 'object') {
-    errors.push({ field: '_row', message: 'Row is null or not an object', severity: 'error' });
+    errors.push({
+      field: '_row',
+      message: 'Row is null or not an object',
+      severity: 'error',
+    });
     return errors;
   }
 
   const incident = row.incident || row.Incident;
   if (!incident || String(incident).trim() === '') {
-    errors.push({ field: 'incident', message: 'Missing required field: incident', severity: 'error' });
+    errors.push({
+      field: 'incident',
+      message: 'Missing required field: incident',
+      severity: 'error',
+    });
   }
 
   if (incident && String(incident).length > 191) {
-    errors.push({ field: 'incident', message: `incident too long (${String(incident).length} chars, max 191)`, severity: 'error' });
+    errors.push({
+      field: 'incident',
+      message: `incident too long (${String(incident).length} chars, max 191)`,
+      severity: 'error',
+    });
   }
 
-  for (const dateField of ['reported_date', 'date_modified', 'booking_date', 'status_date', 'resolve_date']) {
+  for (const dateField of [
+    'reported_date',
+    'date_modified',
+    'booking_date',
+    'status_date',
+    'resolve_date',
+  ]) {
     const val = row[dateField];
     if (val !== null && val !== undefined && val !== '') {
       const d = new Date(String(val));
       if (isNaN(d.getTime())) {
-        errors.push({ field: dateField, message: `Invalid date value: ${val}`, severity: 'warn' });
+        errors.push({
+          field: dateField,
+          message: `Invalid date value: ${val}`,
+          severity: 'warn',
+        });
       }
     }
   }
 
   const workzone = row.workzone || row.Workzone || row.workzone_name;
   if (!workzone || String(workzone).trim() === '') {
-    errors.push({ field: 'workzone', message: 'Missing workzone', severity: 'warn' });
+    errors.push({
+      field: 'workzone',
+      message: 'Missing workzone',
+      severity: 'warn',
+    });
   }
 
   return errors;
@@ -199,17 +240,19 @@ export function normalizeStatus(status: string | null | undefined): string {
 
   // Map all possible statuses from external DB
   const statusMap: Record<string, string> = {
-    'CLOSED': 'CLOSED',
-    'CLOSE': 'CLOSED',
-    'BACKEND': 'BACKEND',
-    'MEDIACARE': 'MEDIACARE',
-    'PENDING': 'PENDING',
-    'ANALYSIS': 'ANALYSIS',
-    'FINALCHECK': 'FINALCHECK',
-    'DRAFT': 'DRAFT',
-    'OPEN': 'OPEN',
-    'NEW': 'OPEN',
-    'UNKNOWN': 'UNKNOWN',
+    CLOSED: 'CLOSED',
+    CLOSE: 'CLOSED',
+    SALAMSIM: 'SALAMSIM',
+    MEDIACARE: 'MEDIACARE',
+    RESOLVED: 'RESOLVED',
+    FINALCHECK: 'FINALCHECK',
+    BACKEND: 'BACKEND',
+    PENDING: 'PENDING',
+    ANALYSIS: 'ANALYSIS',
+    DRAFT: 'DRAFT',
+    NEW: 'NEW',
+    OPEN: 'OPEN',
+    UNKNOWN: 'UNKNOWN',
   };
 
   return statusMap[normalized] || 'UNKNOWN';

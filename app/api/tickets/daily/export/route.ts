@@ -114,6 +114,7 @@ function getFlaggingLabel(ticket: {
 
   if (flaggingManja === 'P1') return 'P1';
   if (flaggingManja === 'P+') return 'P+';
+  if (flaggingManja === 'EXPIRED') return 'EXPIRED';
 
   const gs = (guaranteeStatus ?? '').trim().toLowerCase();
   if (gs === 'guarantee') return 'FFG';
@@ -234,6 +235,7 @@ function filterTicketByFlagging(
   return flaggingFilter.some((f) => {
     if (f === 'P1') return (ticket.flaggingManja ?? ticket.flagging_manja ?? '') === 'P1';
     if (f === 'P+') return (ticket.flaggingManja ?? ticket.flagging_manja ?? '') === 'P+';
+    if (f === 'EXPIRED') return (ticket.flaggingManja ?? ticket.flagging_manja ?? '') === 'EXPIRED';
     if (f === 'FFG') {
       const gs = (ticket.guaranteeStatus ?? ticket.GUARANTE_STATUS ?? '').trim().toLowerCase();
       return gs === 'guarantee';

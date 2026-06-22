@@ -54,6 +54,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     const areas = await prisma.cluster_area.findMany({
       where: { cluster_id: clusterId },
       orderBy: { sort_order: 'asc' },
+      take: 100,
     });
 
     return NextResponse.json({

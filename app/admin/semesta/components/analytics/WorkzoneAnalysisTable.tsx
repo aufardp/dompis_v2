@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useMemo, useState, useCallback } from 'react';
 import { cn } from '@/app/libs/utils';
 import { ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';

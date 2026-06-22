@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterList } from '@/app/hooks/useClusterList';
@@ -9,6 +9,9 @@ import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
 import { useCopyAssignments, useRemoveClusterAssignment, usePlotTeknisi, useRunAutoAssign as useRunAutoAssignMutation } from '@/app/hooks/useMutations';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatInTimeZone } from 'date-fns-tz';
+import PlotTeknisiModal from './PlotTeknisiModal';
+import EditClusterModal from './EditClusterModal';
+import DeleteConfirmModal from './DeleteConfirmModal';
 
 interface ManagedServiceArea {
   id_sa: number;
@@ -17,6 +20,8 @@ interface ManagedServiceArea {
 
 export default function ClusteringPage() {
   const router = useRouter();
+  const clusterNameRef = useRef<HTMLInputElement>(null);
+  const clusterActiveRef = useRef<HTMLInputElement>(null);
   const [selectedDate, setSelectedDate] = useState(
     formatInTimeZone(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd'),
   );
@@ -737,289 +742,40 @@ export default function ClusteringPage() {
         </div>
       </div>
 
-      {/* Plot Teknisi Modal */}
-      {plotModalOpen && plotModalCluster && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
-          <div className='bg-surface w-full max-w-lg rounded-2xl border border-(--border) shadow-xl'>
-            {/* Header */}
-            <div className='flex items-center justify-between border-b border-(--border) px-5 py-4'>
-              <div>
-                <h3 className='text-lg font-semibold text-(--text-primary)'>
-                  Plot Teknisi — {plotModalCluster.name}
-                </h3>
-                <p className='text-xs text-(--text-secondary)'>
-                  {new Date(selectedDate).toLocaleDateString('id-ID', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
-              </div>
-              <button
-                onClick={handleClosePlotModal}
-                className='rounded-lg p-1 text-(--text-muted) hover:bg-white/5 hover:text-(--text-primary)'
-              >
-                <svg
-                  className='h-5 w-5'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  stroke='currentColor'
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    d='M6 18L18 6M6 6l12 12'
-                  />
-                </svg>
-              </button>
-            </div>
+      <PlotTeknisiModal
+        open={plotModalOpen}
+        cluster={plotModalCluster}
+        search={plotModalSearch}
+        onSearchChange={setPlotModalSearch}
+        selected={plotModalSelected}
+        teknisi={plotModalTeknisi}
+        loading={plotModalLoading}
+        onClose={handleClosePlotModal}
+        onToggle={handleToggleTeknisi}
+        onSave={handleSavePlot}
+        filteredTeknisi={filteredTeknisi}
+        getWorkloadLabel={getWorkloadLabel}
+        getWorkloadBadge={getWorkloadBadge}
+        selectedDate={selectedDate}
+      />
 
-            {/* Body */}
-            <div className='max-h-96 overflow-y-auto px-5 py-4'>
-              {/* Selected technicians */}
-              {plotModalSelected.length > 0 && (
-                <div className='mb-4'>
-                  <p className='mb-2 text-xs font-medium text-(--text-secondary)'>
-                    Teknisi terpilih:
-                  </p>
-                  <div className='flex flex-wrap gap-2'>
-                    {plotModalSelected.map((tid) => {
-                      const t = plotModalTeknisi.find((x) => x.id_user === tid);
-                      return (
-                        <span
-                          key={tid}
-                          className='inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-400'
-                        >
-                          {t?.nama || `#${tid}`}
-                          <button
-                            onClick={() => handleToggleTeknisi(tid)}
-                            className='ml-0.5 hover:text-red-500'
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+      <EditClusterModal
+        editModal={editModal}
+        clusterNameRef={clusterNameRef}
+        clusterActiveRef={clusterActiveRef}
+        saving={saving}
+        handleSave={handleSave}
+        onClose={() => setEditModal({ open: false, cluster: null })}
+      />
 
-              {/* Search */}
-              <div className='mb-3'>
-                <input
-                  type='text'
-                  value={plotModalSearch}
-                  onChange={(e) => setPlotModalSearch(e.target.value)}
-                  placeholder='Cari nama atau NIK teknisi...'
-                  className='bg-surface-2 w-full rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--text-muted) focus:border-blue-500 focus:outline-none'
-                />
-              </div>
-
-              {/* Technician list */}
-              {plotModalLoading ? (
-                <div className='space-y-2'>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className='h-12 rounded-lg border border-(--border) bg-slate-100/70 dark:bg-slate-800/70'
-                    />
-                  ))}
-                </div>
-              ) : filteredTeknisi.length === 0 ? (
-                <div className='py-8 text-center text-sm text-(--text-secondary)'>
-                  Tidak ada teknisi ditemukan
-                </div>
-              ) : (
-                <div className='space-y-1'>
-                  {filteredTeknisi.map((t) => {
-                    const isSelected = plotModalSelected.includes(t.id_user);
-                    const workload = getWorkloadLabel(t.active_tickets);
-                    const badge = getWorkloadBadge(t.active_tickets);
-                    return (
-                      <label
-                        key={t.id_user}
-                        className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-500/10'
-                            : 'border-(--border) hover:bg-white/5'
-                        }`}
-                      >
-                        <div className='flex items-center gap-3'>
-                          <div
-                            className={`flex h-5 w-5 items-center justify-center rounded border-2 ${
-                              isSelected
-                                ? 'border-blue-500 bg-blue-500'
-                                : 'border-slate-300 dark:border-slate-600'
-                            }`}
-                          >
-                            {isSelected && (
-                              <svg
-                                className='h-3 w-3 text-white'
-                                fill='none'
-                                viewBox='0 0 24 24'
-                                stroke='currentColor'
-                                strokeWidth={3}
-                              >
-                                <path
-                                  strokeLinecap='round'
-                                  strokeLinejoin='round'
-                                  d='M5 13l4 4L19 7'
-                                />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <span className='text-sm font-medium text-(--text-primary)'>
-                              {t.nama}
-                            </span>
-                            {t.nik && (
-                              <p className='text-[10px] text-(--text-muted)'>
-                                {t.nik}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badge}`}
-                          >
-                            {workload.text}
-                          </span>
-                          <span className='text-xs text-(--text-secondary)'>
-                            {t.active_tickets} tiket
-                          </span>
-                        </div>
-                        <input
-                          type='checkbox'
-                          checked={isSelected}
-                          onChange={() => handleToggleTeknisi(t.id_user)}
-                          className='sr-only'
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className='flex justify-end gap-2 border-t border-(--border) px-5 py-4'>
-              <button
-                onClick={handleClosePlotModal}
-                className='rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-(--text-primary) hover:bg-white/10'
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleSavePlot}
-                disabled={plotModalLoading}
-                className='rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50'
-              >
-                {plotModalLoading ? 'Menyimpan...' : 'Simpan Plot'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Cluster Modal */}
-      {editModal.open && editModal.cluster && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
-          <div className='w-full max-w-md rounded-2xl bg-white p-6 dark:bg-slate-800'>
-            <h3 className='mb-4 text-lg font-semibold text-slate-800 dark:text-slate-100'>
-              Edit Cluster
-            </h3>
-            <div className='space-y-4'>
-              <div>
-                <label className='mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300'>
-                  Nama Cluster
-                </label>
-                <input
-                  type='text'
-                  defaultValue={editModal.cluster.nama_cluster}
-                  id='edit-cluster-name'
-                  className='w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-white'
-                />
-              </div>
-              <div className='flex items-center gap-2'>
-                <input
-                  type='checkbox'
-                  id='edit-cluster-active'
-                  defaultChecked={editModal.cluster.is_active}
-                />
-                <label
-                  htmlFor='edit-cluster-active'
-                  className='text-sm text-slate-700 dark:text-slate-300'
-                >
-                  Aktif
-                </label>
-              </div>
-            </div>
-            <div className='mt-6 flex gap-3'>
-              <button
-                onClick={() => setEditModal({ open: false, cluster: null })}
-                className='flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700'
-              >
-                Batal
-              </button>
-              <button
-                disabled={saving}
-                onClick={() => {
-                  const nama = (
-                    document.getElementById('edit-cluster-name') as HTMLInputElement
-                  )?.value?.trim();
-                  const isActive = (
-                    document.getElementById('edit-cluster-active') as HTMLInputElement
-                  )?.checked;
-                  if (nama) handleSave(nama, isActive);
-                }}
-                className='flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'
-              >
-                {saving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm.open && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
-          <div className='w-full max-w-sm rounded-2xl border border-(--border) bg-(--surface) p-6 shadow-xl dark:border-(--border) dark:bg-(--surface)'>
-            <h3 className='mb-2 text-lg font-semibold text-(--text-primary) dark:text-(--text-primary)'>
-              Hapus Cluster
-            </h3>
-            <p className='mb-6 text-sm text-(--text-secondary) dark:text-(--text-secondary)'>
-              Apakah yakin ingin menghapus cluster{' '}
-              <strong>"{deleteConfirm.clusterName}"</strong>? Tindakan ini tidak
-              bisa dibatalkan.
-            </p>
-            <div className='flex gap-3'>
-              <button
-                onClick={() =>
-                  setDeleteConfirm({
-                    open: false,
-                    clusterId: null,
-                    clusterName: '',
-                  })
-                }
-                className='flex-1 rounded-lg border border-(--border) py-2 text-sm font-medium text-(--text-primary) hover:bg-(--surface-2) dark:border-(--border) dark:text-(--text-primary) dark:hover:bg-(--surface-2)'
-              >
-                Batal
-              </button>
-              <button
-                disabled={deleting}
-                onClick={handleDelete}
-                className='flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50'
-              >
-                {deleting ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteConfirmModal
+        open={deleteConfirm.open}
+        clusterId={deleteConfirm.clusterId}
+        clusterName={deleteConfirm.clusterName}
+        deleting={deleting}
+        onDelete={handleDelete}
+        onClose={() => setDeleteConfirm({ open: false, clusterId: null, clusterName: '' })}
+      />
     </AdminLayout>
   );
 }

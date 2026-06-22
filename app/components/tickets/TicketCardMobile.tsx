@@ -1,12 +1,14 @@
 import {
   RefreshCw,
   UserPlus,
+  ShieldAlert,
   MapPin,
   Phone,
   Hash,
   Clock3,
   User,
 } from 'lucide-react';
+import { memo, useState } from 'react';
 import clsx from 'clsx';
 import Badge from '../ui/badge/Badge';
 import Button from '../ui/Button';
@@ -18,21 +20,68 @@ import {
   getTicketAge,
   getTicketAgeColorClass,
 } from './helpers';
+import { useRouter } from 'next/navigation';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
+import BypassCloseModal from '@/app/admin/components/dashboard/BypassCloseModal';
+import { useAdminToast } from '@/app/admin/components/dashboard/admin-toast';
 
-export default function TicketCardMobile({
+function TicketCardMobile({
   ticket,
   onAssign,
   highlighted = false,
+  showBypassClose = false,
 }: {
   ticket: any;
   onAssign: (ticketId: string | number) => void;
   highlighted?: boolean;
+  showBypassClose?: boolean;
 }) {
   const statusValue = ticket.status_update ?? ticket.hasilVisit;
   const isAssigned = Boolean(ticket?.teknisiUserId);
   const isClosed = isTicketClosed(statusValue);
   const maxTtr = getMaxTtr(ticket) || '-';
+  const [bypassModalOpen, setBypassModalOpen] = useState(false);
+  const [bypassLoading, setBypassLoading] = useState(false);
+  const { showSuccess, showError } = useAdminToast();
+  const router = useRouter();
+
+  const handleBypassClose = async () => {
+    if (!ticket.idTicket || bypassLoading) return;
+
+    setBypassLoading(true);
+    try {
+      const res = await fetch('/api/tickets/bypass-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: ticket.idTicket }),
+      });
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok || !payload?.success) {
+        showError(
+          'Bypass close gagal',
+          payload?.message ?? 'Ticket tidak berhasil di-bypass close.',
+        );
+        return;
+      }
+
+      showSuccess(
+        'Bypass close berhasil',
+        ticket.ticket ? `Ticket ${ticket.ticket} sudah masuk validasi.` : 'Ticket sudah masuk validasi.',
+        { persist: true },
+      );
+      router.refresh();
+    } catch (e) {
+      console.error('Bypass close error:', e);
+      showError(
+        'Bypass close gagal',
+        'Terjadi kesalahan saat memproses bypass close.',
+      );
+    } finally {
+      setBypassLoading(false);
+      setBypassModalOpen(false);
+    }
+  };
 
   return (
     <div
@@ -133,7 +182,7 @@ export default function TicketCardMobile({
         </div>
       </div>
 
-      <div className='mt-3 flex items-center justify-between gap-3'>
+      <div className='mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
         <div className='min-w-0 flex-1'>
           <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Technician</p>
           <p className='truncate text-sm font-medium text-(--text-primary)'>
@@ -147,21 +196,44 @@ export default function TicketCardMobile({
         </div>
 
         {!isClosed && (
-          <Button
-            onClick={() => onAssign(ticket.idTicket)}
-            className={`shrink-0 px-3 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] sm:px-4 sm:py-2 ${
-              isAssigned
-                ? 'bg-amber-500 text-white hover:bg-amber-600'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            {isAssigned ? <RefreshCw size={14} /> : <UserPlus size={14} />}
-            <span className='ml-1.5 hidden text-xs sm:inline sm:text-sm'>
-              {isAssigned ? 'Reassign' : 'Assign'}
-            </span>
-          </Button>
+          <div className='flex gap-2 sm:shrink-0'>
+            {showBypassClose && (
+              <Button
+                onClick={() => setBypassModalOpen(true)}
+                className='shrink-0 border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700 transition-all duration-200 hover:scale-[1.02] hover:bg-amber-100 active:scale-[0.98] dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20'
+              >
+                <ShieldAlert size={14} />
+                <span className='ml-1.5 hidden text-xs sm:inline sm:text-sm'>
+                  Bypass Close
+                </span>
+              </Button>
+            )}
+            <Button
+              onClick={() => onAssign(ticket.idTicket)}
+              className={`shrink-0 px-3 py-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] sm:px-4 sm:py-2 ${
+                isAssigned
+                  ? 'bg-amber-500 text-white hover:bg-amber-600'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {isAssigned ? <RefreshCw size={14} /> : <UserPlus size={14} />}
+              <span className='ml-1.5 hidden text-xs sm:inline sm:text-sm'>
+                {isAssigned ? 'Reassign' : 'Assign'}
+              </span>
+            </Button>
+          </div>
         )}
       </div>
+
+      <BypassCloseModal
+        open={bypassModalOpen}
+        onClose={() => setBypassModalOpen(false)}
+        onConfirm={handleBypassClose}
+        ticketCode={ticket.ticket}
+        loading={bypassLoading}
+      />
     </div>
   );
 }
+
+export default memo(TicketCardMobile);

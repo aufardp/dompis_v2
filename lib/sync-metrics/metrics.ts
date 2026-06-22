@@ -2,6 +2,7 @@ import { isRedisReady, redis } from '@/lib/redis';
 import { publishTicketInvalidate } from '@/lib/sse-redis';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { logger } from '@/lib/observability/logger';
+import { parseProjectionCheckpointMeta } from '@/lib/observability/worker-health';
 
 interface SyncMetric {
   key: string;
@@ -42,6 +43,8 @@ interface ProjectionHealth {
   retriedRecords: number;
   protectedRecords: number;
   checkpoint: string | null;
+  neverProjectedCount: number;
+  oldestPendingAgeMs: number | null;
 }
 
 const SYNC_METRICS_PREFIX = 'sync:metrics';
@@ -145,6 +148,7 @@ export async function getProjectionHealth(): Promise<ProjectionHealth> {
   const retriedRecords = await safeHget(key, 'retried');
   const protectedRecords = await safeHget(key, 'protected');
   const checkpoint = await safeHget(key, 'checkpoint');
+  const checkpointMeta = parseProjectionCheckpointMeta(checkpoint);
 
   return {
     lastProjectionTime: lastProjectionTime ? parseInt(lastProjectionTime) : null,
@@ -161,6 +165,8 @@ export async function getProjectionHealth(): Promise<ProjectionHealth> {
     retriedRecords: retriedRecords ? parseInt(retriedRecords) : 0,
     protectedRecords: protectedRecords ? parseInt(protectedRecords) : 0,
     checkpoint,
+    neverProjectedCount: checkpointMeta.neverProjected ?? 0,
+    oldestPendingAgeMs: checkpointMeta.oldestPendingAgeMs,
   };
 }
 
@@ -292,6 +298,26 @@ export async function checkSyncHealth(): Promise<{
 
   if (projectionHealth.lastProjectionStatus === 'failed') {
     issues.push('Last projection failed');
+  }
+
+  if (
+    projectionHealth.lastProjectionStatus !== 'running' &&
+    projectionHealth.neverProjectedCount > 0
+  ) {
+    issues.push(
+      `Projection backlog exists (${projectionHealth.neverProjectedCount} raw row(s) not projected)`,
+    );
+  }
+
+  if (
+    projectionHealth.oldestPendingAgeMs !== null &&
+    projectionHealth.oldestPendingAgeMs > 20 * 60 * 1000
+  ) {
+    issues.push(
+      `Oldest pending projection is ${Math.round(
+        projectionHealth.oldestPendingAgeMs / 60000,
+      )} minutes old`,
+    );
   }
 
   return {

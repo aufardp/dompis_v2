@@ -78,11 +78,14 @@ export interface OperationalBucketDefinition {
   jenisTiket1Filter?: readonly string[];
 }
 
-export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, OperationalBucketDefinition> = {
+export const OPERATIONAL_BUCKET_DEFINITIONS: Record<
+  OperationalBucketKey,
+  OperationalBucketDefinition
+> = {
   kpi_customer: {
     key: 'kpi_customer',
     label: 'Customer',
-    description: 'Ticket KPI dari source CUSTOMER.',
+    description: 'Ticket dari source CUSTOMER.',
     sourceTicket: ['CUSTOMER'],
     classificationFlag: ['TECHNICAL'],
     jenisTiket1Filter: [
@@ -124,7 +127,8 @@ export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, Operat
   non_technical: {
     key: 'non_technical',
     label: 'Non Technical',
-    description: 'Ticket Non-Technical dan unknown yang perlu ditangani manual.',
+    description:
+      'Ticket Non-Technical dan unknown yang perlu ditangani manual.',
     sourceTicket: ['CUSTOMER', 'PROACTIVE'],
     classificationFlag: ['NONTECHNICAL', 'BILLING'],
     jenisTiket1Filter: [
@@ -140,7 +144,8 @@ export const OPERATIONAL_BUCKET_DEFINITIONS: Record<OperationalBucketKey, Operat
   sqm_update: {
     key: 'sqm_update',
     label: 'SQM Update',
-    description: 'Ticket SQM yang sudah di-flag update dengan headline [SQM-UPDATE].',
+    description:
+      'Ticket SQM yang sudah di-flag update dengan headline [SQM-UPDATE].',
     sourceTicket: ['PROACTIVE'],
     classificationFlag: ['TECHNICAL'],
     jenisTiket1Filter: ['sqm', 'sqm-ccan'],

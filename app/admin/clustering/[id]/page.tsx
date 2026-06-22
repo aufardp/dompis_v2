@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterDetail } from '@/app/hooks/useClusterDetail';
 import { useClusterAssignment } from '@/app/hooks/useClusterAssignment';

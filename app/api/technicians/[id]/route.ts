@@ -5,6 +5,10 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { differenceInMinutes } from 'date-fns';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { logger } from '@/lib/observability/logger';
+import {
+  classifyTechnicianBucket,
+  getTechnicianBucketLabel,
+} from '@/app/libs/technician-bucket';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +21,14 @@ interface TicketType {
   reported_date: Date | string | null;
   status_update: string | null;
   closed_at: Date | string | null;
+  source_ticket?: string | null;
+  classification_flag?: string | null;
+  classification_path?: string | null;
+  channel?: string | null;
+  summary?: string | null;
+  jenis_tiket_1?: string | null;
+  jenis_tiket_2?: string | null;
+  workzone?: string | null;
 }
 
 /**
@@ -166,11 +178,30 @@ export async function GET(
     const [assignedTickets, closedToday, totalClosedAll, recentClosed] =
       await Promise.all([
         prisma.ticket.findMany({
+          take: 200,
           where: {
             teknisi_user_id: techId,
             OR: [{ status_update: null }, { status_update: { not: 'closed' } }],
           },
           orderBy: { reported_date: 'asc' },
+          select: {
+            id_ticket: true,
+            incident: true,
+            contact_name: true,
+            customer_type: true,
+            service_no: true,
+            reported_date: true,
+            status_update: true,
+            closed_at: true,
+            source_ticket: true,
+            classification_flag: true,
+            classification_path: true,
+            channel: true,
+            summary: true,
+            jenis_tiket_1: true,
+            jenis_tiket_2: true,
+            workzone: true,
+          },
         }),
         prisma.ticket.count({
           where: {
@@ -188,7 +219,24 @@ export async function GET(
             status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
             closed_at: { not: null },
           },
-          select: { reported_date: true, closed_at: true },
+          select: {
+            id_ticket: true,
+            incident: true,
+            contact_name: true,
+            customer_type: true,
+            service_no: true,
+            reported_date: true,
+            status_update: true,
+            closed_at: true,
+            source_ticket: true,
+            classification_flag: true,
+            classification_path: true,
+            channel: true,
+            summary: true,
+            jenis_tiket_1: true,
+            jenis_tiket_2: true,
+            workzone: true,
+          },
           take: 10,
         }),
       ]);
@@ -202,6 +250,16 @@ export async function GET(
       serviceNo: t.service_no,
       reportedDate: t.reported_date,
       status_update: t.status_update,
+      jenisTiket: t.jenis_tiket_2 ?? undefined,
+      jenisTiket1: t.jenis_tiket_1 ?? null,
+      operationalBucket: classifyTechnicianBucket(t),
+      operationalBucketLabel: getTechnicianBucketLabel(
+        classifyTechnicianBucket(t),
+      ),
+      workzone: t.workzone ?? null,
+      closedAt: t.closed_at
+        ? new Date(t.closed_at).toISOString()
+        : null,
     }));
 
     // 7. Performance Calculation

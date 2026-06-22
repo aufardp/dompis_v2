@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useEffect, useState } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -54,24 +53,34 @@ export default function TicketListTech({ limit }: Props) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
     const fetchTickets = async () => {
       try {
         const fetchLimit = limit ?? 10;
-        const res = await fetchWithAuth(`/api/tickets?limit=${fetchLimit}`);
+        const res = await fetchWithAuth(`/api/tickets?limit=${fetchLimit}`, { signal: controller.signal });
         if (!res) return;
         const data = await res.json();
+        if (cancelled) return;
         if (data.success && data.data?.data) {
           setTickets(data.data.data);
         } else {
           setError(data.message || 'Failed to fetch tickets');
         }
-      } catch {
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError' || cancelled) return;
         setError('Failed to fetch tickets');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchTickets();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [limit]);
 
   if (loading) {

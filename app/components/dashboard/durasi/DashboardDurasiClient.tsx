@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/app/libs/query-keys';
 import DataFreshnessBadge from '../DataFreshnessBadge';
 import TicketDurationPanel from './TicketDurationPanel';
 import DurationPanelSkeleton from './DurationPanelSkeleton';
 import DurasiCriticalStrip from './DurasiCriticalStrip';
+import DurasiTicketDetailDrawer from './DurasiTicketDetailDrawer';
+import type { DurasiBucketKey, DurasiDetailTarget } from './durasi-types';
 
 interface PanelData {
   type: string;
@@ -19,6 +21,10 @@ interface PanelData {
 
 interface KpiSummaryCounts {
   total: number;
+  open: number;
+  assigned: number;
+  unassigned: number;
+  close: number;
   kpiCustomer: number;
   kpiProactive: number;
   nonKpiUnspec: number;
@@ -32,7 +38,7 @@ interface DashboardResponse {
   generatedAt: string;
   panels: PanelData[];
   kpiSummary?: KpiSummaryCounts;
-  selectedBucket?: string;
+  selectedBucket?: DurasiBucketKey;
   error?: string;
 }
 
@@ -46,48 +52,74 @@ const BUCKET_OPTIONS = [
   { value: 'obsolete', label: 'Obsolete' },
 ] as const;
 
-const KPI_ACCENT: Record<string, string> = {
-  'Customer': '#3b82f6',
-  'Proactive': '#a855f7',
-  'Unspec': '#64748b',
-  'Non Technical': '#e11d48',
-  'SQM Update': '#7c3aed',
-  'Obsolete': '#f43f5e',
+const PANEL_ORDER_BY_BUCKET: Record<string, string[]> = {
+  all: [
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
+    'MANJA',
+    'FFG',
+    'SQM_UPDATE',
+    'SQM',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  kpi_customer: [
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
+    'MANJA',
+    'FFG',
+    'SQM',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  kpi_proactive: [
+    'SQM_UPDATE',
+    'SQM',
+    'MANJA',
+    'FFG',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  non_kpi_unspec: [
+    'MANJA',
+    'FFG',
+    'SQM',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  non_technical: [
+    'MANJA',
+    'FFG',
+    'SQM',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  sqm_update: [
+    'SQM_UPDATE',
+    'SQM',
+    'MANJA',
+    'FFG',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
+  obsolete: [
+    'MANJA',
+    'FFG',
+    'SQM',
+    'ANAK_GAMAS',
+    'HSI',
+  ],
 };
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: accent }}
-        />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
-          {label}
-        </span>
-      </div>
-      <div className="mt-2 text-xl font-semibold tracking-tight text-(--text-primary)">
-        {value}
-      </div>
-    </div>
-  );
-}
 
 function formatNum(n: number): string {
   return new Intl.NumberFormat('id-ID').format(n);
 }
 
 export default function DashboardDurasiClient() {
-  const [selectedBucket, setSelectedBucket] = useState('all');
+  const [selectedBucket, setSelectedBucket] = useState<DurasiBucketKey>('all');
+  const [detailTarget, setDetailTarget] = useState<DurasiDetailTarget | null>(null);
 
   const queryParams = useMemo(() => new URLSearchParams({ bucket: selectedBucket }), [selectedBucket]);
 
@@ -104,6 +136,10 @@ export default function DashboardDurasiClient() {
     refetchInterval: 300000,
     staleTime: 120000,
   });
+
+  useEffect(() => {
+    setDetailTarget(null);
+  }, [selectedBucket]);
 
   if (isLoading) {
     return (
@@ -145,18 +181,28 @@ export default function DashboardDurasiClient() {
 
   const panelMap = new Map(data.panels.map((p) => [p.type, p]));
   const getPanel = (type: string) => panelMap.get(type);
-  const ks = data.kpiSummary;
-  const summaryCards = ks
-    ? [
-        { label: 'Total', value: formatNum(ks.total ?? 0), accent: '#2563eb' },
-        { label: 'Customer', value: formatNum(ks.kpiCustomer), accent: KPI_ACCENT['Customer'] },
-        { label: 'Proactive', value: formatNum(ks.kpiProactive), accent: KPI_ACCENT['Proactive'] },
-        { label: 'Unspec', value: formatNum(ks.nonKpiUnspec), accent: KPI_ACCENT['Unspec'] },
-        { label: 'Non Technical', value: formatNum(ks.nonTechnical), accent: KPI_ACCENT['Non Technical'] },
-        { label: 'SQM Update', value: formatNum(ks.sqmUpdate), accent: KPI_ACCENT['SQM Update'] },
-        { label: 'Obsolete', value: formatNum(ks.obsolete), accent: KPI_ACCENT['Obsolete'] },
-      ]
-    : [];
+  const selectedBucketLabel =
+    BUCKET_OPTIONS.find((opt) => opt.value === data.selectedBucket)?.label ??
+    'All';
+  const kpiSummary = data.kpiSummary ?? {
+    total: 0,
+    open: 0,
+    assigned: 0,
+    unassigned: 0,
+    close: 0,
+    kpiCustomer: 0,
+    kpiProactive: 0,
+    nonKpiUnspec: 0,
+    nonTechnical: 0,
+    sqmUpdate: 0,
+    obsolete: 0,
+  };
+  const panelOrder = [
+    ...(PANEL_ORDER_BY_BUCKET[data.selectedBucket ?? 'all'] ?? PANEL_ORDER_BY_BUCKET.all),
+  ];
+  const visiblePanels = panelOrder
+    .map((type) => getPanel(type))
+    .filter((panel): panel is PanelData => Boolean(panel));
 
   return (
     <div className="space-y-5">
@@ -194,7 +240,7 @@ export default function DashboardDurasiClient() {
                 </span>
                 <select
                   value={selectedBucket}
-                  onChange={(e) => setSelectedBucket(e.target.value)}
+                  onChange={(e) => setSelectedBucket(e.target.value as DurasiBucketKey)}
                   className="min-w-36 cursor-pointer rounded-lg border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {BUCKET_OPTIONS.map((opt) => (
@@ -207,40 +253,37 @@ export default function DashboardDurasiClient() {
             </div>
           </div>
         </div>
-
-        {summaryCards.length > 0 && (
-          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-            {summaryCards.map((card) => (
-              <SummaryCard
-                key={card.label}
-                label={card.label}
-                value={card.value}
-                accent={card.accent}
-              />
-            ))}
-          </div>
-        )}
       </section>
 
       {/* Critical summary strip */}
       {data.panels.length > 0 && (
-        <DurasiCriticalStrip panels={data.panels} />
+        <DurasiCriticalStrip
+          panels={data.panels}
+          summary={kpiSummary}
+          bucketLabel={selectedBucketLabel}
+          isAllBucket={data.selectedBucket === 'all'}
+        />
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="xl:col-span-2">
-          {getPanel('REGULER') && <TicketDurationPanel panel={getPanel('REGULER')!} />}
-        </div>
-        {getPanel('HVC_DIAMOND_PLATINUM') && <TicketDurationPanel panel={getPanel('HVC_DIAMOND_PLATINUM')!} />}
-        {getPanel('HVC_GOLD') && <TicketDurationPanel panel={getPanel('HVC_GOLD')!} />}
-        {getPanel('MANJA') && <TicketDurationPanel panel={getPanel('MANJA')!} />}
-        {getPanel('FFG') && <TicketDurationPanel panel={getPanel('FFG')!} />}
-        <div className="xl:col-span-2">
-          {getPanel('SQM') && <TicketDurationPanel panel={getPanel('SQM')!} />}
-        </div>
-        {getPanel('ANAK_GAMAS') && <TicketDurationPanel panel={getPanel('ANAK_GAMAS')!} />}
-        {getPanel('HSI') && <TicketDurationPanel panel={getPanel('HSI')!} />}
+      <div className="space-y-4">
+        {visiblePanels.map((panel) => (
+          <TicketDurationPanel
+            key={panel.type}
+            panel={panel}
+            defaultOpen
+            bucketKey={data.selectedBucket ?? 'all'}
+            bucketLabel={selectedBucketLabel}
+            isAllBucket={data.selectedBucket === 'all'}
+            onCellClick={setDetailTarget}
+          />
+        ))}
       </div>
+
+      <DurasiTicketDetailDrawer
+        open={Boolean(detailTarget)}
+        target={detailTarget}
+        onClose={() => setDetailTarget(null)}
+      />
     </div>
   );
 }

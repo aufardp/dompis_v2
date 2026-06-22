@@ -4,7 +4,7 @@ export default function TicketManagementKpiCustomerPage() {
   return (
     <TicketManagementBucketPage
       title='Customer'
-      description='Source CUSTOMER, bucket KPI customer, dengan breakdown B2C/B2B dan SQM yang tetap terbaca di mode detail.'
+      description='Bucket CUSTOMER, source ticket customer, yang sudah di breakdown B2C/B2B.'
       icon='C'
       tone='blue'
       operationalBucket={['kpi_customer']}

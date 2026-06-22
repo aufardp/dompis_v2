@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -120,26 +119,15 @@ function getTechnicianStatusValue(ticketCount: number): TechnicianStatus {
 }
 
 function getAgeColor(hours: number): string {
-  if (hours >= 24) return 'text-red-600 dark:text-red-400';
-  if (hours >= 8) return 'text-amber-600 dark:text-amber-400';
-  return 'text-green-600 dark:text-green-400';
+  if (hours >= 24) return 'text-slate-700 dark:text-slate-300';
+  if (hours >= 8) return 'text-slate-600 dark:text-slate-400';
+  return 'text-slate-500 dark:text-slate-400';
 }
 
 function getAgeBgColor(hours: number): string {
-  if (hours >= 24) return 'bg-red-100 dark:bg-red-500/15';
-  if (hours >= 8) return 'bg-amber-100 dark:bg-amber-500/15';
-  return 'bg-green-100 dark:bg-green-500/15';
-}
-
-function getAgeBorderColor(hours: number): string {
-  if (hours >= 24) return 'border-l-red-500';
-  if (hours >= 8) return 'border-l-amber-500';
-  return 'border-l-green-500';
-}
-
-function getWorstTicketAge(tickets: { ageHours: number }[]): number {
-  if (tickets.length === 0) return 0;
-  return Math.max(...tickets.map((t) => t.ageHours));
+  if (hours >= 24) return 'bg-slate-100 dark:bg-slate-800';
+  if (hours >= 8) return 'bg-slate-50 dark:bg-slate-800/80';
+  return 'bg-white dark:bg-slate-900';
 }
 
 function SkeletonCard() {
@@ -263,6 +251,34 @@ function getJenisBadge(raw: string | undefined | null): {
   return configs[key] ?? configs.reguler;
 }
 
+function getTicketJenisBadge(ticket: {
+  jenisTiket1?: string | null;
+  jenisTiket?: string | undefined;
+}) {
+  return getJenisBadge(ticket.jenisTiket1 ?? ticket.jenisTiket);
+}
+
+function getTicketBadgeTone(raw: string | undefined | null): string {
+  const key = normalizeJenisKey(raw);
+  const tones: Record<string, string> = {
+    reguler: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    sqm: 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20',
+    'sqm-ccan':
+      'bg-indigo-50 text-indigo-700 border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/20',
+    hvc: 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20',
+    unspec: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    indibiz: 'bg-cyan-50 text-cyan-700 border-cyan-100 dark:bg-cyan-500/10 dark:text-cyan-300 dark:border-cyan-500/20',
+    datin: 'bg-teal-50 text-teal-700 border-teal-100 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/20',
+    reseller:
+      'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20',
+    'wifi-id':
+      'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20',
+    unknown: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+  };
+
+  return tones[key] ?? tones.unknown;
+}
+
 function TechnicianCard({
   technician,
   onDetail,
@@ -288,8 +304,6 @@ function TechnicianCard({
   const statusConfig = STATUS_CONFIG[status];
   const closedToday = technician.closed_tickets_today || [];
 
-  const worstAge = getWorstTicketAge(technician.assigned_tickets);
-
   const { displayTickets, displaySource, hasMore } = useMemo(() => {
     const allTickets = technician.assigned_tickets;
 
@@ -305,10 +319,14 @@ function TechnicianCard({
       });
     }
 
+    const sortedSource = [...source].sort(
+      (a, b) => b.ageHours - a.ageHours || a.ticket.localeCompare(b.ticket),
+    );
+
     return {
       displaySource: source,
-      displayTickets: source.slice(0, 5),
-      hasMore: source.length > 5,
+      displayTickets: sortedSource.slice(0, 1),
+      hasMore: sortedSource.length > 1,
     };
   }, [technician.assigned_tickets, closedToday, localFilter]);
 
@@ -322,20 +340,24 @@ function TechnicianCard({
   const jenisSummary = useMemo(() => {
     const result: Record<string, number> = {};
     for (const t of technician.assigned_tickets) {
-      const key = normalizeJenisKey(t.jenisTiket);
+      const key = normalizeJenisKey(t.jenisTiket1 ?? t.jenisTiket);
       result[key] = (result[key] ?? 0) + 1;
     }
     return result;
   }, [technician.assigned_tickets]);
 
-  const borderColor =
-    status === 'IDLE'
-      ? 'border-l-slate-300'
-      : worstAge >= 24
-        ? 'border-l-red-500'
-        : worstAge >= 8
-          ? 'border-l-amber-500'
-          : 'border-l-green-500';
+  const topJenis = useMemo(() => {
+    const entries = Object.entries(jenisSummary).sort(
+      ([keyA, valueA], [keyB, valueB]) =>
+        valueB - valueA || keyA.localeCompare(keyB),
+    );
+    return entries[0] ?? null;
+  }, [jenisSummary]);
+
+  const featuredTicket = displayTickets[0] ?? null;
+  const dominantLabel = topJenis
+    ? `${topJenis[1]}x ${getJenisBadge(topJenis[0]).label}`
+    : 'Belum ada tiket aktif';
 
   const initials =
     technician.nama
@@ -349,89 +371,120 @@ function TechnicianCard({
 
   return (
     <div
-      className={`group rounded-xl border border-l-4 border-slate-200 bg-white p-5 transition-all hover:shadow-md dark:border-slate-700 dark:bg-slate-800 ${borderColor}`}
+      className='group relative overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-[0_10px_28px_-24px_rgba(15,23,42,0.16)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_38px_-28px_rgba(15,23,42,0.22)] dark:border-slate-700 dark:bg-slate-900/90'
     >
-      <div className='flex items-start gap-3'>
-        <div
-          className={`flex h-12 w-12 flex-col items-center justify-center rounded-full text-sm font-semibold text-white ${avatarColor}`}
-        >
-          {initials}
-        </div>
-        <div className='min-w-0 flex-1'>
-          {technician.cluster_today && technician.cluster_today.length > 0 && (
-            <div className='mb-1.5 flex flex-wrap gap-1'>
-              {technician.cluster_today.map((c) => (
-                <span
-                  key={c}
-                  className='rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
-                >
-                  {c}
-                </span>
-              ))}
+      <div className='absolute inset-x-0 top-0 h-[3px] bg-slate-200/90 dark:bg-slate-700/90' />
+
+      <div className='space-y-3.5 p-4'>
+        <div className='flex items-start gap-3'>
+          <div
+            className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-2xl text-sm font-semibold text-white shadow-sm ring-1 ring-white/40 ${avatarColor}`}
+          >
+            {initials}
+          </div>
+
+          <div className='min-w-0 flex-1'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <h3 className='truncate text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-50'>
+                    {technician.nama}
+                  </h3>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
+                  >
+                    {status === 'OVERLOAD' && (
+                      <span className='flex h-1.5 w-1.5'>
+                        <span className='relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500' />
+                      </span>
+                    )}
+                    {statusConfig.label}
+                  </span>
+                </div>
+                <p className='mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400'>
+                  <MapPin size={11} />
+                  <span className='truncate'>{technician.workzone}</span>
+                </p>
+                <div className='mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500'>
+                  <span>{dominantLabel}</span>
+                  {technician.cluster_today && technician.cluster_today.length > 0 && (
+                    <>
+                      <span className='text-slate-300 dark:text-slate-600'>
+                        •
+                      </span>
+                      <span>
+                        {technician.cluster_today.slice(0, 2).join(' · ')}
+                        {technician.cluster_today.length > 2
+                          ? ` +${technician.cluster_today.length - 2}`
+                          : ''}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <Link
+                href={`/admin/technicians/${technician.id_user}`}
+                className='shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              >
+                Lihat Profil
+              </Link>
             </div>
-          )}
-          <div className='flex items-start justify-between gap-3'>
-            <div className='min-w-0'>
-              <h3 className='truncate font-semibold text-slate-800 dark:text-slate-100'>
-                {technician.nama}
-              </h3>
-              <p className='flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400'>
-                <MapPin size={12} />
-                {technician.workzone}
+          </div>
+        </div>
+
+        <div className='rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/55'>
+          <div className='grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4'>
+            {[
+            {
+              label: 'Menunggu',
+              value: counts.assigned,
+              tone: 'text-slate-900 dark:text-slate-50',
+            },
+            {
+              label: 'Dikerjakan',
+              value: counts.on_progress,
+              tone: 'text-slate-900 dark:text-slate-50',
+            },
+            {
+              label: 'Pending',
+              value: counts.pending,
+              tone: 'text-slate-900 dark:text-slate-50',
+            },
+            {
+              label: 'Selesai',
+              value: counts.closed,
+              tone: 'text-slate-900 dark:text-slate-50',
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className='min-w-0'
+            >
+              <p className='text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500'>
+                {item.label}
+              </p>
+              <p className={`mt-1 text-[15px] font-semibold leading-none ${item.tone}`}>
+                {item.value}
               </p>
             </div>
-
-            <Link
-              href={`/admin/technicians/${technician.id_user}`}
-              className='shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-            >
-              Lihat Profil
-            </Link>
+          ))}
           </div>
-          <span
-            className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.color}`}
-          >
-            {status === 'OVERLOAD' && (
-              <span className='flex h-2 w-2'>
-                <span className='relative inline-flex h-2 w-2 animate-ping rounded-full bg-red-400 opacity-75' />
-                <span className='relative inline-flex h-2 w-2 rounded-full bg-red-500' />
-              </span>
-            )}
-            {statusConfig.label}
-          </span>
-          {Object.keys(jenisSummary).length > 0 && (
-            <div className='mt-1.5 flex flex-wrap items-center gap-1'>
-              {Object.entries(jenisSummary).map(([key, count]) => (
-                <span
-                  key={key}
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${getJenisBadge(key).style}`}
-                >
-                  {count}x {getJenisBadge(key).label}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
-      </div>
 
-      <div className='mt-4 border-t border-slate-100 pt-3 dark:border-slate-700'>
-        {/* Clickable Tab Filters */}
-        <div className='mb-3 flex flex-wrap gap-1.5'>
+        <div className='flex flex-wrap gap-1.5'>
           <button
             type='button'
             onClick={() =>
               setLocalFilter(localFilter === 'assigned' ? 'all' : 'assigned')
             }
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
               localFilter === 'assigned'
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/30'
+                ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
             }`}
           >
             {counts.assigned} Menunggu
-            {localFilter === 'assigned' && (
-              <span className='ml-0.5 text-[10px]'>✕</span>
-            )}
           </button>
 
           <button
@@ -441,16 +494,13 @@ function TechnicianCard({
                 localFilter === 'on_progress' ? 'all' : 'on_progress',
               )
             }
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
               localFilter === 'on_progress'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30'
+                ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
             }`}
           >
             {counts.on_progress} Dikerjakan
-            {localFilter === 'on_progress' && (
-              <span className='ml-0.5 text-[10px]'>✕</span>
-            )}
           </button>
 
           <button
@@ -458,16 +508,13 @@ function TechnicianCard({
             onClick={() =>
               setLocalFilter(localFilter === 'pending' ? 'all' : 'pending')
             }
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
               localFilter === 'pending'
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:hover:bg-orange-500/30'
+                ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
             }`}
           >
             {counts.pending} Pending
-            {localFilter === 'pending' && (
-              <span className='ml-0.5 text-[10px]'>✕</span>
-            )}
           </button>
 
           {counts.closed > 0 && (
@@ -476,109 +523,97 @@ function TechnicianCard({
               onClick={() =>
                 setLocalFilter(localFilter === 'closed' ? 'all' : 'closed')
               }
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
                 localFilter === 'closed'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/30'
+                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
-              ✓ {counts.closed} Selesai
-              {localFilter === 'closed' && (
-                <span className='ml-0.5 text-[10px]'>✕</span>
-              )}
+              {counts.closed} Selesai
             </button>
           )}
         </div>
 
-        {/* Active filter label */}
         {localFilter !== 'all' && (
-          <p className='mb-2 text-[10px] text-slate-400 dark:text-slate-500'>
-            Menampilkan {displaySource.length} tiket
+          <p className='text-[10px] text-slate-400 dark:text-slate-500'>
+            Menampilkan {displaySource.length} tiket{' '}
             <button
+              type='button'
               onClick={() => setLocalFilter('all')}
-              className='ml-1 text-blue-500 hover:underline'
+              className='text-blue-500 hover:underline'
             >
-              (tampilkan semua)
+              kembali ke semua
             </button>
           </p>
         )}
 
-        {displayTickets.length === 0 ? (
-          <div className='flex flex-col items-center py-4 text-center'>
-            <AlertCircle className='h-8 w-8 text-slate-300 dark:text-slate-600' />
-            <p className='mt-2 text-sm text-slate-400 dark:text-slate-500'>
-              Tidak ada tiket{' '}
-              {localFilter !== 'all' ? `dengan status ini` : 'aktif'}
-            </p>
-          </div>
-        ) : (
-          <div className='space-y-2'>
-            {displayTickets.map((ticket, idx) => (
-              <div
-                key={ticket.idTicket}
-                className={`flex items-center justify-between rounded-lg border-l-2 bg-slate-50 p-2 dark:bg-slate-700/50 ${getAgeBorderColor(ticket.ageHours)}`}
-              >
-                <div className='min-w-0 flex-1'>
-                  <div className='flex items-center gap-1'>
-                    <span className='font-mono text-xs font-medium text-slate-500 dark:text-slate-400'>
-                      #{idx + 1}
-                    </span>
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getJenisBadge(ticket.jenisTiket).style}`}
-                    >
-                      {getJenisBadge(ticket.jenisTiket).label}
-                    </span>
-                    <span
-                      className={`text-xs font-medium ${getAgeBgColor(ticket.ageHours)} ${getAgeColor(ticket.ageHours)}`}
-                    >
-                      {ticket.ageHours >= 24
-                        ? '🔴'
-                        : ticket.ageHours >= 8
-                          ? '🟡'
-                          : '🟢'}
-                    </span>
-                  </div>
-                  <p className='truncate text-xs font-medium text-slate-700 dark:text-slate-200'>
-                    {ticket.ticket}
-                  </p>
-                  <p className='truncate text-xs text-slate-400 dark:text-slate-500'>
-                    {ticket.contactName}
-                  </p>
-                </div>
-                <div className='ml-2 flex shrink-0 items-center gap-2'>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${getAgeBgColor(ticket.ageHours)} ${getAgeColor(ticket.ageHours)}`}
-                  >
-                    {ticket.age}
+        <div className='rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900/70'>
+          {featuredTicket ? (
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-1.5'>
+                  <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'>
+                    #1
                   </span>
-                  <TicketActionButtons
-                    hasAssignee={true}
-                    isClosed={localFilter === 'closed'}
-                    onDetail={() => onDetail(ticket.idTicket)}
-                    onAssign={() =>
-                      onReassign({
-                        ticketId: ticket.idTicket,
-                        ticketCode: ticket.ticket,
-                        workzone: ticket.workzone ?? technician.workzone,
-                        currentTechnicianId: technician.id_user,
-                        currentTechnicianName: technician.nama,
-                      })
-                    }
-                    size='xs'
-                  />
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getTicketBadgeTone(featuredTicket.jenisTiket1 ?? featuredTicket.jenisTiket)}`}
+                  >
+                    {getTicketJenisBadge(featuredTicket).label}
+                  </span>
+                  <span
+                    className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                  >
+                    {featuredTicket.age}
+                  </span>
                 </div>
+                <p className='mt-2 truncate text-sm font-semibold text-slate-800 dark:text-slate-100'>
+                  {featuredTicket.ticket}
+                </p>
+                <p className='truncate text-xs text-slate-500 dark:text-slate-400'>
+                  {featuredTicket.contactName}
+                </p>
+                <p className='mt-1 text-[11px] text-slate-400 dark:text-slate-500'>
+                  Umur tiket {featuredTicket.age}
+                </p>
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className='flex shrink-0 flex-col items-end gap-2'>
+                <TicketActionButtons
+                  hasAssignee={true}
+                  isClosed={localFilter === 'closed'}
+                  onDetail={() => onDetail(featuredTicket.idTicket)}
+                  onAssign={() =>
+                    onReassign({
+                      ticketId: featuredTicket.idTicket,
+                      ticketCode: featuredTicket.ticket,
+                      workzone:
+                        featuredTicket.workzone ?? technician.workzone,
+                      currentTechnicianId: technician.id_user,
+                      currentTechnicianName: technician.nama,
+                    })
+                  }
+                  size='xs'
+                />
+              </div>
+            </div>
+          ) : (
+            <div className='flex items-center gap-3 text-slate-400 dark:text-slate-500'>
+              <AlertCircle className='h-4 w-4' />
+              <p className='text-xs'>
+                Tidak ada tiket{' '}
+                {localFilter !== 'all' ? 'dengan status ini' : 'aktif'}
+              </p>
+            </div>
+          )}
+        </div>
 
         {hasMore && (
           <button
             type='button'
             onClick={() => onShowAll(technician)}
-            className='mt-3 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700/50'
+            className='inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
           >
-            + {displaySource.length - 5} tiket lainnya →
+            + {displaySource.length - 1} tiket lainnya
           </button>
         )}
       </div>
@@ -629,7 +664,7 @@ export default function TechniciansPage() {
   } = useTechnicianTickets(
     { search: '', workzone: '', status: 'all' },
     180,
-    false,
+    true,
     { includeClosedToday: true, closedTodayLimit: 20 },
   );
 

@@ -85,9 +85,33 @@ export async function middleware(req: NextRequest) {
     return withCorrelation(applySecurityHeaders(NextResponse.redirect(url)));
   }
 
-  // API routes → just correlation + security headers, skip page auth
+  // API routes → correlation, security headers, cache-control, skip page auth
   if (pathname.startsWith('/api/')) {
-    return withCorrelation(applySecurityHeaders(NextResponse.next()));
+    const res = withCorrelation(applySecurityHeaders(NextResponse.next()));
+
+    // Reference data — rarely changes
+    if (
+      pathname === '/api/area' ||
+      pathname === '/api/roles' ||
+      pathname === '/api/region' ||
+      pathname.startsWith('/api/workzone')
+    ) {
+      res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+    }
+    // Dashboard data — already server-cached via getOrSetCache
+    else if (pathname.startsWith('/api/dashboard/')) {
+      res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    }
+    // Technicians reference data
+    else if (pathname === '/api/technicians' || pathname === '/api/sa') {
+      res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    }
+    // Everything else — no cache
+    else {
+      res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    return res;
   }
 
   // 1. BYPASS — public / internal page paths

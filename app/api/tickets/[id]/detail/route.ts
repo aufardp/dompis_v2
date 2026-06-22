@@ -74,6 +74,7 @@ export async function GET(
           technician: { select: { nama: true } },
         },
         orderBy: { assigned_at: 'desc' },
+        take: 100,
       }),
     ]);
 
@@ -151,6 +152,7 @@ export async function GET(
       worklogSummary: row.worklog_summary,
       solution: row.solution,
       descriptionActualSolution: row.description_actual_solution,
+      sqmUpdateReason: row.sqm_update_reason,
       channel: row.channel,
       witel: row.witel,
       incidentDomain: row.incident_domain,

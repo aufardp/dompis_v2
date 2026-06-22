@@ -262,6 +262,7 @@ model ticket {
   symptom                     String?                     @db.Text
   solution                    String?                     @db.Text
   description_actual_solution String?                     @db.Text
+  // technician                  String?                     @db.VarChar(255)
   device_name                 String?                     @db.VarChar(100)
   worklog_summary             String?                     @db.VarChar(100)
   classification_flag         String?                     @db.VarChar(20)
@@ -299,6 +300,7 @@ model ticket {
   status_ttr_reseller_6_jam   String?                     @db.VarChar(10)
   status_ttr_wifi_id          String?                     @db.VarChar(10)
   pending_dompis              String?                     @db.VarChar(255)
+  sqm_update_reason           String?                     @db.VarChar(255)
   description_solution_dompis String?                     @db.VarChar(255)
   rca                         String?                     @db.VarChar(100)
   sub_rca                     String?                     @db.VarChar(100)

@@ -302,6 +302,7 @@ export async function GET(request: Request) {
     ];
     const readStates = notificationKeys.length
       ? await prisma.topbar_notification_state.findMany({
+          take: 50,
           where: {
             user_id: user.id_user,
             notification_key: { in: notificationKeys },

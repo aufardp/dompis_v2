@@ -95,6 +95,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
 
     const existingAreas = await prisma.cluster_area.findMany({
+      take: 500,
       where: { cluster_id: clusterId },
       select: { id: true, nama_area: true },
     });
@@ -107,6 +108,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       .filter(Boolean);
 
     const existingNodes = await prisma.cluster_node.findMany({
+      take: 500,
       where: { odc_value: { in: odcValuesList } },
       select: { odc_value: true, cluster_id: true },
     });

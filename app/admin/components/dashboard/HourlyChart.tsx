@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {

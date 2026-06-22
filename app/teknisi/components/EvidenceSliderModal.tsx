@@ -116,8 +116,8 @@ export default function EvidenceSliderModal({
                       src={img.src}
                       alt={img.alt || `Evidence ${i + 1}`}
                       className='!w-auto !h-auto max-h-[80vh] max-w-full object-contain'
-                      width={0}
-                      height={0}
+                      width={800}
+                      height={600}
                       sizes='100vw'
                       unoptimized
                     />

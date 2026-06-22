@@ -78,6 +78,11 @@ const FLAG_OPTIONS: FilterOption[] = [
     tone: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-300 ring-1 ring-fuchsia-500/40',
   },
   {
+    key: 'EXPIRED',
+    label: 'Expired',
+    tone: 'bg-slate-500/15 text-slate-600 dark:text-slate-300 ring-1 ring-slate-500/40',
+  },
+  {
     key: 'FFG',
     label: 'FFG',
     tone: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 ring-1 ring-emerald-500/40',

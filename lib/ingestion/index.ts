@@ -521,7 +521,9 @@ function buildRawData(
     isActive: true,
     importedAt: now,
     rawPayload: row._rawPayload as Prisma.InputJsonValue,
-    status: normalizeStatus(row.status),
+    // Keep ticket_raw.status aligned with the external source column as-is.
+    // Canonical status normalization is still handled separately for ticket projection.
+    status: row.status ? String(row.status).trim() : null,
     sourceUpdatedAt,
     sync_date: todayWibDateForDb(),
     synced_at: now,

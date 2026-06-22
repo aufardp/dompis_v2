@@ -222,6 +222,7 @@ export async function GET(request: Request) {
     }
 
     const orderedTickets = await prisma.ticket.findMany({
+      take: DIRECT_EXPORT_MAX_ROWS,
       where: finalWhere,
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
       include: { users: { select: { nama: true, username: true } } },
@@ -229,6 +230,7 @@ export async function GET(request: Request) {
 
     // Latest status per ticket
     const statusHistories = await prisma.ticket_status_history.findMany({
+      take: DIRECT_EXPORT_MAX_ROWS,
       where: { ticket_id: { in: orderedTickets.map(t => t.id_ticket) } },
       orderBy: { changed_at: 'desc' },
       select: { ticket_id: true, new_status: true },
@@ -244,6 +246,7 @@ export async function GET(request: Request) {
     // Earliest assignment per ticket
     const ticketIds = orderedTickets.map(t => t.id_ticket);
     const assignments = await prisma.ticket_assignment_history.findMany({
+      take: DIRECT_EXPORT_MAX_ROWS,
       where: { ticket_id: { in: ticketIds }, is_active: true },
       orderBy: { assigned_at: 'asc' },
       select: { ticket_id: true, assigned_at: true },

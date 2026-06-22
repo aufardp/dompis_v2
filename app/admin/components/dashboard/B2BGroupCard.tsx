@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
-import '@aejkatappaja/phantom-ui';
 import { Ticket } from '@/app/types/ticket';
 import { JENIS_LABELS, normalizeJenis } from '@/app/config/jenis-tiket';
 import {

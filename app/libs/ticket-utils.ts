@@ -41,6 +41,22 @@ export const CLOSE_STATUS_VALUES = [
   'RESOLVED',
 ];
 
+export const OPEN_STATUS_VALUES = [
+  'NEW',
+  'DRAFT',
+  'ANALYSIS',
+  'PENDING',
+  'BACKEND',
+  'OPEN',
+];
+
+export function isOpenExternalStatus(
+  status: string | null | undefined,
+): boolean {
+  const normalized = (status ?? '').trim().toUpperCase();
+  return OPEN_STATUS_VALUES.includes(normalized);
+}
+
 export function getTicketCategory(
   status: string | null | undefined,
   statusUpdate: string | null | undefined,

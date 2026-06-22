@@ -21,21 +21,31 @@ export default function HelpdeskPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
     const fetchStats = async () => {
       try {
-        const res = await fetchWithAuth('/api/tickets/stats');
+        const res = await fetchWithAuth('/api/tickets/stats', { signal: controller.signal });
         if (!res) return;
         const data = await res.json();
+        if (cancelled) return;
         if (data.success) {
           setStats(data.data);
         }
       } catch (err) {
+        if ((err as Error)?.name === 'AbortError') return;
         console.error('Failed to fetch stats:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchStats();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   return (

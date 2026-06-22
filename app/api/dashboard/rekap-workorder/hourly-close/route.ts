@@ -11,9 +11,13 @@ import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 export const dynamic = 'force-dynamic';
 
 function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
-  const filterParams = new URLSearchParams(params);
-  if (filterParams.has('_t')) return null;
-  filterParams.sort();
+  const bucket = normalizeOperationalBucketKey(params.get('bucket'));
+  const workzone = String(params.get('workzone') || '').trim();
+  const filterParams = new URLSearchParams();
+
+  if (bucket) filterParams.set('bucket', bucket);
+  if (workzone) filterParams.set('workzone', workzone);
+
   return `dashboard_hourly_close:${role}:${userId}:${filterParams.toString()}`;
 }
 

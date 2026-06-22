@@ -8,7 +8,7 @@ import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWibDateString } from '@/lib/timezone';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
-import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
+import { buildKpiBucketFilterSql, type KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
 
 interface RekapTicketRow {
@@ -17,15 +17,9 @@ interface RekapTicketRow {
   workzone: string | null;
   customer_type: string | null;
   customer_segment: string | null;
-  channel: string | null;
   jenis_tiket: string | null;
-  guarantee_status: string | null;
   status: string;
   status_update: string;
-  jam_expired: string | null;
-  jam_expired_gold: string | null;
-  jam_expired_diamond: string | null;
-  jam_expired_platinum: string | null;
   closed_at: Date | null;
   cnt: bigint;
   source_ticket: string | null;
@@ -266,6 +260,8 @@ const BUCKET_VIEW_MEMBERS: Record<KpiBucketKey, BucketKey[]> = {
 
 // Bump this whenever bucket classification or detail aggregation changes.
 const REKAP_WORKORDER_CACHE_VERSION = 'v6';
+const REKAP_OVERVIEW_CACHE_VERSION = 'v1';
+const REKAP_TEKNISI_CACHE_VERSION = 'v1';
 
 function filterRekapRowsByBucket(
   rows: RekapTicketRow[],
@@ -497,21 +493,52 @@ function buildRekapTicketsCacheKey(
   role: string,
   userId: number,
   syncDate: string,
+  bucket: KpiBucketKey,
 ): string {
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:all`;
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}`;
+}
+
+function buildRekapOverviewCacheKey(
+  role: string,
+  userId: number,
+  syncDate: string,
+): string {
+  return `dashboard:rekap:${REKAP_OVERVIEW_CACHE_VERSION}:overview:${syncDate}:${role}:${userId}`;
+}
+
+function buildRekapTeknisiCacheKey(
+  syncDate: string,
+  userId: number,
+  scope: string,
+): string {
+  return `dashboard:rekap:${REKAP_TEKNISI_CACHE_VERSION}:teknisi:${syncDate}:${userId}:${scope}`;
+}
+
+function buildRekapBucketFilterSql(bucket: KpiBucketKey): string {
+  if (bucket === 'all') return '1=1';
+  if (bucket === 'kpi_customer') {
+    return `(
+      (LOWER(t.source_ticket) = 'customer' AND (t.classification_path IS NULL OR t.classification_path != 'Z_PERMINTAAN_044'))
+      OR (${buildKpiBucketFilterSql('kpi_proactive', 't')})
+      OR (${buildKpiBucketFilterSql('sqm_update', 't')})
+    )`;
+  }
+  return buildKpiBucketFilterSql(bucket, 't');
 }
 
 async function getFilteredRekapTickets(
   role: string,
   userId: number,
   syncDate: string,
+  bucket: KpiBucketKey,
 ): Promise<RekapTicketRow[]> {
-    const cacheKey = buildRekapTicketsCacheKey(role, userId, syncDate);
+    const cacheKey = buildRekapTicketsCacheKey(role, userId, syncDate, bucket);
     return getOrSetCache(cacheKey, async () => {
     const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
       dept: 'all',
       includeClosed: true,
     });
+    const bucketWhere = buildRekapBucketFilterSql(bucket);
     const fullSql = `
     SELECT
       a.nama_area                     AS area,
@@ -519,15 +546,9 @@ async function getFilteredRekapTickets(
       t.workzone,
       t.customer_type,
       t.customer_segment,
-      t.channel,
       COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
-      t.guarantee_status              AS guarante_status,
       t.status,
       LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-      t.jam_expired,
-      t.status_ttr_12_gold            AS jam_expired_gold,
-      t.status_ttr_3_diamond          AS jam_expired_diamond,
-      t.status_ttr_6_platinum         AS jam_expired_platinum,
       t.closed_at,
       t.source_ticket,
       t.classification_flag,
@@ -536,23 +557,52 @@ async function getFilteredRekapTickets(
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt
-    FROM ticket t FORCE INDEX (idx_ticket_workzone)
+    FROM ticket t
     JOIN service_area sa ON sa.nama_sa = t.workzone
     JOIN area a          ON a.id_area = sa.area_id
-    LEFT JOIN branch b   ON b.id_branch = a.branch_id
     WHERE ${whereClause}
+      AND (${bucketWhere})
     GROUP BY a.nama_area, sa.nama_sa, t.workzone, t.customer_type, t.customer_segment,
-             t.channel,
              COALESCE(t.jenis_tiket_2, t.jenis_tiket_1),
-             t.guarantee_status, t.status, LOWER(COALESCE(t.status_update, 'open')),
-             t.jam_expired, t.status_ttr_12_gold,
-             t.status_ttr_3_diamond, t.status_ttr_6_platinum, t.closed_at,
+             t.status, LOWER(COALESCE(t.status_update, 'open')), t.closed_at,
              t.source_ticket, t.classification_flag, t.classification_path,
              t.summary, t.jenis_tiket_1, t.jenis_tiket_2
     ORDER BY a.nama_area, sa.nama_sa, t.workzone
   `;
     return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...params);
   }, 60);
+}
+
+async function getRekapOverview(
+  role: string,
+  userId: number,
+  syncDate: string,
+): Promise<Awaited<ReturnType<typeof DailyTicketService.getTicketManagementOverviewSummary>>> {
+  const cacheKey = buildRekapOverviewCacheKey(role, userId, syncDate);
+  return getOrSetCache(
+    cacheKey,
+    () => DailyTicketService.getTicketManagementOverviewSummary(role, userId),
+    120,
+  );
+}
+
+async function getRekapTeknisiRows(
+  syncDate: string,
+  userId: number,
+  workzones: string[] | null,
+): Promise<{ sa_name: string; cnt: bigint }[]> {
+  const scope = workzones && workzones.length > 0 ? workzones.slice().sort().join(',') : 'all';
+  const cacheKey = buildRekapTeknisiCacheKey(syncDate, userId, scope);
+  return getOrSetCache(cacheKey, async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
+      SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
+      FROM technician_attendance a
+      JOIN service_area sa ON sa.id_sa = a.workzone_id
+      JOIN users u ON u.id_user = a.technician_id
+      WHERE a.date = ${syncDate}
+        AND u.role_id = 4
+      ${workzones && workzones.length > 0 ? Prisma.sql`AND sa.nama_sa IN (${Prisma.join(workzones)})` : Prisma.sql``}
+      GROUP BY sa.nama_sa
+    `, 120);
 }
 
 export async function GET(request: NextRequest) {
@@ -585,10 +635,13 @@ export async function GET(request: NextRequest) {
     const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const overview = await DailyTicketService.getTicketManagementOverviewSummary(
-        decoded.role,
-        decoded.id_user,
-      );
+      const startedAt = Date.now();
+      const [overview, ticketRowsAll, teknisiRows] = await Promise.all([
+        getRekapOverview(decoded.role, decoded.id_user, today),
+        getFilteredRekapTickets(decoded.role, decoded.id_user, today, bucket),
+        getRekapTeknisiRows(today, decoded.id_user, workzones),
+      ]);
+      const fetchedAt = Date.now();
       const workboardSummary = buildWorkboardSummary(overview);
       const kpiSummary = {
         total: overview.totals.total,
@@ -600,20 +653,6 @@ export async function GET(request: NextRequest) {
         obsolete: overview.cards.obsolete.total,
       };
 
-    const [ticketRowsAll, teknisiRows] = await Promise.all([
-        getFilteredRekapTickets(decoded.role, decoded.id_user, today),
-        prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`          SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
-          FROM technician_attendance a
-          JOIN service_area sa ON sa.id_sa = a.workzone_id
-          JOIN users u ON u.id_user = a.technician_id
-          JOIN roles ro ON ro.id_role = u.role_id
-          WHERE a.date = ${today}
-            AND ro.key = 'teknisi'
-          ${workzones && workzones.length > 0 ? Prisma.sql`AND sa.nama_sa IN (${Prisma.join(workzones)})` : Prisma.sql``}
-          GROUP BY sa.nama_sa
-        `,
-      ]);
-
       const ticketRows = filterRekapRowsByBucket(ticketRowsAll, bucket);
 
       const selectedBucketSummary = buildSelectedBucketSummary(
@@ -621,6 +660,17 @@ export async function GET(request: NextRequest) {
         ticketRows,
         kpiSummary,
       );
+
+      logger.info('Rekap workorder timings', {
+        bucket,
+        userId: decoded.id_user,
+        role: decoded.role,
+        totalMs: Date.now() - startedAt,
+        fetchMs: fetchedAt - startedAt,
+        rows: ticketRowsAll.length,
+        filteredRows: ticketRows.length,
+        teknisiRows: teknisiRows.length,
+      });
 
       return buildRekapResponse(
         ticketRows,

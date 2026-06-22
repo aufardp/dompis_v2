@@ -68,7 +68,11 @@ export function TabTeknis({
         </div>
       </Section>
 
-      {(ticket.solution || ticket.descriptionActualSolution || ticket.descriptionSolutionDompis || ticket.pendingDompis) && (
+      {(ticket.solution ||
+        ticket.descriptionActualSolution ||
+        ticket.descriptionSolutionDompis ||
+        ticket.sqmUpdateReason ||
+        ticket.pendingDompis) && (
         <Section icon={<FileText size={14} />} title='Solution & Notes' fullWidth>
           {ticket.solution && (
             <div className='col-span-2'>
@@ -83,6 +87,11 @@ export function TabTeknis({
           {ticket.descriptionSolutionDompis && (
             <div className='col-span-2'>
               <Field label='Solution Dompis' value={ticket.descriptionSolutionDompis} fullWidth />
+            </div>
+          )}
+          {ticket.sqmUpdateReason && (
+            <div className='col-span-2'>
+              <Field label='SQM Update Reason' value={ticket.sqmUpdateReason} fullWidth />
             </div>
           )}
           {ticket.pendingDompis && (

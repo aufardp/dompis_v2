@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import flatpickr from 'flatpickr';
 import Label from './Label';
-import { CalenderIcon } from '../../icons';
+import CalenderIcon from '../../icons/calender-line.svg';
 import Hook = flatpickr.Options.Hook;
 import DateOption = flatpickr.Options.DateOption;
 

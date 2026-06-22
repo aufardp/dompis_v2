@@ -9,6 +9,17 @@ const optionalTrimmedString = (max: number) =>
     .optional()
     .transform((value) => (value && value.length > 0 ? value : undefined));
 
+const optionalNullableTrimmedString = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .optional()
+    .transform((value) =>
+      value === null ? null : value && value.length > 0 ? value : undefined,
+    );
+
 export const assignTicketSchema = z.object({
   ticketId: positiveInt,
   teknisiUserId: positiveInt,
@@ -56,6 +67,8 @@ export const updateTicketSchema = z.object({
       device_name: optionalTrimmedString(100),
       symptom: optionalTrimmedString(65535),
       alamat: optionalTrimmedString(65535),
+      sqmUpdateReason: optionalNullableTrimmedString(255),
+      sqm_update_reason: optionalNullableTrimmedString(255),
       pendingDompis: optionalTrimmedString(255),
       descriptionSolutionDompis: optionalTrimmedString(255),
       description_solution_dompis: optionalTrimmedString(255),

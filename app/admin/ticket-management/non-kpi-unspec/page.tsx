@@ -4,7 +4,7 @@ export default function TicketManagementNonKpiUnspecPage() {
   return (
     <TicketManagementBucketPage
       title='Unspec'
-      description='Bucket investigasi untuk UNSPEC dan UNSPEC-B2B yang belum punya klasifikasi final.'
+      description='Bucket investigasi untuk UNSPEC, UNSPEC-B2B, UNSPEC OHI yang butuh segera di amati.'
       icon='U'
       tone='amber'
       operationalBucket={['non_kpi_unspec']}

@@ -12,6 +12,7 @@ import {
   isTicketOpenLike,
   normalizeStatusUpdate,
 } from '@/app/libs/ticket-utils';
+import { getEffectiveFlaggingLabel } from '@/app/libs/tickets/effective';
 import B2BSection from './B2BSection';
 import { FilterBarB2B } from './filterbarb2b';
 import TicketTableTabs from './TicketTableTabs';
@@ -63,6 +64,11 @@ function hasValidGamasTicketId(value: string | null | undefined): boolean {
   );
 }
 
+function isB2BTicket(ticket: Ticket): boolean {
+  const seg = (ticket.customerSegment ?? '').toUpperCase();
+  return !['DCS', 'PL-TSEL'].includes(seg);
+}
+
 interface B2BPanelProps {
   searchQuery: string;
   workzoneFilter: string;
@@ -107,6 +113,9 @@ const B2BPanel = memo(function B2BPanel({
   const [b2bPage, setB2bPage] = useState(1);
   const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
   const [b2bClosePage, setB2bClosePage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'main' | 'validasi' | 'close'>(
+    'main',
+  );
   const b2bSectionRef = useRef<HTMLDivElement>(null);
   const b2bTableRef = useRef<HTMLDivElement>(null);
 
@@ -122,6 +131,7 @@ const B2BPanel = memo(function B2BPanel({
     limit: 10,
     validasiPage: b2bValidasiPage,
     validasiLimit: 10,
+    includeValidasiTickets: activeTab === 'validasi',
   });
 
   const b2bClosePageData = useDailyTicketPage({
@@ -135,6 +145,8 @@ const B2BPanel = memo(function B2BPanel({
     page: b2bClosePage,
     limit: 10,
     includeValidasi: false,
+    includeOptions: false,
+    enabled: activeTab === 'close',
   });
 
   const handleB2bTicketTypeChange = useCallback((types: string[]) => {
@@ -165,14 +177,14 @@ const B2BPanel = memo(function B2BPanel({
     setB2bClosePage(1);
   }, []);
 
+  const b2bBaseTickets = useMemo(
+    () => tickets.filter(isB2BTicket),
+    [tickets],
+  );
+
   const b2bGroupedData = useMemo(() => {
-    const b2bTickets = tickets.filter((t) => {
-      const seg = (t.customerSegment ?? '').toUpperCase();
-      const b2cSegments = ['DCS', 'PL-TSEL'];
-      return !b2cSegments.includes(seg);
-    });
     const groupMap = new Map<string, Ticket[]>();
-    for (const t of b2bTickets) {
+    for (const t of b2bBaseTickets) {
       const key = getB2BGroupKey(t.jenisTiket1);
       if (!groupMap.has(key)) groupMap.set(key, []);
       groupMap.get(key)!.push(t);
@@ -181,27 +193,34 @@ const B2BPanel = memo(function B2BPanel({
       groupKey,
       tickets: groupTickets,
     }));
-  }, [tickets]);
+  }, [b2bBaseTickets]);
 
   const clientB2bSummary = useMemo(() => {
-    const arr = tickets.filter((t) => {
-      const seg = (t.customerSegment ?? '').toUpperCase();
-      const b2cSegments = ['DCS', 'PL-TSEL'];
-      return !b2cSegments.includes(seg);
-    });
-    return {
-      total: arr.length,
-      open: arr.filter((t) => isTicketOpenLike(t.status_update)).length,
-      assigned: arr.filter((t) => isTicketInWork(t.status_update)).length,
-      close: arr.filter((t) => isTicketClosed(t.status_update)).length,
+    const summary = {
+      total: b2bBaseTickets.length,
+      open: 0,
+      assigned: 0,
+      close: 0,
       regulerCount: 0,
       sqmCount: 0,
-      ffgCount: arr.filter((t) => String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee').length,
-      gamasCount: arr.filter((t) => hasValidGamasTicketId(t.ticketIdGamas)).length,
-      p1Count: arr.filter((t) => t.flaggingManja === 'P1').length,
-      pPlusCount: arr.filter((t) => t.flaggingManja === 'P+').length,
+      ffgCount: 0,
+      gamasCount: 0,
+      p1Count: 0,
+      pPlusCount: 0,
     };
-  }, [tickets]);
+    for (const ticket of b2bBaseTickets) {
+      if (isTicketClosed(ticket.status_update)) summary.close++;
+      else if (isTicketInWork(ticket.status_update)) summary.assigned++;
+      else if (isTicketOpenLike(ticket.status_update)) summary.open++;
+
+      if (String(ticket.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee') summary.ffgCount++;
+      if (hasValidGamasTicketId(ticket.ticketIdGamas)) summary.gamasCount++;
+      const flag = getEffectiveFlaggingLabel(ticket);
+      if (flag === 'P1') summary.p1Count++;
+      if (flag === 'P+') summary.pPlusCount++;
+    }
+    return summary;
+  }, [b2bBaseTickets]);
 
   const b2bSectionSummary = useMemo(() => {
     const source = b2bSummaryFromApi ?? clientB2bSummary;
@@ -224,52 +243,61 @@ const B2BPanel = memo(function B2BPanel({
     b2bClosePageData.pagination.total,
   ]);
 
-  const isValidationTicket = useCallback((t: TicketTableItem) => {
+  const isValidationTicket = useCallback((t: Ticket) => {
     const statusUpdate = (t.status_update ?? '').trim().toLowerCase();
     const status = (t.status ?? '').trim().toLowerCase();
-    const worklogSummary = (t.worklogSummary ?? '').trim().toLowerCase();
+    const worklogSummary = (
+      (t as Ticket & { worklogSummary?: string | null }).worklogSummary ?? ''
+    )
+      .trim()
+      .toLowerCase();
     return status !== 'closed' && (statusUpdate === 'close' || worklogSummary === 'tech closed');
   }, []);
 
-  const ticketTableData = useMemo(
-    () => tickets.filter((t) => !isValidationTicket(t as unknown as TicketTableItem)).map(mapTicketForTable),
-    [tickets],
-  );
+  const b2bTicketTableData = useMemo(() => {
+    const rows: TicketTableItem[] = [];
+    for (const ticket of b2bBaseTickets) {
+      if (isValidationTicket(ticket)) continue;
 
-  const b2bTicketTableData = useMemo(() => ticketTableData
-    .filter((t) => {
-      const seg = (t.customerSegment ?? '').toUpperCase();
-      const b2cSegments = ['DCS', 'PL-TSEL'];
-      return !b2cSegments.includes(seg);
-    })
-    .filter((t) => {
-      if (b2bTicketTypeFilter.length === 0) return true;
-      return b2bTicketTypeFilter.includes(normalizeJenis(t.jenisTiket));
-    })
-    .filter((t) => {
-      if (b2bHasilVisitFilter.length === 0) return true;
-      if (b2bHasilVisitFilter.includes('close') && isTicketClosed(t.status_update)) return true;
-      const status = normalizeStatusUpdate(t.status_update);
-      return b2bHasilVisitFilter.some((f) => {
-        if (f === 'close') return false;
-        return status === f;
-      });
-    })
-    .filter((t) => {
-      if (b2bFlaggingFilter.length === 0) return true;
-      return b2bFlaggingFilter.some((f) => {
-        if (f === 'FFG') return String(t.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
-        if (f === 'GAMAS') {
-          const value = String(t.ticketIdGamas ?? '').trim();
-          return value.length > 0 && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(value.toLowerCase());
-        }
-        return t.flaggingManja === f;
-      });
-    })
-    .filter((t) => {
-      if (b2bTicketStatusFilter.length === 0) return true;
-      return b2bTicketStatusFilter.includes(String(t.status ?? '').trim());
-    }), [ticketTableData, b2bTicketTypeFilter, b2bHasilVisitFilter, b2bFlaggingFilter, b2bTicketStatusFilter]);
+      if (b2bTicketTypeFilter.length > 0) {
+        const normalizedJenis = normalizeJenis(ticket.jenisTiket);
+        if (!b2bTicketTypeFilter.includes(normalizedJenis)) continue;
+      }
+
+      if (b2bHasilVisitFilter.length > 0) {
+        const status = normalizeStatusUpdate(ticket.status_update);
+        const hasVisitMatch = b2bHasilVisitFilter.some((f) => {
+          if (f === 'close') return isTicketClosed(status);
+          return status === f;
+        });
+        if (!hasVisitMatch) continue;
+      }
+
+      if (b2bFlaggingFilter.length > 0) {
+        const hasFlagMatch = b2bFlaggingFilter.some((f) => {
+          if (f === 'FFG') return String(ticket.guaranteeStatus ?? '').trim().toLowerCase() === 'guarantee';
+          if (f === 'GAMAS') return hasValidGamasTicketId(ticket.ticketIdGamas);
+          return getEffectiveFlaggingLabel(ticket) === f;
+        });
+        if (!hasFlagMatch) continue;
+      }
+
+      if (b2bTicketStatusFilter.length > 0) {
+        const status = String(ticket.status ?? '').trim();
+        if (!b2bTicketStatusFilter.includes(status)) continue;
+      }
+
+      rows.push(mapTicketForTable(ticket));
+    }
+    return rows;
+  }, [
+    b2bBaseTickets,
+    isValidationTicket,
+    b2bTicketTypeFilter,
+    b2bHasilVisitFilter,
+    b2bFlaggingFilter,
+    b2bTicketStatusFilter,
+  ]);
 
   const b2bTableSummary = useMemo(() => {
     const serverSummary = b2bPageData.summary;
@@ -282,13 +310,20 @@ const B2BPanel = memo(function B2BPanel({
       };
     }
 
-    const breakdown = {
-      total: b2bTicketTableData.length,
-      open: b2bTicketTableData.filter((t) => isTicketOpenLike(t.status_update)).length,
-      assigned: b2bTicketTableData.filter((t) => isTicketInWork(t.status_update)).length,
-      close: b2bTicketTableData.filter((t) => isTicketClosed(t.status_update)).length,
+    let open = 0;
+    let assigned = 0;
+    let close = 0;
+    for (const ticket of b2bTicketTableData) {
+      if (isTicketClosed(ticket.status_update)) close++;
+      else if (isTicketInWork(ticket.status_update)) assigned++;
+      else if (isTicketOpenLike(ticket.status_update)) open++;
+    }
+    return {
+      total: b2bPageData.pagination.total,
+      open,
+      assigned,
+      close,
     };
-    return { ...breakdown, total: b2bPageData.pagination.total };
   }, [b2bPageData.summary, b2bTicketTableData, b2bPageData.pagination.total]);
 
   return (
@@ -314,6 +349,7 @@ const B2BPanel = memo(function B2BPanel({
         <TicketTableTabs
           section='b2b'
           accentColor='#3b82f6'
+          onTabChange={setActiveTab}
           mainTable={
             <TicketTableB2B
               tickets={b2bPageData.tickets}

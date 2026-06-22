@@ -91,6 +91,7 @@ export async function GET(
     const rows = await prisma.ticket_evidence.findMany({
       where: { ticket_id: ticketId },
       orderBy: { id: 'asc' },
+      take: 100,
       select: {
         id: true,
         file_name: true,

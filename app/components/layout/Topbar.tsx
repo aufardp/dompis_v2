@@ -22,6 +22,7 @@ import {
   Upload,
   SearchCheck,
   Clock3,
+  Loader2,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
 import { useTheme } from '@/app/contexts/ThemeContext';
@@ -222,7 +223,7 @@ export default function Topbar({
               : '';
           setSearchToast({
             type: 'success',
-            message: `Tiket ditemukan di ${getBucketLabelFromPath(targetPath)}. Halaman bucket sedang dibuka.`,
+            message: `Ditemukan di ${getBucketLabelFromPath(targetPath)}.`,
           });
           await router.push(
             `${targetPath}${separator}search=${encodeURIComponent(q)}${tabParam}`,
@@ -230,13 +231,13 @@ export default function Topbar({
         } else {
           setSearchToast({
             type: 'error',
-            message: 'Tiket tidak ditemukan di bucket operasional.',
+            message: 'Tidak ditemukan.',
           });
         }
       } catch {
         setSearchToast({
           type: 'error',
-          message: 'Pencarian gagal, coba lagi sebentar.',
+          message: 'Pencarian gagal.',
         });
       }
       setIsSearching(false);
@@ -253,27 +254,21 @@ export default function Topbar({
 
   useEffect(() => {
     const q = debouncedSearch.trim();
+    const liveQuery = searchValue.trim();
     if (isLocalSearch) {
       onSearch?.(q);
       return;
     }
     if (!q) return;
+    if (!liveQuery) return;
     if (q === urlSearch.trim()) return;
 
     navigateToSearch(q);
-  }, [debouncedSearch, isLocalSearch, navigateToSearch, onSearch, urlSearch]);
+  }, [debouncedSearch, isLocalSearch, navigateToSearch, onSearch, searchValue, urlSearch]);
 
   const clearGlobalSearchUrl = useCallback(() => {
     if (typeof window !== 'undefined') {
-      const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
-      if (lastRoute && lastRoute !== currentRouteWithoutSearch) {
-        window.sessionStorage.removeItem(LAST_SEARCH_ROUTE_KEY);
-        router.replace(lastRoute);
-        return;
-      }
-      if (lastRoute) {
-        window.sessionStorage.removeItem(LAST_SEARCH_ROUTE_KEY);
-      }
+      window.sessionStorage.removeItem(LAST_SEARCH_ROUTE_KEY);
     }
     const params = new URLSearchParams(searchParams.toString());
     params.delete('search');
@@ -281,7 +276,7 @@ export default function Topbar({
       ? `${pathname}?${params.toString()}`
       : pathname;
     router.replace(nextUrl);
-  }, [currentRouteWithoutSearch, pathname, router, searchParams]);
+  }, [pathname, router, searchParams]);
 
   const handleSearchInputChange = useCallback(
     (value: string) => {
@@ -289,30 +284,18 @@ export default function Topbar({
       if (value.trim()) return;
 
       setSearchToast(null);
-      if (typeof window !== 'undefined') {
-        const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
-        if (lastRoute && lastRoute !== currentRouteWithoutSearch) {
-          clearGlobalSearchUrl();
-          return;
-        }
-      }
-
       if (isLocalSearch) {
         onSearch?.('');
         return;
       }
 
-      if (urlSearch) {
-        clearGlobalSearchUrl();
-      }
+      clearGlobalSearchUrl();
     },
     [
       clearGlobalSearchUrl,
-      currentRouteWithoutSearch,
       isLocalSearch,
       onSearch,
       pathname,
-      urlSearch,
     ],
   );
 
@@ -332,13 +315,6 @@ export default function Topbar({
   const clearSearch = () => {
     setSearchValue('');
     setSearchToast(null);
-    if (typeof window !== 'undefined') {
-      const lastRoute = window.sessionStorage.getItem(LAST_SEARCH_ROUTE_KEY);
-      if (lastRoute) {
-        clearGlobalSearchUrl();
-        return;
-      }
-    }
     if (isLocalSearch) {
       onSearch?.('');
       return;
@@ -565,10 +541,18 @@ export default function Topbar({
 
       {isSearching && !isLocalSearch && (
         <div className='fixed inset-0 z-9999 flex items-center justify-center bg-black/30'>
-          <div className='bg-surface flex min-w-72 flex-col gap-3 rounded-2xl border border-(--border) px-8 py-6 shadow-2xl'>
-            <div className='h-3 w-28 rounded-full bg-slate-200 dark:bg-slate-700' />
-            <div className='h-5 w-44 rounded-full bg-slate-200 dark:bg-slate-700' />
-            <div className='h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800' />
+          <div className='bg-surface flex min-w-72 items-center gap-3 rounded-2xl border border-(--border) px-5 py-4 shadow-2xl'>
+            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-(--surface-2) text-(--text-secondary)'>
+              <Loader2 className='h-5 w-5 animate-spin' />
+            </div>
+            <div className='min-w-0'>
+              <p className='text-sm font-semibold text-(--text-primary)'>
+                Mencari tiket
+              </p>
+              <p className='truncate text-xs text-(--text-secondary)'>
+                Menelusuri data tiket yang cocok dengan kata kunci Anda.
+              </p>
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import FormField from './FormField';
 
-export default function TicketForm({ formData, handleChange, areas }: any) {
+export default function TicketForm({ formData, handleChange, areas, disabled }: any) {
   return (
     <div className='space-y-5'>
       <div className='grid gap-4 md:grid-cols-2'>
@@ -9,6 +9,7 @@ export default function TicketForm({ formData, handleChange, areas }: any) {
             name='contactName'
             value={formData.contactName}
             onChange={handleChange}
+            disabled={disabled}
             required
             className='input'
           />
@@ -19,6 +20,7 @@ export default function TicketForm({ formData, handleChange, areas }: any) {
             name='contactPhone'
             value={formData.contactPhone}
             onChange={handleChange}
+            disabled={disabled}
             required
             className='input'
           />

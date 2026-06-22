@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithAuth, logoutUser } from '@/app/libs/fetcher';

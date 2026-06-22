@@ -57,6 +57,7 @@ interface TicketTableTabsProps {
   searching?: boolean;
   onAssign?: (ticketId: number | string) => void;
   forceMainTabKey?: string;
+  onTabChange?: (tab: 'main' | 'validasi' | 'close') => void;
 }
 
 export default function TicketTableTabs({
@@ -75,6 +76,7 @@ export default function TicketTableTabs({
   searching,
   onAssign,
   forceMainTabKey,
+  onTabChange,
 }: TicketTableTabsProps) {
   const STORAGE_KEY = `admin:tab:${section}`;
 
@@ -106,6 +108,7 @@ export default function TicketTableTabs({
     } catch {
       // ignore
     }
+    onTabChange?.(activeTab);
   }, [activeTab, STORAGE_KEY, mounted]);
 
   useEffect(() => {
@@ -154,7 +157,10 @@ export default function TicketTableTabs({
             <button
               key={tab.key}
               type='button'
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                onTabChange?.(tab.key);
+              }}
               className={clsx(
                 'flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold whitespace-nowrap transition-all duration-200',
                 isActive

@@ -2,14 +2,16 @@
 
 import Link from 'next/link';
 import clsx from 'clsx';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
+import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
 import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
+import { queryKeys } from '@/app/libs/query-keys';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
@@ -17,8 +19,7 @@ import {
 import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
-import ServiceAreaTable from './ServiceAreaTable';
-import AdminAccordion from '@/app/components/ui/AdminAccordion';
+import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
 
 const BUCKET_OPTIONS = [
   { value: 'all', label: 'All' },
@@ -71,6 +72,89 @@ type BucketSummaryLike = {
   ffgCount?: number;
   gamasCount?: number;
 };
+
+function TechnicianSummaryCards({
+  totalTechnicians,
+  idleCount,
+  assigned,
+  onProgress,
+  pending,
+  closedToday,
+}: {
+  totalTechnicians: number;
+  idleCount: number;
+  assigned: number;
+  onProgress: number;
+  pending: number;
+  closedToday: number;
+}) {
+  const activeTechnicians = Math.max(totalTechnicians - idleCount, 0);
+
+  return (
+    <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
+      <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/70'>
+        <p className='text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase'>
+          Total Teknisi
+        </p>
+        <p className='mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-50'>
+          {totalTechnicians.toLocaleString('id-ID')}
+        </p>
+        <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
+          {idleCount.toLocaleString('id-ID')} idle •{' '}
+          {activeTechnicians.toLocaleString('id-ID')} aktif
+        </p>
+      </div>
+
+      <div className='rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10'>
+        <p className='text-[10px] font-bold tracking-[0.22em] text-blue-700 uppercase dark:text-blue-200'>
+          Menunggu
+        </p>
+        <p className='mt-2 text-2xl font-black tracking-tight text-blue-700 dark:text-blue-200'>
+          {assigned.toLocaleString('id-ID')}
+        </p>
+        <p className='mt-1 text-xs text-blue-600/80 dark:text-blue-200/70'>
+          assigned
+        </p>
+      </div>
+
+      <div className='rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 shadow-sm dark:border-orange-500/20 dark:bg-orange-500/10'>
+        <p className='text-[10px] font-bold tracking-[0.22em] text-orange-700 uppercase dark:text-orange-200'>
+          Pending
+        </p>
+        <p className='mt-2 text-2xl font-black tracking-tight text-orange-700 dark:text-orange-200'>
+          {pending.toLocaleString('id-ID')}
+        </p>
+        <p className='mt-1 text-xs text-orange-600/80 dark:text-orange-200/70'>
+          pending
+        </p>
+      </div>
+
+      <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10'>
+        <p className='text-[10px] font-bold tracking-[0.22em] text-amber-700 uppercase dark:text-amber-200'>
+          Dikerjakan
+        </p>
+        <p className='mt-2 text-2xl font-black tracking-tight text-amber-700 dark:text-amber-200'>
+          {onProgress.toLocaleString('id-ID')}
+        </p>
+        <p className='mt-1 text-xs text-amber-600/80 dark:text-amber-200/70'>
+          on_progress
+        </p>
+      </div>
+
+      <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10'>
+        <p className='text-[10px] font-bold tracking-[0.22em] text-emerald-700 uppercase dark:text-emerald-200'>
+          Selesai Hari Ini
+        </p>
+        <p className='mt-2 text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-200'>
+          {closedToday.toLocaleString('id-ID')}
+        </p>
+        <p className='mt-1 text-xs text-emerald-600/80 dark:text-emerald-200/70'>
+          closed
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function PriorityPills({ counts }: { counts?: FlaggingCounts }) {
   const items = [
@@ -306,6 +390,7 @@ export default function TicketManagementOverviewPage() {
   const [workzone, setWorkzone] = useState('');
   const [selectedBucket, setSelectedBucket] = useState('all');
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
   const [assignTarget, setAssignTarget] = useState<{
     ticketId: string;
     idTicket?: number;
@@ -317,8 +402,19 @@ export default function TicketManagementOverviewPage() {
     true,
     workzone || undefined,
   );
+  const {
+    technicians: overviewTechnicians,
+    summary: technicianSummary,
+    loading: techniciansLoading,
+  } = useTechnicianTickets(
+    { search: '', workzone: workzone || '', status: 'all' },
+    180,
+    true,
+    { includeClosedToday: true, closedTodayLimit: 20, enabled: showSecondaryPanels },
+  );
   const { data: opsSummary } = useOperationsSummary({
     workzone: workzone || undefined,
+    enabled: showSecondaryPanels,
   });
   const {
     lastSyncLabel,
@@ -327,13 +423,23 @@ export default function TicketManagementOverviewPage() {
     isInProgress,
     triggerSync,
   } = useSyncStatus(30_000);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setShowSecondaryPanels(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzone(value);
   }, []);
 
   const handleInvalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.technicians.all });
   }, [queryClient]);
 
   const { isConnected } = useTicketEvents({
@@ -433,6 +539,23 @@ export default function TicketManagementOverviewPage() {
       ),
     [visibleCardData],
   );
+
+  const technicianOrderStats = useMemo(() => {
+    return overviewTechnicians.reduce(
+      (acc, tech) => ({
+        assigned: acc.assigned + (tech.order_counts?.assigned ?? 0),
+        onProgress: acc.onProgress + (tech.order_counts?.on_progress ?? 0),
+        pending: acc.pending + (tech.order_counts?.pending ?? 0),
+        closedToday: acc.closedToday + (tech.total_closed_today ?? 0),
+      }),
+      {
+        assigned: 0,
+        onProgress: 0,
+        pending: 0,
+        closedToday: 0,
+      },
+    );
+  }, [overviewTechnicians]);
 
   const flaggingTotals = useMemo(() => {
     if (selectedBucket === 'all') return data?.totals;
@@ -693,70 +816,115 @@ export default function TicketManagementOverviewPage() {
                   ))}
                 </div>
               </div>
+
+              {showSecondaryPanels ? (
+                <>
+                  <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
+                    <div className='mb-3 flex flex-wrap items-end justify-between gap-2'>
+                      <div>
+                        <p className='text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                          Summary Teknisi
+                        </p>
+                        <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
+                          Snapshot teknisi aktif pada workzone terpilih
+                        </p>
+                      </div>
+                      <p className='text-[11px] text-(--text-muted)'>
+                        {technicianSummary.idle_count.toLocaleString('id-ID')}{' '}
+                        idle
+                      </p>
+                    </div>
+
+                    <TechnicianSummaryCards
+                      totalTechnicians={
+                        technicianSummary.total_active +
+                        technicianSummary.idle_count
+                      }
+                      idleCount={technicianSummary.idle_count}
+                      assigned={technicianOrderStats.assigned}
+                      onProgress={technicianOrderStats.onProgress}
+                      pending={technicianOrderStats.pending}
+                      closedToday={technicianOrderStats.closedToday}
+                    />
+
+                    <div className='mt-4'>
+                      {techniciansLoading && (
+                        <p className='mb-2 text-[11px] text-(--text-muted)'>
+                          Memuat summary teknisi...
+                        </p>
+                      )}
+                      <TechnicianSummaryTable
+                        technicians={overviewTechnicians}
+                        onFilterByTech={(_techId, _filterType) => {}}
+                      />
+                    </div>
+                  </div>
+
+                  <HourlyChart
+                    workzone={workzone || undefined}
+                    bucket={selectedBucket}
+                  />
+
+                  <SymptomChart
+                    workzone={workzone || undefined}
+                    bucket={selectedBucket}
+                  />
+
+                  <div className='rounded-3xl border border-(--border) bg-(--surface) p-5 shadow-sm'>
+                    <div className='flex flex-wrap items-center justify-between gap-3'>
+                      <div>
+                        <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
+                          Quick Access
+                        </p>
+                        <h2 className='mt-1 text-lg font-black text-(--text-primary)'>
+                          Shortcut ke Area Kerja
+                        </h2>
+                        <p className='mt-1 text-sm text-(--text-muted)'>
+                          Masuk langsung ke bucket yang sedang dipantau.
+                        </p>
+                      </div>
+                      <div className='flex flex-wrap gap-2'>
+                        {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => (
+                          <Link
+                            key={item.key}
+                            href={item.path}
+                            className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                        <Link
+                          key={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].key}
+                          href={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].path}
+                          className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
+                        >
+                          {TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].label}
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className='grid gap-4 xl:grid-cols-2'>
+                  <div className='h-[340px] rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='h-[340px] rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='xl:col-span-2 h-[320px] rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='rounded-3xl border border-(--border) bg-(--surface-2) px-5 py-4 xl:col-span-2'>
+                    <div className='h-6 w-48 rounded-full bg-(--border)' />
+                    <div className='mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <div
+                          key={i}
+                          className='h-16 rounded-2xl border border-(--border) bg-(--surface)'
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </section>
-
-        {/* ─── HOURLY CHART ─── */}
-        <HourlyChart workzone={workzone || undefined} bucket={selectedBucket} />
-
-        {/* ─── SYMPTOM CHART ─── */}
-        <SymptomChart
-          workzone={workzone || undefined}
-          bucket={selectedBucket}
-        />
-
-        {/* ─── SERVICE AREA PERFORMANCE ─── */}
-        <AdminAccordion
-          items={[
-            {
-              id: 'service-area-performance',
-              title: 'Service Area Performance',
-              defaultOpen: false,
-              children: (
-                <ServiceAreaTable
-                  areas={opsSummary?.serviceAreas ?? []}
-                  loading={isLoading && !opsSummary?.serviceAreas?.length}
-                />
-              ),
-            },
-          ]}
-        />
-
-        {/* ─── QUICK ACCESS ─── */}
-        <div className='rounded-3xl border border-(--border) bg-(--surface) p-5 shadow-sm'>
-          <div className='flex flex-wrap items-center justify-between gap-3'>
-            <div>
-              <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                Quick Access
-              </p>
-              <h2 className='mt-1 text-lg font-black text-(--text-primary)'>
-                Shortcut ke Area Kerja
-              </h2>
-              <p className='mt-1 text-sm text-(--text-muted)'>
-                Masuk langsung ke bucket yang sedang dipantau.
-              </p>
-            </div>
-            <div className='flex flex-wrap gap-2'>
-              {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.path}
-                  className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <Link
-                key={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].key}
-                href={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].path}
-                className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
-              >
-                {TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].label}
-              </Link>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ─── ASSIGN MODAL ─── */}

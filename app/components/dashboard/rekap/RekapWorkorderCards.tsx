@@ -23,7 +23,6 @@ interface BucketRecord {
   sqmUpdate: SegCount;
   obsolete: SegCount;
 }
-
 interface WorkzoneRow {
   workzone: string;
   buckets: BucketRecord;

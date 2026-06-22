@@ -24,7 +24,11 @@ export function useTechnicianTickets(
   filters: TechnicianFilters,
   autoRefreshSeconds = 180,
   includeAbsent = false,
-  opts?: { includeClosedToday?: boolean; closedTodayLimit?: number },
+  opts?: {
+    includeClosedToday?: boolean;
+    closedTodayLimit?: number;
+    enabled?: boolean;
+  },
 ): UseTechnicianTicketsReturn {
   const queryKey = queryKeys.technicians.lists({
     ...filters,
@@ -37,6 +41,7 @@ export function useTechnicianTickets(
     queryKey,
     staleTime: 30_000,
     refetchInterval: autoRefreshSeconds > 0 ? autoRefreshSeconds * 1000 : false,
+    enabled: opts?.enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);

@@ -7,21 +7,39 @@ import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { nowWib, toWibDateString } from '@/lib/timezone';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
+import { getErrorMessage } from '@/app/libs/apiError';
+import {
+  bucketHSI,
+  bucketManja,
+  bucketStandard,
+  calculateDurationHours,
+  matchesDurasiPanel,
+  STANDARD_BUCKETS as DURASI_STANDARD_BUCKETS,
+  MANJA_BUCKETS as DURASI_MANJA_BUCKETS,
+  HSI_BUCKETS as DURASI_HSI_BUCKETS,
+} from './durasi-logic';
 
-const STANDARD_BUCKETS = ['0-3J', '3-6J', '6-12J', '12-24J', '24-36J', '>36J'];
-const MANJA_BUCKETS = ['0-1d', '1-2d', '2-3d', 'EXPIRED'];
-const HSI_BUCKETS = ['<1h', '<3h', '<4h', '<12h', '<24h', 'EXPIRED'];
+const STANDARD_BUCKETS = DURASI_STANDARD_BUCKETS;
+const MANJA_BUCKETS = DURASI_MANJA_BUCKETS;
+const HSI_BUCKETS = DURASI_HSI_BUCKETS;
 
 interface RawDurasiRow {
   region: string | null;
   area: string | null;
   sa_name: string | null;
   reported_date: string | null;
+  status: string | null;
   customer_type: string | null;
   jenis_tiket: string | null;
   flagging_manja: string | null;
   manja_expired: string | null;
   summary: string | null;
+}
+
+interface WorkzoneSeed {
+  area: string;
+  region: string;
+  sa: string;
 }
 
 interface PanelArea {
@@ -41,6 +59,10 @@ interface PanelData {
 
 interface KpiSummaryCounts {
   total: number;
+  open: number;
+  assigned: number;
+  unassigned: number;
+  close: number;
   kpiCustomer: number;
   kpiProactive: number;
   nonKpiUnspec: number;
@@ -57,53 +79,82 @@ interface DashboardDurasiResponse {
   selectedBucket: string;
 }
 
-function calculateHours(reportedDate: string | null): number | null {
-  if (!reportedDate) return null;
-  const reported = new Date(reportedDate);
-  if (isNaN(reported.getTime())) return null;
-  return (nowWib().getTime() - reported.getTime()) / 3_600_000;
-}
+function summarizeOverviewBucket(
+  overview: Awaited<ReturnType<typeof DailyTicketService.getTicketManagementOverviewSummary>>,
+  bucket: KpiBucketKey,
+): KpiSummaryCounts {
+  const cards = overview.cards;
 
-function bucketStandard(hours: number | null): number {
-  if (hours === null) return 5;
-  if (hours <= 3) return 0;
-  if (hours <= 6) return 1;
-  if (hours <= 12) return 2;
-  if (hours <= 24) return 3;
-  if (hours <= 36) return 4;
-  return 5;
-}
+  if (bucket === 'all') {
+    const selectedCards = Object.values(cards);
+    return selectedCards.reduce<KpiSummaryCounts>(
+      (acc, card) => ({
+        total: acc.total + card.total,
+        open: acc.open + card.open,
+        assigned: acc.assigned + card.assigned,
+        unassigned: acc.unassigned + card.open,
+        close: acc.close + card.close,
+        kpiCustomer: acc.kpiCustomer + (card === cards.kpiCustomer ? card.total : 0),
+        kpiProactive: acc.kpiProactive + (card === cards.kpiProactive ? card.total : 0),
+        nonKpiUnspec: acc.nonKpiUnspec + (card === cards.nonKpiUnspec ? card.total : 0),
+        nonTechnical: acc.nonTechnical + (card === cards.nonTechnical ? card.total : 0),
+        sqmUpdate: acc.sqmUpdate + (card === cards.sqmUpdate ? card.total : 0),
+        obsolete: acc.obsolete + (card === cards.obsolete ? card.total : 0),
+      }),
+      {
+        total: 0,
+        open: 0,
+        assigned: 0,
+        unassigned: 0,
+        close: 0,
+        kpiCustomer: 0,
+        kpiProactive: 0,
+        nonKpiUnspec: 0,
+        nonTechnical: 0,
+        sqmUpdate: 0,
+        obsolete: 0,
+      },
+    );
+  }
 
-function bucketManja(row: { flagging_manja: string | null; reported_date: string | null }): number {
-  if (row.flagging_manja === 'EXPIRED') return 3;
-  if (!row.reported_date) return 3;
-  const days = (nowWib().getTime() - new Date(row.reported_date).getTime()) / 86_400_000;
-  if (days <= 1) return 0;
-  if (days <= 2) return 1;
-  if (days <= 3) return 2;
-  return 3;
-}
+  const selected =
+    bucket === 'kpi_customer'
+      ? cards.kpiCustomer
+      : bucket === 'kpi_proactive'
+        ? cards.kpiProactive
+        : bucket === 'non_kpi_unspec'
+          ? cards.nonKpiUnspec
+          : bucket === 'non_technical'
+            ? cards.nonTechnical
+            : bucket === 'sqm_update'
+              ? cards.sqmUpdate
+              : cards.obsolete;
 
-function bucketHSI(hours: number | null): number {
-  if (hours === null) return 5;
-  if (hours < 1) return 0;
-  if (hours < 3) return 1;
-  if (hours < 4) return 2;
-  if (hours < 12) return 3;
-  if (hours < 24) return 4;
-  return 5;
+  return {
+    total: selected.total,
+    open: selected.open,
+    assigned: selected.assigned,
+    unassigned: selected.open,
+    close: selected.close,
+    kpiCustomer: cards.kpiCustomer.total,
+    kpiProactive: cards.kpiProactive.total,
+    nonKpiUnspec: cards.nonKpiUnspec.total,
+    nonTechnical: cards.nonTechnical.total,
+    sqmUpdate: cards.sqmUpdate.total,
+    obsolete: cards.obsolete.total,
+  };
 }
 
 const PANEL_CONFIGS = [
-  { type: 'REGULER', label: 'REGULER', filter: (t: RawDurasiRow) => t.customer_type === 'REGULER', bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
-  { type: 'HVC_DIAMOND_PLATINUM', label: 'HVC DIAMOND & PLATINUM', filter: (t: RawDurasiRow) => ['HVC_DIAMOND', 'HVC_PLATINUM'].includes(t.customer_type ?? ''), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
-  { type: 'HVC_GOLD', label: 'HVC GOLD', filter: (t: RawDurasiRow) => t.customer_type === 'HVC_GOLD', bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
-  { type: 'MANJA', label: 'MANJA', filter: (t: RawDurasiRow) => !!t.flagging_manja || t.jenis_tiket?.toLowerCase().includes('manja'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
-  { type: 'FFG', label: 'FFG', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('ffg'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
-  { type: 'SQM_UPDATE', label: 'SQM UPDATE', filter: (t: RawDurasiRow) => (t.summary ?? '').startsWith('[SQM-UPDATE]'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
-  { type: 'SQM', label: 'SQM', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('sqm'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
-  { type: 'ANAK_GAMAS', label: 'ANAK GAMAS', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('anak_gamas'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateHours(t.reported_date)), buckets: STANDARD_BUCKETS },
-  { type: 'HSI', label: 'HSI', filter: (t: RawDurasiRow) => t.jenis_tiket?.toLowerCase().includes('hsi'), bucketFn: (t: RawDurasiRow) => bucketHSI(calculateHours(t.reported_date)), buckets: HSI_BUCKETS },
+  { type: 'REGULER', label: 'REGULER', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'REGULER'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'HVC_DIAMOND_PLATINUM', label: 'HVC DIAMOND & PLATINUM', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'HVC_DIAMOND_PLATINUM'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'HVC_GOLD', label: 'HVC GOLD', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'HVC_GOLD'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'MANJA', label: 'MANJA', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'MANJA'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
+  { type: 'FFG', label: 'FFG', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'FFG'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
+  { type: 'SQM_UPDATE', label: 'SQM UPDATE', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'SQM_UPDATE'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
+  { type: 'SQM', label: 'SQM', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'SQM'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
+  { type: 'ANAK_GAMAS', label: 'ANAK GAMAS', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'ANAK_GAMAS'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'HSI', label: 'HSI', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'HSI'), bucketFn: (t: RawDurasiRow) => bucketHSI(calculateDurationHours(t.reported_date)), buckets: HSI_BUCKETS },
 ];
 
 function buildDurasiTicketsCacheKey(
@@ -129,12 +180,24 @@ function createAccumulator(config: (typeof PANEL_CONFIGS)[number]): PanelAccumul
   return {
     type: config.type,
     label: config.label,
-    buckets: config.buckets,
+    buckets: [...config.buckets],
     areaMap: new Map(),
     totals: new Array(config.buckets.length).fill(0),
     grandTotal: 0,
     showTotal: config.showTotal ?? false,
   };
+}
+
+function prefillAccumulator(acc: PanelAccumulator, workzones: WorkzoneSeed[]) {
+  for (const wz of workzones) {
+    if (!acc.areaMap.has(wz.area)) {
+      acc.areaMap.set(wz.area, { region: wz.region, saMap: new Map() });
+    }
+    const areaData = acc.areaMap.get(wz.area)!;
+    if (!areaData.saMap.has(wz.sa)) {
+      areaData.saMap.set(wz.sa, new Array(acc.buckets.length).fill(0));
+    }
+  }
 }
 
 function addToAccumulator(
@@ -179,11 +242,50 @@ function finalizePanel(acc: PanelAccumulator): PanelData {
   };
 }
 
+async function getVisibleWorkzones(role: string, userId: number, isSuperAdmin: boolean, userWorkzones: string[] | null): Promise<WorkzoneSeed[]> {
+  const rows = await prisma.service_area.findMany({
+    where: isSuperAdmin
+      ? undefined
+      : {
+          nama_sa: { in: userWorkzones ?? [] },
+        },
+    take: 500,
+    select: {
+      nama_sa: true,
+      area: {
+        select: {
+          nama_area: true,
+          branch: {
+            select: {
+              region: { select: { nama_region: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return rows
+    .map((row) => ({
+      area: row.area?.nama_area ?? 'UNKNOWN',
+      region: row.area?.branch?.region?.nama_region ?? 'UNKNOWN',
+      sa: row.nama_sa ?? 'UNKNOWN',
+    }))
+    .sort((a, b) =>
+      a.area.localeCompare(b.area) ||
+      a.sa.localeCompare(b.sa),
+    );
+}
+
 function buildAllPanels(
   tickets: RawDurasiRow[],
   syncDate: string,
+  workzones: WorkzoneSeed[],
 ): Omit<DashboardDurasiResponse, 'kpiSummary' | 'selectedBucket'> {
   const accumulators = PANEL_CONFIGS.map(createAccumulator);
+  for (const acc of accumulators) {
+    prefillAccumulator(acc, workzones);
+  }
 
   for (const ticket of tickets) {
     for (let i = 0; i < PANEL_CONFIGS.length; i++) {
@@ -243,7 +345,7 @@ async function getFilteredTickets(
         ...filters,
         includeClosed: true,
       });
-      parts.push(`(SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_workzone) WHERE ${whereClause})`);
+      parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause} LIMIT 5000)`);
       allParams.push(...params);
     }
 
@@ -256,6 +358,7 @@ async function getFilteredTickets(
       COALESCE(a.nama_area, 'UNKNOWN')   AS area,
       COALESCE(sa.nama_sa, 'UNKNOWN')    AS sa_name,
       t.reported_date,
+      t.status,
       t.customer_type,
       CONCAT_WS(' ', t.jenis_tiket_1, t.jenis_tiket_2) AS jenis_tiket,
       t.flagging_manja,
@@ -289,7 +392,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         error: 'Tidak ada Service Area yang dikonfigurasi untuk akun ini',
         panels: [], syncDate: today, generatedAt: new Date().toISOString(),
-        kpiSummary: { total: 0, kpiCustomer: 0, kpiProactive: 0, nonKpiUnspec: 0, nonTechnical: 0, sqmUpdate: 0, obsolete: 0 },
+        kpiSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          unassigned: 0,
+          close: 0,
+          kpiCustomer: 0,
+          kpiProactive: 0,
+          nonKpiUnspec: 0,
+          nonTechnical: 0,
+          sqmUpdate: 0,
+          obsolete: 0,
+        },
         selectedBucket: bucket,
       });
     }
@@ -301,20 +416,18 @@ export async function GET(request: NextRequest) {
         decoded.role,
         decoded.id_user,
       );
-      const kpiSummary = {
-        total: overview.totals.total,
-        kpiCustomer: overview.cards.kpiCustomer.total,
-        kpiProactive: overview.cards.kpiProactive.total,
-        nonKpiUnspec: overview.cards.nonKpiUnspec.total,
-        nonTechnical: overview.cards.nonTechnical.total,
-        sqmUpdate: overview.cards.sqmUpdate.total,
-        obsolete: overview.cards.obsolete.total,
-      };
-
+      const kpiSummary = summarizeOverviewBucket(overview, bucket);
       const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket, today);
 
+      const visibleWorkzones = await getVisibleWorkzones(
+        decoded.role,
+        decoded.id_user,
+        isSuperAdmin,
+        workzones,
+      );
+
       return {
-        ...buildAllPanels(tickets, today),
+        ...buildAllPanels(tickets, today, visibleWorkzones),
         kpiSummary,
         selectedBucket: bucket,
       };
@@ -326,8 +439,8 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     logger.error('Dashboard durasi error:', error);
     if (error.status === 401 || error.status === 403) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json({ error: getErrorMessage(error, 'Unauthorized') }, { status: error.status });
     }
-    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error, 'Internal server error') }, { status: 500 });
   }
 }

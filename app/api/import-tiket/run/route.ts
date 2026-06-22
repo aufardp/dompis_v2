@@ -242,6 +242,7 @@ export async function POST(req: Request) {
 
       const existingIncidents = await prisma.ticket_raw.findMany({
         where: { incident: { in: parsedRows.map((r) => r.incident) } },
+        take: 10000,
         select: {
           incident: true,
           sourceHash: true,

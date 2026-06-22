@@ -178,6 +178,7 @@ export function getFlaggingManjaPriority(ticket: TicketBase): number {
   const label = getEffectiveFlaggingLabel(ticket);
   if (label === 'P1') return 3;
   if (label === 'P+') return 2;
+  if (label === 'EXPIRED') return 0;
   return 1;
 }
 

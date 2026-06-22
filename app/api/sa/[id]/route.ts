@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getServiceAreaById } from "@/app/libs/services/serviceArea.service";
 import { logger } from '@/lib/observability/logger';
+import { protectApi } from '@/app/libs/protectApi';
 
 export async function GET(
    req: Request,
    { params }: { params: Promise<{ id: string }> },
 ) {
    try {
+      await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin', 'teknisi']);
+
       const { id } = await params;
 
       if (!id) {

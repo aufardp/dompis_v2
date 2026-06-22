@@ -8,6 +8,10 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { getCache, setCache } from '@/lib/cache';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { logger } from '@/lib/observability/logger';
+import {
+  classifyTechnicianBucket,
+  getTechnicianBucketLabel,
+} from '@/app/libs/technician-bucket';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,9 +86,16 @@ function mapTechnicianTicket(t: {
   reported_date: string | null;
   status_update: string | null;
   workzone?: string | null;
+  source_ticket?: string | null;
+  classification_flag?: string | null;
+  classification_path?: string | null;
+  channel?: string | null;
+  summary?: string | null;
+  jenis_tiket_1?: string | null;
   jenis_tiket_2?: string | null;
 }) {
   const { age, hours } = calculateAge(t.reported_date);
+  const bucket = classifyTechnicianBucket(t);
   return {
     idTicket: t.id_ticket,
     ticket: t.incident,
@@ -96,9 +107,32 @@ function mapTechnicianTicket(t: {
     workzone: t.workzone ?? null,
     age,
     ageHours: hours,
+    operationalBucket: bucket,
+    operationalBucketLabel: getTechnicianBucketLabel(bucket),
+    jenisTiket1: t.jenis_tiket_1 ?? null,
     jenisTiket: t.jenis_tiket_2 ?? undefined,
   };
 }
+
+const technicianTicketSelect = {
+  id_ticket: true,
+  incident: true,
+  contact_name: true,
+  customer_type: true,
+  service_no: true,
+  reported_date: true,
+  status_update: true,
+  teknisi_user_id: true,
+  closed_at: true,
+  workzone: true,
+  source_ticket: true,
+  classification_flag: true,
+  classification_path: true,
+  channel: true,
+  summary: true,
+  jenis_tiket_1: true,
+  jenis_tiket_2: true,
+} as const;
 
 export async function GET(request: NextRequest) {
   try {
@@ -118,7 +152,7 @@ export async function GET(request: NextRequest) {
       Math.min(10, Number(closedTodayLimitRaw || 3) || 3),
     );
 
-    const cacheKey = `technicians:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
+    const cacheKey = `technicians:v2:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
     const cached = await getCache(cacheKey);
     if (cached) {
       return NextResponse.json({
@@ -130,6 +164,7 @@ export async function GET(request: NextRequest) {
 
     const [currentUserServiceAreas, presentTechnicianIds] = await Promise.all([
       prisma.user_sa.findMany({
+        take: 100,
         where: { user_id: currentUserId },
         include: { service_area: { select: { id_sa: true, nama_sa: true } } },
       }),
@@ -159,18 +194,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const uniqueTechnicianIds = [
-      ...new Set(
-        (
-          await prisma.user_sa.findMany({
-            where: { sa_id: { in: currentUserSaIds } },
-            select: { user_id: true },
-          })
-        )
-          .map((usa) => usa.user_id)
-          .filter((id): id is number => id !== null && id !== undefined),
-      ),
-    ];
+      const uniqueTechnicianIds = [
+        ...new Set(
+          (
+            await prisma.user_sa.findMany({
+              take: 1000,
+              where: { sa_id: { in: currentUserSaIds } },
+              select: { user_id: true },
+            })
+          )
+            .map((usa) => usa.user_id)
+            .filter((id): id is number => id !== null && id !== undefined),
+        ),
+      ];
 
     const technicianRoleId = 4;
 
@@ -201,25 +237,24 @@ export async function GET(request: NextRequest) {
       closedToday,
     ] = await Promise.all([
       prisma.users.findMany({
+        take: 1000,
         where: technicianWhere,
         select: { id_user: true, nama: true, nik: true },
         orderBy: { nama: 'asc' },
       }),
       prisma.user_sa.findMany({
+        take: 1000,
         where: { user_id: { in: uniqueTechnicianIds } },
         include: { service_area: { select: { id_sa: true, nama_sa: true } } },
       }),
       prisma.cluster_assignment.findMany({
+        take: 1000,
         where: { teknisi_id: { in: uniqueTechnicianIds }, assigned_date: todayStr, is_active: true },
         include: { cluster: { select: { nama_cluster: true } } },
       }),
       prisma.ticket.findMany({
         where: { teknisi_user_id: { in: uniqueTechnicianIds }, status_update: 'pending' },
-        select: {
-          id_ticket: true, incident: true, contact_name: true, customer_type: true,
-          service_no: true, reported_date: true, status_update: true,
-          teknisi_user_id: true, closed_at: true, workzone: true, jenis_tiket_2: true,
-        },
+        select: technicianTicketSelect,
         orderBy: { reported_date: 'asc' },
         take: 500,
       }),
@@ -231,11 +266,7 @@ export async function GET(request: NextRequest) {
             some: { assigned_at: { gte: today, lte: todayEnd }, is_active: true },
           },
         },
-        select: {
-          id_ticket: true, incident: true, contact_name: true, customer_type: true,
-          service_no: true, reported_date: true, status_update: true,
-          teknisi_user_id: true, closed_at: true, workzone: true, jenis_tiket_2: true,
-        },
+        select: technicianTicketSelect,
         orderBy: { reported_date: 'asc' },
         take: 500,
       }),
@@ -247,9 +278,7 @@ export async function GET(request: NextRequest) {
               closed_at: { gte: today, lte: todayEnd },
             },
             select: {
-              id_ticket: true, incident: true, contact_name: true, customer_type: true,
-              service_no: true, reported_date: true, status_update: true,
-              teknisi_user_id: true, closed_at: true, jenis_tiket_2: true,
+              ...technicianTicketSelect,
             },
             orderBy: { closed_at: 'desc' },
             take: closedTodayLimit,

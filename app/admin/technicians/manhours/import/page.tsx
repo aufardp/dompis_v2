@@ -14,7 +14,6 @@ import {
   BarChart3,
   RotateCcw,
 } from 'lucide-react';
-import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import { fetchWithAuth } from '@/app/libs/fetcher';

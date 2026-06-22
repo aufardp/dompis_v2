@@ -2,6 +2,7 @@
 
 import prisma from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
+import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
 
 // ── ActivityType enum (defined locally since Prisma types aren't generated) ──
 export enum ActivityType {
@@ -16,20 +17,32 @@ export enum ActivityType {
 
 // ── Workzone ──────────────────────────────────────────────────────────────────
 export async function getWorkzonesForUser(userId: number): Promise<string[]> {
-  const userSas = await prisma.user_sa.findMany({
-    where: { user_id: userId },
-    include: { service_area: true },
-  });
-  return userSas
-    .map((us) => us.service_area?.nama_sa)
-    .filter((name): name is string => name !== null && name !== undefined);
+  return getOrSetCache(
+    `ticket_helpers:workzones:${userId}`,
+    async () => {
+      const userSas = await prisma.user_sa.findMany({
+        where: { user_id: userId },
+        include: { service_area: true },
+      });
+      return userSas
+        .map((us) => us.service_area?.nama_sa)
+        .filter((name): name is string => name !== null && name !== undefined);
+    },
+    DASHBOARD_CACHE_TTL,
+  );
 }
 
 export async function resolveWorkzoneName(
   saId: number,
 ): Promise<string | null> {
-  const sa = await prisma.service_area.findUnique({ where: { id_sa: saId } });
-  return sa?.nama_sa ?? null;
+  return getOrSetCache(
+    `ticket_helpers:workzone_name:${saId}`,
+    async () => {
+      const sa = await prisma.service_area.findUnique({ where: { id_sa: saId } });
+      return sa?.nama_sa ?? null;
+    },
+    DASHBOARD_CACHE_TTL,
+  );
 }
 
 // ── Tracking ──────────────────────────────────────────────────────────────────

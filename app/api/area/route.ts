@@ -19,6 +19,7 @@ export async function GET() {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const areas = await prisma.area.findMany({
+      take: 500,
       select: { id_area: true, nama_area: true },
       orderBy: { nama_area: 'asc' },
     });

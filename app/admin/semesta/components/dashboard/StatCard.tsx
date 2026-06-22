@@ -1,4 +1,3 @@
-import '@aejkatappaja/phantom-ui';
 import { cn } from '@/app/libs/utils';
 
 export type StatCardVariant = 'total' | 'open' | 'progress' | 'closed';

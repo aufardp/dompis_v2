@@ -2,7 +2,7 @@
 
 import { clsx } from 'clsx';
 
-export type FlaggingFilter = 'all' | 'ffg' | 'p1' | 'pplus';
+export type FlaggingFilter = 'all' | 'ffg' | 'p1' | 'pplus' | 'expired';
 
 interface FlaggingFilterTabsProps {
   counts: {
@@ -10,6 +10,7 @@ interface FlaggingFilterTabsProps {
     ffg: number;
     p1: number;
     pplus: number;
+    expired?: number;
   };
   activeFilter: FlaggingFilter;
   onFilterChange: (filter: FlaggingFilter) => void;
@@ -20,6 +21,7 @@ const tabs: { id: FlaggingFilter; label: string }[] = [
   { id: 'ffg', label: 'FFG' },
   { id: 'p1', label: 'Manja HI' },
   { id: 'pplus', label: 'Manja H+' },
+  { id: 'expired', label: 'Expired' },
 ];
 
 export function FlaggingFilterTabs({
@@ -37,6 +39,8 @@ export function FlaggingFilterTabs({
         return counts.p1;
       case 'pplus':
         return counts.pplus;
+      case 'expired':
+        return counts.expired ?? 0;
       default:
         return 0;
     }
@@ -60,6 +64,7 @@ export function FlaggingFilterTabs({
               tab.id === 'ffg' && !isActive && 'text-purple-600',
               tab.id === 'p1' && !isActive && 'text-red-600',
               tab.id === 'pplus' && !isActive && 'text-amber-600',
+              tab.id === 'expired' && !isActive && 'text-slate-600',
             )}
           >
             <span>{tab.label}</span>
@@ -71,9 +76,11 @@ export function FlaggingFilterTabs({
                     ? 'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
                     : tab.id === 'ffg'
                       ? 'bg-purple-100 text-purple-700'
-                      : tab.id === 'p1'
+                    : tab.id === 'p1'
                         ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700',
+                        : tab.id === 'pplus'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-100 text-slate-700',
                 )}
               >
                 {count}

@@ -1,15 +1,37 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { queryKeys } from '@/app/libs/query-keys';
 import { Activity, CheckCircle2, Clock3, RefreshCw, Users } from 'lucide-react';
 import DataFreshnessBadge from '../DataFreshnessBadge';
-import RekapWorkorderTable from './RekapWorkorderTable';
-import RekapWorkorderCards from './RekapWorkorderCards';
-import RekapWorkorderHourlyClose from './RekapWorkorderHourlyClose';
 import RekapSkeleton from './RekapSkeleton';
+
+const RekapWorkorderHourlyClose = dynamic(
+  () => import('./RekapWorkorderHourlyClose'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className='h-[240px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+    ),
+  },
+);
+
+const RekapWorkorderTable = dynamic(() => import('./RekapWorkorderTable'), {
+  ssr: false,
+  loading: () => (
+    <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+  ),
+});
+
+const RekapWorkorderCards = dynamic(() => import('./RekapWorkorderCards'), {
+  ssr: false,
+  loading: () => (
+    <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+  ),
+});
 
 interface SegCount {
   open: number;
@@ -94,6 +116,35 @@ const BUCKET_OPTIONS = [
   { value: 'sqm_update', label: 'SQM Update' },
   { value: 'obsolete', label: 'Obsolete' },
 ] as const;
+
+function BucketFilterBar({
+  selectedBucket,
+  onChange,
+}: {
+  selectedBucket: string;
+  onChange: (bucket: string) => void;
+}) {
+  return (
+    <div className='inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-(--border) bg-(--surface) p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]'>
+      {BUCKET_OPTIONS.map((opt) => {
+        const active = opt.value === selectedBucket;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`rounded-full px-2.75 py-1.5 text-[11px] font-semibold transition-all ${
+              active
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'border border-transparent bg-surface-2 text-(--text-secondary) hover:border-(--border) hover:bg-(--surface-hover) hover:text-(--text-primary)'
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const toneStyles: Record<
   string,
@@ -340,6 +391,11 @@ function StatusPair({
 
 export default function RekapWorkorderClient() {
   const [selectedBucket, setSelectedBucket] = useState('all');
+  const [heavySectionsReady, setHeavySectionsReady] = useState({
+    hourly: false,
+    table: false,
+    cards: false,
+  });
 
   const queryParams = useMemo(
     () => new URLSearchParams({ bucket: selectedBucket }),
@@ -348,7 +404,7 @@ export default function RekapWorkorderClient() {
 
   const { data, isLoading, isError, refetch, isFetching } =
     useQuery<RekapResponse>({
-      queryKey: [...queryKeys.dashboard.rekapWorkorder(), selectedBucket],
+    queryKey: [...queryKeys.dashboard.rekapWorkorder(), selectedBucket],
       queryFn: async () => {
         const res = await fetch(
           `/api/dashboard/rekap-workorder?${queryParams}`,
@@ -365,6 +421,29 @@ export default function RekapWorkorderClient() {
       refetchInterval: 300000,
       staleTime: 120000,
     });
+
+  useEffect(() => {
+    if (!data?.rows?.length) return;
+
+    setHeavySectionsReady({
+      hourly: false,
+      table: false,
+      cards: false,
+    });
+
+    const timers: number[] = [];
+    const schedule = (fn: () => void, delay: number) => {
+      timers.push(window.setTimeout(fn, delay));
+    };
+
+    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, hourly: true })), 0);
+    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, table: true })), 120);
+    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, cards: true })), 240);
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [data?.rows?.length, selectedBucket]);
 
   if (isLoading) return <RekapSkeleton />;
 
@@ -443,24 +522,6 @@ export default function RekapWorkorderClient() {
             </div>
           </div>
 
-          <div className='mt-4 flex flex-wrap gap-2 rounded-3xl border border-(--border) bg-(--surface) p-2'>
-            {BUCKET_OPTIONS.map((opt) => {
-              const active = opt.value === selectedBucket;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setSelectedBucket(opt.value)}
-                  className={`rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
-                    active
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-surface-2 border border-(--border) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         <div className='border-b border-(--border) px-4 py-3 md:px-5'>
@@ -560,38 +621,77 @@ export default function RekapWorkorderClient() {
       </section>
       <div className='grid gap-4'>
         <section className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
-          <RekapWorkorderHourlyClose bucket={selectedBucket} />
+          {heavySectionsReady.hourly ? (
+            <RekapWorkorderHourlyClose bucket={selectedBucket} />
+          ) : (
+            <div className='h-[240px] animate-pulse rounded-[28px] bg-(--surface-2)' />
+          )}
         </section>
       </div>
 
       <div className='hidden xl:block'>
         <section className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
           <div className='border-b border-(--border) bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(255,255,255,0.75))] px-4 py-3.5 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.45),rgba(15,23,42,0.2))]'>
-            <div className='flex flex-wrap items-start justify-between gap-2'>
-              <div className='max-w-3xl'>
+            <div className='flex flex-wrap items-end justify-between gap-3'>
+              <div className='max-w-3xl pb-0.5'>
                 <p className='text-[10px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
-                  Workboard table
+                  Bucket filter
                 </p>
                 <p className='mt-1 text-[12px] font-medium text-(--text-secondary)'>
-                  Hierarki area, service area, dan workzone dengan detail sesuai
-                  bucket aktif.
+                  Pilih bucket tanpa perlu kembali ke bagian atas halaman.
                 </p>
+              </div>
+              <div className='w-full max-w-[46rem] xl:w-auto xl:justify-self-end'>
+                <BucketFilterBar
+                  selectedBucket={selectedBucket}
+                  onChange={setSelectedBucket}
+                />
               </div>
             </div>
           </div>
           <div className='p-0'>
-            <RekapWorkorderTable
-              rows={data.rows}
-              timestamp={data.timestamp}
-              detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
-              overviewSummary={data.workboardSummary}
-            />
+            {heavySectionsReady.table ? (
+              <RekapWorkorderTable
+                rows={data.rows}
+                timestamp={data.timestamp}
+                detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
+                overviewSummary={data.workboardSummary}
+              />
+            ) : (
+              <div className='h-[420px] animate-pulse bg-(--surface-2)' />
+            )}
           </div>
         </section>
       </div>
 
       <div className='xl:hidden'>
-        <RekapWorkorderCards rows={data.rows} />
+        <div className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='border-b border-(--border) px-4 py-3.5'>
+            <div className='flex flex-wrap items-end justify-between gap-3'>
+              <div className='pb-0.5'>
+                <p className='text-[10px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
+                  Bucket filter
+                </p>
+                <p className='mt-1 text-[12px] font-medium text-(--text-secondary)'>
+                  Pilih bucket tanpa perlu kembali ke bagian atas halaman.
+                </p>
+              </div>
+              <div className='w-full max-w-[46rem] xl:w-auto xl:justify-self-end'>
+                <BucketFilterBar
+                  selectedBucket={selectedBucket}
+                  onChange={setSelectedBucket}
+                />
+              </div>
+            </div>
+          </div>
+          <div>
+            {heavySectionsReady.cards ? (
+              <RekapWorkorderCards rows={data.rows} />
+            ) : (
+              <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

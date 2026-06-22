@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback } from 'react';
 import Pagination from '../tables/Pagination';
 import TicketRow from './TicketRow';

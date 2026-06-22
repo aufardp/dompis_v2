@@ -1,60 +1,98 @@
+import { nowWib, toWibDateString } from '@/lib/timezone';
+import { parseWIBDateInput } from '@/app/utils/datetime';
+
 /**
  * Flagging Manja — Dynamic Compute Helper
  *
- * Resolves effective flagging status at query/render time.
- * Handles auto-promote: P+ → P1 when booking_date is today or past.
- *
  * Rules:
  * - booking_date = today AND hour <= 15:00 WIB → P1
- * - booking_date = today AND hour > 15:00 WIB → P+ (auto-promotes to P1 at midnight)
+ * - booking_date = today AND hour > 15:00 WIB → P+
  * - booking_date = future → P+
- * - booking_date = past → P1 (already overdue)
+ * - booking_date = yesterday → P1
+ * - booking_date older than yesterday → EXPIRED
  */
 
-export function computeFlaggingManja(bookingDate: string | null): string | null {
+const MANJA_CUTOFF_HOUR = 15;
+const DAY_MS = 86_400_000;
+
+function getBookingContext(bookingDate: string | null) {
   if (!bookingDate) return null;
 
-  const booking = new Date(bookingDate);
-  if (isNaN(booking.getTime())) return null;
+  const booking = parseWIBDateInput(bookingDate);
+  if (!booking || isNaN(booking.getTime())) return null;
 
-  const now = new Date();
-  const bookingDateStr = booking.toISOString().split('T')[0];
-  const todayStr = now.toISOString().split('T')[0];
+  const today = nowWib();
+  const bookingDateStr = toWibDateString(booking);
+  const todayStr = toWibDateString(today);
+  const yesterdayStr = toWibDateString(new Date(today.getTime() - DAY_MS));
+  const bookingHourWib = booking.getUTCHours() + 7;
 
-  const wibHour = booking.getUTCHours() + 7;
+  if (!bookingDateStr || !todayStr || !yesterdayStr) return null;
 
-  if (bookingDateStr === todayStr && wibHour <= 15) {
+  return {
+    booking,
+    bookingDateStr,
+    todayStr,
+    yesterdayStr,
+    bookingHourWib,
+  };
+}
+
+export function computeFlaggingManja(bookingDate: string | null): string | null {
+  const ctx = getBookingContext(bookingDate);
+  if (!ctx) return null;
+
+  if (ctx.bookingDateStr === ctx.todayStr && ctx.bookingHourWib <= MANJA_CUTOFF_HOUR) {
     return 'P1';
   }
 
-  if (bookingDateStr < todayStr) {
+  if (ctx.bookingDateStr === ctx.todayStr) {
+    return 'P+';
+  }
+
+  if (ctx.bookingDateStr === ctx.yesterdayStr) {
     return 'P1';
   }
 
-  return 'P+';
+  if (ctx.bookingDateStr > ctx.todayStr) {
+    return 'P+';
+  }
+
+  return 'EXPIRED';
 }
 
 /**
  * Resolve effective flagging at query/render time.
- * Auto-promotes P+ → P1 when booking_date is today or past.
+ * Keeps P+ for the current day, promotes to P1 the next day,
+ * and marks older tickets as EXPIRED.
  */
 export function resolveEffectiveFlagging(
   storedFlagging: string | null,
   bookingDate: string | null,
 ): string | null {
-  if (!bookingDate) return storedFlagging;
+  const ctx = getBookingContext(bookingDate);
+  if (!ctx) return storedFlagging;
 
-  const booking = new Date(bookingDate);
-  if (isNaN(booking.getTime())) return storedFlagging;
+  const fallback = computeFlaggingManja(bookingDate);
 
-  const now = new Date();
-  const bookingDateStr = booking.toISOString().split('T')[0];
-  const todayStr = now.toISOString().split('T')[0];
-
-  // Auto-promote: P+ → P1 if booking_date is today or past
-  if (storedFlagging === 'P+' && bookingDateStr <= todayStr) {
-    return 'P1';
+  if (ctx.bookingDateStr === ctx.todayStr) {
+    if (storedFlagging === 'P1') return 'P1';
+    if (storedFlagging === 'P+') {
+      return ctx.bookingHourWib <= MANJA_CUTOFF_HOUR ? 'P1' : 'P+';
+    }
+    return fallback ?? storedFlagging;
   }
 
-  return storedFlagging;
+  if (ctx.bookingDateStr === ctx.yesterdayStr) {
+    if (storedFlagging === 'P+' || storedFlagging === 'P1') {
+      return 'P1';
+    }
+    return fallback ?? 'EXPIRED';
+  }
+
+  if (ctx.bookingDateStr > ctx.todayStr) {
+    return storedFlagging === 'P1' ? 'P1' : (fallback ?? 'P+');
+  }
+
+  return fallback ?? 'EXPIRED';
 }

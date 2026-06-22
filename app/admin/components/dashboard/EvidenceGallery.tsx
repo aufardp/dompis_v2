@@ -140,8 +140,8 @@ export default function EvidenceGallery({
             key={current.id}
             src={imageUrl}
             alt={current.fileName}
-            width={0}
-            height={0}
+            width={800}
+            height={600}
             sizes='100vw'
             className='!w-auto !h-auto max-h-[65vh] max-w-full rounded-lg object-contain'
             unoptimized

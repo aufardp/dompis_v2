@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
@@ -22,7 +21,10 @@ import {
 import { TicketCtype } from '@/app/types/ticket';
 import TicketTableSummaryBar from './TicketTableSummaryBar'; // ← ADDED
 import { fetchWithAuth } from '@/app/libs/fetcher';
-import { computeTtrCountdown } from '@/app/hooks/useTtrCountdown';
+import {
+  computeTtrCountdown,
+  type TtrCountdown,
+} from '@/app/hooks/useTtrCountdown';
 
 export type SortField =
   | 'ticket'
@@ -72,6 +74,7 @@ export interface AdminTicketTableProps {
   searching?: boolean;
   onAssign?: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
+  showBypassClose?: boolean;
   onBulkAssign?: (ticketIds: (string | number)[]) => void;
   pagination?: {
     currentPage: number;
@@ -162,13 +165,17 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   status: true,
 };
 
-function TicketTableLoadingMobile() {
+function TicketTableLoadingMobile({
+  loadingLabel = 'Loading B2C ticket list',
+}: {
+  loadingLabel?: string;
+}) {
   return (
     <phantom-ui suppressHydrationWarning fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
-      loading-label='Loading B2C ticket list'
+      loading-label={loadingLabel}
     >
       <div className='space-y-3'>
         <div className='mb-2 flex items-center justify-between px-1'>
@@ -211,13 +218,19 @@ function TicketTableLoadingMobile() {
   );
 }
 
-function TicketTableLoadingDesktop({ label }: { label: string }) {
+function TicketTableLoadingDesktop({
+  label,
+  loadingLabel,
+}: {
+  label: string;
+  loadingLabel?: string;
+}) {
   return (
     <phantom-ui suppressHydrationWarning fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
-      loading-label={`Loading ${label}`}
+      loading-label={loadingLabel ?? `Loading ${label}`}
     >
       <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
         <div className='bg-surface-2 flex items-center justify-between border-b border-(--border) px-4 py-2'>
@@ -285,6 +298,7 @@ export default function TicketTable({
   searching = false,
   onAssign,
   onDetail,
+  showBypassClose = false,
   onBulkAssign,
   pagination,
   tableLabel = 'B2C Tickets',
@@ -394,8 +408,10 @@ export default function TicketTable({
     }));
   }, []);
 
-  const toggleExpand = useCallback((ticketId: number) => {
-    setExpandedTicketId((prev) => (prev === ticketId ? null : ticketId));
+  const toggleExpand = useCallback((ticketId: number | string) => {
+    const numericId = Number(ticketId);
+    if (!Number.isFinite(numericId)) return;
+    setExpandedTicketId((prev) => (prev === numericId ? null : numericId));
   }, []);
 
   // Fetch ticket detail when drawer opens
@@ -479,6 +495,14 @@ export default function TicketTable({
   );
 
   const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
+  const ticketCountdowns = useMemo(() => {
+    const map = new Map<number, TtrCountdown | null>();
+    for (const ticket of tickets) {
+      if (typeof ticket.idTicket !== 'number') continue;
+      map.set(ticket.idTicket, computeTtrCountdown(ticket));
+    }
+    return map;
+  }, [tickets]);
   const handleAssign = onAssign ?? (() => {});
 
   // Selection helpers
@@ -507,16 +531,9 @@ export default function TicketTable({
       {/* Mobile */}
       <div className='block lg:hidden'>
         {loading && !isRefreshing ? (
-          searching ? (
-            <div className='flex min-h-56 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary)'>
-              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-4 py-2 text-sm font-semibold'>
-                <Loader2 className='h-4 w-4 animate-spin' />
-                Mencari tiket...
-              </div>
-            </div>
-          ) : (
-            <TicketTableLoadingMobile />
-          )
+          <TicketTableLoadingMobile
+            loadingLabel={searching ? 'Searching tickets' : undefined}
+          />
         ) : sortedTickets.length === 0 ? (
           <p className='py-8 text-center text-(--text-secondary)'>
             No tickets found
@@ -542,6 +559,7 @@ export default function TicketTable({
                   ticket={ticket}
                   onAssign={handleAssign}
                   highlighted={isHighlighted(ticket)}
+                  showBypassClose={showBypassClose}
                 />
               ))}
             </div>
@@ -563,16 +581,10 @@ export default function TicketTable({
       {/* Desktop */}
       <div className='hidden lg:block'>
         {loading && !isRefreshing ? (
-          searching ? (
-            <div className='flex min-h-72 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm'>
-              <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-5 py-2.5 text-sm font-semibold'>
-                <Loader2 className='h-4 w-4 animate-spin' />
-                Mencari tiket...
-              </div>
-            </div>
-          ) : (
-            <TicketTableLoadingDesktop label={tableLabel} />
-          )
+          <TicketTableLoadingDesktop
+            label={tableLabel}
+            loadingLabel={searching ? 'Searching tickets' : undefined}
+          />
         ) : (
           <div className='bg-surface overflow-hidden rounded-2xl border border-(--border) shadow-sm'>
             {/* Table toolbar */}
@@ -647,7 +659,8 @@ export default function TicketTable({
                       const ticketId = ticket.idTicket ?? ticket.ticket;
                       const isExpanded = expandedTicketId === ticketId;
                       const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
-                      const ttrCountdown = computeTtrCountdown(ticket);
+                      const ttrCountdown =
+                        ticketCountdowns.get(ticket.idTicket ?? -1) ?? null;
                       const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
                         !ttrCountdown
                           ? 'On Track'
@@ -665,10 +678,9 @@ export default function TicketTable({
                           ticket={ticket}
                           onAssign={handleAssign}
                           onDetail={onDetail}
+                          showBypassClose={showBypassClose}
                           isExpanded={isExpanded}
-                          onToggleExpand={() =>
-                            toggleExpand(ticketId as number)
-                          }
+                          onToggleExpand={toggleExpand}
                           rank={ticketInfo?.rank}
                           ticketAge={ticketInfo?.ageFormatted}
                           severity={ticketInfo?.severity}

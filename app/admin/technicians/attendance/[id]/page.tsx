@@ -1,7 +1,6 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
@@ -133,7 +132,14 @@ export default function TechnicianAttendanceDetailPage() {
     notes: '',
   });
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const fetchData = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     try {
       const res = await fetchWithAuth(
@@ -141,6 +147,7 @@ export default function TechnicianAttendanceDetailPage() {
       );
       if (!res) throw new Error('No response');
       const data = await res.json();
+      if (!mountedRef.current) return;
 
       if (data.success && data.data.records.length > 0) {
         setRecords(data.data.records);
@@ -150,9 +157,10 @@ export default function TechnicianAttendanceDetailPage() {
         setTechnicianName('Technician');
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       console.error('Error fetching attendance:', err);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [month, technicianId, year]);
 

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { ApiError } from '@/app/libs/apiError';
+import { ApiError, getErrorMessage } from '@/app/libs/apiError';
 import * as XLSX from 'xlsx';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
@@ -197,7 +197,9 @@ export async function POST(req: Request, { params }: RouteParams) {
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, message }, { status: 400 });
+    return NextResponse.json(
+      { success: false, message: getErrorMessage(error, 'Gagal parse file') },
+      { status: 400 },
+    );
   }
 }

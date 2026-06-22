@@ -4,6 +4,7 @@ import { Fragment, useState, useCallback } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import DurationCell from './DurationCell';
+import type { DurasiDetailTarget, DurasiPanelType } from './durasi-types';
 
 interface SASummary {
   name: string;
@@ -21,6 +22,11 @@ interface DurationTableProps {
   totals: number[];
   buckets: string[];
   showTotal?: boolean;
+  bucketKey: DurasiDetailTarget['bucket'];
+  bucketLabel: string;
+  panelType: DurasiPanelType;
+  panelLabel: string;
+  onCellClick?: (target: DurasiDetailTarget) => void;
 }
 
 const BUCKET_HEADER_COLORS = [
@@ -32,7 +38,17 @@ const BUCKET_HEADER_COLORS = [
   'bg-red-200 text-red-800 dark:bg-red-950/50 dark:text-red-200',
 ];
 
-export default function DurationTable({ areas, totals, buckets, showTotal }: DurationTableProps) {
+export default function DurationTable({
+  areas,
+  totals,
+  buckets,
+  showTotal,
+  bucketKey,
+  bucketLabel,
+  panelType,
+  panelLabel,
+  onCellClick,
+}: DurationTableProps) {
   const [expandedAreas, setExpandedAreas] = useState<Set<string>>(() => new Set());
 
   const toggleArea = useCallback((name: string) => {
@@ -49,6 +65,23 @@ export default function DurationTable({ areas, totals, buckets, showTotal }: Dur
   }
 
   const bucketCount = buckets.length;
+
+  const handleCellClick = useCallback(
+    (areaName: string, saName: string | null, bucketIndex: number, value: number) => {
+      if (!onCellClick || value <= 0) return;
+      onCellClick({
+        bucket: bucketKey,
+        bucketLabel,
+        panelType,
+        panelLabel,
+        area: areaName,
+        sa: saName,
+        bucketIndex,
+        bucketName: buckets[bucketIndex] ?? '-',
+      });
+    },
+    [bucketKey, bucketLabel, buckets, onCellClick, panelLabel, panelType],
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -104,11 +137,17 @@ export default function DurationTable({ areas, totals, buckets, showTotal }: Dur
                         </div>
                       </td>
                       {areaCounts.map((count, idx) => (
-                        <DurationCell key={`area-${area.name}-${idx}`} value={count} bucketIndex={idx} totalBuckets={bucketCount} />
+                        <DurationCell
+                          key={`area-${area.name}-${idx}`}
+                          value={count}
+                          bucketIndex={idx}
+                          onClick={() => handleCellClick(area.name, null, idx, count)}
+                          ariaLabel={`Lihat detail ${count} tiket untuk ${area.name}, bucket ${buckets[idx] ?? '-'}`}
+                        />
                       ))}
                       {showTotal && (
-                        <td className={`px-1 py-0.5 text-center font-mono text-[10px] font-bold ${areaTotal > 0 ? 'bg-red-800 text-white' : ''}`}>
-                          {areaTotal > 0 ? areaTotal : ''}
+                        <td className={`px-1 py-0.5 text-center font-mono text-[10px] font-bold ${areaTotal > 0 ? 'bg-red-800 text-white' : 'text-(--text-muted)'}`}>
+                          {areaTotal > 0 ? areaTotal : '-'}
                         </td>
                       )}
                     </tr>
@@ -122,11 +161,17 @@ export default function DurationTable({ areas, totals, buckets, showTotal }: Dur
                         {sa.name}
                       </td>
                       {sa.counts.map((count, idx) => (
-                        <DurationCell key={`${area.name}-${sa.name}-${idx}`} value={count} bucketIndex={idx} totalBuckets={bucketCount} />
+                        <DurationCell
+                          key={`${area.name}-${sa.name}-${idx}`}
+                          value={count}
+                          bucketIndex={idx}
+                          onClick={() => handleCellClick(area.name, sa.name, idx, count)}
+                          ariaLabel={`Lihat detail ${count} tiket untuk ${sa.name}, bucket ${buckets[idx] ?? '-'}`}
+                        />
                       ))}
                       {showTotal && (
                         <td className="border-b border-(--border) px-1 py-0.5 text-center font-mono text-[10px] font-semibold text-(--text-primary) sm:px-2 sm:text-[11px]">
-                          {saTotal > 0 ? saTotal : ''}
+                          {saTotal > 0 ? saTotal : '-'}
                         </td>
                       )}
                     </tr>
@@ -149,7 +194,7 @@ export default function DurationTable({ areas, totals, buckets, showTotal }: Dur
             ))}
             {showTotal && (
               <td className="bg-(--surface-3) px-1 py-0.75 text-center text-(--text-muted) sm:px-2 sm:py-1.5">
-                {totals.reduce((s, v) => s + v, 0) > 0 ? totals.reduce((s, v) => s + v, 0) : ''}
+                {totals.reduce((s, v) => s + v, 0) > 0 ? totals.reduce((s, v) => s + v, 0) : '-'}
               </td>
             )}
           </tr>

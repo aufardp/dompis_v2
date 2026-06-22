@@ -76,6 +76,7 @@ export interface Ticket {
   guaranteeStatus?: string | null;
 
   pendingDompis?: string | null;
+  sqmUpdateReason?: string | null;
 
   rca?: string | null;
   subRca?: string | null;
@@ -127,6 +128,7 @@ export type TicketUpdatePatch = {
   deviceName?: string | null;
   symptom?: string | null;
   alamat?: string | null;
+  sqmUpdateReason?: string | null;
   descriptionSolutionDompis?: string | null;
   pendingDompis?: string | null;
 };

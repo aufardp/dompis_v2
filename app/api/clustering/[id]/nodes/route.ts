@@ -59,6 +59,7 @@ export async function GET(req: Request, { params }: RouteParams) {
         },
       },
       orderBy: [{ sort_order: 'asc' }, { odc_value: 'asc' }],
+      take: 500,
     });
 
     return NextResponse.json({

@@ -682,33 +682,53 @@ export class ClusterService {
       skipped: 0,
     };
 
-    for (const assignment of sourceAssignments) {
-      // Cek apakah sudah ada di toDate
-      const existing = await prisma.cluster_assignment.findFirst({
-        where: {
-          cluster_id: assignment.cluster_id,
-          teknisi_id: assignment.teknisi_id,
-          assigned_date: toDate,
-        },
-      });
+    // Pre-fetch existing assignments untuk toDate (satu query, bukan N)
+    const existingAssignments = await prisma.cluster_assignment.findMany({
+      where: {
+        cluster_id: { in: clusterIds },
+        assigned_date: toDate,
+      },
+      select: { cluster_id: true, teknisi_id: true },
+    });
+    const existingKeys = new Set(
+      existingAssignments.map(
+        (ea: { cluster_id: number; teknisi_id: number | null }) =>
+          `${ea.cluster_id}:${ea.teknisi_id}`,
+      ),
+    );
 
-      if (existing) {
+    const toCreate: Array<{
+      cluster_id: number;
+      teknisi_id: number;
+      assigned_date: string;
+      assigned_by: number;
+      note: string | null;
+    }> = [];
+
+    for (const assignment of sourceAssignments) {
+      const key = `${assignment.cluster_id}:${assignment.teknisi_id}`;
+      if (existingKeys.has(key)) {
         result.skipped++;
         continue;
       }
 
-      // Buat assignment baru
-      await prisma.cluster_assignment.create({
-        data: {
-          cluster_id: assignment.cluster_id,
-          teknisi_id: assignment.teknisi_id,
-          assigned_date: toDate,
-          assigned_by: actorId,
-          note: assignment.note,
-        },
-      });
+      if (assignment.teknisi_id == null) {
+        result.skipped++;
+        continue;
+      }
 
+      toCreate.push({
+        cluster_id: assignment.cluster_id,
+        teknisi_id: assignment.teknisi_id,
+        assigned_date: toDate,
+        assigned_by: actorId,
+        note: assignment.note,
+      });
       result.copied++;
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.cluster_assignment.createMany({ data: toCreate });
     }
 
     return result;

@@ -72,7 +72,11 @@ export default function AllTicketsModal({
         : 'AKTIF';
 
   const statusColor =
-    status === 'OVERLOAD' ? 'text-red-600' : status === 'AKTIF' ? 'text-blue-600' : 'text-slate-600';
+    status === 'OVERLOAD'
+      ? 'text-red-600'
+      : status === 'AKTIF'
+        ? 'text-blue-600'
+        : 'text-slate-600';
 
   return (
     <div

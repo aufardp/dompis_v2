@@ -9,6 +9,7 @@ import {
   deleteUser,
 } from '@/app/libs/services/users.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { updateUserSchema } from '@/app/libs/validations/users.schema';
 
 export async function GET(
   req: NextRequest,
@@ -68,8 +69,18 @@ export async function PUT(
     }
 
     const body = await req.json();
+    const parsed = updateUserSchema.passthrough().safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: parsed.error.issues.map((i) => i.message).join(', '),
+        },
+        { status: 400 },
+      );
+    }
 
-    await updateUser(id, body);
+    await updateUser(id, parsed.data);
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

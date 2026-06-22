@@ -1,7 +1,6 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -108,7 +107,14 @@ export default function MonthlyAttendancePage() {
   const [summaries, setSummaries] = useState<MonthlyAttendanceSummary[]>([]);
   const [totalWorkingDays, setTotalWorkingDays] = useState(0);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const fetchData = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     try {
       const res = await fetchWithAuth(
@@ -116,6 +122,7 @@ export default function MonthlyAttendancePage() {
       );
       if (!res) throw new Error('No response');
       const data = await res.json();
+      if (!mountedRef.current) return;
 
       if (data.success) {
         const records = data.data.records || [];
@@ -160,7 +167,7 @@ export default function MonthlyAttendancePage() {
     } catch (err) {
       console.error('Error fetching attendance:', err);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [month, year]);
 

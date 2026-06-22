@@ -13,7 +13,7 @@ import {
   GUARANTEE_ESCALATION_HOURS,
 } from '@/app/config/priority-rules';
 
-export type FlaggingLabel = 'P1' | 'P+';
+export type FlaggingLabel = 'P1' | 'P+' | 'EXPIRED';
 
 function normalizeStatus(value: unknown): string {
   return String(value ?? '')
@@ -55,8 +55,9 @@ function pickDbMaxTtrValue(ticket: any): string | null {
 
 export function getEffectiveFlaggingLabel(ticket: any): FlaggingLabel | null {
   const flag = normalizeFlagging(ticket?.flaggingManja);
-  if (flag !== 'P1' && flag !== 'P+') return null;
+  if (flag !== 'P1' && flag !== 'P+' && flag !== 'EXPIRED') return null;
 
+  if (flag === 'EXPIRED') return 'EXPIRED';
   if (flag === 'P1') return 'P1';
 
   const status = normalizeStatus(ticket?.hasilVisit ?? ticket?.status);

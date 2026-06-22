@@ -15,7 +15,10 @@ export interface TechnicianTicket {
   age: string;
   ageHours: number;
   closedAt?: string | null;
+  operationalBucket?: string | null;
+  operationalBucketLabel?: string | null;
   jenisTiket?: string;
+  jenisTiket1?: string | null;
 }
 
 export interface TechnicianOrderCounts {

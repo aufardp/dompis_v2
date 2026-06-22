@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import '@aejkatappaja/phantom-ui';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import ChangePasswordModal from '@/app/components/layout/ChangePasswordModal';

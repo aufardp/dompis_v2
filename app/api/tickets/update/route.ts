@@ -124,7 +124,15 @@ export async function POST(req: Request) {
        🔵 GENERIC PATCH (ADMIN / HELPDESK SUPPORT)
     ===================================================== */
 
-    const patchSrc = (isRecord(parsed.data.patch) ? parsed.data.patch : parsed.data) as Record<string, string | undefined>;
+    const patchSrc = (isRecord(parsed.data.patch) ? parsed.data.patch : parsed.data) as Record<
+      string,
+      string | null | undefined
+    >;
+
+    const sqmUpdateReason =
+      patchSrc.sqmUpdateReason !== undefined
+        ? patchSrc.sqmUpdateReason
+        : patchSrc.sqm_update_reason;
 
     const patch: TicketUpdatePatch = {
       summary: patchSrc.summary,
@@ -140,11 +148,15 @@ export async function POST(req: Request) {
       deviceName: patchSrc.deviceName ?? patchSrc.device_name,
       symptom: patchSrc.symptom,
       alamat: patchSrc.alamat,
+      sqmUpdateReason,
       pendingDompis: patchSrc.pendingDompis,
       descriptionSolutionDompis: patchSrc.descriptionSolutionDompis ?? patchSrc.description_solution_dompis,
     };
 
-    const wfSrc = (isRecord(parsed.data.workflow) ? parsed.data.workflow : parsed.data) as Record<string, string | undefined>;
+    const wfSrc = (isRecord(parsed.data.workflow) ? parsed.data.workflow : parsed.data) as Record<
+      string,
+      string | null | undefined
+    >;
 
     let workflow: TicketUpdateWorkflow | undefined;
 

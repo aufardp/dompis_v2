@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import type { EvidenceItem } from './types';
 import Image from 'next/image';
 import EvidenceGallery from '../EvidenceGallery';

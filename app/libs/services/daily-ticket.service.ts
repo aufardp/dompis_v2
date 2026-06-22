@@ -28,7 +28,8 @@ import {
   buildOperationalBucketWhere,
   buildRegulerJenis1Where,
 } from './ticket-buckets';
-import { format, toZonedTime } from 'date-fns-tz';
+import { addHours, startOfDay, startOfHour } from 'date-fns';
+import { format, fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { toWibString, toWibDateString, todayWibDateForDb, getTodayWibRange } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
@@ -89,6 +90,7 @@ type TicketFilters = {
   validasiPage?: number;
   validasiLimit?: number;
   includeValidasi?: boolean;
+  includeValidasiTickets?: boolean;
   includeSummary?: boolean;
   includeOptions?: boolean;
   includeClosed?: boolean;
@@ -364,8 +366,17 @@ function applyFlaggingWhere(
   if (flags.length === 0) return;
 
   const clauses: Record<string, any>[] = [];
+  const { start: todayStart } = getTodayWibRange();
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
   if (flags.includes('P1')) clauses.push({ flagging_manja: 'P1' });
   if (flags.includes('P+')) clauses.push({ flagging_manja: 'P+' });
+  if (flags.includes('EXPIRED')) {
+    clauses.push({
+      AND: [
+        { booking_date: { lt: yesterdayStart } },
+      ],
+    });
+  }
   if (flags.includes('FFG')) clauses.push({ guarantee_status: 'guarantee' });
   if (flags.includes('GAMAS')) {
     clauses.push({
@@ -472,6 +483,7 @@ function mapTicket(t: any) {
     symptom: t.symptom,
     descriptionActualSolution: t.description_actual_solution,
     descriptionSolutionDompis: t.description_solution_dompis,
+    sqmUpdateReason: t.sqm_update_reason,
     workzone: t.workzone,
     customerSegment: t.customer_segment,
     sourceTicket: t.source_ticket,
@@ -679,6 +691,7 @@ function summarizeBucketRows(
     guarantee_status: string | null;
     ticket_id_gamas: string | null;
     flagging_manja: string | null;
+    booking_date: string | null;
   }>,
 ): BucketSummary {
   const summary: BucketSummary = {
@@ -719,11 +732,16 @@ function summarizeBucketRows(
       summary.gamasCount += 1;
     }
 
-    if (String(row.flagging_manja ?? '').trim().toUpperCase() === 'P1') {
+    const effectiveFlag = resolveEffectiveFlagging(
+      String(row.flagging_manja ?? '').trim().toUpperCase(),
+      row.booking_date,
+    );
+
+    if (effectiveFlag === 'P1') {
       summary.p1Count += 1;
     }
 
-    if (String(row.flagging_manja ?? '').trim().toUpperCase() === 'P+') {
+    if (effectiveFlag === 'P+') {
       summary.pPlusCount += 1;
     }
   }
@@ -765,6 +783,20 @@ function buildBucketSummarySelect(bucket: KpiBucketKey, tbl = ''): string {
     `SUM(CASE WHEN (${bucketSql}) AND ${t}ticket_id_gamas IS NOT NULL AND LOWER(TRIM(${t}ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS \`${prefix}__gamas\``,
     `SUM(CASE WHEN (${bucketSql}) AND ${t}flagging_manja = 'P1' THEN 1 ELSE 0 END) AS \`${prefix}__p1\``,
     `SUM(CASE WHEN (${bucketSql}) AND ${t}flagging_manja = 'P+' THEN 1 ELSE 0 END) AS \`${prefix}__p_plus\``,
+  ].join(',\n');
+}
+
+function buildBucketSummaryProjectionSql(bucket: KpiBucketKey, tbl = ''): string {
+  const t = tbl ? `${tbl}.` : '';
+  const bucketSql = buildKpiBucketFilterSql(bucket, tbl);
+  const prefix = `${bucket}`;
+
+  return [
+    `CASE WHEN (${bucketSql}) THEN 1 ELSE 0 END AS \`${prefix}__hit\``,
+    `CASE WHEN LOWER(COALESCE(${t}guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END AS \`${prefix}__is_ffg\``,
+    `CASE WHEN ${t}ticket_id_gamas IS NOT NULL AND LOWER(TRIM(${t}ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END AS \`${prefix}__is_gamas\``,
+    `CASE WHEN ${t}flagging_manja = 'P1' THEN 1 ELSE 0 END AS \`${prefix}__is_p1\``,
+    `CASE WHEN ${t}flagging_manja = 'P+' THEN 1 ELSE 0 END AS \`${prefix}__is_p_plus\``,
   ].join(',\n');
 }
 
@@ -1128,7 +1160,7 @@ export class DailyTicketService {
         ];
     const sqlWithIndex = `
       SELECT id_ticket
-      FROM ticket FORCE INDEX (${options.forceIndex})
+      FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
@@ -1157,7 +1189,7 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(where);
     const sqlWithIndex = `
       SELECT COUNT(*) AS total
-      FROM ticket FORCE INDEX (${forceIndex})
+      FROM ticket
       WHERE ${whereClause}
     `;
     const sqlWithoutIndex = `
@@ -1277,19 +1309,23 @@ export class DailyTicketService {
     const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
     const mainWithIndex = `
       SELECT
-        SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-        SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-        SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-        SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-      FROM ticket FORCE INDEX (idx_ticket_daily_board)
+        status,
+        status_update,
+        guarantee_status,
+        ticket_id_gamas,
+        flagging_manja,
+        booking_date
+      FROM ticket
       WHERE ${mainSql}
     `;
     const mainWithoutIndex = `
       SELECT
-        SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-        SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-        SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-        SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+        status,
+        status_update,
+        guarantee_status,
+        ticket_id_gamas,
+        flagging_manja,
+        booking_date
       FROM ticket
       WHERE ${mainSql}
     `;
@@ -1302,11 +1338,25 @@ export class DailyTicketService {
       ),
       validasiBaseWhere
         ? this.countValidasiFlaggingSummary(validasiBaseWhere)
-        : Promise.resolve([{ ffg: 0, gamas: 0, p1: 0, p_plus: 0 }]),
+        : Promise.resolve([] as Array<Record<string, unknown>>),
     ]);
 
-    const main = this.normalizeFlaggingSummary(mainRows[0]);
-    const validasi = this.normalizeFlaggingSummary(validasiRows[0]);
+    const main = summarizeBucketRows(mainRows as Array<{
+      status: string | null;
+      status_update: string | null;
+      guarantee_status: string | null;
+      ticket_id_gamas: string | null;
+      flagging_manja: string | null;
+      booking_date: string | null;
+    }>);
+    const validasi = summarizeBucketRows(validasiRows as Array<{
+      status: string | null;
+      status_update: string | null;
+      guarantee_status: string | null;
+      ticket_id_gamas: string | null;
+      flagging_manja: string | null;
+      booking_date: string | null;
+    }>);
 
     return {
       ffgCount: main.ffgCount + validasi.ffgCount,
@@ -1322,19 +1372,23 @@ export class DailyTicketService {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT
-        SUM(CASE WHEN LOWER(COALESCE(t.guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-        SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-        SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-        SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
-      FROM ticket t FORCE INDEX (idx_ticket_daily_validasi)
+        t.status,
+        t.status_update,
+        t.guarantee_status,
+        t.ticket_id_gamas,
+        t.flagging_manja,
+        t.booking_date
+      FROM ticket t
       WHERE ${sql}
     `;
     const sqlWithoutIndex = `
       SELECT
-        SUM(CASE WHEN LOWER(COALESCE(t.guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-        SUM(CASE WHEN t.ticket_id_gamas IS NOT NULL AND LOWER(TRIM(t.ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-        SUM(CASE WHEN t.flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-        SUM(CASE WHEN t.flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+        t.status,
+        t.status_update,
+        t.guarantee_status,
+        t.ticket_id_gamas,
+        t.flagging_manja,
+        t.booking_date
       FROM ticket t
       WHERE ${sql}
     `;
@@ -1353,7 +1407,7 @@ export class DailyTicketService {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT id_ticket, reported_date
-      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
+      FROM ticket
       WHERE ${sql}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
       LIMIT ?, ?
@@ -1386,7 +1440,7 @@ export class DailyTicketService {
 
     const sqlWithIndex = `
       SELECT status, status_update, COUNT(*) AS count
-      FROM ticket FORCE INDEX (idx_ticket_daily_board)
+      FROM ticket
       WHERE ${whereClause}
       GROUP BY status, status_update
     `;
@@ -1526,6 +1580,7 @@ export class DailyTicketService {
   ) {
     const { page = 1, limit = 10, sort = 'desc' } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
+    const includeValidasiTickets = filters?.includeValidasiTickets !== false;
     const includeSummary = filters?.includeSummary !== false;
     const includeOptions = filters?.includeOptions !== false;
     const includeClosed = filters?.includeClosed === true;
@@ -1569,7 +1624,7 @@ export class DailyTicketService {
       forceIndex: 'idx_ticket_daily_board',
       priorityToday: toWibDateString(todayWibDateForDb()),
     });
-    const validasiTicketIdsPromise = includeValidasi && validasiBaseWhere
+    const validasiTicketIdsPromise = includeValidasi && includeValidasiTickets && validasiBaseWhere
       ? this.fetchValidasiTicketIds(validasiBaseWhere, {
           sort,
           offset: validasiOffset,
@@ -1636,7 +1691,9 @@ export class DailyTicketService {
 
     const [tickets, validasiTickets] = await Promise.all([
       hydrateTicketsByIds(ticketIds),
-      hydrateTicketsByIds(validasiTicketIds),
+      includeValidasiTickets
+        ? hydrateTicketsByIds(validasiTicketIds)
+        : Promise.resolve([] as Awaited<ReturnType<typeof hydrateTicketsByIds>>),
     ]);
 
     return {
@@ -1676,7 +1733,7 @@ export class DailyTicketService {
     });
     const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
     const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
-      `SELECT id_ticket FROM ticket FORCE INDEX (idx_ticket_daily_board) WHERE ${whereClause}`,
+      `SELECT id_ticket FROM ticket WHERE ${whereClause}`,
       `SELECT id_ticket FROM ticket WHERE ${whereClause}`,
       params,
     );
@@ -1695,6 +1752,25 @@ export class DailyTicketService {
     return buildSqlWhereClause(mainTableWhere);
   }
 
+  private static buildDailySummarySql(): string {
+    const closeStatusList = CLOSE_STATUS_VALUES.map(v => `'${v.replace(/'/g, "''")}'`).join(', ');
+    return `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN (${closeStatusList}) THEN 1 ELSE 0 END) AS close,
+        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) = 'on_progress' THEN 1 ELSE 0 END) AS onProgress,
+        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND (LOWER(TRIM(COALESCE(status_update, ''))) NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close') OR status_update IS NULL) THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+        SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+        SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+        SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+      FROM ticket
+      WHERE %s
+    `;
+  }
+
   static async getDailyTicketSummary(
     role: string,
     userId: number,
@@ -1706,21 +1782,40 @@ export class DailyTicketService {
     });
     const validasiBaseWhere = this.buildValidasiBaseWhere(where);
 
-    const [total, summary, flaggingSummary] = await Promise.all([
-      this.countTicketsBySql(mainTableWhere, 'idx_ticket_daily_board'),
-      this.countStatuses(mainTableWhere),
-      this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
-    ]);
+    const [mainWhereClause, mainParams] = buildSqlWhereClause(mainTableWhere);
+    const combinedSql = this.buildDailySummarySql().replace('%s', mainWhereClause);
+
+    const [mainRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+      combinedSql, combinedSql, mainParams,
+    );
+
+    let vRow: Record<string, unknown> = {};
+    if (validasiBaseWhere) {
+      const [vSql, vParams] = buildSqlWhereClause(validasiBaseWhere);
+      const validasiSql = `
+        SELECT
+          SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+          SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+          SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+          SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
+        FROM ticket
+        WHERE ${vSql}
+      `;
+      const [vRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+        validasiSql, validasiSql, vParams,
+      );
+      vRow = vRows ?? {};
+    }
 
     return {
-      total,
-      open: summary.open,
-      assigned:
-        (summary.assigned ?? 0) +
-        (summary.onProgress ?? 0) +
-        (summary.pending ?? 0),
-      close: summary.close,
-      ...flaggingSummary,
+      total: Number(mainRow?.total ?? 0),
+      open: Number(mainRow?.open ?? 0),
+      assigned: Number(mainRow?.assigned ?? 0) + Number(mainRow?.onProgress ?? 0) + Number(mainRow?.pending ?? 0),
+      close: Number(mainRow?.close ?? 0),
+      ffgCount: Number(mainRow?.ffg ?? 0) + Number(vRow.ffg ?? 0),
+      gamasCount: Number(mainRow?.gamas ?? 0) + Number(vRow.gamas ?? 0),
+      p1Count: Number(mainRow?.p1 ?? 0) + Number(vRow.p1 ?? 0),
+      pPlusCount: Number(mainRow?.p_plus ?? 0) + Number(vRow.p_plus ?? 0),
     };
   }
 
@@ -1767,61 +1862,59 @@ export class DailyTicketService {
         const buildScopeSummary = async (
           dept: BucketSummaryScope,
         ): Promise<BucketSummaryMap> => {
-          const where = await this.buildDailyTicketWhere(role, userId, {
+          const summary = {} as BucketSummaryMap;
+
+          const baseWhere = await this.buildDailyTicketWhere(role, userId, {
             ...filters,
             dept,
             operationalBucket: undefined,
           });
+          const mainTableWhere = this.buildMainTableWhere(baseWhere, {
+            includeClosed: filters?.includeClosed === true,
+          });
 
-          const summary = {} as BucketSummaryMap;
-            const mainTableWhere = this.buildMainTableWhere(where, {
-              includeClosed: filters?.includeClosed === true,
-            });
-          for (const bucket of KPI_SUMMARY_BUCKETS) {
-            let finalWhere: Prisma.ticketWhereInput;
+          type BucketKeyNoAll = Exclude<KpiBucketKey, 'all'>;
+          const NON_KPI_BUCKETS: BucketKeyNoAll[] = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'];
 
-            if (bucket === 'kpi_customer') {
-              const bucketWhere = await this.buildDailyTicketWhere(role, userId, {
-                ...filters,
-                dept,
-                operationalBucket: ['kpi_customer'],
-              });
-              const bucketMainTableWhere = this.buildMainTableWhere(bucketWhere, {
-                includeClosed: filters?.includeClosed === true,
-              });
-              finalWhere = {
-                AND: [bucketMainTableWhere, buildOperationalBucketWhere(bucket)],
-              };
-            } else if (bucket === 'non_technical') {
-              finalWhere = {
-                AND: [mainTableWhere, buildOperationalBucketWhere(bucket)],
-              };
-            } else {
-              finalWhere = mainTableWhere;
-            }
-
-            const [whereClause, params] = buildSqlWhereClause(finalWhere);
-            const selectSql = buildBucketSummarySelect(bucket);
-            const sqlWithIndex = `
-              SELECT
-                ${selectSql}
-              FROM ticket FORCE INDEX (idx_ticket_daily_board)
-              WHERE ${whereClause}
-            `;
-            const sqlWithoutIndex = `
-              SELECT
-                ${selectSql}
-              FROM ticket
-              WHERE ${whereClause}
-            `;
-            const rows = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-              sqlWithIndex,
-              sqlWithoutIndex,
-              params,
-            );
-            const row = rows[0] ?? {};
-            summary[bucket] = normalizeBucketSummaryRow(row, bucket);
+          const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
+          const allSelects = NON_KPI_BUCKETS.map(b => buildBucketSummarySelect(b)).join(',\n');
+          const combinedSql = `
+            SELECT
+              ${allSelects}
+            FROM ticket
+            WHERE ${mainSql}
+          `;
+          const [combinedRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            combinedSql, combinedSql, mainParams,
+          );
+          const combinedRow = combinedRows ?? {};
+          for (const bucket of NON_KPI_BUCKETS) {
+            summary[bucket] = normalizeBucketSummaryRow(combinedRow, bucket);
           }
+
+          const kpiWhere = await this.buildDailyTicketWhere(role, userId, {
+            ...filters,
+            dept,
+            operationalBucket: ['kpi_customer'],
+          });
+          const kpiMainTableWhere = this.buildMainTableWhere(kpiWhere, {
+            includeClosed: filters?.includeClosed === true,
+          });
+          const kpiFinalWhere: Prisma.ticketWhereInput = {
+            AND: [kpiMainTableWhere, buildOperationalBucketWhere('kpi_customer')],
+          };
+          const [kpiSql, kpiParams] = buildSqlWhereClause(kpiFinalWhere);
+          const kpiSelect = buildBucketSummarySelect('kpi_customer');
+          const kpiQuery = `
+            SELECT
+              ${kpiSelect}
+            FROM ticket
+            WHERE ${kpiSql}
+          `;
+          const [kpiRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            kpiQuery, kpiQuery, kpiParams,
+          );
+          summary.kpi_customer = normalizeBucketSummaryRow(kpiRow ?? {}, 'kpi_customer');
 
           return summary;
         };
@@ -1857,123 +1950,214 @@ export class DailyTicketService {
           { key: 'obsolete', bucket: 'obsolete' as const },
         ];
 
-        const closeFilters = {
-          ticketStatus: CLOSE_STATUS_VALUES,
-          includeClosed: true,
-        } as const;
+        const NON_KPI_BUCKETS = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'] as const;
+        type BucketKeyNoKpi = typeof NON_KPI_BUCKETS[number];
 
-        const [allSummaries, b2cSummaries, b2bSummaries, allCloseSummaries] =
-          await Promise.all([
-            Promise.all(
-              bucketDefs.map(async ({ bucket }) => [
-                bucket,
-                await this.getDailyTicketSummary(role, userId, {
-                  workzone,
-                  operationalBucket: [bucket],
-                }),
-              ] as const),
-            ),
-            Promise.all(
-              bucketDefs.map(async ({ bucket }) => [
-                bucket,
-                await this.getDailyTicketSummary(role, userId, {
-                  workzone,
-                  dept: 'b2c',
-                  operationalBucket: [bucket],
-                }),
-              ] as const),
-            ),
-            Promise.all(
-              bucketDefs.map(async ({ bucket }) => [
-                bucket,
-                await this.getDailyTicketSummary(role, userId, {
-                  workzone,
-                  dept: 'b2b',
-                  operationalBucket: [bucket],
-                }),
-              ] as const),
-            ),
-            Promise.all(
-              bucketDefs.map(async ({ bucket }) => [
-                bucket,
-                await this.getDailyTicketSummary(role, userId, {
-                  workzone,
-                  operationalBucket: [bucket],
-                  ...closeFilters,
-                }),
-              ] as const),
-            ),
-          ]);
+        const buildScopeSummary = async (
+          dept: string,
+          includeClosed: boolean,
+        ): Promise<Record<string, BucketSummary>> => {
+          const summary = {} as Record<string, BucketSummary>;
 
-        const all = Object.fromEntries(allSummaries) as unknown as Record<
-          (typeof bucketDefs)[number]['bucket'],
-          TicketManagementBucketSummary & {
-            ffgCount: number;
-            gamasCount: number;
-            p1Count: number;
-            pPlusCount: number;
+          const baseWhere = await this.buildDailyTicketWhere(role, userId, {
+            workzone,
+            dept,
+            operationalBucket: undefined,
+          });
+          const mainTableWhere = this.buildMainTableWhere(baseWhere, { includeClosed });
+          const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
+          const statusCategorySql = buildStatusCategorySql();
+          const projectedColumns = [
+            `${statusCategorySql} AS status_category`,
+            ...NON_KPI_BUCKETS.flatMap((bucket) =>
+              buildBucketSummaryProjectionSql(bucket).split(',\n'),
+            ),
+            ...buildBucketSummaryProjectionSql('kpi_customer').split(',\n'),
+          ];
+          const projectedRowsSql = `
+            SELECT
+              ${projectedColumns.join(',\n              ')}
+            FROM ticket
+            WHERE ${mainSql}
+          `;
+          const combinedSql = `
+            SELECT
+              ${NON_KPI_BUCKETS.map((bucket) => [
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__total\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`${bucket}__open\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`${bucket}__assigned\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'on_progress' THEN 1 ELSE 0 END) AS \`${bucket}__on_progress\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'pending' THEN 1 ELSE 0 END) AS \`${bucket}__pending\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_ffg\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__ffg\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_gamas\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__gamas\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p1\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p1\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p_plus\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p_plus\``,
+              ].join(',\n              ')).join(',\n              ')},
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__total\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`kpi_customer__open\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`kpi_customer__assigned\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'on_progress' THEN 1 ELSE 0 END) AS \`kpi_customer__on_progress\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'pending' THEN 1 ELSE 0 END) AS \`kpi_customer__pending\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'close' THEN 1 ELSE 0 END) AS \`kpi_customer__close\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_ffg\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__ffg\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_gamas\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__gamas\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_p1\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__p1\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_p_plus\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__p_plus\`
+            FROM (
+              ${projectedRowsSql}
+            ) scoped
+          `;
+          const [combinedRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            combinedSql, combinedSql, mainParams,
+          );
+          const combinedRow = combinedRows ?? {};
+          for (const bucket of NON_KPI_BUCKETS) {
+            summary[bucket] = normalizeBucketSummaryRow(combinedRow, bucket);
           }
-        >;
-        const b2c = Object.fromEntries(b2cSummaries) as unknown as Record<
-          (typeof bucketDefs)[number]['bucket'],
-          TicketManagementBucketSummary
-        >;
-        const b2b = Object.fromEntries(b2bSummaries) as unknown as Record<
-          (typeof bucketDefs)[number]['bucket'],
-          TicketManagementBucketSummary
-        >;
-        const closeMap = Object.fromEntries(allCloseSummaries) as unknown as Record<
-          (typeof bucketDefs)[number]['bucket'],
-          TicketManagementBucketSummary
-        >;
+
+          const kpiWhere = await this.buildDailyTicketWhere(role, userId, {
+            workzone,
+            dept,
+            operationalBucket: ['kpi_customer'],
+          });
+          const kpiMainTableWhere = this.buildMainTableWhere(kpiWhere, { includeClosed });
+          const kpiFinalWhere: Prisma.ticketWhereInput = {
+            AND: [kpiMainTableWhere, buildOperationalBucketWhere('kpi_customer')],
+          };
+          const [kpiSql, kpiParams] = buildSqlWhereClause(kpiFinalWhere);
+          const kpiQuery = `
+            SELECT
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__total\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`kpi_customer__open\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`kpi_customer__assigned\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'on_progress' THEN 1 ELSE 0 END) AS \`kpi_customer__on_progress\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'pending' THEN 1 ELSE 0 END) AS \`kpi_customer__pending\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'close' THEN 1 ELSE 0 END) AS \`kpi_customer__close\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_ffg\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__ffg\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_gamas\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__gamas\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_p1\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__p1\`,
+              SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND \`kpi_customer__is_p_plus\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__p_plus\`
+            FROM (
+              SELECT
+                ${statusCategorySql} AS status_category,
+                ${buildBucketSummaryProjectionSql('kpi_customer')}
+              FROM ticket
+              WHERE ${kpiSql}
+            ) scoped
+          `;
+          const [kpiRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            kpiQuery, kpiQuery, kpiParams,
+          );
+          summary.kpi_customer = normalizeBucketSummaryRow(kpiRow ?? {}, 'kpi_customer');
+
+          return summary;
+        };
+
+        const buildCloseOnlySummary = async (
+          dept: string,
+        ): Promise<Record<string, BucketSummary>> => {
+          const summary = {} as Record<string, BucketSummary>;
+
+          const baseWhere = await this.buildDailyTicketWhere(role, userId, {
+            workzone,
+            dept,
+            operationalBucket: undefined,
+          });
+          const mainTableWhere = this.buildMainTableWhere(baseWhere, { includeClosed: true });
+          const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
+          const statusCategorySql = buildStatusCategorySql();
+          const closeSelects = bucketDefs
+            .map(({ bucket }) => `SUM(CASE WHEN (${buildKpiBucketFilterSql(bucket)}) AND ${statusCategorySql} = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``)
+            .join(',\n              ');
+          const closeQuery = `
+            SELECT
+              ${closeSelects}
+            FROM ticket
+            WHERE ${mainSql}
+          `;
+          const [closeRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            closeQuery, closeQuery, mainParams,
+          );
+          const closeRow = closeRows ?? {};
+          for (const { bucket } of bucketDefs) {
+            summary[bucket] = {
+              total: 0,
+              open: 0,
+              assigned: 0,
+              onProgress: 0,
+              pending: 0,
+              close: parseCountValue(closeRow?.[`${bucket}__close`]),
+              ffgCount: 0,
+              gamasCount: 0,
+              p1Count: 0,
+              pPlusCount: 0,
+            };
+          }
+
+          return summary;
+        };
+
+        const [all, b2c, b2b, closeMap] = await Promise.all([
+          buildScopeSummary('all', false),
+          buildScopeSummary('b2c', false),
+          buildScopeSummary('b2b', false),
+          buildCloseOnlySummary('all'),
+        ]);
+
+        const toCardSummary = (s: BucketSummary): TicketManagementBucketSummary & { ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number } => ({
+          total: s.total,
+          open: s.open,
+          assigned: s.assigned + s.onProgress + s.pending,
+          close: s.close,
+          ffgCount: s.ffgCount,
+          gamasCount: s.gamasCount,
+          p1Count: s.p1Count,
+          pPlusCount: s.pPlusCount,
+        });
+
+        const allCard = Object.fromEntries(
+          bucketDefs.map(({ bucket }) => [bucket, toCardSummary(all[bucket])]),
+        ) as Record<string, TicketManagementBucketSummary & { ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number }>;
+        const b2cCard = Object.fromEntries(
+          bucketDefs.map(({ bucket }) => [bucket, toCardSummary(b2c[bucket])]),
+        ) as Record<string, TicketManagementBucketSummary>;
+        const b2bCard = Object.fromEntries(
+          bucketDefs.map(({ bucket }) => [bucket, toCardSummary(b2b[bucket])]),
+        ) as Record<string, TicketManagementBucketSummary>;
+        const closeCard = Object.fromEntries(
+          bucketDefs.map(({ bucket }) => [bucket, toCardSummary(closeMap[bucket])]),
+        ) as Record<string, TicketManagementBucketSummary>;
 
         const totalAll = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.total ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].total, 0,
         );
-
         const deptB2CTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(b2c[bucket]?.total ?? 0),
-          0,
+          (sum, { bucket }) => sum + b2cCard[bucket].total, 0,
         );
         const deptB2BTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(b2b[bucket]?.total ?? 0),
-          0,
+          (sum, { bucket }) => sum + b2bCard[bucket].total, 0,
         );
-
         const unassignedTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.open ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].open, 0,
         );
-
         const assignedTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.assigned ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].assigned, 0,
         );
-
         const closeTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(closeMap[bucket]?.close ?? 0),
-          0,
+          (sum, { bucket }) => sum + closeCard[bucket].close, 0,
         );
-
         const ffgTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.ffgCount ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].ffgCount, 0,
         );
-
         const gamasTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.gamasCount ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].gamasCount, 0,
         );
-
         const p1Total = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.p1Count ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].p1Count, 0,
         );
-
         const pPlusTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + Number(all[bucket]?.pPlusCount ?? 0),
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].pPlusCount, 0,
         );
 
         return {
@@ -1990,18 +2174,22 @@ export class DailyTicketService {
             pPlusCount: pPlusTotal,
           },
           cards: {
-            kpiCustomer: { ...all.kpi_customer, close: closeMap.kpi_customer.close },
-            kpiProactive: { ...all.kpi_proactive, close: closeMap.kpi_proactive.close },
-            nonKpiUnspec: { ...all.non_kpi_unspec, close: closeMap.non_kpi_unspec.close },
-            nonTechnical: { ...all.non_technical, close: closeMap.non_technical.close },
-            sqmUpdate: { ...all.sqm_update, close: closeMap.sqm_update.close },
-            obsolete: { ...all.obsolete, close: closeMap.obsolete.close },
+            kpiCustomer: { ...allCard.kpi_customer, close: closeCard.kpi_customer.close },
+            kpiProactive: { ...allCard.kpi_proactive, close: closeCard.kpi_proactive.close },
+            nonKpiUnspec: { ...allCard.non_kpi_unspec, close: closeCard.non_kpi_unspec.close },
+            nonTechnical: { ...allCard.non_technical, close: closeCard.non_technical.close },
+            sqmUpdate: { ...allCard.sqm_update, close: closeCard.sqm_update.close },
+            obsolete: { ...allCard.obsolete, close: closeCard.obsolete.close },
           },
         };
       },
       DASHBOARD_CACHE_TTL,
     );
   }
+
+  /**
+   * Daily Stats
+   */
 
   static async buildDetailWoHiWhere(
     role: string,
@@ -2028,10 +2216,6 @@ export class DailyTicketService {
       ],
     };
   }
-
-  /**
-   * Daily Stats
-   */
 
   static async getDailyStats(
     role: string,
@@ -2280,56 +2464,40 @@ export class DailyTicketService {
     }
 
     const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
-    const todayWib = format(wibNow, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
-    const currentHourWib = Number(format(wibNow, 'H', { timeZone: 'Asia/Jakarta' }));
-    const yesterdayWib = format(
-      new Date(wibNow.getTime() - 86400000),
-      'yyyy-MM-dd',
-      { timeZone: 'Asia/Jakarta' },
+    const startWib = fromZonedTime(startOfDay(wibNow), 'Asia/Jakarta');
+    const nextHourWib = fromZonedTime(
+      addHours(startOfHour(wibNow), 1),
+      'Asia/Jakarta',
     );
 
-    const fetchRows = (where: Record<string, any>) => {
-      const andArray = [
-        { reported_date: { not: null } },
-        {
-          OR: [
-            { reported_date: { startsWith: yesterdayWib } },
-            { reported_date: { startsWith: todayWib } },
-          ],
-        },
-        ...(where.AND || []),
-      ];
-      const { AND: _omit, ...rest } = where;
-      return prisma.ticket.findMany({
-        where: {
-          ...rest,
-          AND: andArray,
-        },
-        select: {
-          reported_date: true,
-        },
-      });
-    };
+    const [whereClause, params] = buildSqlWhereClause(scopedWhere);
 
-    const rows = await fetchRows(scopedWhere);
+    const sql = `
+      SELECT
+        HOUR(reported_date + INTERVAL 7 HOUR) AS hour,
+        COUNT(*) AS count
+      FROM ticket
+      WHERE ${whereClause}
+        AND reported_date IS NOT NULL
+        AND TRIM(reported_date) != ''
+        AND reported_date >= ?
+        AND reported_date < ?
+      GROUP BY HOUR(reported_date + INTERVAL 7 HOUR)
+    `;
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
+      sql,
+      ...params,
+      startWib,
+      nextHourWib,
+    );
 
     const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
-
     for (const row of rows) {
-      const rawReportedDate = row.reported_date?.trim();
-      if (!rawReportedDate) continue;
-
-      const parsed = new Date(rawReportedDate);
-      if (isNaN(parsed.getTime())) continue;
-
-      const zoned = toZonedTime(parsed, 'Asia/Jakarta');
-      const wibDate = format(zoned, 'yyyy-MM-dd', { timeZone: 'Asia/Jakarta' });
-      if (wibDate !== todayWib) continue;
-
-      const wibHour = Number(format(zoned, 'H', { timeZone: 'Asia/Jakarta' }));
-      if (!Number.isFinite(wibHour) || wibHour < 0 || wibHour > currentHourWib) continue;
-
-      counts[wibHour].count += 1;
+      const hour = Number(row.hour);
+      const count = Number(row.count ?? 0);
+      if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
+      counts[hour].count = count;
     }
 
     return counts;
@@ -2340,10 +2508,7 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ): Promise<Array<{ hour: number; count: number }>> {
-    const hasSpecificBucket = filters?.operationalBucket?.length === 1;
-    const where = hasSpecificBucket
-      ? await this.buildDailyTicketWhere(role, userId, filters)
-      : await this.buildDetailWoHiWhere(role, userId, filters);
+    const where = await this.buildDailyTicketWhere(role, userId, filters);
     const mainTableWhere = this.buildMainTableWhere(where, {
       includeClosed: filters?.includeClosed === true,
     });
@@ -2410,9 +2575,9 @@ export class DailyTicketService {
       ) AS cleaned
       GROUP BY symptom_clean
       ORDER BY count DESC, symptom_clean ASC
-      LIMIT ${limit}
+      LIMIT ?
     `;
-    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params, limit);
     return rows.map((r) => ({ symptom: r.symptom_clean, count: Number(r.count) }));
   }
 

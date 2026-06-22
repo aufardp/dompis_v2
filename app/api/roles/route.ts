@@ -14,6 +14,7 @@ export async function GET() {
         key: true,
       },
       orderBy: { name: 'asc' },
+      take: 100,
     });
 
     const options = roles.map((role) => ({

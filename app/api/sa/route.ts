@@ -58,6 +58,7 @@ export async function GET(req: Request) {
 
     if (user.role === 'super_admin' || user.role === 'superadmin') {
       const serviceAreas = await prisma.service_area.findMany({
+        take: 500,
         orderBy: { nama_sa: 'asc' },
       });
       return NextResponse.json({
@@ -70,6 +71,7 @@ export async function GET(req: Request) {
     }
 
     const userSa = await prisma.user_sa.findMany({
+      take: 500,
       where: { user_id: user.id_user },
       include: { service_area: true },
     });
@@ -100,6 +102,8 @@ export async function POST(req: Request) {
     });
     if (rateLimited) return rateLimited;
 
+    await protectApi(['admin', 'superadmin', 'super_admin']);
+
     const body = await req.json();
     const validated = createServiceAreaSchema.parse({
       ...body,
@@ -117,7 +121,7 @@ export async function POST(req: Request) {
     logger.error('POST ERROR:', error);
     const status = error.name === 'ZodError' ? 400 : 500;
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: getErrorMessage(error, 'Gagal membuat Service Area') },
       { status },
     );
   }
@@ -131,6 +135,8 @@ export async function PUT(req: Request) {
       windowSeconds: 60,
     });
     if (rateLimited) return rateLimited;
+
+    await protectApi(['admin', 'superadmin', 'super_admin']);
 
     const body = await req.json();
 
@@ -159,7 +165,7 @@ export async function PUT(req: Request) {
   } catch (error: any) {
     logger.error('PUT ERROR:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: getErrorMessage(error, 'Gagal mengupdate Service Area') },
       { status: 500 },
     );
   }
@@ -173,6 +179,8 @@ export async function DELETE(req: Request) {
       windowSeconds: 60,
     });
     if (rateLimited) return rateLimited;
+
+    await protectApi(['admin', 'superadmin', 'super_admin']);
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -193,7 +201,7 @@ export async function DELETE(req: Request) {
   } catch (error: any) {
     logger.error('DELETE ERROR:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: getErrorMessage(error, 'Gagal menghapus Service Area') },
       { status: 500 },
     );
   }

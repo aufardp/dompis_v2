@@ -1,10 +1,16 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { protectApi } from '@/app/libs/protectApi';
 import { changePassword } from '@/app/libs/services/users.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'currentPassword is required'),
+  newPassword: z.string().min(6, 'Password minimal 6 karakter'),
+});
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -19,21 +25,17 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
 
-    const currentPassword = body?.currentPassword;
-    const newPassword = body?.newPassword;
-
-    if (
-      typeof currentPassword !== 'string' ||
-      typeof newPassword !== 'string'
-    ) {
+    const parsed = changePasswordSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          message: 'currentPassword and newPassword are required',
+          message: parsed.error.issues.map((i) => i.message).join(', '),
         },
         { status: 400 },
       );
     }
+    const { currentPassword, newPassword } = parsed.data;
 
     await changePassword(decoded.id_user, currentPassword, newPassword);
 

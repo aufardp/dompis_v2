@@ -24,6 +24,7 @@ export async function GET(req: Request) {
     const userSas = await prisma.user_sa.findMany({
       where: { user_id: user.id_user },
       select: { sa_id: true },
+      take: 100,
     });
 
     if (userSas.length === 0) {
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
         sa_id: { in: saIds },
         is_active: true,
       },
+      take: 500,
       include: {
         areas: {
           orderBy: { sort_order: 'asc' },

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
+import { getErrorMessage } from '@/app/libs/apiError';
 import {
   calculateManhours,
   getStoOptions,
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
       {
         success: false,
         message:
-          error.message || 'Terjadi kesalahan saat mengambil data manhours',
+          getErrorMessage(error, 'Terjadi kesalahan saat mengambil data manhours'),
       },
       { status: 500 },
     );

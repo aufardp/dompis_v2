@@ -35,8 +35,10 @@ export async function GET(req: NextRequest) {
     health.lag = {
       syncAgeMs,
       projectionAgeMs,
-      projectionNeverProjected: projectionBacklog.neverProjected,
-      projectionOldestPendingAgeMs: projectionBacklog.oldestPendingAgeMs,
+      projectionNeverProjected:
+        projectionHealth.neverProjectedCount ?? projectionBacklog.neverProjected,
+      projectionOldestPendingAgeMs:
+        projectionHealth.oldestPendingAgeMs ?? projectionBacklog.oldestPendingAgeMs,
     };
 
     if (!healthCheck.healthy || !externalDbStatus) {

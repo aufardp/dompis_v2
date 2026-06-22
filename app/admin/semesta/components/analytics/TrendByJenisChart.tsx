@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import '@aejkatappaja/phantom-ui';
 import {
   BarChart,
   Bar,

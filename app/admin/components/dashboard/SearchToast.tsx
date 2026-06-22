@@ -56,8 +56,8 @@ export default function SearchToast({
           <p className='mt-0.5 break-words font-semibold'>{message}</p>
           <p className='mt-1 text-xs font-medium text-white/80'>
             {type === 'success'
-              ? 'Halaman bucket sudah dibuka dan tiket terkait disorot di tabel.'
-              : 'Periksa kata kunci, lalu coba lagi.'}
+              ? 'Bucket sudah dibuka.'
+              : 'Coba kata kunci lain.'}
           </p>
         </div>
       </div>

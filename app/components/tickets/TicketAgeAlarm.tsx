@@ -1,6 +1,5 @@
 'use client';
 
-import '@aejkatappaja/phantom-ui';
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDateWIB, getSlaHours } from '@/app/utils/datetime';

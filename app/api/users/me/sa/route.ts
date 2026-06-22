@@ -10,6 +10,7 @@ export async function GET() {
 
     const userSa = await prisma.user_sa.findMany({
       where: { user_id: decoded.id_user },
+      take: 100,
       include: {
         service_area: {
           select: {

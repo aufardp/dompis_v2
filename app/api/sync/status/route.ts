@@ -41,7 +41,11 @@ async function buildStatusResponse(
   checkpoint: Awaited<
     ReturnType<typeof prisma.ticket_projection_checkpoint.findUnique>
   >,
-  options: { degraded?: boolean; source?: 'database' | 'metrics' } = {},
+  options: {
+    degraded?: boolean;
+    source?: 'database' | 'metrics';
+    projectionHealth?: Awaited<ReturnType<typeof getProjectionHealth>>;
+  } = {},
 ) {
   const envValue = process.env.PROJECTION_INTERVAL_SECONDS;
   const intervalSeconds = parseInt(envValue ?? '120', 10) || 120;
@@ -60,6 +64,12 @@ async function buildStatusResponse(
   }
 
   const inProgress = checkpoint?.status === 'running';
+  const projectionBacklog = options.projectionHealth
+    ? {
+        neverProjected: options.projectionHealth.neverProjectedCount,
+        oldestPendingAgeMs: options.projectionHealth.oldestPendingAgeMs,
+      }
+    : null;
 
   return {
     success: true,
@@ -72,6 +82,7 @@ async function buildStatusResponse(
       lastError: checkpoint?.lastError ?? lastSyncError,
       degraded: options.degraded ?? false,
       source: options.source ?? 'database',
+      projectionBacklog,
     },
   };
 }
@@ -113,7 +124,7 @@ async function handleSyncStatusFromMetrics() {
           ? 'Projection status reported failed'
           : null,
     } as Awaited<ReturnType<typeof prisma.ticket_projection_checkpoint.findUnique>>,
-    { degraded: true, source: 'metrics' },
+    { degraded: true, source: 'metrics', projectionHealth },
   );
   return NextResponse.json(payload);
 }

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { B2B_GROUPS } from '@/app/config/b2b-groups';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
@@ -78,6 +77,7 @@ export default function TicketManagementGroupPage({
   groupKey: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const groupMeta = useMemo(
@@ -106,6 +106,7 @@ export default function TicketManagementGroupPage({
     page,
     limit: 10,
     validasiPage,
+    includeOptions: false,
   });
 
   const closePageData = useDailyTicketPage({
@@ -118,13 +119,23 @@ export default function TicketManagementGroupPage({
     limit: 10,
     validasiPage: 1,
     includeValidasi: false,
+    includeOptions: false,
   });
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     setPage(1);
     setClosePage(1);
-  }, []);
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) nextParams.set('search', trimmedQuery);
+    else nextParams.delete('search');
+    const nextUrl = nextParams.toString()
+      ? `${pathname}?${nextParams.toString()}`
+      : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
