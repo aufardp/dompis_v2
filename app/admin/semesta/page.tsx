@@ -21,6 +21,7 @@ import { useSemestaAnalyticsV2 } from './hooks/useSemestaAnalyticsV2';
 import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
+import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 
 const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
   ssr: false,
@@ -292,7 +293,8 @@ export default function SemestaPage() {
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [workzoneFilter, setWorkzoneFilter] = useState('');
+  const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
+    usePersistentWorkzoneScope();
   const [ctypeFilter, setCtypeFilter] = useState<TicketCtype | 'all'>('all');
   const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>('all');

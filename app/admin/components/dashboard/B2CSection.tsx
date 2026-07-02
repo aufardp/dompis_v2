@@ -1,6 +1,8 @@
 import CustomerTypeCard from './CustomerTypeCard';
 import B2CSummaryCard from './B2CSummaryCard';
 import { TicketCtype } from '@/app/types/ticket';
+import type { LucideIcon } from 'lucide-react';
+import { Diamond, Gem, Star, UserRound } from 'lucide-react';
 
 interface B2CData {
   summary: {
@@ -81,52 +83,52 @@ interface B2CSectionProps {
 const filterTabs: {
   key: TicketCtype | 'all';
   label: string;
-  icon?: string;
+  icon?: LucideIcon;
   dataKey: keyof Omit<B2CData, 'summary'> | 'summary';
 }[] = [
   { key: 'all', label: 'All', dataKey: 'summary' },
-  { key: 'REGULER', label: 'Reguler', icon: '👤', dataKey: 'reguler' },
-  { key: 'HVC_GOLD', label: 'Gold', icon: '⭐', dataKey: 'hvcGold' },
+  { key: 'REGULER', label: 'Reguler', icon: UserRound, dataKey: 'reguler' },
+  { key: 'HVC_GOLD', label: 'Gold', icon: Star, dataKey: 'hvcGold' },
   {
     key: 'HVC_PLATINUM',
     label: 'Platinum',
-    icon: '💎',
+    icon: Gem,
     dataKey: 'hvcPlatinum',
   },
-  { key: 'HVC_DIAMOND', label: 'Diamond', icon: '🔷', dataKey: 'hvcDiamond' },
+  { key: 'HVC_DIAMOND', label: 'Diamond', icon: Diamond, dataKey: 'hvcDiamond' },
 ];
 
 const tierCards: {
   key: TicketCtype;
-  icon: string;
+  icon: LucideIcon;
   name: string;
   dataKey: keyof Omit<B2CData, 'summary'>;
   accentColor: string;
 }[] = [
   {
     key: 'REGULER',
-    icon: '👤',
+    icon: UserRound,
     name: 'Reguler',
     dataKey: 'reguler',
     accentColor: '#10b981',
   },
   {
     key: 'HVC_GOLD',
-    icon: '⭐',
+    icon: Star,
     name: 'HVC Gold',
     dataKey: 'hvcGold',
     accentColor: '#f59e0b',
   },
   {
     key: 'HVC_PLATINUM',
-    icon: '💎',
+    icon: Gem,
     name: 'HVC Platinum',
     dataKey: 'hvcPlatinum',
     accentColor: '#6366f1',
   },
   {
     key: 'HVC_DIAMOND',
-    icon: '🔷',
+    icon: Diamond,
     name: 'HVC Diamond',
     dataKey: 'hvcDiamond',
     accentColor: '#0ea5e9',
@@ -147,11 +149,11 @@ export default function B2CSection({
       <div className='flex flex-col gap-3 rounded-2xl border border-(--border) bg-(--surface) p-3.5 shadow-sm lg:flex-row lg:items-center lg:justify-between'>
         <div className='space-y-1'>
           <div className='flex items-center gap-2'>
-            <div className='grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-sm font-black text-white shadow-sm'>
+            <div className='grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-sm font-semibold text-white shadow-sm'>
               C
             </div>
             <div>
-              <p className='text-sm font-black tracking-tight text-(--text-primary)'>
+              <p className='text-sm font-semibold tracking-tight text-(--text-primary)'>
                 B2C Overview
               </p>
               <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>

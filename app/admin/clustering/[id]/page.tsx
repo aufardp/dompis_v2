@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { AlertTriangle, CheckCircle2, FileText, MapPin, Plus, X, Zap } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useClusterDetail } from '@/app/hooks/useClusterDetail';
 import { useClusterAssignment } from '@/app/hooks/useClusterAssignment';
@@ -392,7 +393,7 @@ export default function ClusterDetailPage() {
             >
               ← Kembali ke Cluster
             </button>
-            <h1 className='text-2xl font-black text-(--text-primary)'>
+            <h1 className='text-2xl font-semibold text-(--text-primary)'>
               {cluster.nama_cluster}
             </h1>
             <p className='text-sm text-(--text-secondary)'>
@@ -601,11 +602,14 @@ export default function ClusterDetailPage() {
                         htmlFor='file-upload'
                         className='flex cursor-pointer flex-col items-center gap-2'
                       >
-                        <div className='text-3xl'>📁</div>
+                        <FileText className='h-8 w-8 text-slate-400' />
                         <div className='text-sm text-(--text-secondary)'>
                           {selectedFile ? (
                             <span className='font-medium text-green-500'>
-                              ✓ {selectedFile.name}
+                              <span className='inline-flex items-center gap-1'>
+                                <CheckCircle2 size={12} />
+                                {selectedFile.name}
+                              </span>
                             </span>
                           ) : (
                             'Klik untuk pilih file'
@@ -618,7 +622,7 @@ export default function ClusterDetailPage() {
                     </div>
 
                     <div className='mb-4 flex items-center gap-2 rounded-lg bg-blue-500/10 px-3 py-2'>
-                      <span className='text-sm'>📋</span>
+                      <MapPin size={14} />
                       <span className='text-xs text-blue-600 dark:text-blue-400'>
                         Template: odc_value,area_name (kolom A: ODC, kolom B: Area)
                       </span>
@@ -705,7 +709,7 @@ export default function ClusterDetailPage() {
                             onClick={() => handleDeleteNode(node.id)}
                             className='rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20 dark:text-red-400'
                           >
-                            ✕
+                            <X size={12} />
                           </button>
                         </td>
                       </tr>
@@ -789,7 +793,7 @@ export default function ClusterDetailPage() {
                       onClick={() => handleDeleteArea(area.id)}
                       className='rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/20 dark:text-red-400'
                     >
-                      ✕
+                      <X size={12} />
                     </button>
                   </div>
                 ))}
@@ -822,7 +826,7 @@ export default function ClusterDetailPage() {
                     }}
                     className='rounded-lg p-1.5 text-(--text-secondary) hover:bg-(--surface-2)'
                   >
-                    ✕
+                    <X size={12} />
                   </button>
                 </div>
 
@@ -867,11 +871,17 @@ export default function ClusterDetailPage() {
                               {row.area_name ? (
                                 areaFound ? (
                                   <span className='rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400'>
-                                    ✓ Area ada
+                                    <span className='inline-flex items-center gap-1'>
+                                      <CheckCircle2 size={10} />
+                                      Area ada
+                                    </span>
                                   </span>
                                 ) : (
                                   <span className='rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'>
-                                    ⚡ Area baru
+                                    <span className='inline-flex items-center gap-1'>
+                                      <Zap size={10} />
+                                      Area baru
+                                    </span>
                                   </span>
                                 )
                               ) : (
@@ -916,9 +926,11 @@ export default function ClusterDetailPage() {
 
           {importParseError && (
             <div className='fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-red-200/50 bg-red-500 px-4 py-3 text-sm font-medium text-white shadow-lg'>
-              <span>⚠️</span>
+              <AlertTriangle size={14} />
               <span>{importParseError}</span>
-              <button onClick={() => setImportParseError(null)} className='ml-1 hover:opacity-80'>✕</button>
+              <button onClick={() => setImportParseError(null)} className='ml-1 hover:opacity-80'>
+                <X size={12} />
+              </button>
             </div>
           )}
         </div>

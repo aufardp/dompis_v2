@@ -1,4 +1,5 @@
 import { Ticket } from '@/app/types/ticket';
+import { CheckCircle2 } from 'lucide-react';
 import SectionCard from './SectionCard';
 import InfoField from './InfoField';
 
@@ -14,7 +15,7 @@ export default function ClosingResults({
   if (!isClosed) return null;
 
   return (
-    <SectionCard title='Closing Results' icon='✅' iconBgColor='green'>
+    <SectionCard title='Closing Results' icon={CheckCircle2} iconBgColor='green'>
       <div className='space-y-3'>
         <InfoField label='RCA' value={ticket.rca} />
         <InfoField label='Sub RCA' value={ticket.subRca} />

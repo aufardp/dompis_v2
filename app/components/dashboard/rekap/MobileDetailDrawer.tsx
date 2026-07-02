@@ -82,51 +82,54 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
       {isOpen && (
         <button className="fixed inset-0 z-40 bg-black/40" onClick={onClose} aria-label="Tutup detail" />
       )}
-      <div className={`fixed bottom-0 left-0 right-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl transition-transform duration-300 dark:border-slate-800 dark:bg-slate-950 ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}>
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      <div className={`fixed bottom-0 left-0 right-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-[28px] border-t border-(--border) bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] shadow-[0_-24px_60px_-36px_rgba(15,23,42,0.45)] transition-transform duration-300 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.98))] ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className="sticky top-0 z-10 border-b border-(--border) bg-white/90 px-4 py-3 backdrop-blur dark:bg-slate-950/90">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="truncate font-bold text-slate-950 dark:text-slate-50">{'saName' in row ? row.saName : row.workzone}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{'saName' in row ? row.area : ''}</p>
+              <p className="text-[10px] font-bold tracking-[0.2em] text-(--text-muted) uppercase">
+                Detail
+              </p>
+              <h3 className="truncate text-[15px] font-bold text-(--text-primary)">{'saName' in row ? row.saName : row.workzone}</h3>
+              <p className="text-[11px] text-(--text-secondary)">{'saName' in row ? row.area : ''}</p>
             </div>
-            <button onClick={onClose} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-900">
+            <button onClick={onClose} className="rounded-2xl border border-(--border) bg-(--surface) p-2 text-(--text-secondary) hover:bg-(--surface-2)">
               <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        <div className="space-y-5 p-4">
+        <div className="space-y-4 p-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Total</p>
-              <p className="mt-1 text-xl font-bold text-slate-950 dark:text-slate-50">{'grandTotal' in row ? row.grandTotal : row.totalOpen + row.totalClose}</p>
+            <div className="rounded-[20px] border border-(--border) bg-(--surface) p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-(--text-muted)">Total</p>
+              <p className="mt-1 text-[1.15rem] font-bold text-(--text-primary) tabular-nums">{'grandTotal' in row ? row.grandTotal : row.totalOpen + row.totalClose}</p>
             </div>
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 dark:border-red-900/40 dark:bg-red-950/30">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-red-400">Open</p>
-              <p className="mt-1 text-xl font-bold text-red-700 dark:text-red-300">{row.totalOpen}</p>
+            <div className="rounded-[20px] border border-red-500/15 bg-red-500/8 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-red-600/70">Open</p>
+              <p className="mt-1 text-[1.15rem] font-bold text-red-600 tabular-nums dark:text-red-300">{row.totalOpen}</p>
             </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/30">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-500">Close</p>
-              <p className="mt-1 text-xl font-bold text-emerald-700 dark:text-emerald-300">{row.totalClose}</p>
+            <div className="rounded-[20px] border border-emerald-500/15 bg-emerald-500/8 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-600/70">Close</p>
+              <p className="mt-1 text-[1.15rem] font-bold text-emerald-600 tabular-nums dark:text-emerald-300">{row.totalClose}</p>
             </div>
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3 dark:border-sky-900/40 dark:bg-sky-950/30">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-500">Rate</p>
-              <p className="mt-1 text-xl font-bold text-sky-700 dark:text-sky-300">{closeRate(row.totalOpen, row.totalClose)}%</p>
+            <div className="rounded-[20px] border border-blue-500/15 bg-blue-500/8 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-600/70">Rate</p>
+              <p className="mt-1 text-[1.15rem] font-bold text-blue-600 tabular-nums dark:text-blue-300">{closeRate(row.totalOpen, row.totalClose)}%</p>
             </div>
           </div>
 
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Bucket Aktif</p>
-              <span className="text-xs text-slate-400">{activeBuckets.length} bucket</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-(--text-muted)">Bucket Aktif</p>
+              <span className="text-[11px] text-(--text-secondary)">{activeBuckets.length} bucket</span>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {activeBuckets.map((bkt) => (
-                <div key={bkt.key} className="rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{bkt.label}</p>
+                <div key={bkt.key} className="rounded-[20px] border border-(--border) bg-(--surface) p-3">
+                  <p className="text-[11px] font-semibold text-(--text-primary)">{bkt.label}</p>
                   <div className="mt-2 flex gap-2">
-                    <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-bold text-red-700 dark:bg-red-950/30 dark:text-red-300">Op {bkt.data.open}</span>
-                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Cl {bkt.data.close}</span>
+                    <span className="rounded-full bg-red-500/8 px-2 py-1 text-[11px] font-bold text-red-600 dark:text-red-300">Op {bkt.data.open}</span>
+                    <span className="rounded-full bg-emerald-500/8 px-2 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-300">Cl {bkt.data.close}</span>
                   </div>
                 </div>
               ))}
@@ -135,26 +138,26 @@ export default function MobileDetailDrawer({ row, isOpen, onClose }: MobileDetai
 
           {workzones.length > 0 && (
             <section>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Workzone</p>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-(--text-muted)">Workzone</p>
               <div className="space-y-2">
                 {workzones.map((wz: WorkzoneRow) => (
-                  <div key={wz.workzone} className="rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
+                  <div key={wz.workzone} className="rounded-[20px] border border-(--border) bg-(--surface) p-3">
                     <div className="flex items-center justify-between">
-                      <p className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{wz.workzone}</p>
-                      <p className="text-xs text-slate-400">{closeRate(wz.totalOpen, wz.totalClose)}% close</p>
+                      <p className="font-mono text-[11px] font-bold text-(--text-primary)">{wz.workzone}</p>
+                      <p className="text-[11px] text-(--text-secondary)">{closeRate(wz.totalOpen, wz.totalClose)}% close</p>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-2xl bg-slate-50 py-2 dark:bg-slate-900">
-                        <p className="text-[10px] text-slate-400">Total</p>
-                        <p className="font-bold text-slate-800 dark:text-slate-100">{wz.totalOpen + wz.totalClose}</p>
+                      <div className="rounded-[18px] bg-(--surface-2) py-2">
+                        <p className="text-[10px] text-(--text-muted)">Total</p>
+                        <p className="font-bold text-(--text-primary) tabular-nums">{wz.totalOpen + wz.totalClose}</p>
                       </div>
-                      <div className="rounded-2xl bg-red-50 py-2 dark:bg-red-950/30">
-                        <p className="text-[10px] text-red-400">Open</p>
-                        <p className="font-bold text-red-700 dark:text-red-300">{wz.totalOpen}</p>
+                      <div className="rounded-[18px] bg-red-500/8 py-2">
+                        <p className="text-[10px] text-red-500">Open</p>
+                        <p className="font-bold text-red-700 tabular-nums dark:text-red-300">{wz.totalOpen}</p>
                       </div>
-                      <div className="rounded-2xl bg-emerald-50 py-2 dark:bg-emerald-950/30">
+                      <div className="rounded-[18px] bg-emerald-500/8 py-2">
                         <p className="text-[10px] text-emerald-500">Close</p>
-                        <p className="font-bold text-emerald-700 dark:text-emerald-300">{wz.totalClose}</p>
+                        <p className="font-bold text-emerald-700 tabular-nums dark:text-emerald-300">{wz.totalClose}</p>
                       </div>
                     </div>
                   </div>

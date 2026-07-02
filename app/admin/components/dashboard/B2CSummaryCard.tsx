@@ -43,7 +43,7 @@ function MetricCard({
       <p className='text-[9px] font-bold tracking-[0.18em] uppercase opacity-75'>
         {label}
       </p>
-      <p className='mt-1 text-xl font-black leading-none'>{value}</p>
+      <p className='mt-1 text-xl font-semibold leading-none'>{value}</p>
       <p className='mt-0.5 text-[10px] opacity-80'>{helper}</p>
     </div>
   );
@@ -109,7 +109,7 @@ function B2CSummaryCard({
                   Total
                 </p>
                 <div className='flex items-baseline gap-2'>
-                  <p className='text-[clamp(2.2rem,4vw,3.4rem)] leading-none font-black tracking-tight text-slate-950 dark:text-white'>
+                  <p className='text-[clamp(2.2rem,4vw,3.4rem)] leading-none font-semibold tracking-tight text-slate-950 dark:text-white'>
                     {displayTotal}
                   </p>
                   <span className='pb-1 text-[10px] font-bold tracking-[0.18em] text-slate-400 uppercase dark:text-slate-500'>

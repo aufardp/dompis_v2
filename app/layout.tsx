@@ -4,6 +4,13 @@ import './globals.css';
 import Providers from './providers';
 import type { Viewport } from 'next';
 import { Suspense } from 'react';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -47,7 +54,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className='antialiased'>
+      <body className={`${inter.variable} font-inter antialiased`}>
         <Providers>
           <Suspense fallback={null}>
             {children}

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { Hand } from 'lucide-react';
 import { fetchWithAuth, logoutUser } from '@/app/libs/fetcher';
 import { useMounted } from '@/app/hooks/useMounted';
 
@@ -222,7 +223,10 @@ export default function AttendancePage() {
         <div className='w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl dark:bg-slate-800'>
           <div className='mb-8 text-center'>
             <h1 className='mb-2 text-2xl font-bold text-slate-800 dark:text-white'>
-              Selamat Datang, {user?.nama || 'Teknisi'} 👋
+              <span className='inline-flex items-center gap-2'>
+                Selamat Datang, {user?.nama || 'Teknisi'}
+                <Hand size={18} />
+              </span>
             </h1>
             <p className='text-sm text-slate-500 dark:text-slate-400'>
               {formatDateIndo(currentTime)}

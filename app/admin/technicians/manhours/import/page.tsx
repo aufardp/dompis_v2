@@ -12,6 +12,7 @@ import {
   ArrowRight,
   ArrowLeft,
   BarChart3,
+  Save,
   RotateCcw,
 } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
@@ -650,8 +651,9 @@ export default function ImportPage() {
               {savedMappingCount > 0 && (
                 <div className='flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20'>
                   <div className='flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300'>
-                    <span>
-                      💾 {savedMappingCount} mapping tersimpan dari import
+                    <span className='inline-flex items-center gap-1.5'>
+                      <Save size={12} />
+                      {savedMappingCount} mapping tersimpan dari import
                       sebelumnya
                     </span>
                   </div>
@@ -749,7 +751,10 @@ export default function ImportPage() {
                           )}
                           {entry.confidence === 'saved' && (
                             <span className='rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'>
-                              💾 Tersimpan
+                              <span className='inline-flex items-center gap-1'>
+                                <Save size={10} />
+                                Tersimpan
+                              </span>
                             </span>
                           )}
                           {entry.confidence === 'manual' && (

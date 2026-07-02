@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import MobilePagination from '../../../components/tables/MobilePagination';
 import TicketDetailDrawer from './TicketDetailDrawer';
-import { ChevronDown, ChevronUp, UserPlus, Eye } from 'lucide-react';
+import { ChevronDown, ChevronUp, UserPlus, Eye, MapPin } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
   computeTicketRanks,
@@ -283,7 +283,10 @@ export default function TicketTableBackend({
                         </span>
                       )}
                       {ticket.workzone && (
-                        <span className='text-(--text-secondary)'>📍 {ticket.workzone}</span>
+                        <span className='inline-flex items-center gap-1 text-(--text-secondary)'>
+                          <MapPin size={12} />
+                          {ticket.workzone}
+                        </span>
                       )}
                     </div>
                   </div>

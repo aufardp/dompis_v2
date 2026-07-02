@@ -55,6 +55,7 @@ export default function AddressEditor({
             setAlamatInitial(remoteAlamat);
             setAlamatValue(remoteAlamat);
             setAlamatEditing(false);
+            onAddressSaved?.(remoteAlamat);
           }
         } catch {
           // ignore
@@ -65,7 +66,7 @@ export default function AddressEditor({
     return () => {
       cancelled = true;
     };
-  }, [ticketId, initialAddress]);
+  }, [ticketId, initialAddress, onAddressSaved]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!canEdit) return true;
@@ -243,7 +244,7 @@ export default function AddressEditor({
         <button
           onClick={handleSave}
           disabled={alamatSaving || isAlamatEmpty}
-          className='btn-save-addr mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-black text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
+          className='btn-save-addr mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
         >
           {alamatSaving ? (
             <>
@@ -275,8 +276,11 @@ export default function AddressEditor({
   // State 3: Filled State (with Edit button)
   return (
     <>
+      <p className='mb-1 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+        Alamat
+      </p>
       <div className='addr-filled flex items-start justify-between gap-2.5'>
-        <span className='addr-filled-text flex-1 text-[13.5px] leading-relaxed font-semibold text-slate-100'>
+        <span className='addr-filled-text flex-1 text-[13.5px] leading-relaxed font-semibold text-gray-900 dark:text-gray-100'>
           {alamatTrim}
         </span>
         {canEdit && (

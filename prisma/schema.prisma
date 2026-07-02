@@ -207,6 +207,7 @@ model tech_event_outbox {
   @@index([event_label], map: "idx_outbox_event_label")
   @@index([event_type], map: "idx_outbox_event_type")
   @@index([status, next_attempt_at], map: "idx_outbox_status_next")
+  @@index([status, event_type, next_attempt_at, created_at], map: "idx_outbox_dispatchable")
   @@index([status, next_attempt_at, created_at], map: "idx_outbox_dispatch")
   @@index([status, updated_at], map: "idx_outbox_stuck_reset")
   @@index([status, created_at], map: "idx_outbox_cleanup")

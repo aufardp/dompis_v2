@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { Camera } from 'lucide-react';
 
 interface EvidenceItem {
   id: number;
@@ -15,6 +16,7 @@ interface EvidenceGalleryProps {
   evidence: EvidenceItem[];
   loading: boolean;
   error?: string | null;
+  title?: string;
   onImageClick: (index: number) => void;
 }
 
@@ -22,6 +24,7 @@ export default function EvidenceGallery({
   evidence,
   loading,
   error,
+  title = 'Evidence Foto',
   onImageClick,
 }: EvidenceGalleryProps) {
   const [failedImages, setFailedImages] = useState<Map<number, boolean>>(
@@ -54,9 +57,9 @@ export default function EvidenceGallery({
   const hasFailed = (id: number) => failedImages.get(id) === true;
 
   return (
-    <div className='space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:space-y-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900'>
-      <h3 className='text-sm font-semibold text-slate-600 sm:text-base dark:text-slate-300'>
-        Evidence Foto
+    <div className='space-y-3 rounded-2xl border border-(--border) bg-(--surface) p-4 sm:space-y-4 sm:p-5'>
+      <h3 className='text-sm font-semibold text-(--text-primary) sm:text-base'>
+        {title}
       </h3>
 
       {error && (
@@ -66,13 +69,9 @@ export default function EvidenceGallery({
       )}
 
       {loading ? (
-        <div className='text-sm text-slate-500 dark:text-slate-400'>
-          Memuat evidence...
-        </div>
+        <div className='text-sm text-(--text-tertiary)'>Memuat evidence...</div>
       ) : evidence.length === 0 ? (
-        <div className='text-sm text-slate-500 dark:text-slate-400'>
-          Tidak ada evidence
-        </div>
+        <div className='text-sm text-(--text-tertiary)'>Tidak ada evidence</div>
       ) : (
         <div className='grid grid-cols-3 gap-4 sm:gap-4'>
           {evidence.map((ev, idx) => (
@@ -80,13 +79,17 @@ export default function EvidenceGallery({
               <button
                 type='button'
                 onClick={() => onImageClick(idx)}
-                className='relative aspect-[4/3] min-h-20 w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 sm:min-h-24'
+                className='relative aspect-4/3 min-h-20 w-full overflow-hidden rounded-xl border border-(--border) bg-(--surface-2) focus:ring-2 focus:ring-blue-500 focus:outline-none sm:min-h-24'
                 aria-label={`Open evidence ${idx + 1}`}
               >
                 {hasFailed(ev.id) ? (
-                  <div className='flex h-full w-full flex-col items-center justify-center bg-slate-100 dark:bg-slate-800'>
-                    <span className='text-xl'>📷</span>
-                    <span className='text-xs text-slate-400 dark:text-slate-500'>
+                  <div className='flex h-full w-full flex-col items-center justify-center bg-(--surface-2)'>
+                    <Camera
+                      size={20}
+                      strokeWidth={1.5}
+                      className='text-(--text-tertiary)'
+                    />
+                    <span className='text-xs text-(--text-tertiary)'>
                       Gagal load
                     </span>
                   </div>
@@ -107,7 +110,7 @@ export default function EvidenceGallery({
               <button
                 type='button'
                 onClick={() => onImageClick(idx)}
-                className='line-clamp-2 w-full text-left text-[11px] font-medium break-all text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400'
+                className='line-clamp-2 w-full text-left text-[11px] font-medium break-all text-(--text-secondary) hover:text-blue-600'
                 title={ev.fileName}
               >
                 {ev.fileName}

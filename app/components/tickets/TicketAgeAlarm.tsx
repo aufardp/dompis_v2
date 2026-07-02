@@ -5,6 +5,7 @@ import { fetchWithAuth } from '@/app/libs/fetcher';
 import { formatDateWIB, getSlaHours } from '@/app/utils/datetime';
 import { CustomerType } from '@/app/types/ticket';
 import { useMounted } from '@/app/hooks/useMounted';
+import type { LucideIcon } from 'lucide-react';
 
 interface ExpiredTicket {
   idTicket: number;
@@ -153,11 +154,16 @@ export default function TicketAgeAlarm({ onTicketClick }: TicketAgeAlarmProps) {
                   </td>
                   <td className='px-2 py-2'>
                     {config ? (
+                      (() => {
+                        const Icon = config.icon as LucideIcon;
+                        return (
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${config.bg} ${config.color}`}
                       >
-                        {config.icon} {config.label}
+                        <Icon size={12} /> {config.label}
                       </span>
+                        );
+                      })()
                     ) : (
                       <span className='text-gray-500'>-</span>
                     )}

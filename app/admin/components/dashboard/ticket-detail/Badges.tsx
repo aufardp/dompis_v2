@@ -53,6 +53,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 
 export function CTypeBadge({ ctype }: { ctype?: TicketCtype }) {
   const config = ctype ? CustomerType[ctype] : null;
+  const Icon = config?.icon;
 
   if (!config) return null;
 
@@ -60,7 +61,7 @@ export function CTypeBadge({ ctype }: { ctype?: TicketCtype }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-tight ${config.bg} ${config.color}`}
     >
-      {config.icon && <span className='text-[10px]'>{config.icon}</span>}
+      {Icon && <Icon size={10} />}
       {config.label}
     </span>
   );

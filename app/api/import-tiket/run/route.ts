@@ -13,7 +13,6 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { todayWibDateForDb, toWibString } from '@/lib/timezone';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
-import { runProjection } from '@/lib/projection';
 import {
   TICKET_RAW_FIELDS,
   TICKET_RAW_MAX_LENGTHS,
@@ -143,13 +142,22 @@ export async function POST(req: Request) {
     const file = formData.get('file') as File | null;
     const mappingJson = formData.get('mapping') as string | null;
     const rawBatchName = formData.get('batch_name') as string | null;
-    let batchName = (rawBatchName ?? '').trim();
+    const providedBatchName = (rawBatchName ?? '').trim();
+    let batchName = providedBatchName;
     if (!batchName) {
       const ts = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
       const rand = randomBytes(4).toString('hex');
       batchName = `Import_${ts}_${rand}`;
     } else if (batchName.length > 100) {
       throw new ApiError(400, 'Nama batch maksimal 100 karakter');
+    } else {
+      const rand = randomBytes(4).toString('hex');
+      const suffix = `_${rand}`;
+      const maxBaseLength = 100 - suffix.length;
+      if (batchName.length > maxBaseLength) {
+        throw new ApiError(400, `Nama batch maksimal ${maxBaseLength} karakter sebelum suffix unik`);
+      }
+      batchName = `${batchName}${suffix}`;
     }
 
     if (!file) throw new ApiError(400, 'File tidak ditemukan');
@@ -167,18 +175,6 @@ export async function POST(req: Request) {
         (key) => TICKET_RAW_FIELDS.find((f) => f.key === key)?.label ?? key,
       );
       throw new ApiError(400, `Field wajib belum diisi: ${labels.join(', ')}`);
-    }
-
-    const existingBatch = await prisma.ticket_raw.findFirst({
-      where: { import_batch: batchName },
-      select: { import_batch: true },
-    });
-
-    if (existingBatch) {
-      const count = await prisma.ticket_raw.count({
-        where: { import_batch: { startsWith: batchName } },
-      });
-      batchName = `${batchName}_${count + 1}`;
     }
 
     const csvText = await file.text();
@@ -345,18 +341,7 @@ export async function POST(req: Request) {
 
     await invalidateTicketsCache();
 
-    try {
-      const projectionResult = await runProjection(undefined, {
-        syncBatchId: batchName,
-        mode: 'incremental',
-      });
-      const processed = projectionResult && typeof projectionResult === 'object' && 'processed' in projectionResult
-        ? (projectionResult as any).processed
-        : 0;
-      logger.info(`Projection selesai: ${processed} tiket diproses untuk batch ${batchName}`);
-    } catch (projectionError) {
-      logger.warn(`Projection after import gagal untuk batch ${batchName}: ${String(projectionError)}`);
-    }
+    logger.info(`Projection queued for batch ${batchName}`);
 
     broadcastTicketInvalidate('import-tiket');
 
@@ -371,7 +356,7 @@ export async function POST(req: Request) {
         import_batch: batchName,
         uploaded_by: uploadedBy,
       },
-      message: `Import berhasil. ${inserted} baru, ${updated} diperbarui, ${skipped} dilewati. Data sedang diproses ke tabel utama.`,
+      message: `Import berhasil. ${inserted} baru, ${updated} diperbarui, ${skipped} dilewati. Data diproses di background ke tabel utama.`,
     });
   } catch (error: unknown) {
     return NextResponse.json(

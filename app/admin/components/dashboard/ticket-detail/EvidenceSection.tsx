@@ -3,6 +3,7 @@
 import type { EvidenceItem } from './types';
 import Image from 'next/image';
 import EvidenceGallery from '../EvidenceGallery';
+import { Camera } from 'lucide-react';
 
 function EvidenceSectionLoading() {
   return (
@@ -61,7 +62,7 @@ export function EvidenceSection({
   return (
     <div className='mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
       <div className='mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-slate-700'>
-        <span className='text-slate-500'>📷</span>
+        <Camera size={14} className='text-slate-500' />
         <h3 className='text-xs font-semibold tracking-wider text-slate-700 uppercase dark:text-slate-300'>
           Evidence Foto
         </h3>

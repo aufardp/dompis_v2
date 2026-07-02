@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
-import { verifyAccessToken } from '@/app/libs/auth';
 import { cookies } from 'next/headers';
+import { verifyAccessToken } from '@/app/libs/auth';
 import RekapWorkorderClient from '@/app/components/dashboard/rekap/RekapWorkorderClient';
 import DashboardPageActions from '@/app/components/dashboard/DashboardPageActions';
 import ThemeToggleButton from '@/app/components/ui/ThemeToggleButton';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 
 async function getUser() {
   try {
@@ -21,6 +22,7 @@ export default async function RekapWorkorderPage() {
   if (!user) redirect('/auth/login');
   if (user.role === 'teknisi') redirect('/teknisi');
   const homeHref = user.role === 'superadmin' ? '/superadmin' : '/admin';
+  const initialWorkzone = await getInitialWorkzoneScope();
 
   return (
     <div className='min-h-screen bg-(--bg) p-4 md:p-6'>
@@ -44,7 +46,7 @@ export default async function RekapWorkorderPage() {
           <DashboardPageActions homeHref={homeHref} />
         </div>
       </div>
-      <RekapWorkorderClient />
+      <RekapWorkorderClient initialWorkzone={initialWorkzone} />
     </div>
   );
 }

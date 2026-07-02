@@ -27,6 +27,18 @@ const DETAIL_COLUMNS = [
   'BOOKING TIME', 'Tanggal Close', 'Tanggal Open',
 ];
 
+function buildExportCacheKey(
+  role: string,
+  userId: number,
+  params: URLSearchParams,
+  format: string,
+): string | null {
+  const filterParams = new URLSearchParams(params);
+  if (filterParams.has('_t')) return null;
+  filterParams.sort();
+  return `tickets_daily_detail_wo_hi_export:${role}:${userId}:${format}:${filterParams.toString()}`;
+}
+
 function computeAge(reportedDate: string | null | undefined): string {
   if (!reportedDate) return '';
   try {
@@ -180,6 +192,32 @@ export async function GET(request: Request) {
     const status = searchParams.get('status') ?? 'all';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const filenameBase = `Detail_WO_HI_${dateStr}`;
+    const exportCacheKey = buildExportCacheKey(user.role, user.id_user, searchParams, format);
+
+    if (exportCacheKey) {
+      const cached = await getCache<{ kind: 'csv' | 'xlsx'; payload: string }>(exportCacheKey);
+      if (cached) {
+        if (cached.kind === 'csv') {
+          return new Response(cached.payload, {
+            headers: {
+              'Content-Disposition': `attachment; filename="${filenameBase}.csv"`,
+              'Content-Type': 'text/csv;charset=utf-8',
+            },
+          });
+        }
+
+        const buffer = Buffer.from(cached.payload, 'base64');
+        return new Response(buffer, {
+          headers: {
+            'Content-Disposition': `attachment; filename="${filenameBase}.xlsx"`,
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        });
+      }
+    }
 
     const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
       user.role, user.id_user, {
@@ -225,52 +263,55 @@ export async function GET(request: Request) {
       take: DIRECT_EXPORT_MAX_ROWS,
       where: finalWhere,
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
-      include: { users: { select: { nama: true, username: true } } },
+      select: {
+        id_ticket: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        owner_group: true,
+        service_type: true,
+        workzone: true,
+        contact_phone: true,
+        contact_name: true,
+        customer_type: true,
+        customer_name: true,
+        service_no: true,
+        symptom: true,
+        device_name: true,
+        status: true,
+        status_update: true,
+        jenis_tiket_1: true,
+        jenis_tiket_2: true,
+        gaul: true,
+        durasi_ticket: true,
+        booking_date: true,
+        closed_at: true,
+        alamat: true,
+        guarantee_status: true,
+        flagging_manja: true,
+        status_ttr_12_gold: true,
+        status_ttr_3_diamond: true,
+        status_ttr_6_platinum: true,
+        status_ttr_24_reguler: true,
+        description_solution_dompis: true,
+        rca: true,
+        sub_rca: true,
+        users: { select: { nama: true, username: true } },
+        ticket_tracking: { select: { assigned_at: true } },
+      },
     });
-
-    // Latest status per ticket
-    const statusHistories = await prisma.ticket_status_history.findMany({
-      take: DIRECT_EXPORT_MAX_ROWS,
-      where: { ticket_id: { in: orderedTickets.map(t => t.id_ticket) } },
-      orderBy: { changed_at: 'desc' },
-      select: { ticket_id: true, new_status: true },
-    });
-
-    const latestStatusPerTicket = new Map<number, string>();
-    for (const h of statusHistories) {
-      if (!latestStatusPerTicket.has(h.ticket_id)) {
-        latestStatusPerTicket.set(h.ticket_id, h.new_status);
-      }
-    }
-
-    // Earliest assignment per ticket
-    const ticketIds = orderedTickets.map(t => t.id_ticket);
-    const assignments = await prisma.ticket_assignment_history.findMany({
-      take: DIRECT_EXPORT_MAX_ROWS,
-      where: { ticket_id: { in: ticketIds }, is_active: true },
-      orderBy: { assigned_at: 'asc' },
-      select: { ticket_id: true, assigned_at: true },
-    });
-
-    const earliestAssignmentPerTicket = new Map<number, Date>();
-    for (const a of assignments) {
-      if (!earliestAssignmentPerTicket.has(a.ticket_id)) {
-        earliestAssignmentPerTicket.set(a.ticket_id, a.assigned_at);
-      }
-    }
 
     const rows = orderedTickets.map((t: any) => {
-      const latestStatus = latestStatusPerTicket.get(t.id_ticket) ?? '';
-      const assignmentDate = earliestAssignmentPerTicket.get(t.id_ticket) ?? null;
+      const latestStatus = t.status_update ?? '';
+      const assignmentDate = t.ticket_tracking?.assigned_at ?? null;
       return buildDetailRow(t, latestStatus, assignmentDate);
     });
 
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const filenameBase = `Detail_WO_HI_${dateStr}`;
-
     if (format === 'csv') {
       const csvContent = arrayToCsv([DETAIL_COLUMNS, ...rows]);
+      if (exportCacheKey) {
+        await setCache(exportCacheKey, { kind: 'csv', payload: csvContent }, EXPORT_CACHE_TTL).catch(() => {});
+      }
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       return new Response(blob, {
         headers: {
@@ -281,6 +322,16 @@ export async function GET(request: Request) {
     }
 
     const blob = await buildXlsx(rows, DETAIL_COLUMNS, filenameBase);
+    if (exportCacheKey) {
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      await setCache(exportCacheKey, { kind: 'xlsx', payload: buffer.toString('base64') }, EXPORT_CACHE_TTL).catch(() => {});
+      return new Response(buffer, {
+        headers: {
+          'Content-Disposition': `attachment; filename="${filenameBase}.xlsx"`,
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
+      });
+    }
     return new Response(blob, {
       headers: {
         'Content-Disposition': `attachment; filename="${filenameBase}.xlsx"`,

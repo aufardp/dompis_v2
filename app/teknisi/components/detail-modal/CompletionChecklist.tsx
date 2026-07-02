@@ -1,3 +1,5 @@
+import { Camera } from 'lucide-react';
+
 interface CompletionChecklistProps {
   photoCount: number;
   photoRequired: number;
@@ -20,7 +22,7 @@ export default function CompletionChecklist({
             : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
         }`}
       >
-        <span className='text-sm'>📷</span>
+        <Camera size={14} />
         <div>
           <p className='mb-0.5 text-[10px] leading-none font-bold tracking-wide uppercase'>
             Foto

@@ -57,7 +57,7 @@ function MetricTile({
       <p className='text-[9px] font-bold tracking-wide uppercase opacity-70'>
         {label}
       </p>
-      <p className='mt-1 text-xl font-black leading-none'>{value}</p>
+      <p className='mt-1 text-xl font-semibold leading-none'>{value}</p>
       <p className='mt-0.5 text-[10px] opacity-75'>{helper}</p>
     </div>
   );
@@ -82,7 +82,7 @@ function PriorityPill({
           {label}
         </span>
       </div>
-      <span className='font-mono text-sm font-black text-slate-950 dark:text-slate-50'>
+      <span className='font-mono text-sm font-semibold text-slate-950 dark:text-slate-50'>
         {value.toLocaleString()}
       </span>
     </div>
@@ -117,7 +117,7 @@ function B2BGroupSummary({
             <BarChart3 className='h-4 w-4' />
           </div>
           <div>
-            <p className='text-sm font-black tracking-wide text-(--text-primary) uppercase'>
+            <p className='text-sm font-semibold tracking-wide text-(--text-primary) uppercase'>
               {title} Operational Summary
             </p>
             <p className='text-xs text-(--text-secondary)'>
@@ -131,7 +131,7 @@ function B2BGroupSummary({
           <span className='text-xs font-semibold text-(--text-secondary)'>
             Active load
           </span>
-          <span className='font-mono text-sm font-black text-(--text-primary)'>
+          <span className='font-mono text-sm font-semibold text-(--text-primary)'>
             {active.toLocaleString()}
           </span>
         </div>

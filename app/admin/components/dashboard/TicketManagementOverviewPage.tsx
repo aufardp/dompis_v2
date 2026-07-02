@@ -6,12 +6,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
-import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
+import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
 import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
@@ -96,7 +98,7 @@ function TechnicianSummaryCards({
         <p className='text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase'>
           Total Teknisi
         </p>
-        <p className='mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-50'>
+        <p className='mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50'>
           {totalTechnicians.toLocaleString('id-ID')}
         </p>
         <p className='mt-1 text-xs text-slate-500 dark:text-slate-400'>
@@ -109,7 +111,7 @@ function TechnicianSummaryCards({
         <p className='text-[10px] font-bold tracking-[0.22em] text-blue-700 uppercase dark:text-blue-200'>
           Menunggu
         </p>
-        <p className='mt-2 text-2xl font-black tracking-tight text-blue-700 dark:text-blue-200'>
+        <p className='mt-2 text-2xl font-semibold tracking-tight text-blue-700 dark:text-blue-200'>
           {assigned.toLocaleString('id-ID')}
         </p>
         <p className='mt-1 text-xs text-blue-600/80 dark:text-blue-200/70'>
@@ -121,7 +123,7 @@ function TechnicianSummaryCards({
         <p className='text-[10px] font-bold tracking-[0.22em] text-orange-700 uppercase dark:text-orange-200'>
           Pending
         </p>
-        <p className='mt-2 text-2xl font-black tracking-tight text-orange-700 dark:text-orange-200'>
+        <p className='mt-2 text-2xl font-semibold tracking-tight text-orange-700 dark:text-orange-200'>
           {pending.toLocaleString('id-ID')}
         </p>
         <p className='mt-1 text-xs text-orange-600/80 dark:text-orange-200/70'>
@@ -133,7 +135,7 @@ function TechnicianSummaryCards({
         <p className='text-[10px] font-bold tracking-[0.22em] text-amber-700 uppercase dark:text-amber-200'>
           Dikerjakan
         </p>
-        <p className='mt-2 text-2xl font-black tracking-tight text-amber-700 dark:text-amber-200'>
+        <p className='mt-2 text-2xl font-semibold tracking-tight text-amber-700 dark:text-amber-200'>
           {onProgress.toLocaleString('id-ID')}
         </p>
         <p className='mt-1 text-xs text-amber-600/80 dark:text-amber-200/70'>
@@ -145,7 +147,7 @@ function TechnicianSummaryCards({
         <p className='text-[10px] font-bold tracking-[0.22em] text-emerald-700 uppercase dark:text-emerald-200'>
           Selesai Hari Ini
         </p>
-        <p className='mt-2 text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-200'>
+        <p className='mt-2 text-2xl font-semibold tracking-tight text-emerald-700 dark:text-emerald-200'>
           {closedToday.toLocaleString('id-ID')}
         </p>
         <p className='mt-1 text-xs text-emerald-600/80 dark:text-emerald-200/70'>
@@ -174,7 +176,7 @@ function PriorityPills({ counts }: { counts?: FlaggingCounts }) {
           <span className='mr-1.5 text-[10px] font-bold tracking-[0.22em] uppercase'>
             {label}
           </span>
-          <span className='font-black text-(--text-primary)'>
+          <span className='font-semibold text-(--text-primary)'>
             {Number(value).toLocaleString('id-ID')}
           </span>
         </div>
@@ -209,7 +211,7 @@ function BucketSummaryRow({
           <p className='text-[10px] font-bold tracking-[0.22em] uppercase opacity-70'>
             Bucket
           </p>
-          <p className='mt-1 truncate text-[0.95rem] font-black tracking-tight'>
+          <p className='mt-1 truncate text-[0.95rem] font-semibold tracking-tight'>
             {label}
           </p>
         </div>
@@ -217,7 +219,7 @@ function BucketSummaryRow({
           <p className='text-[10px] font-bold tracking-[0.18em] uppercase opacity-70'>
             Total
           </p>
-          <p className='mt-1 text-[1.4rem] font-black tracking-tight'>
+          <p className='mt-1 text-[1.4rem] font-semibold tracking-tight'>
             {isLoading ? '...' : total.toLocaleString('id-ID')}
           </p>
         </div>
@@ -225,7 +227,7 @@ function BucketSummaryRow({
           <p className='text-[10px] font-bold tracking-[0.18em] uppercase opacity-70'>
             Open / Close
           </p>
-          <p className='mt-1 text-[0.85rem] font-black'>
+          <p className='mt-1 text-[0.85rem] font-semibold'>
             {open.toLocaleString('id-ID')} / {close.toLocaleString('id-ID')}
           </p>
         </div>
@@ -271,7 +273,7 @@ function HeroMetricCard({
             {helper}
           </p>
         </div>
-        <p className='shrink-0 text-right text-[1.15rem] leading-none font-black text-(--text-primary) md:text-[1.25rem]'>
+        <p className='shrink-0 text-right text-[1.15rem] leading-none font-semibold text-(--text-primary) md:text-[1.25rem]'>
           {typeof value === 'number' ? value.toLocaleString('id-ID') : value}
         </p>
       </div>
@@ -364,7 +366,7 @@ function PriorityTodayPanel({
               <p className='truncate text-[8px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
                 {item.label}
               </p>
-              <p className='shrink-0 text-right text-[1rem] leading-none font-black text-(--text-primary)'>
+              <p className='shrink-0 text-right text-[1rem] leading-none font-semibold text-(--text-primary)'>
                 {item.count.toLocaleString('id-ID')}
               </p>
             </div>
@@ -386,8 +388,13 @@ type ExpiredTicket = {
   idTicket?: number;
 };
 
-export default function TicketManagementOverviewPage() {
-  const [workzone, setWorkzone] = useState('');
+export default function TicketManagementOverviewPage({
+  initialWorkzone = '',
+}: {
+  initialWorkzone?: string;
+}) {
+  const { workzone, setWorkzone } =
+    usePersistentWorkzoneScope(initialWorkzone);
   const [selectedBucket, setSelectedBucket] = useState('all');
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
@@ -398,10 +405,158 @@ export default function TicketManagementOverviewPage() {
 
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useTicketManagementOverview(
-    true,
-    workzone || undefined,
-  );
+  const kpiCustomerPage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_customer'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const kpiProactivePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_proactive'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const nonKpiUnspecPage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_kpi_unspec'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const nonTechnicalPage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_technical'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const sqmUpdatePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['sqm_update'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const obsoletePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['obsolete'],
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const kpiCustomerClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_customer'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const kpiProactiveClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_proactive'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const nonKpiUnspecClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_kpi_unspec'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const nonTechnicalClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_technical'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const sqmUpdateClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['sqm_update'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const obsoleteClosePage = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['obsolete'],
+    ticketStatus: CLOSE_STATUS_VALUES,
+    includeClosed: true,
+    page: 1,
+    limit: 1,
+    workzone: workzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+    enabled: true,
+  });
+  const isLoading =
+    kpiCustomerPage.loading ||
+    kpiProactivePage.loading ||
+    nonKpiUnspecPage.loading ||
+    nonTechnicalPage.loading ||
+    sqmUpdatePage.loading ||
+    obsoletePage.loading;
+
   const {
     technicians: overviewTechnicians,
     summary: technicianSummary,
@@ -410,7 +565,11 @@ export default function TicketManagementOverviewPage() {
     { search: '', workzone: workzone || '', status: 'all' },
     180,
     true,
-    { includeClosedToday: true, closedTodayLimit: 20, enabled: showSecondaryPanels },
+    {
+      includeClosedToday: true,
+      closedTodayLimit: 20,
+      enabled: showSecondaryPanels,
+    },
   );
   const { data: opsSummary } = useOperationsSummary({
     workzone: workzone || undefined,
@@ -471,30 +630,61 @@ export default function TicketManagementOverviewPage() {
     () => [
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[0],
-        summary: data?.cards.kpiCustomer,
+        summary: {
+          ...kpiCustomerPage.summary,
+          close: kpiCustomerClosePage.summary.close,
+        },
       },
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[1],
-        summary: data?.cards.kpiProactive,
+        summary: {
+          ...kpiProactivePage.summary,
+          close: kpiProactiveClosePage.summary.close,
+        },
       },
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[2],
-        summary: data?.cards.nonKpiUnspec,
+        summary: {
+          ...nonKpiUnspecPage.summary,
+          close: nonKpiUnspecClosePage.summary.close,
+        },
       },
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[3],
-        summary: data?.cards.nonTechnical,
+        summary: {
+          ...nonTechnicalPage.summary,
+          close: nonTechnicalClosePage.summary.close,
+        },
       },
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[4],
-        summary: data?.cards.sqmUpdate,
+        summary: {
+          ...sqmUpdatePage.summary,
+          close: sqmUpdateClosePage.summary.close,
+        },
       },
       {
         ...TICKET_MANAGEMENT_BUCKET_ITEMS[5],
-        summary: data?.cards.obsolete,
+        summary: {
+          ...obsoletePage.summary,
+          close: obsoleteClosePage.summary.close,
+        },
       },
     ],
-    [data],
+    [
+      kpiCustomerPage.summary,
+      kpiCustomerClosePage.summary.close,
+      kpiProactivePage.summary,
+      kpiProactiveClosePage.summary.close,
+      nonKpiUnspecPage.summary,
+      nonKpiUnspecClosePage.summary.close,
+      nonTechnicalPage.summary,
+      nonTechnicalClosePage.summary.close,
+      sqmUpdatePage.summary,
+      sqmUpdateClosePage.summary.close,
+      obsoletePage.summary,
+      obsoleteClosePage.summary.close,
+    ],
   );
 
   const visibleCardData = useMemo(
@@ -558,7 +748,44 @@ export default function TicketManagementOverviewPage() {
   }, [overviewTechnicians]);
 
   const flaggingTotals = useMemo(() => {
-    if (selectedBucket === 'all') return data?.totals;
+    if (selectedBucket === 'all') {
+      return {
+        total: bucketOverviewTotals.total,
+        b2c: 0,
+        b2b: 0,
+        unassigned: bucketOverviewTotals.open,
+        assigned: bucketOverviewTotals.assigned,
+        close: bucketOverviewTotals.close,
+        p1Count:
+          (kpiCustomerPage.summary.p1Count ?? 0) +
+          (kpiProactivePage.summary.p1Count ?? 0) +
+          (nonKpiUnspecPage.summary.p1Count ?? 0) +
+          (nonTechnicalPage.summary.p1Count ?? 0) +
+          (sqmUpdatePage.summary.p1Count ?? 0) +
+          (obsoletePage.summary.p1Count ?? 0),
+        pPlusCount:
+          (kpiCustomerPage.summary.pPlusCount ?? 0) +
+          (kpiProactivePage.summary.pPlusCount ?? 0) +
+          (nonKpiUnspecPage.summary.pPlusCount ?? 0) +
+          (nonTechnicalPage.summary.pPlusCount ?? 0) +
+          (sqmUpdatePage.summary.pPlusCount ?? 0) +
+          (obsoletePage.summary.pPlusCount ?? 0),
+        ffgCount:
+          (kpiCustomerPage.summary.ffgCount ?? 0) +
+          (kpiProactivePage.summary.ffgCount ?? 0) +
+          (nonKpiUnspecPage.summary.ffgCount ?? 0) +
+          (nonTechnicalPage.summary.ffgCount ?? 0) +
+          (sqmUpdatePage.summary.ffgCount ?? 0) +
+          (obsoletePage.summary.ffgCount ?? 0),
+        gamasCount:
+          (kpiCustomerPage.summary.gamasCount ?? 0) +
+          (kpiProactivePage.summary.gamasCount ?? 0) +
+          (nonKpiUnspecPage.summary.gamasCount ?? 0) +
+          (nonTechnicalPage.summary.gamasCount ?? 0) +
+          (sqmUpdatePage.summary.gamasCount ?? 0) +
+          (obsoletePage.summary.gamasCount ?? 0),
+      };
+    }
     const s = visibleCardData[0]?.summary;
     if (!s) return undefined;
     return {
@@ -573,7 +800,26 @@ export default function TicketManagementOverviewPage() {
       ffgCount: s.ffgCount,
       gamasCount: s.gamasCount,
     };
-  }, [data, selectedBucket, visibleCardData]);
+  }, [
+    bucketOverviewTotals.total,
+    bucketOverviewTotals.open,
+    bucketOverviewTotals.assigned,
+    bucketOverviewTotals.close,
+    kpiCustomerPage.summary,
+    kpiCustomerClosePage.summary.close,
+    kpiProactivePage.summary,
+    kpiProactiveClosePage.summary.close,
+    nonKpiUnspecPage.summary,
+    nonKpiUnspecClosePage.summary.close,
+    nonTechnicalPage.summary,
+    nonTechnicalClosePage.summary.close,
+    sqmUpdatePage.summary,
+    sqmUpdateClosePage.summary.close,
+    obsoletePage.summary,
+    obsoleteClosePage.summary.close,
+    selectedBucket,
+    visibleCardData,
+  ]);
 
   const bucketSuffix =
     selectedBucket === 'all'
@@ -587,31 +833,31 @@ export default function TicketManagementOverviewPage() {
         key: 'diamond',
         label: 'Diamond',
         count: opsSummary?.focusCounts?.diamond ?? 0,
-        sub: 'total B2C+B2B harian',
+        sub: 'open harian',
       },
       {
         key: 'p1',
         label: 'Manja HI',
         count: opsSummary?.focusCounts?.p1 ?? 0,
-        sub: 'total B2C+B2B harian',
+        sub: 'open harian',
       },
       {
         key: 'gamas',
         label: 'Gamas',
         count: opsSummary?.focusCounts?.gamas ?? 0,
-        sub: 'total B2C+B2B harian',
+        sub: 'open harian',
       },
       {
         key: 'ffg',
         label: 'FFG',
         count: opsSummary?.focusCounts?.ffg ?? 0,
-        sub: 'total B2C+B2B harian',
+        sub: 'open harian',
       },
       {
         key: 'carry-over',
         label: 'Carry Over',
         count: opsSummary?.focusCounts?.carryOver ?? 0,
-        sub: 'total pending harian',
+        sub: 'open + pending harian',
       },
     ],
     [opsSummary?.focusCounts],
@@ -631,7 +877,7 @@ export default function TicketManagementOverviewPage() {
                   <p className='text-[10px] font-bold tracking-[0.32em] text-(--text-secondary) uppercase'>
                     Ticket Management
                   </p>
-                  <h1 className='mt-2 text-3xl font-black tracking-tight text-(--text-primary) md:text-4xl'>
+                  <h1 className='mt-2 text-3xl font-semibold tracking-tight text-(--text-primary) md:text-4xl'>
                     Operational Overview
                   </h1>
                   <p className='mt-3 max-w-3xl text-sm leading-6 text-(--text-muted)'>
@@ -648,7 +894,7 @@ export default function TicketManagementOverviewPage() {
                         Total Workboard
                       </p>
 
-                      <p className='mt-2 text-4xl leading-none font-black tracking-tight text-(--text-primary)'>
+                      <p className='mt-2 text-4xl leading-none font-semibold tracking-tight text-(--text-primary)'>
                         {isLoading
                           ? '...'
                           : totalWorkboard.toLocaleString('id-ID')}
@@ -876,7 +1122,7 @@ export default function TicketManagementOverviewPage() {
                         <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
                           Quick Access
                         </p>
-                        <h2 className='mt-1 text-lg font-black text-(--text-primary)'>
+                        <h2 className='mt-1 text-lg font-semibold text-(--text-primary)'>
                           Shortcut ke Area Kerja
                         </h2>
                         <p className='mt-1 text-sm text-(--text-muted)'>
@@ -906,9 +1152,9 @@ export default function TicketManagementOverviewPage() {
                 </>
               ) : (
                 <div className='grid gap-4 xl:grid-cols-2'>
-                  <div className='h-[340px] rounded-3xl border border-(--border) bg-(--surface-2)' />
-                  <div className='h-[340px] rounded-3xl border border-(--border) bg-(--surface-2)' />
-                  <div className='xl:col-span-2 h-[320px] rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='h-85 rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='h-85 rounded-3xl border border-(--border) bg-(--surface-2)' />
+                  <div className='h-80 rounded-3xl border border-(--border) bg-(--surface-2) xl:col-span-2' />
                   <div className='rounded-3xl border border-(--border) bg-(--surface-2) px-5 py-4 xl:col-span-2'>
                     <div className='h-6 w-48 rounded-full bg-(--border)' />
                     <div className='mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>

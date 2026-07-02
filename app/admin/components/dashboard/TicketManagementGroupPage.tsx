@@ -7,6 +7,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { B2B_GROUPS } from '@/app/config/b2b-groups';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import { queryKeys } from '@/app/libs/query-keys';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import TicketTableB2B from './TicketTableB2B';
@@ -73,8 +74,10 @@ function patchTicketAssignmentInCache(
 
 export default function TicketManagementGroupPage({
   groupKey,
+  initialWorkzone = '',
 }: {
   groupKey: string;
+  initialWorkzone?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -86,7 +89,8 @@ export default function TicketManagementGroupPage({
   );
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [workzoneFilter, setWorkzoneFilter] = useState('');
+  const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
+    usePersistentWorkzoneScope(initialWorkzone);
   const [page, setPage] = useState(1);
   const [validasiPage, setValidasiPage] = useState(1);
   const [closePage, setClosePage] = useState(1);
@@ -196,14 +200,14 @@ export default function TicketManagementGroupPage({
             <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.04),transparent_30%)] p-5'>
               <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
                 <div className='flex items-start gap-4'>
-                  <div className='grid h-14 w-14 place-items-center rounded-3xl border border-(--border) bg-(--bg) text-[1.15rem] font-black text-blue-600 shadow-sm'>
-                    {groupMeta.icon}
+                  <div className='grid h-14 w-14 place-items-center rounded-3xl border border-(--border) bg-(--bg) text-[1.15rem] font-semibold text-blue-600 shadow-sm'>
+                    <groupMeta.icon size={22} />
                   </div>
                   <div className='min-w-0 flex-1'>
                     <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-secondary) uppercase'>
                       Ticket Management
                     </p>
-                    <h1 className='mt-1 text-2xl font-black text-(--text-primary)'>
+                    <h1 className='mt-1 text-2xl font-semibold text-(--text-primary)'>
                       {groupMeta.label}
                     </h1>
                     <p className='mt-2 max-w-3xl text-sm leading-6 text-(--text-secondary)'>
@@ -228,7 +232,7 @@ export default function TicketManagementGroupPage({
                       <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                         {label}
                       </p>
-                      <p className='mt-1 text-xl font-black text-(--text-primary)'>
+                      <p className='mt-1 text-xl font-semibold text-(--text-primary)'>
                         {value}
                       </p>
                     </div>

@@ -111,7 +111,7 @@ function ToastCard({
           {styles.icon}
         </div>
         <div className='min-w-0 flex-1'>
-          <p className={clsx('text-sm font-black', styles.title)}>{toast.title}</p>
+          <p className={clsx('text-sm font-semibold', styles.title)}>{toast.title}</p>
           {toast.message ? (
             <p className='mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400'>
               {toast.message}

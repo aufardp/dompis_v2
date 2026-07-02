@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { AlertTriangle, Plus, X } from 'lucide-react';
 
 interface EvidenceUploaderProps {
   onFilesChange: (files: File[]) => void;
@@ -240,7 +241,7 @@ export default function EvidenceUploader({
           Evidence Foto (Wajib {maxFiles})
         </h3>
         <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
             isComplete
               ? 'border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/15 dark:text-green-400'
               : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
@@ -283,7 +284,10 @@ export default function EvidenceUploader({
       {oversizedFiles.length > 0 && (
         <div className='rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-500/20 dark:bg-red-500/10'>
           <p className='text-xs font-semibold text-red-700 dark:text-red-400'>
-            ⛔ File ditolak — ukuran tidak wajar (bukan foto valid)
+            <span className='inline-flex items-center gap-1'>
+              <AlertTriangle size={12} />
+              File ditolak — ukuran tidak wajar (bukan foto valid)
+            </span>
           </p>
           <ul className='mt-1 space-y-0.5'>
             {oversizedFiles.map((f) => (
@@ -310,10 +314,10 @@ export default function EvidenceUploader({
                 onClick={() => onRemoveImage(idx)}
                 className='absolute top-0.5 right-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] text-white sm:top-1 sm:right-1 sm:px-2 sm:text-xs'
               >
-                ✕
+                <X size={10} />
               </button>
               {/* Index badge */}
-              <span className='absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] font-black text-white'>
+              <span className='absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] font-semibold text-white'>
                 {idx + 1}
               </span>
             </div>
@@ -322,7 +326,7 @@ export default function EvidenceUploader({
           {/* Add more slot - show if below max */}
           {availableSlots > 0 && (
             <label className='flex aspect-square cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-2xl text-slate-300 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600 dark:hover:bg-slate-700'>
-              +
+              <Plus size={18} />
               <input
                 type='file'
                 multiple

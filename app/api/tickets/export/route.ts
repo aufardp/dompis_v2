@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { TicketService } from '@/app/libs/services/tickets.service';
+import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 import { parseSearchType } from '@/lib/search-intent';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
@@ -50,6 +51,22 @@ function getStatusLabel(raw: string | null | undefined): string {
   return map[v] ?? raw;
 }
 
+function getTicketStatusLabel(raw: string | null | undefined): string {
+  if (!raw) return 'Open';
+  const v = raw.trim().toLowerCase();
+  const map: Record<string, string> = {
+    open: 'Open',
+    assigned: 'Assigned',
+    on_progress: 'On Progress',
+    pending: 'Pending',
+    escalated: 'Escalated',
+    cancelled: 'Cancelled',
+    close: 'Close',
+    closed: 'Closed',
+  };
+  return map[v] ?? raw;
+}
+
 function getFlaggingLabel(ticket: {
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
@@ -70,6 +87,46 @@ function getFlaggingLabel(ticket: {
   return '';
 }
 
+function getMaxTtr(
+  ticket: {
+    ctype?: string;
+    customerType?: string;
+    maxTtrReguler?: string | null;
+    maxTtrGold?: string | null;
+    maxTtrPlatinum?: string | null;
+    maxTtrDiamond?: string | null;
+  },
+  jenisRaw: string | null | undefined,
+): string {
+  const ctype = (ticket.ctype || ticket.customerType || '').toUpperCase();
+
+  if (ctype === 'HVC_GOLD' || jenisRaw?.toUpperCase().includes('GOLD')) {
+    return ticket.maxTtrGold ?? '';
+  }
+  if (ctype === 'HVC_PLATINUM' || jenisRaw?.toUpperCase().includes('PLATINUM')) {
+    return ticket.maxTtrPlatinum ?? '';
+  }
+  if (ctype === 'HVC_DIAMOND' || jenisRaw?.toUpperCase().includes('DIAMOND')) {
+    return ticket.maxTtrDiamond ?? '';
+  }
+  return ticket.maxTtrReguler ?? '';
+}
+
+function computeAge(reportedDate: string | null | undefined): string {
+  if (!reportedDate) return '';
+  const d = new Date(reportedDate);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  const remainingHours = diffHours % 24;
+  if (diffDays > 0) {
+    return `${diffDays}d ${remainingHours}h`;
+  }
+  return `${diffHours}h`;
+}
+
 function getTicketColumns() {
   return [
     'Ticket',
@@ -82,13 +139,19 @@ function getTicketColumns() {
     'Jenis Tiket',
     'Workzone',
     'Technician',
-    'Status',
+    'Status Insera',
+    'Status Dompis',
     'Flagging',
+    'Age / SLA',
+    'Max TTR',
     'Reported Date',
   ];
 }
 
 function buildRows(tickets: Array<Record<string, any>>) {
+  const formatJenis = (ticket: Record<string, any>) =>
+    ticket.jenisTiket ?? ticket.jenis_tiket_2 ?? '';
+
   return tickets.map((ticket) => [
     ticket.ticket ?? ticket.incident ?? '',
     ticket.serviceNo ?? ticket.service_no ?? '',
@@ -97,11 +160,14 @@ function buildRows(tickets: Array<Record<string, any>>) {
     ticket.alamat ?? '',
     formatDate(ticket.bookingDate ?? ticket.booking_date),
     ticket.ctype ?? ticket.customerType ?? ticket.customer_type ?? '',
-    ticket.jenisTiket ?? ticket.jenis_tiket_2 ?? '',
+    formatJenis(ticket),
     ticket.workzone ?? '',
     ticket.technicianName ?? ticket.users?.nama ?? '',
-    getStatusLabel(ticket.status_update ?? ticket.status),
+    getTicketStatusLabel(ticket.status ?? ticket.statusInsera),
+    getTicketStatusLabel(ticket.status_update ?? ticket.statusUpdate),
     getFlaggingLabel(ticket),
+    computeAge(ticket.reportedDate ?? ticket.reported_date),
+    getEffectiveMaxTtrLabel(ticket) ?? getMaxTtr(ticket, formatJenis(ticket)),
     formatDateTime(ticket.reportedDate ?? ticket.reported_date),
   ]);
 }

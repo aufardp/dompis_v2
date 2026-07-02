@@ -73,7 +73,9 @@ export default function UserAvatar({ onPasswordChange }: Props) {
 
   if (loading) {
     return (
-      <phantom-ui suppressHydrationWarning fallback-radius={8}
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
         loading
         animation='shimmer'
         reveal={0.12}

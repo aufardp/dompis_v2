@@ -465,11 +465,15 @@ function mapTicket(t: any) {
     reportedDate: toWibString(t.reported_date),
     ownerGroup: t.owner_group,
     serviceType: t.service_type,
+    witel: t.witel,
     customerType: t.customer_type,
     ctype: t.customer_type || undefined,
     serviceNo: t.service_no,
+    customerName: t.customer_name,
     contactName: t.contact_name,
     contactPhone: t.contact_phone,
+    channel: t.channel,
+    statusDate: t.status_date,
     deviceName: t.device_name,
     status: t.status,
     status_update: (() => {
@@ -481,8 +485,22 @@ function mapTicket(t: any) {
     hasilVisit: t.status_update,
     bookingDate: toWibString(t.booking_date),
     symptom: t.symptom,
+    solution: t.solution,
     descriptionActualSolution: t.description_actual_solution,
     descriptionSolutionDompis: t.description_solution_dompis,
+    incidentDomain: t.incident_domain,
+    classificationFlag: t.classification_flag,
+    realm: t.realm,
+    tscResult: t.tsc_result,
+    sccResult: t.scc_result,
+    snOnt: t.sn_ont,
+    tipeOnt: t.tipe_ont,
+    rkInformation: t.rk_information,
+    classificationPath: t.classification_path,
+    lapul: t.lapul,
+    gaul: t.gaul,
+    onuRx: t.onu_rx,
+    pendingReason: t.pending_reason,
     sqmUpdateReason: t.sqm_update_reason,
     workzone: t.workzone,
     customerSegment: t.customer_segment,
@@ -490,6 +508,22 @@ function mapTicket(t: any) {
     jenisTiket: t.jenis_tiket_2,
     jenisTiket1: t.jenis_tiket_1,
     flaggingManja: resolveEffectiveFlagging(t.flagging_manja, t.booking_date),
+    flaggingDatin: t.flagging_datin,
+    hours: t.hours,
+    durasiTicket: t.durasi_ticket,
+    jamExpired: t.jam_expired,
+    manjaExpired: t.manja_expired,
+    statusManja: t.status_manja,
+    statusTtr12Gold: t.status_ttr_12_gold,
+    statusTtr3Diamond: t.status_ttr_3_diamond,
+    statusTtr24Reguler: t.status_ttr_24_reguler,
+    statusTtr6Platinum: t.status_ttr_6_platinum,
+    statusTtrDatinK1: t.status_ttr_datin_k1,
+    statusTtrDatinK2: t.status_ttr_datin_k2,
+    statusTtrDatinK3: t.status_ttr_datin_k3,
+    statusTtrIndibiz4Jam: t.status_ttr_indibiz_4_jam,
+    statusTtrReseller6Jam: t.status_ttr_reseller_6_jam,
+    statusTtrWifiId: t.status_ttr_wifi_id,
     ticketIdGamas: t.ticket_id_gamas ?? null,
     guaranteeStatus: t.guarantee_status,
     pendingDompis: t.pending_dompis,
@@ -498,11 +532,12 @@ function mapTicket(t: any) {
     subRca: t.sub_rca,
     alamat: t.alamat,
     closedAt: toWibString(t.closed_at),
+    syncDate: toWibDateString(t.sync_date),
     technicianName: t.users?.nama,
     worklogSummary: t.worklog_summary,
-    syncDate: toWibDateString(t.sync_date),
     syncedAt: toWibString(t.synced_at),
     importBatch: t.import_batch,
+    importedAt: toWibString(t.imported_at),
   };
 }
 
@@ -1160,7 +1195,7 @@ export class DailyTicketService {
         ];
     const sqlWithIndex = `
       SELECT id_ticket
-      FROM ticket
+      FROM ticket FORCE INDEX (${options.forceIndex})
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
@@ -1189,7 +1224,7 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(where);
     const sqlWithIndex = `
       SELECT COUNT(*) AS total
-      FROM ticket
+      FROM ticket FORCE INDEX (${forceIndex})
       WHERE ${whereClause}
     `;
     const sqlWithoutIndex = `
@@ -1407,7 +1442,7 @@ export class DailyTicketService {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT id_ticket, reported_date
-      FROM ticket
+      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
       WHERE ${sql}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
       LIMIT ?, ?
@@ -1440,7 +1475,7 @@ export class DailyTicketService {
 
     const sqlWithIndex = `
       SELECT status, status_update, COUNT(*) AS count
-      FROM ticket
+      FROM ticket FORCE INDEX (idx_ticket_daily_board)
       WHERE ${whereClause}
       GROUP BY status, status_update
     `;
@@ -1597,6 +1632,13 @@ export class DailyTicketService {
     );
     const validasiOffset = (safeValidasiPage - 1) * safeValidasiLimit;
 
+    const hasExcludeSymptom = Boolean(filters?.excludeSymptom);
+    const validasiWhere = hasExcludeSymptom
+      ? await this.buildDailyTicketWhere(role, userId, {
+          ...filters,
+          excludeSymptom: undefined,
+        })
+      : null;
     const where = await this.buildDailyTicketWhere(role, userId, filters);
     const statusOptionsWhere = includeOptions
       ? await this.buildDailyTicketWhere(role, userId, {
@@ -1615,7 +1657,7 @@ export class DailyTicketService {
       includeClosed,
     });
     const validasiBaseWhere = includeValidasi
-      ? this.buildValidasiBaseWhere(where)
+      ? this.buildValidasiBaseWhere(validasiWhere ?? where)
       : null;
     const ticketIdsPromise = this.fetchTicketIdsBySql(mainTableWhere, {
       sort,

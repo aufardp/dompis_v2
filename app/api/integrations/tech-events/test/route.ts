@@ -9,6 +9,7 @@ import prisma from '@/app/libs/prisma';
 import { postTechEvents } from '@/app/libs/integrations/techEvents';
 import { protectApi } from '@/app/libs/protectApi';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { DISPATCHABLE_TECH_EVENT_TYPES } from '@/app/libs/integrations/dispatchTechEvents';
 
 function computeBackoffMs(attempt: number) {
   const base = 30_000;
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
   const events = await prisma.tech_event_outbox.findMany({
     where: {
       status: 'PENDING',
+      event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
       OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
     },
     orderBy: { created_at: 'asc' },

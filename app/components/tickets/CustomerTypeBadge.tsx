@@ -16,6 +16,7 @@ export default function CustomerTypeBadge({
   }
 
   const config = CustomerType[ctype];
+  const Icon = config.icon;
   const sizeClasses =
     size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-1';
 
@@ -23,7 +24,7 @@ export default function CustomerTypeBadge({
     <span
       className={`inline-flex items-center gap-1 rounded-full font-medium ${config.bg} ${config.color} ${sizeClasses}`}
     >
-      <span>{config.icon}</span>
+      <Icon size={12} />
       <span>{config.label}</span>
     </span>
   );

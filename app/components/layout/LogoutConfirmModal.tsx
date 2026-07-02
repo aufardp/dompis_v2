@@ -95,7 +95,7 @@ export default function LogoutConfirmModal({
         </div>
 
         {/* Text */}
-        <h3 className='text-text-primary text-[17px] leading-snug font-black'>
+        <h3 className='text-text-primary text-[17px] leading-snug font-semibold'>
           {title}
         </h3>
         <p className='text-text-secondary mt-1.5 text-[13.5px] leading-relaxed font-medium'>
@@ -118,7 +118,7 @@ export default function LogoutConfirmModal({
           <button
             onClick={onConfirm}
             disabled={loading}
-            className='bg-error-500 hover:bg-error-600 flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black text-white shadow-[0_4px_14px_rgba(240,68,56,0.30)] transition-all active:scale-[0.97] disabled:opacity-60 disabled:shadow-none'
+            className='bg-error-500 hover:bg-error-600 flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-semibold text-white shadow-[0_4px_14px_rgba(240,68,56,0.30)] transition-all active:scale-[0.97] disabled:opacity-60 disabled:shadow-none'
           >
             {loading && (
               <span className='h-4 w-4 rounded-full border-2 border-white/30 border-t-white' />

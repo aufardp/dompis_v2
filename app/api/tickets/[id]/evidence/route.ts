@@ -112,7 +112,11 @@ export async function GET(
 
     const finalRows =
       scope !== null && filteredRows.length === 0 && rows.length > 0
-        ? rows
+        ? rows.filter(
+            (row) =>
+              !matchesEvidenceScope(row.file_name, row.file_path, 'close') &&
+              !matchesEvidenceScope(row.file_name, row.file_path, 'pending'),
+          )
         : filteredRows;
 
     const data = finalRows.map(

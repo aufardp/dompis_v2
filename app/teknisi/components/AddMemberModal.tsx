@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { CheckCircle2, Clock3 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { INVITE_CONFIG } from '@/app/config/invite';
@@ -134,7 +135,7 @@ export default function AddMemberModal({ isOpen, onClose, ticketId, incident }: 
                     ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400'
                     : 'bg-amber-50 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'
                 }`}>
-                  <span className={!isExpired ? 'animate-pulse' : ''}>⏱</span>
+                  <Clock3 size={12} className={!isExpired ? 'animate-pulse' : ''} />
                   {isExpired ? 'Expired' : `${remainingSeconds}s`}
                 </div>
               </div>
@@ -173,7 +174,7 @@ export default function AddMemberModal({ isOpen, onClose, ticketId, incident }: 
                   onClick={copyLink}
                   className='shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                 >
-                  {copied ? '✓' : 'Copy'}
+                  {copied ? <CheckCircle2 size={12} /> : 'Copy'}
                 </button>
               </div>
 

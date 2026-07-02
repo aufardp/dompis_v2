@@ -43,6 +43,7 @@ export function TabCustomer({ ticket }: TabCustomerProps) {
             ? ticket.ctype
             : normalizeCustomerType(ticket.customerType);
           const config = resolvedCtype ? CustomerType[resolvedCtype] : null;
+          const Icon = config?.icon;
           return (
             <div className='col-span-2'>
               <div className='mb-1.5 text-[10px] font-medium text-slate-500 uppercase dark:text-slate-400'>
@@ -50,7 +51,7 @@ export function TabCustomer({ ticket }: TabCustomerProps) {
               </div>
               {config ? (
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${config.bg} ${config.color}`}>
-                  <span>{config.icon}</span>
+                  {Icon && <Icon size={12} />}
                   <span>{config.label}</span>
                 </span>
               ) : (

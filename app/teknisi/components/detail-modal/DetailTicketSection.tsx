@@ -1,4 +1,5 @@
 import { Ticket } from '@/app/types/ticket';
+import { AlertTriangle, ClipboardList } from 'lucide-react';
 import SectionCard from './SectionCard';
 import InfoField from './InfoField';
 import DeviceEditor from './DeviceEditor';
@@ -23,7 +24,7 @@ export default function DetailTicketSection({
   onDeviceSaved,
 }: DetailTicketSectionProps) {
   return (
-    <SectionCard title='Detail Ticket' icon='📋' iconBgColor='slate'>
+    <SectionCard title='Detail Ticket' icon={ClipboardList} iconBgColor='slate'>
       <div className='space-y-3'>
         <InfoField
           label='Jenis Pelanggan'
@@ -46,8 +47,9 @@ export default function DetailTicketSection({
           <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
             Device Name (Pastikan Valid)
             {isOnProgress && isDeviceNameEmpty && (
-              <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600 dark:bg-red-500/10 dark:text-red-400'>
-                ⚠ WAJIB
+              <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                <AlertTriangle size={10} className='mr-1 inline' />
+                WAJIB
               </span>
             )}
           </p>

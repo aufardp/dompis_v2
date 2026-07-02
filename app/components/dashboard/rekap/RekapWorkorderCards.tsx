@@ -1,5 +1,6 @@
 'use client';
 
+import type { RefObject } from 'react';
 import { useMemo, useState, useCallback } from 'react';
 import { ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react';
 import clsx from 'clsx';
@@ -50,6 +51,7 @@ interface SARow {
 
 interface RekapCardsProps {
   rows: SARow[];
+  captureTargetRef?: RefObject<HTMLDivElement | null>;
 }
 
 function closeRate(row: SARow): number {
@@ -67,7 +69,10 @@ function loadToneColor(open: number, teknisi: number): string {
   return '#3b82f6';
 }
 
-export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
+export default function RekapWorkorderCards({
+  rows,
+  captureTargetRef,
+}: RekapCardsProps) {
   const [selectedRow, setSelectedRow] = useState<SARow | null>(null);
   const areaNames = useMemo(() => {
     const set = new Set<string>();
@@ -106,7 +111,11 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
 
   return (
     <>
-      <div className='space-y-4'>
+      <div
+        ref={captureTargetRef}
+        data-rekap-capture-root='true'
+        className='space-y-4'
+      >
         {groupedRows.map(([area, areaRows]) => {
           const isOpen = openAreas.has(area);
           const areaOpen = areaRows.reduce(
@@ -121,7 +130,7 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
           return (
             <section
               key={area}
-              className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'
+              className='overflow-hidden rounded-[26px] border border-(--border) bg-(--surface) shadow-sm'
             >
               <button
                 type='button'
@@ -131,11 +140,11 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
                 <div className='min-w-0'>
                   <div className='flex items-center gap-2'>
                     <MapPin className='h-4 w-4 text-(--text-muted)' />
-                    <h3 className='truncate text-[11px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
+                    <h3 className='truncate text-[10px] font-semibold tracking-[0.2em] text-(--text-muted) uppercase'>
                       {area}
                     </h3>
                   </div>
-                  <p className='mt-1 text-xs text-(--text-secondary)'>
+                  <p className='mt-1 text-[11px] text-(--text-secondary)'>
                     {areaRows.length} service area
                   </p>
                 </div>
@@ -171,11 +180,11 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
                         <button
                           key={row.saName}
                           onClick={() => setSelectedRow(row)}
-                          className='group w-full rounded-2xl border border-(--border) bg-(--bg) p-4 text-left transition-colors hover:border-blue-500/20 hover:bg-(--surface-2)'
+                          className='group w-full rounded-[22px] border border-(--border) bg-(--bg) p-3.5 text-left transition-colors hover:border-blue-500/20 hover:bg-(--surface-2)'
                         >
                           <div className='flex items-start justify-between gap-3'>
                             <div className='min-w-0'>
-                              <p className='truncate text-sm font-semibold text-(--text-primary)'>
+                              <p className='truncate text-[13px] font-semibold text-(--text-primary)'>
                                 {row.saName}
                               </p>
                               <div className='mt-1 flex flex-wrap items-center gap-2 text-[10px] text-(--text-muted)'>
@@ -183,50 +192,47 @@ export default function RekapWorkorderCards({ rows }: RekapCardsProps) {
                                   <Users className='h-3 w-3' />
                                   {row.teknisiMasuk} teknisi
                                 </span>
-                                <span className='inline-flex items-center gap-1 rounded-full border border-(--border) bg-(--surface) px-2 py-0.5'>
-                                  {row.workzones.length} workzone
-                                </span>
                               </div>
                             </div>
                             <span
-                              className='inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface) font-mono text-[11px] font-bold'
+                              className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface) font-mono text-[10px] font-bold'
                               style={{ color: toneColor }}
                             >
                               {cr}%
                             </span>
                           </div>
 
-                          <div className='mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4'>
-                            <div className='rounded-2xl border border-(--border) bg-(--surface) px-2.5 py-2'>
+                          <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4'>
+                            <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Open
                               </p>
-                              <p className='mt-1 text-lg font-semibold text-rose-600 dark:text-rose-300'>
+                              <p className='mt-1 text-[1.05rem] leading-none font-semibold text-rose-600 dark:text-rose-300 tabular-nums'>
                                 {row.totalOpen}
                               </p>
                             </div>
-                            <div className='rounded-2xl border border-(--border) bg-(--surface) px-2.5 py-2'>
+                            <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Close
                               </p>
-                              <p className='mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-300'>
+                              <p className='mt-1 text-[1.05rem] leading-none font-semibold text-emerald-600 dark:text-emerald-300 tabular-nums'>
                                 {row.totalClose}
                               </p>
                             </div>
-                            <div className='rounded-2xl border border-(--border) bg-(--surface) px-2.5 py-2'>
+                            <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Close %
                               </p>
-                              <p className='mt-1 text-lg font-semibold text-(--text-primary)'>
+                              <p className='mt-1 text-[1.05rem] leading-none font-semibold text-(--text-primary) tabular-nums'>
                                 {cr}%
                               </p>
                             </div>
-                            <div className='rounded-2xl border border-(--border) bg-(--surface) px-2.5 py-2'>
+                            <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Load
                               </p>
                               <span
-                                className='mt-1 inline-flex rounded-full border border-(--border) bg-(--bg) px-2 py-1 font-mono text-sm font-bold'
+                                className='mt-1 inline-flex rounded-full border border-(--border) bg-(--bg) px-2 py-1 font-mono text-[0.95rem] font-bold tabular-nums'
                                 style={{
                                   background: `${toneColor}18`,
                                   color: toneColor,

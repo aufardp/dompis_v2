@@ -1,6 +1,8 @@
 import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketManagementBucketPage';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 
-export default function TicketManagementNonTechnicalPage() {
+export default async function TicketManagementNonTechnicalPage() {
+  const initialWorkzone = await getInitialWorkzoneScope();
   return (
     <TicketManagementBucketPage
       title='Non Technical'
@@ -9,6 +11,7 @@ export default function TicketManagementNonTechnicalPage() {
       tone='amber'
       operationalBucket={['non_technical']}
       disableLocalSearch
+      initialWorkzone={initialWorkzone}
     />
   );
 }

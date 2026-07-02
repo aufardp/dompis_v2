@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { AlertTriangle, Camera, PenSquare, X } from 'lucide-react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
@@ -192,7 +193,7 @@ export default function TicketUpdateModal({
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className='flex shrink-0 items-start justify-between border-b border-slate-100 px-4 py-3.5 dark:border-slate-800'>
           <div>
-            <h2 className='text-[16px] font-black text-slate-900 dark:text-slate-100'>
+            <h2 className='text-[16px] font-semibold text-slate-900 dark:text-slate-100'>
               Update Progress
             </h2>
             <p className='mt-0.5 font-mono text-[11px] font-semibold tracking-wider text-slate-400 dark:text-slate-500'>
@@ -203,7 +204,7 @@ export default function TicketUpdateModal({
             onClick={onClose}
             className='flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
 
@@ -212,7 +213,7 @@ export default function TicketUpdateModal({
           {/* Error banner */}
           {error && (
             <div className='flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'>
-              <span className='text-base'>⚠️</span>
+              <AlertTriangle size={14} />
               {error}
             </div>
           )}
@@ -222,9 +223,9 @@ export default function TicketUpdateModal({
             {/* Section header */}
             <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800'>
               <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-sm dark:bg-blue-500/15 dark:text-blue-400'>
-                📝
+                <PenSquare size={14} />
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase dark:text-slate-400'>
+              <span className='text-[11px] font-semibold tracking-widest text-slate-500 uppercase dark:text-slate-400'>
                 Deskripsi / Alasan
               </span>
               {/* Required indicator */}
@@ -265,14 +266,14 @@ export default function TicketUpdateModal({
             {/* Section header */}
             <div className='flex items-center gap-2.5 border-b border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800'>
               <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-sm dark:bg-purple-500/15 dark:text-purple-400'>
-                📷
+                <Camera size={14} />
               </div>
-              <span className='text-[11px] font-black tracking-widest text-slate-500 uppercase dark:text-slate-400'>
+              <span className='text-[11px] font-semibold tracking-widest text-slate-500 uppercase dark:text-slate-400'>
                 Evidence Foto
               </span>
               {/* Photo count badge */}
               <span
-                className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${
+                className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
                   selectedFiles.length >= PHOTO_MIN
                     ? 'border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400'
                     : 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400'
@@ -327,7 +328,7 @@ export default function TicketUpdateModal({
           <button
             onClick={handleUpdate}
             disabled={!canSubmit}
-            className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-black tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
+            className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[13.5px] font-semibold tracking-[0.01em] transition-all active:scale-[0.97] disabled:cursor-not-allowed ${
               canSubmit
                 ? 'bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-[0_4px_14px_rgba(99,102,241,0.30)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.40)]'
                 : 'border-[1.5px] border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'

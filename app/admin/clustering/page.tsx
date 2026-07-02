@@ -133,13 +133,13 @@ export default function ClusteringPage() {
 
       const messages: string[] = [];
       if (assigned > 0) {
-        messages.push(`✅ ${assigned} tiket berhasil di-assign`);
+        messages.push(`${assigned} tiket berhasil di-assign`);
       }
       if (no_teknisi > 0) {
-        messages.push(`⚠️ ${no_teknisi} tiket gagal: tidak ada teknisi hari ini`);
+        messages.push(`${no_teknisi} tiket gagal: tidak ada teknisi hari ini`);
       }
       if (no_cluster > 0) {
-        messages.push(`ℹ️ ${no_cluster} tiket tidak ada cluster`);
+        messages.push(`${no_cluster} tiket tidak ada cluster`);
       }
 
       setMessage({
@@ -374,7 +374,7 @@ export default function ClusteringPage() {
     <AdminLayout>
       <div className='space-y-6'>
         <div>
-          <h1 className='text-2xl font-black text-(--text-primary)'>
+          <h1 className='text-2xl font-semibold text-(--text-primary)'>
             Cluster Management
           </h1>
           <p className='text-sm text-(--text-secondary)'>

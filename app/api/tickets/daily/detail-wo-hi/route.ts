@@ -59,23 +59,6 @@ function getMaxTtr(ticket: Record<string, any>): string {
   return label ?? '';
 }
 
-function buildStatusInseraWhere(status: string): Record<string, any> | null {
-  const normalized = String(status ?? '').trim().toLowerCase();
-  if (!normalized || normalized === 'all') return null;
-
-  if (normalized === 'close') {
-    return {
-      status: { in: [...CLOSE_STATUS_VALUES, ...CLOSE_STATUS_VALUES.map((item) => item.toLowerCase())] },
-    };
-  }
-
-  return {
-    NOT: {
-      status: { in: [...CLOSE_STATUS_VALUES, ...CLOSE_STATUS_VALUES.map((item) => item.toLowerCase())] },
-    },
-  };
-}
-
 function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return '';
   try {
@@ -136,101 +119,90 @@ export async function GET(request: Request) {
     const mainWhere = DailyTicketService.buildMainTableWhere(baseWhere, {
       includeClosed: true,
     });
-    const statusWhere = buildStatusInseraWhere(status);
-    const finalWhere = statusWhere
-      ? { AND: [mainWhere, statusWhere] }
-      : mainWhere;
+    const summaryFilters: Record<string, any> = {
+      dept: dept === 'all' ? undefined : dept,
+      search: search || undefined,
+      searchType,
+      workzone: workzone || undefined,
+      ctype: ctype || undefined,
+      statusUpdate: status === 'assigned' ? 'assigned' : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      includeClosed: status === 'close',
+    };
+    if (status === 'close') {
+      summaryFilters.ticketStatus = 'close';
+    }
 
-    const total = await prisma.ticket.count({ where: finalWhere });
-      const totalPages = Math.max(1, Math.ceil(total / limit));
-      const offset = (page - 1) * limit;
+    const summary = await DailyTicketService.getDailyTicketSummary(
+      user.role,
+      user.id_user,
+      summaryFilters,
+    );
+    const total = summary.total;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
 
-      if (total === 0) {
-        return {
-          data: [],
-          summary: { total: 0, open: 0, assigned: 0, close: 0 },
-          total: 0,
-          page,
-          limit,
-          totalPages: 1,
-        };
-      }
+    if (total === 0) {
+      return {
+        data: [],
+        summary: { total: 0, open: 0, assigned: 0, close: 0 },
+        total: 0,
+        page,
+        limit,
+        totalPages: 1,
+      };
+    }
 
-      // Summary counts by status using the same filtered scope as the table.
-      const [statusGroups, orderedTickets] = await Promise.all([
-        prisma.ticket.groupBy({
-          by: ['status', 'status_update'],
-          where: finalWhere,
-          _count: { _all: true },
-        }),
-        prisma.ticket.findMany({
-          where: finalWhere,
-          orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
-          skip: offset,
-          take: limit,
-          include: {
-            users: { select: { nama: true, username: true } },
-          },
-        }),
-      ]);
-      let open = 0, assigned = 0, onProgress = 0, pending = 0, close = 0;
-      for (const g of statusGroups) {
-        const count = g._count._all;
-        const s = (g.status ?? '').trim().toUpperCase();
-        const su = (g.status_update ?? '').trim().toLowerCase();
-
-        if (CLOSE_STATUS_VALUES.includes(s)) {
-          close += count;
-        } else if (su === 'assigned') {
-          assigned += count;
-        } else if (su === 'on_progress') {
-          onProgress += count;
-        } else if (su === 'pending') {
-          pending += count;
-        } else {
-          open += count;
-        }
-      }
-      const summary = { total, open, assigned: assigned + onProgress + pending, close };
-
-      const ticketIds = orderedTickets.map(t => t.id_ticket);
-
-      // Latest status from ticket_status_history per ticket
-      const [statusHistories, assignments] = await Promise.all([
-        prisma.ticket_status_history.findMany({
-          where: { ticket_id: { in: ticketIds } },
-          orderBy: { changed_at: 'desc' },
-          select: { ticket_id: true, new_status: true },
-          take: 1000,
-        }),
-        prisma.ticket_assignment_history.findMany({
-          where: { ticket_id: { in: ticketIds }, is_active: true },
-          orderBy: { assigned_at: 'asc' },
-          select: { ticket_id: true, assigned_at: true },
-          take: 1000,
-        }),
-      ]);
-
-      const latestStatusPerTicket = new Map<number, string>();
-      for (const h of statusHistories) {
-        if (!latestStatusPerTicket.has(h.ticket_id)) {
-          latestStatusPerTicket.set(h.ticket_id, h.new_status);
-        }
-      }
-
-      const earliestAssignmentPerTicket = new Map<number, Date>();
-      for (const a of assignments) {
-        if (!earliestAssignmentPerTicket.has(a.ticket_id)) {
-          earliestAssignmentPerTicket.set(a.ticket_id, a.assigned_at);
-        }
-      }
+    const orderedTickets = await prisma.ticket.findMany({
+      where: mainWhere,
+      orderBy: [{ reported_date: 'desc' }, { id_ticket: 'desc' }],
+      skip: offset,
+      take: limit,
+      select: {
+        id_ticket: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        owner_group: true,
+        service_type: true,
+        workzone: true,
+        contact_phone: true,
+        contact_name: true,
+        customer_type: true,
+        customer_name: true,
+        service_no: true,
+        symptom: true,
+        device_name: true,
+        status: true,
+        status_update: true,
+        jenis_tiket_1: true,
+        jenis_tiket_2: true,
+        gaul: true,
+        durasi_ticket: true,
+        booking_date: true,
+        closed_at: true,
+        alamat: true,
+        guarantee_status: true,
+        flagging_manja: true,
+        status_ttr_12_gold: true,
+        status_ttr_3_diamond: true,
+        status_ttr_6_platinum: true,
+        status_ttr_24_reguler: true,
+        description_solution_dompis: true,
+        rca: true,
+        sub_rca: true,
+        users: { select: { nama: true, username: true } },
+        ticket_tracking: { select: { assigned_at: true } },
+      },
+    });
 
       const data = orderedTickets.map((t: any) => {
     const usiaOpen = computeAge(t.reported_date);
         const statusClosing = CLOSE_STATUS_VALUES.includes((t.status ?? '').trim().toUpperCase()) ? 'CLOSE' : 'OPEN';
         const maxTtr = getMaxTtr(t);
-        const latestStatus = latestStatusPerTicket.get(t.id_ticket) ?? '';
-        const assignmentDate = earliestAssignmentPerTicket.get(t.id_ticket);
+        const latestStatus = t.status_update ?? '';
+        const assignmentDate = t.ticket_tracking?.assigned_at ?? null;
 
         return [
           usiaOpen,

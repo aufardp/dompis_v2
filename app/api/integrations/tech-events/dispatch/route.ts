@@ -12,6 +12,7 @@ import {
   WebhookEvent,
 } from '@/app/libs/integrations/techEventTypes';
 import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
+import { DISPATCHABLE_TECH_EVENT_TYPES } from '@/app/libs/integrations/dispatchTechEvents';
 
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
     const pendingIds = await prisma.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
+        event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
         OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
       },
       orderBy: { created_at: 'asc' },

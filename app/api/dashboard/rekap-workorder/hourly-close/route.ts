@@ -53,11 +53,12 @@ export async function GET(request: Request) {
     const data = cacheKey
       ? await getOrSetCache(
           cacheKey,
-          () => DailyTicketService.getHourlyCloseCounts(
-            user.role,
-            user.id_user,
-            filters,
-          ),
+          () =>
+            DailyTicketService.getHourlyCloseCounts(
+              user.role,
+              user.id_user,
+              filters,
+            ),
           DASHBOARD_CACHE_TTL,
         )
       : await DailyTicketService.getHourlyCloseCounts(
@@ -68,7 +69,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message = getErrorMessage(error, 'Failed to fetch hourly close counts');
+    const message = getErrorMessage(
+      error,
+      'Failed to fetch hourly close counts',
+    );
     const status = getErrorStatus(error, 500);
     return NextResponse.json({ success: false, message }, { status });
   }

@@ -1,5 +1,6 @@
 'use client';
 
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 
@@ -47,7 +48,11 @@ export default function SearchToast({
         )}
       >
         <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-lg ring-1 ring-white/10'>
-          {type === 'success' ? '✓' : '⚠'}
+          {type === 'success' ? (
+            <CheckCircle2 size={18} />
+          ) : (
+            <AlertTriangle size={18} />
+          )}
         </span>
         <div className='min-w-0 flex-1'>
           <p className='text-[10px] font-bold tracking-[0.24em] uppercase text-white/75'>

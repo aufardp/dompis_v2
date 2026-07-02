@@ -24,7 +24,12 @@ export default function TeknisiLayout({
   const [loggingOut, setLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [attendance, setAttendance] = useState<AttendanceStatus | null>(null);
+  const [mounted, setMounted] = useState(false);
   const { isDark, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,17 +88,17 @@ export default function TeknisiLayout({
     <div className='bg-bg min-h-screen antialiased'>
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
-        className='border-border bg-surface shadow-theme-sm sticky top-0 z-40 border-b'
+        className='border-border/80 bg-(--surface)/90 sticky top-0 z-40 border-b backdrop-blur-xl'
         style={{ '--header-h': '3.5rem' } as React.CSSProperties}
       >
         <div className='mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:h-16'>
           {/* ── Brand ─────────────────────────────────────────────────── */}
           <div className='flex items-center gap-1'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl'>
+            <div className='flex h-10 w-10 items-center justify-center rounded-2xl bg-(--surface-2) ring-1 ring-(--border)'>
               <Image src='/assets/logo.webp' alt='logo' width={100} height={30} />
             </div>
             <div>
-              <h1 className='text-text-primary text-[17px] leading-none font-black tracking-tight'>
+              <h1 className='text-text-primary text-[17px] leading-none font-semibold tracking-tight'>
                 Dompis
               </h1>
               <p className='text-text-secondary mt-0.5 text-[11px] font-semibold'>
@@ -112,10 +117,13 @@ export default function TeknisiLayout({
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className='border-border bg-surface-2 hover:bg-surface-3 flex h-9 w-9 items-center justify-center rounded-xl border transition-colors'
-              title={isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
+              className='border-border bg-surface-2 hover:bg-surface-3 flex h-10 w-10 items-center justify-center rounded-full border transition-all active:scale-95'
+              title={mounted ? (isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap') : 'Ganti tema'}
+              aria-label={mounted ? (isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap') : 'Ganti tema'}
             >
-              {isDark ? (
+              {!mounted ? (
+                <Moon size={17} className='text-text-secondary opacity-0' />
+              ) : isDark ? (
                 <Sun size={17} className='text-warning-400' />
               ) : (
                 <Moon size={17} className='text-text-secondary' />

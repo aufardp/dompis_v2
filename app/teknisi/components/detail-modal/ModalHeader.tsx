@@ -1,3 +1,5 @@
+import clsx from 'clsx';
+import { AlertTriangle, Check, OctagonAlert, X } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import AgeBadge from './AgeBadge';
 
@@ -34,19 +36,93 @@ export default function ModalHeader({
   onDismissWarning,
 }: ModalHeaderProps) {
   const title = summary || symptom || ticket;
+  const normalizedStatus = (status ?? '').trim().toUpperCase();
+  const knownStatus = new Set([
+    'ASSIGNED',
+    'ON_PROGRESS',
+    'PENDING',
+    'CLOSE',
+    'CLOSED',
+    'OPEN',
+    'ESCALATED',
+    'CANCELLED',
+  ]);
+  const statusForBadge = knownStatus.has(normalizedStatus)
+    ? normalizedStatus
+    : 'Unknown';
+
+  function StatusStepper({ status: currentStatus }: { status: string }) {
+    const steps = [
+      { key: 'ASSIGNED', label: 'Assigned' },
+      { key: 'ON_PROGRESS', label: 'Dikerjakan' },
+      { key: 'PENDING', label: 'Pending' },
+      { key: 'CLOSE', label: 'Selesai' },
+    ];
+    const order = ['ASSIGNED', 'ON_PROGRESS', 'PENDING', 'CLOSE'];
+    const normalized =
+      currentStatus.trim().toUpperCase() === 'CLOSED'
+        ? 'CLOSE'
+        : currentStatus.trim().toUpperCase();
+    const currentIndex = order.indexOf(normalized);
+
+    if (currentIndex === -1) return null;
+
+    return (
+      <div className='mb-2.5 flex items-center'>
+        {steps.map((step, i) => {
+          const isDone = i < currentIndex;
+          const isCurrent = i === currentIndex;
+
+          return (
+            <div key={step.key} className='relative flex flex-1 flex-col items-center'>
+              {i < steps.length - 1 && (
+                <div
+                  className={clsx(
+                    'absolute top-[11px] left-1/2 h-0.5 w-full',
+                    isDone ? 'bg-blue-500' : 'bg-(--border)',
+                  )}
+                />
+              )}
+              <div
+                className={clsx(
+                  'relative z-10 flex h-[22px] w-[22px] items-center justify-center rounded-full text-[10px] font-bold',
+                  isDone || isCurrent
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-(--surface-2) text-(--text-tertiary)',
+                  isCurrent && 'ring-2 ring-blue-200 dark:ring-blue-500/30',
+                )}
+              >
+                {isDone ? <Check size={11} /> : i + 1}
+              </div>
+              <span
+                className={clsx(
+                  'mt-1 text-[9px]',
+                  isCurrent
+                    ? 'font-bold text-blue-600 dark:text-blue-400'
+                    : 'text-(--text-tertiary)',
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
-    <div className='sticky top-0 z-20 shrink-0 border-b border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900'>
+    <div className='sticky top-0 z-20 shrink-0 border-b border-(--border) bg-(--surface)'>
       {/* Wrapper untuk rows 1-3 dengan padding */}
       <div className='px-4 pt-3 pb-3'>
         {/* Row 1: INC ID + Close button */}
         <div className='mb-2.5 flex items-center justify-between'>
-          <span className='mr-2 truncate font-mono text-[11px] font-semibold tracking-wider text-slate-400 dark:text-slate-500'>
+          <span className='mr-2 truncate font-mono text-[11px] font-semibold tracking-wider text-(--text-tertiary)'>
             {ticket}
           </span>
           <button
             onClick={onClose}
-            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-2) text-(--text-secondary) transition-colors hover:bg-(--surface-3)'
             aria-label='Close'
           >
             <svg
@@ -67,14 +143,13 @@ export default function ModalHeader({
 
         {/* Row 2: Badges */}
         <div className='mb-2.5 flex flex-wrap gap-1.5'>
-          <StatusBadge status={status} />
+          <StatusBadge status={statusForBadge} />
           {jenisTiket && (
             <span
-              className={`/* Dark Mode Support */ inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-slate-50/50 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-slate-600 shadow-sm shadow-slate-100/50 transition-all duration-200 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:shadow-none`}
+              className='inline-flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-2) px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-(--text-secondary) shadow-sm transition-all duration-200'
             >
-              {/* Ikon Tag/Kategori Mikro (SVG) */}
               <svg
-                className='h-3 w-3 text-slate-400 dark:text-slate-500'
+                className='h-3 w-3 text-(--text-tertiary)'
                 fill='none'
                 viewBox='0 0 24 24'
                 strokeWidth='2.5'
@@ -96,7 +171,6 @@ export default function ModalHeader({
               <span className='capitalize'>{jenisTiket.toLowerCase()}</span>
             </span>
           )}
-          {/* AgeBadge: hanya tampil saat tiket BELUM closed */}
           {!isClosed && (
             <AgeBadge
               reportedDate={reportedDate}
@@ -106,8 +180,10 @@ export default function ModalHeader({
           )}
         </div>
 
+        <StatusStepper status={status} />
+
         {/* Row 3: Title */}
-        <h2 className='line-clamp-2 max-h-[2.8em] overflow-hidden text-[14px] leading-snug font-bold text-slate-900 dark:text-slate-100'>
+        <h2 className='line-clamp-2 max-h-[2.8em] overflow-hidden text-[14px] leading-snug font-bold text-(--text-primary)'>
           {title}
         </h2>
       </div>
@@ -123,7 +199,11 @@ export default function ModalHeader({
         >
           <div className='flex min-w-0 items-center gap-1.5'>
             <span className='shrink-0'>
-              {warningType === 'upload' ? '⚠️' : '⛔'}
+              {warningType === 'upload' ? (
+                <AlertTriangle size={14} />
+              ) : (
+                <OctagonAlert size={14} />
+              )}
             </span>
             <span className='truncate'>{warning}</span>
           </div>
@@ -131,10 +211,10 @@ export default function ModalHeader({
             <button
               type='button'
               onClick={onDismissWarning}
-              className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/30'
+              className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 dark:bg-black/15 dark:hover:bg-black/25'
               aria-label='Tutup peringatan'
             >
-              ×
+              <X size={12} />
             </button>
           )}
         </div>

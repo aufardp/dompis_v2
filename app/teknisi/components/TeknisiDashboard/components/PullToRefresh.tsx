@@ -22,7 +22,7 @@ export default function PullToRefresh({
         }px)`,
       }}
     >
-      <div className='mt-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm backdrop-blur'>
+      <div className='mt-2 rounded-full border border-(--border) bg-(--surface)/90 px-4 py-2 text-xs font-semibold text-(--text-secondary) shadow-sm backdrop-blur-xl'>
         {ptrRefreshing
           ? 'Merefresh...'
           : ptrReady

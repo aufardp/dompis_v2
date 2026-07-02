@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { AlertTriangle, Search, X } from 'lucide-react';
 import { useTechnicians } from '@/app/hooks/useTechnician';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import TechnicianCard from './TechnicianCard';
@@ -326,7 +326,10 @@ export default function AssignTechnicianModal({
         {forceReassign && currentTechnicianId && (
           <div className='mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3'>
             <p className='text-sm font-medium text-amber-800'>
-              ⚠️ Force Reassign
+              <span className='inline-flex items-center gap-1'>
+                <AlertTriangle size={13} />
+                Force Reassign
+              </span>
             </p>
             <p className='mt-0.5 text-xs text-amber-700'>
               Tiket sedang dikerjakan oleh{' '}

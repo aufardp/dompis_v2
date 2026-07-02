@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { Ticket } from '@/app/types/ticket';
 import { JENIS_LABELS, normalizeJenis } from '@/app/config/jenis-tiket';
@@ -25,7 +26,7 @@ type GroupSummary = {
 interface B2BGroupCardProps {
   groupKey: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   tickets: Ticket[];
   summary?: GroupSummary;
   loading?: boolean;
@@ -47,7 +48,7 @@ function StatusBadge({
 }) {
   return (
     <div className='rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-900/70'>
-      <p className={clsx('font-mono text-xs font-black', tone)}>
+      <p className={clsx('font-mono text-xs font-semibold', tone)}>
         {value.toLocaleString()}
       </p>
       <p className='text-[9px] font-semibold text-slate-500 dark:text-slate-400'>
@@ -65,6 +66,7 @@ export default function B2BGroupCard({
   summary,
   loading = false,
 }: B2BGroupCardProps) {
+  const Icon = icon;
   const storageKey = `b2b:groups:expanded:${groupKey}`;
   const [expanded, setExpanded] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -139,11 +141,11 @@ export default function B2BGroupCard({
         >
           <div className='flex min-w-0 gap-3'>
             <div className='grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-(--surface-2) text-sm ring-1 ring-(--border)'>
-              {icon}
+              <Icon size={16} />
             </div>
             <div className='min-w-0'>
               <div className='flex items-center gap-2'>
-                <p className='truncate text-[13px] font-black text-(--text-primary)'>
+                <p className='truncate text-[13px] font-semibold text-(--text-primary)'>
                   {label}
                 </p>
                 {displayActiveCount !== '0' && (

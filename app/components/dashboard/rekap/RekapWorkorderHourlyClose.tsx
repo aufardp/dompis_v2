@@ -11,7 +11,9 @@ import { fetchWithAuth } from '@/app/libs/fetcher';
 import { queryKeys } from '@/app/libs/query-keys';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 
-const HourlyCloseChart = dynamic(() => import('./HourlyCloseChart'), { ssr: false });
+const HourlyCloseChart = dynamic(() => import('./HourlyCloseChart'), {
+  ssr: false,
+});
 
 type HourlyCloseRow = {
   hour: number;
@@ -305,7 +307,9 @@ export default function RekapWorkorderHourlyClose({
       <div className='grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.95fr)]'>
         <div className='space-y-4'>
           {isLoading ? (
-            <phantom-ui suppressHydrationWarning fallback-radius={8}
+            <phantom-ui
+              suppressHydrationWarning
+              fallback-radius={8}
               loading
               animation='shimmer'
               reveal={0.12}

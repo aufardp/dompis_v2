@@ -37,7 +37,9 @@ export default function DeviceEditor({
 }: DeviceEditorProps) {
   const [deviceInitial, setDeviceInitial] = useState(initialDevice || '');
   const [deviceValue, setDeviceValue] = useState(initialDevice || '');
-  const [deviceEditing, setDeviceEditing] = useState(isDeviceEmpty(initialDevice));
+  const [deviceEditing, setDeviceEditing] = useState(
+    isDeviceEmpty(initialDevice),
+  );
   const [deviceSaving, setDeviceSaving] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
 
@@ -228,7 +230,7 @@ export default function DeviceEditor({
         <button
           onClick={handleSave}
           disabled={deviceSaving || isDeviceEmptyValue}
-          className='mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-black text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
+          className='mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
         >
           {deviceSaving ? (
             <>
@@ -260,8 +262,11 @@ export default function DeviceEditor({
   // State 3: Filled State (with Edit button)
   return (
     <>
+      <p className='mb-1 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+        ODP
+      </p>
       <div className='flex items-start justify-between gap-2.5'>
-        <span className='flex-1 text-[13.5px] leading-relaxed font-semibold text-slate-100'>
+        <span className='flex-1 text-[13.5px] leading-relaxed font-semibold text-gray-900 dark:text-gray-100'>
           {deviceTrim}
         </span>
         {canEdit && (

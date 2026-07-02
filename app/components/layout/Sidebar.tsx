@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
-import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
+import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import Image from 'next/image';
 
@@ -247,12 +247,73 @@ export default function Sidebar({
   const pathname = usePathname();
   const [roleName, setRoleName] = useState('');
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
-
-  const { data: ticketManagementOverview } = useTicketManagementOverview(
-    true,
-    selectedWorkzone || undefined,
-  );
   const { options: workzoneOptions } = useWorkzoneOptions();
+
+  const kpiCustomerSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_customer'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
+
+  const kpiProactiveSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['kpi_proactive'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
+
+  const nonKpiUnspecSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_kpi_unspec'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
+
+  const nonTechnicalSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['non_technical'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
+
+  const sqmUpdateSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['sqm_update'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
+
+  const obsoleteSummary = useDailyTicketPage({
+    dept: 'all',
+    operationalBucket: ['obsolete'],
+    page: 1,
+    limit: 1,
+    workzone: selectedWorkzone || undefined,
+    includeValidasi: false,
+    includeValidasiTickets: false,
+    includeOptions: false,
+  }).summary;
 
   useEffect(() => {
     let cancelled = false;
@@ -440,23 +501,17 @@ export default function Sidebar({
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
                             const count =
                               item.key === 'kpi-customer'
-                                ? ticketManagementOverview?.cards.kpiCustomer
-                                    ?.total
+                                ? kpiCustomerSummary.open
                                 : item.key === 'kpi-proactive'
-                                  ? ticketManagementOverview?.cards.kpiProactive
-                                      ?.total
+                                  ? kpiProactiveSummary.open
                                   : item.key === 'non-kpi-unspec'
-                                    ? ticketManagementOverview?.cards
-                                        .nonKpiUnspec?.total
+                                    ? nonKpiUnspecSummary.open
                                     : item.key === 'non-technical'
-                                      ? ticketManagementOverview?.cards
-                                          .nonTechnical?.total
+                                      ? nonTechnicalSummary.open
                                       : item.key === 'sqm-update'
-                                        ? ticketManagementOverview?.cards
-                                            .sqmUpdate?.total
+                                        ? sqmUpdateSummary.open
                                         : item.key === 'obsolete'
-                                          ? ticketManagementOverview?.cards
-                                              .obsolete?.total
+                                          ? obsoleteSummary.open
                                           : undefined;
 
                             return (

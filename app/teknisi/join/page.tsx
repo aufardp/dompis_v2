@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { Camera, PartyPopper, CircleX } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { fetchWithAuth } from '@/app/libs/fetcher';
@@ -96,7 +97,7 @@ export default function JoinPage() {
     return (
       <div className='min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center'>
         <div className='text-center space-y-3'>
-          <div className='text-4xl animate-pulse'>📷</div>
+          <Camera className='mx-auto h-10 w-10 animate-pulse text-slate-400' />
           <p className='text-slate-500 dark:text-slate-400'>Memuat scanner...</p>
         </div>
       </div>
@@ -107,7 +108,7 @@ export default function JoinPage() {
     return (
       <div className='min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4'>
         <div className='text-center space-y-4 max-w-sm mx-auto'>
-          <div className='text-6xl'>🎉</div>
+          <PartyPopper className='mx-auto h-16 w-16 text-emerald-500' />
           <div className='bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 space-y-3'>
             <h2 className='text-xl font-bold text-emerald-600 dark:text-emerald-400'>Berhasil Join Tim!</h2>
             {successData && (
@@ -131,7 +132,7 @@ export default function JoinPage() {
     return (
       <div className='min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4'>
         <div className='text-center space-y-4 max-w-sm mx-auto'>
-          <div className='text-6xl'>❌</div>
+          <CircleX className='mx-auto h-16 w-16 text-red-500' />
           <div className='bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 space-y-3'>
             <h2 className='text-xl font-bold text-red-600 dark:text-red-400'>Gagal Join Tim</h2>
             <p className='text-slate-500 dark:text-slate-400'>{errorMsg}</p>

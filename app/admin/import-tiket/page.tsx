@@ -23,6 +23,7 @@ import {
   TICKET_IMPORT_TEMPLATE_REQUIRED_HEADERS,
 } from '@/app/libs/ticket-import-template';
 import type { PreviewData, ImportResult, LastUploadInfo } from './types';
+import type { ImportProjectionStatus } from './types';
 import ImportPreviewPanel from './ImportPreviewPanel';
 import ImportResultPanel from './ImportResultPanel';
 
@@ -193,6 +194,7 @@ export default function ImportTiketPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [lastUpload, setLastUpload] = useState<LastUploadInfo | null>(null);
+  const [projectionStatus, setProjectionStatus] = useState<ImportProjectionStatus | null>(null);
   const [lastUploadExpanded, setLastUploadExpanded] = useState(false);
   const [error, setError] = useState('');
   const [mappingCollapsed, setMappingCollapsed] = useState(true);
@@ -216,9 +218,64 @@ export default function ImportTiketPage() {
     }
   }, []);
 
+  const fetchProjectionStatus = useCallback(async (batch: string) => {
+    try {
+      const res = await fetchWithAuth(
+        `/api/import-tiket/status?batch=${encodeURIComponent(batch)}`,
+      );
+      if (!res) return null;
+      const json = await res.json();
+      if (!json.success) return null;
+      return json.data as ImportProjectionStatus | null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     fetchLastUpload();
   }, [fetchLastUpload]);
+
+  useEffect(() => {
+    const batch = result?.import_batch ?? lastUpload?.import_batch ?? null;
+    if (!batch) {
+      setProjectionStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const terminalStates = new Set([
+      'done',
+      'failed',
+      'aborted',
+      'disabled',
+    ]);
+
+    const poll = async () => {
+      const status = await fetchProjectionStatus(batch);
+      if (cancelled) return;
+      setProjectionStatus(status);
+
+      if (!status) {
+        timer = setTimeout(poll, 4000);
+        return;
+      }
+
+      if (terminalStates.has(status.projection_status)) {
+        return;
+      }
+
+      timer = setTimeout(poll, 4000);
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [fetchProjectionStatus, lastUpload?.import_batch, result?.import_batch]);
 
   const handleFileSelect = useCallback(async (selectedFile: File | null) => {
     if (!selectedFile) return;
@@ -291,6 +348,16 @@ export default function ImportTiketPage() {
         row_count: preview.total_rows,
         uploaded_by: json.data.uploaded_by ?? null,
       });
+      setProjectionStatus({
+        import_batch: json.data.import_batch,
+        requested_at: new Date().toISOString(),
+        projected_at: null,
+        projection_status: 'queued',
+        checkpoint_status: null,
+        last_checkpoint_batch: null,
+        projection_enabled: true,
+        row_count: preview.total_rows,
+      });
       setStep('result');
     } catch (e: any) {
       setError(e.message || 'Gagal import file');
@@ -326,6 +393,7 @@ export default function ImportTiketPage() {
     setPreview(null);
     setMapping({});
     setResult(null);
+    setProjectionStatus(null);
     setError('');
     setMappingCollapsed(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -585,6 +653,7 @@ export default function ImportTiketPage() {
           <ImportResultPanel
             result={result}
             lastUpload={lastUpload}
+            projectionStatus={projectionStatus}
             handleReset={handleReset}
           />
         )}

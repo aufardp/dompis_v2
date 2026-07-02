@@ -85,6 +85,13 @@ export async function GET(
       );
     }
 
+    const rawRow = await prisma.ticket_raw.findFirst({
+      where: { incident: row.incident },
+      select: {
+        reported_by: true,
+      },
+    });
+
     const ticket = row as typeof row & {
       classification_flag: string | null;
       classification_path: string | null;
@@ -132,6 +139,7 @@ export async function GET(
       customerSegment: row.customer_segment,
       serviceNo: row.service_no || '',
       contactName: row.contact_name || '',
+      reportedBy: rawRow?.reported_by || row.contact_name || null,
       contactPhone: row.contact_phone || '',
       deviceName: row.device_name,
       symptom: row.symptom,
@@ -184,13 +192,18 @@ export async function GET(
       statusTtrIndibiz4Jam: row.status_ttr_indibiz_4_jam,
       statusTtrReseller6Jam: row.status_ttr_reseller_6_jam,
       statusTtrWifiId: row.status_ttr_wifi_id,
-      maxTtrReguler: row.status_ttr_24_reguler ? row.status_ttr_24_reguler : null,
+      maxTtrReguler: row.status_ttr_24_reguler
+        ? row.status_ttr_24_reguler
+        : null,
       maxTtrGold: row.status_ttr_12_gold ? row.status_ttr_12_gold : null,
-      maxTtrPlatinum: row.status_ttr_6_platinum ? row.status_ttr_6_platinum : null,
+      maxTtrPlatinum: row.status_ttr_6_platinum
+        ? row.status_ttr_6_platinum
+        : null,
       maxTtrDiamond: row.status_ttr_3_diamond ? row.status_ttr_3_diamond : null,
       pendingDompis: row.pending_dompis,
       rca: row.rca,
       subRca: row.sub_rca,
+      descriptionSolutionDompis: row.description_solution_dompis,
       teknisiUserId: row.teknisi_user_id,
       technicianName: row.users?.nama,
       closedAt: row.closed_at ? row.closed_at.toISOString() : null,
@@ -210,22 +223,39 @@ export async function GET(
             pendingDompis: tracking.pending_dompis ?? null,
           }
         : null,
-      activityLog: activityLogs.map((log: { id: number; activity_type: string | null; description: string | null; user: { nama: string | null; role_id: number | null } | null; created_at: Date }) => ({
-        id: log.id,
-        type: log.activity_type,
-        description: log.description,
-        userName: log.user?.nama ?? null,
-        roleId: log.user?.role_id ?? null,
-        createdAt: log.created_at.toISOString(),
-      })),
-      assignmentHistory: assignmentHistory.map((h: { id: number; assigner: { nama: string | null } | null; technician: { nama: string | null } | null; assigned_at: Date; unassigned_at: Date | null; is_active: boolean }) => ({
-        id: h.id,
-        assignerName: h.assigner?.nama ?? null,
-        technicianName: h.technician?.nama ?? null,
-        assignedAt: h.assigned_at.toISOString(),
-        unassignedAt: h.unassigned_at?.toISOString() ?? null,
-        isActive: h.is_active,
-      })),
+      activityLog: activityLogs.map(
+        (log: {
+          id: number;
+          activity_type: string | null;
+          description: string | null;
+          user: { nama: string | null; role_id: number | null } | null;
+          created_at: Date;
+        }) => ({
+          id: log.id,
+          type: log.activity_type,
+          description: log.description,
+          userName: log.user?.nama ?? null,
+          roleId: log.user?.role_id ?? null,
+          createdAt: log.created_at.toISOString(),
+        }),
+      ),
+      assignmentHistory: assignmentHistory.map(
+        (h: {
+          id: number;
+          assigner: { nama: string | null } | null;
+          technician: { nama: string | null } | null;
+          assigned_at: Date;
+          unassigned_at: Date | null;
+          is_active: boolean;
+        }) => ({
+          id: h.id,
+          assignerName: h.assigner?.nama ?? null,
+          technicianName: h.technician?.nama ?? null,
+          assignedAt: h.assigned_at.toISOString(),
+          unassignedAt: h.unassigned_at?.toISOString() ?? null,
+          isActive: h.is_active,
+        }),
+      ),
     };
 
     return NextResponse.json({ success: true, data: mapped });

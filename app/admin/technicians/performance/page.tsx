@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Download, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, MapPin, X } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import Button from '@/app/components/ui/Button';
 import Select from '@/app/components/form/Select';
@@ -416,7 +416,7 @@ export default function TechnicianPerformancePage() {
                 onClick={() => setDetailModal((p) => ({ ...p, open: false }))}
                 className='rounded-lg border border-slate-200 p-2 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700'
               >
-                ✕
+                <X size={14} />
               </button>
             </div>
 

@@ -1,35 +1,38 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { queryKeys } from '@/app/libs/query-keys';
 import { Activity, CheckCircle2, Clock3, RefreshCw, Users } from 'lucide-react';
 import DataFreshnessBadge from '../DataFreshnessBadge';
 import RekapSkeleton from './RekapSkeleton';
+import type { CaptureFormat } from './captureElementAsImage';
+import { captureElementAsImage } from './captureElementAsImage';
+import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 
 const RekapWorkorderHourlyClose = dynamic(
   () => import('./RekapWorkorderHourlyClose'),
   {
     ssr: false,
     loading: () => (
-      <div className='h-[240px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+      <div className='h-60 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
     ),
   },
-);
+) as ComponentType<{ bucket?: string; initialWorkzone?: string }>;
 
 const RekapWorkorderTable = dynamic(() => import('./RekapWorkorderTable'), {
   ssr: false,
   loading: () => (
-    <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+    <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
   ),
 });
 
 const RekapWorkorderCards = dynamic(() => import('./RekapWorkorderCards'), {
   ssr: false,
   loading: () => (
-    <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+    <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
   ),
 });
 
@@ -87,6 +90,22 @@ interface KpiSummaryCounts {
   obsolete: number;
 }
 
+interface BucketSummaryCounts {
+  total: number;
+  open: number;
+  assigned: number;
+  close: number;
+}
+
+interface BucketBreakdownCounts {
+  kpiCustomer: BucketSummaryCounts;
+  kpiProactive: BucketSummaryCounts;
+  nonKpiUnspec: BucketSummaryCounts;
+  nonTechnical: BucketSummaryCounts;
+  sqmUpdate: BucketSummaryCounts;
+  obsolete: BucketSummaryCounts;
+}
+
 interface WorkboardSummaryCounts {
   total: number;
   open: number;
@@ -102,6 +121,8 @@ interface RekapResponse {
   rows: SARow[];
   totals: Record<string, number>;
   kpiSummary?: KpiSummaryCounts;
+  bucketSummary?: BucketSummaryCounts;
+  bucketBreakdown?: BucketBreakdownCounts;
   workboardSummary?: WorkboardSummaryCounts;
   selectedBucket?: string;
   error?: string;
@@ -135,8 +156,38 @@ function BucketFilterBar({
             className={`rounded-full px-2.75 py-1.5 text-[11px] font-semibold transition-all ${
               active
                 ? 'bg-blue-500 text-white shadow-sm'
-                : 'border border-transparent bg-surface-2 text-(--text-secondary) hover:border-(--border) hover:bg-(--surface-hover) hover:text-(--text-primary)'
+                : 'bg-surface-2 border border-transparent text-(--text-secondary) hover:border-(--border) hover:bg-(--surface-hover) hover:text-(--text-primary)'
             }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileBucketFilterGrid({
+  selectedBucket,
+  onChange,
+}: {
+  selectedBucket: string;
+  onChange: (bucket: string) => void;
+}) {
+  return (
+    <div className='space-y-2'>
+      {BUCKET_OPTIONS.map((opt) => {
+        const active = opt.value === selectedBucket;
+        const isAll = opt.value === 'all';
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`min-h-11 w-full rounded-2xl border px-3 py-2 text-center text-[11px] font-semibold leading-tight transition-all ${
+              active
+                ? 'border-blue-500/20 bg-blue-500 text-white shadow-sm'
+                : 'border-(--border) bg-(--surface-2) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)'
+            } ${isAll ? 'py-2.5 text-[12px]' : ''}`}
           >
             {opt.label}
           </button>
@@ -240,7 +291,7 @@ function computeSummary(rows: SARow[]) {
 
 function computeOverviewSummary(summary?: WorkboardSummaryCounts) {
   if (!summary) return null;
-  const open = summary.open + summary.assigned;
+  const open = summary.open;
   const close = summary.close;
   const total = summary.total;
   const closeRate = total > 0 ? Math.round((close / total) * 100) : 0;
@@ -273,7 +324,7 @@ function SummaryTile({
         <div className={t.icon}>{icon}</div>
       </div>
       <div className='mt-1.5 flex items-end justify-between gap-2'>
-        <p className={`text-[1.45rem] leading-none font-black ${t.text}`}>
+        <p className={`text-[1.45rem] leading-none font-semibold ${t.text}`}>
           {value}
         </p>
         <p className='max-w-24 text-right text-[10px] leading-4 text-(--text-muted)'>
@@ -340,7 +391,7 @@ function StatusPair({
             <p className='text-[10px] font-semibold tracking-[0.18em] text-red-600/80 uppercase dark:text-red-300/80'>
               Open
             </p>
-            <p className='mt-1 text-[1.55rem] leading-none font-black text-red-700 dark:text-red-200'>
+            <p className='mt-1 text-[1.55rem] leading-none font-semibold text-red-700 dark:text-red-200'>
               {formatNumber(open)}
             </p>
           </div>
@@ -359,7 +410,7 @@ function StatusPair({
             <p className='text-[10px] font-semibold tracking-[0.18em] text-emerald-600/80 uppercase dark:text-emerald-300/80'>
               Close
             </p>
-            <p className='mt-1 text-[1.55rem] leading-none font-black text-emerald-700 dark:text-emerald-200'>
+            <p className='mt-1 text-[1.55rem] leading-none font-semibold text-emerald-700 dark:text-emerald-200'>
               {formatNumber(close)}
             </p>
           </div>
@@ -389,8 +440,15 @@ function StatusPair({
   );
 }
 
-export default function RekapWorkorderClient() {
+export default function RekapWorkorderClient({
+  initialWorkzone = '',
+}: {
+  initialWorkzone?: string;
+}) {
+  const { workzone } = usePersistentWorkzoneScope(initialWorkzone);
   const [selectedBucket, setSelectedBucket] = useState('all');
+  const captureTargetRef = useRef<HTMLTableElement | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
   const [heavySectionsReady, setHeavySectionsReady] = useState({
     hourly: false,
     table: false,
@@ -398,13 +456,21 @@ export default function RekapWorkorderClient() {
   });
 
   const queryParams = useMemo(
-    () => new URLSearchParams({ bucket: selectedBucket }),
-    [selectedBucket],
+    () => {
+      const params = new URLSearchParams({ bucket: selectedBucket });
+      if (workzone) params.set('workzone', workzone);
+      return params;
+    },
+    [selectedBucket, workzone],
   );
 
   const { data, isLoading, isError, refetch, isFetching } =
     useQuery<RekapResponse>({
-    queryKey: [...queryKeys.dashboard.rekapWorkorder(), selectedBucket],
+      queryKey: [
+        ...queryKeys.dashboard.rekapWorkorder(),
+        selectedBucket,
+        workzone || 'all',
+      ],
       queryFn: async () => {
         const res = await fetch(
           `/api/dashboard/rekap-workorder?${queryParams}`,
@@ -436,9 +502,18 @@ export default function RekapWorkorderClient() {
       timers.push(window.setTimeout(fn, delay));
     };
 
-    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, hourly: true })), 0);
-    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, table: true })), 120);
-    schedule(() => setHeavySectionsReady((prev) => ({ ...prev, cards: true })), 240);
+    schedule(
+      () => setHeavySectionsReady((prev) => ({ ...prev, hourly: true })),
+      0,
+    );
+    schedule(
+      () => setHeavySectionsReady((prev) => ({ ...prev, table: true })),
+      120,
+    );
+    schedule(
+      () => setHeavySectionsReady((prev) => ({ ...prev, cards: true })),
+      240,
+    );
 
     return () => {
       for (const timer of timers) window.clearTimeout(timer);
@@ -483,7 +558,40 @@ export default function RekapWorkorderClient() {
     woPerTeknisi: fallbackSummary.woPerTeknisi,
   };
   const ks = data.kpiSummary;
+  const customerPriorityValue =
+    selectedBucket === 'kpi_customer'
+      ? data.bucketSummary?.open ?? data.kpiSummary?.kpiCustomer ?? 0
+      : data.kpiSummary?.kpiCustomer ?? 0;
+  const priorityOverviewTotal =
+    selectedBucket === 'kpi_customer'
+      ? customerPriorityValue
+      : data.kpiSummary?.total ?? 0;
   const displayTitle = data.title.replace(/\s*\[[^\]]+\]\s*$/, '').trim();
+
+  const handleCapture = async (format: CaptureFormat) => {
+    if (!captureTargetRef.current || isCapturing) return;
+
+    setIsCapturing(true);
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const bucketSlug = selectedBucket.replace(/[^a-z0-9]+/gi, '-');
+      const syncSlug = data.syncDate.replace(/[^0-9a-z]+/gi, '-');
+      const timestampSlug = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '');
+
+      await captureElementAsImage(captureTargetRef.current, {
+        format,
+        filename: `rekap-workorder-${bucketSlug}-${syncSlug}-${timestampSlug}`,
+        scale: 2,
+      });
+    } finally {
+      setIsCapturing(false);
+    }
+  };
 
   return (
     <div className='space-y-4'>
@@ -492,10 +600,10 @@ export default function RekapWorkorderClient() {
           <div className='flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between'>
             <div className='max-w-3xl'>
               <div className='flex flex-wrap items-center gap-2'>
-                <h2 className='text-[16px] font-black tracking-tight text-(--text-primary) md:text-[17px]'>
+                <h2 className='text-[16px] font-semibold tracking-tight text-(--text-primary) md:text-[17px]'>
                   {displayTitle}
                 </h2>
-                <span className='rounded-full border border-(--border) bg-surface px-2 py-0.5 text-[9px] font-semibold text-(--text-muted)'>
+                <span className='bg-surface rounded-full border border-(--border) px-2 py-0.5 text-[9px] font-semibold text-(--text-muted)'>
                   {data.syncDate}
                 </span>
               </div>
@@ -521,14 +629,13 @@ export default function RekapWorkorderClient() {
               )}
             </div>
           </div>
-
         </div>
 
         <div className='border-b border-(--border) px-4 py-3 md:px-5'>
           <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-5'>
             <SummaryTile
               label='Total WO'
-              value={formatNumber(ks?.total ?? displaySummary.total)}
+              value={formatNumber(displaySummary.total)}
               sub={`${data.rows.length} service area`}
               tone='slate'
               icon={<Activity className='h-4 w-4' />}
@@ -573,15 +680,19 @@ export default function RekapWorkorderClient() {
 
             <div className='flex flex-wrap items-center gap-1.5'>
               <div className='flex items-center gap-2 rounded-xl border border-blue-500/15 bg-blue-500/8 px-2.5 py-1 text-blue-900 dark:text-blue-100'>
-                <span className='text-[9px] font-semibold tracking-[0.16em] uppercase text-blue-700/75 dark:text-blue-200/75'>
+                <span className='text-[9px] font-semibold tracking-[0.16em] text-blue-700/75 uppercase dark:text-blue-200/75'>
                   Total
                 </span>
-                <span className='text-[1rem] leading-none font-black text-blue-800 dark:text-blue-100'>
-                  {formatNumber(ks.total ?? 0)}
+                <span className='text-[1rem] leading-none font-semibold text-blue-800 dark:text-blue-100'>
+                  {formatNumber(priorityOverviewTotal)}
                 </span>
               </div>
               {[
-                { label: 'Customer', value: ks.kpiCustomer, accent: '#3b82f6' },
+                {
+                  label: 'Customer',
+                  value: customerPriorityValue,
+                  accent: '#3b82f6',
+                },
                 {
                   label: 'Proactive',
                   value: ks.kpiProactive,
@@ -622,9 +733,12 @@ export default function RekapWorkorderClient() {
       <div className='grid gap-4'>
         <section className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
           {heavySectionsReady.hourly ? (
-            <RekapWorkorderHourlyClose bucket={selectedBucket} />
+            <RekapWorkorderHourlyClose
+              bucket={selectedBucket}
+              initialWorkzone={workzone}
+            />
           ) : (
-            <div className='h-[240px] animate-pulse rounded-[28px] bg-(--surface-2)' />
+            <div className='h-60 animate-pulse rounded-[28px] bg-(--surface-2)' />
           )}
         </section>
       </div>
@@ -641,7 +755,7 @@ export default function RekapWorkorderClient() {
                   Pilih bucket tanpa perlu kembali ke bagian atas halaman.
                 </p>
               </div>
-              <div className='w-full max-w-[46rem] xl:w-auto xl:justify-self-end'>
+              <div className='w-full max-w-184 xl:w-auto xl:justify-self-end'>
                 <BucketFilterBar
                   selectedBucket={selectedBucket}
                   onChange={setSelectedBucket}
@@ -652,13 +766,20 @@ export default function RekapWorkorderClient() {
           <div className='p-0'>
             {heavySectionsReady.table ? (
               <RekapWorkorderTable
+                captureTargetRef={captureTargetRef}
+                isCapturing={isCapturing}
+                onCapture={handleCapture}
                 rows={data.rows}
                 timestamp={data.timestamp}
-                detailMode={selectedBucket !== 'all' ? selectedBucket : undefined}
+                detailMode={
+                  selectedBucket !== 'all' ? selectedBucket : undefined
+                }
                 overviewSummary={data.workboardSummary}
+                bucketSummary={data.bucketSummary}
+                bucketBreakdown={data.bucketBreakdown}
               />
             ) : (
-              <div className='h-[420px] animate-pulse bg-(--surface-2)' />
+              <div className='h-105 animate-pulse bg-(--surface-2)' />
             )}
           </div>
         </section>
@@ -666,29 +787,29 @@ export default function RekapWorkorderClient() {
 
       <div className='xl:hidden'>
         <div className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='border-b border-(--border) px-4 py-3.5'>
-            <div className='flex flex-wrap items-end justify-between gap-3'>
-              <div className='pb-0.5'>
+          <div className='border-b border-(--border) px-4 py-4'>
+            <div className='space-y-3'>
+              <div>
                 <p className='text-[10px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
                   Bucket filter
                 </p>
-                <p className='mt-1 text-[12px] font-medium text-(--text-secondary)'>
+                <p className='mt-1 text-[12px] leading-5 text-(--text-secondary)'>
                   Pilih bucket tanpa perlu kembali ke bagian atas halaman.
                 </p>
               </div>
-              <div className='w-full max-w-[46rem] xl:w-auto xl:justify-self-end'>
-                <BucketFilterBar
-                  selectedBucket={selectedBucket}
-                  onChange={setSelectedBucket}
-                />
-              </div>
+              <MobileBucketFilterGrid
+                selectedBucket={selectedBucket}
+                onChange={setSelectedBucket}
+              />
             </div>
           </div>
           <div>
             {heavySectionsReady.cards ? (
-              <RekapWorkorderCards rows={data.rows} />
+              <RekapWorkorderCards
+                rows={data.rows}
+              />
             ) : (
-              <div className='h-[420px] animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+              <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
             )}
           </div>
         </div>

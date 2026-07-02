@@ -59,25 +59,19 @@ export default function FilterTabs({
 
   const getButtonClass = (filter: TicketFilter): string => {
     const baseClass =
-      'shrink-0 snap-center rounded-full px-3.5 py-2.5 text-sm font-semibold transition min-h-[40px]';
+      'shrink-0 snap-center rounded-full px-3.5 py-2.5 text-sm font-semibold transition-all duration-300 min-h-[40px] active:scale-95';
     const isActive = filter === currentFilter;
 
-    const activeColors: Record<TicketFilter, string> = {
-      all: 'bg-blue-600 text-white',
-      assigned: 'bg-amber-500 text-white',
-      on_progress: 'bg-blue-600 text-white',
-      pending: 'bg-purple-600 text-white',
-      closed: 'bg-green-600 text-white',
-    };
-
     return `${baseClass} ${
-      isActive ? activeColors[filter] : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
+      isActive
+        ? 'bg-black text-white shadow-sm dark:bg-white dark:text-black'
+        : 'border border-transparent bg-(--surface-2) text-(--text-secondary) hover:border-(--border) hover:bg-(--surface) dark:bg-(--surface-2) dark:hover:bg-(--surface)'
     }`;
   };
 
   return (
-    <div className='sticky top-14 z-30 -mx-4 px-4 pt-2 pb-3 bg-transparent sm:static sm:mx-0 sm:px-0 sm:top-16'>
-      <div className='relative rounded-xl bg-white/95 p-1.5 shadow-sm backdrop-blur-md ring-1 ring-slate-900/5 dark:bg-slate-900/90'>
+    <div className='sticky top-14 z-30 -mx-4 bg-transparent px-4 pt-2 pb-3 sm:static sm:top-16 sm:mx-0 sm:px-0'>
+      <div className='relative rounded-[28px] border border-(--border) bg-(--surface)/90 p-1.5 shadow-sm backdrop-blur-xl'>
         <div
           ref={tabsRef}
           onScroll={onScroll}
@@ -98,10 +92,10 @@ export default function FilterTabs({
         </div>
 
         {showLeftFade && (
-          <div className='pointer-events-none absolute inset-y-0 left-0 w-8 rounded-l-xl bg-linear-to-r from-white to-white/0 dark:from-slate-900 dark:to-slate-900/0' />
+          <div className='pointer-events-none absolute inset-y-0 left-0 w-8 rounded-l-[28px] bg-linear-to-r from-(--surface) to-(--surface)/0' />
         )}
         {showRightFade && (
-          <div className='pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-linear-to-l from-white to-white/0 dark:from-slate-900 dark:to-slate-900/0' />
+          <div className='pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-[28px] bg-linear-to-l from-(--surface) to-(--surface)/0' />
         )}
       </div>
     </div>

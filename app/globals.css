@@ -32,35 +32,35 @@
 
 :root {
   /* Backgrounds */
-  --bg: #f8fafc;
+  --bg: #faf8ff;
   --surface: #ffffff;
   --surface-2: #f1f5f9;
   --surface-3: #e2e8f0;
 
   /* Typography */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
   --text-muted: #94a3b8;
 
   /* Borders */
   --border: #e2e8f0;
 }
 
-/* 🔧 Dark mode vars — diperbaiki untuk keterbacaan */
+/* Dark mode vars */
 .dark {
-  /* Backgrounds — gradient depth dari dalam ke luar */
-  --bg: #080c14; /* lebih dalam dari sebelumnya (#0a0e1a) */
-  --surface: #0f1629; /* card utama — sedikit lebih terang */
-  --surface-2: #162035; /* nested surface, header tabel */
-  --surface-3: #1c2a42; /* hover state, nested card */
+  /* Backgrounds */
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #162035;
+  --surface-3: #1c2a42;
 
-  /* Typography — hierarchy yang jelas */
-  --text-primary: #e2e8f5; /* sedikit lebih warm dari #e8edf5 */
-  --text-secondary: #8896b3; /* lebih terang dari #6b7a99 → lebih readable */
-  --text-muted: #4a5a7a; /* cukup subtle tanpa hilang */
+  /* Typography */
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #4a5a7a;
 
-  /* Borders — hairline yang hampir tak terlihat */
-  --border: rgba(148, 163, 184, 0.1); /* sedikit lebih visible dari 0.07 */
+  /* Borders */
+  --border: rgba(148, 163, 184, 0.1);
 }
 
 phantom-ui {
@@ -94,6 +94,8 @@ phantom-ui {
 @theme {
   /* Fonts */
   --font-*: initial;
+  --font-inter: 'Inter', sans-serif;
+  --font-jakarta: 'Plus Jakarta Sans', sans-serif;
   --font-outfit: Outfit, sans-serif;
   --font-syne: Syne, sans-serif;
   --font-dm-sans: 'DM Sans', sans-serif;
@@ -142,6 +144,16 @@ phantom-ui {
   --color-transparent: transparent;
   --color-white: #ffffff;
   --color-black: #101828;
+
+  /* Primary (professional blue) */
+  --color-primary: #0052cc;
+  --color-primary-hover: #003d99;
+
+  /* Success (emerald) */
+  --color-success: #10b981;
+
+  /* Error (coral red) */
+  --color-error: #ef4444;
 
   /* Brand (biru-ungu) */
   --color-brand-25: #f2f7ff;
@@ -300,7 +312,7 @@ phantom-ui {
   }
 
   body {
-    @apply font-dm-sans relative z-1 font-normal;
+    @apply font-inter relative z-1 font-normal;
     background-color: var(--bg);
     color: var(--text-primary);
     /* 🔧 Tambah: antialiasing untuk text lebih tajam di dark mode */

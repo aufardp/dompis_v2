@@ -1,5 +1,6 @@
 import { Ticket } from '@/app/types/ticket';
 import { formatDateTimeWIB } from '@/app/utils/datetime';
+import { AlertTriangle, User } from 'lucide-react';
 import SectionCard from './SectionCard';
 import InfoField from './InfoField';
 import AddressEditor from './AddressEditor';
@@ -26,7 +27,7 @@ export default function CustomerInfoSection({
   onAddressSaved,
 }: CustomerInfoSectionProps) {
   return (
-    <SectionCard title='Informasi Pelanggan' icon='👤' iconBgColor='blue'>
+    <SectionCard title='Informasi Pelanggan' icon={User} iconBgColor='blue'>
       <div className='space-y-3'>
         <InfoField
           className='uppercase'
@@ -57,8 +58,9 @@ export default function CustomerInfoSection({
           <p className='mb-2 text-[10px] font-bold tracking-wide text-slate-400 uppercase dark:text-slate-500'>
             Alamat (Pastikan Valid)
             {isOnProgress && isAlamatEmpty && (
-              <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-600 dark:bg-red-500/10 dark:text-red-400'>
-                ⚠ WAJIB
+              <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                <AlertTriangle size={10} className='mr-1 inline' />
+                WAJIB
               </span>
             )}
           </p>

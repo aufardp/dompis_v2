@@ -1,8 +1,11 @@
+import { Diamond, Gem, Star, UserRound } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
 export interface CustomerTypeConfig {
   key: string;
   label: string;
   shortLabel?: string;
-  icon: string;
+  icon: LucideIcon;
   color: string;
   bg: string;
   priority: number;
@@ -16,7 +19,7 @@ export const CUSTOMER_TYPES: CustomerTypeConfig[] = [
     key: 'HVC_DIAMOND',
     label: 'HVC Diamond',
     shortLabel: 'Diamond',
-    icon: '🔷',
+    icon: Diamond,
     color: 'text-sky-600 dark:text-sky-300',
     bg: 'bg-sky-50 dark:bg-sky-500/15',
     priority: 4,
@@ -34,7 +37,7 @@ export const CUSTOMER_TYPES: CustomerTypeConfig[] = [
     key: 'HVC_PLATINUM',
     label: 'HVC Platinum',
     shortLabel: 'Platinum',
-    icon: '💎',
+    icon: Gem,
     color: 'text-indigo-600 dark:text-indigo-300',
     bg: 'bg-indigo-50 dark:bg-indigo-500/15',
     priority: 3,
@@ -52,7 +55,7 @@ export const CUSTOMER_TYPES: CustomerTypeConfig[] = [
     key: 'HVC_GOLD',
     label: 'HVC Gold',
     shortLabel: 'Gold',
-    icon: '⭐',
+    icon: Star,
     color: 'text-amber-600 dark:text-amber-300',
     bg: 'bg-amber-50 dark:bg-amber-500/15',
     priority: 2,
@@ -64,7 +67,7 @@ export const CUSTOMER_TYPES: CustomerTypeConfig[] = [
     key: 'REGULER',
     label: 'Reguler',
     shortLabel: 'Reg',
-    icon: '👤',
+    icon: UserRound,
     color: 'text-emerald-600 dark:text-emerald-400',
     bg: 'bg-emerald-50 dark:bg-emerald-500/15',
     priority: 1,

@@ -1,6 +1,8 @@
 import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketManagementBucketPage';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 
-export default function ObsoletePage() {
+export default async function ObsoletePage() {
+  const initialWorkzone = await getInitialWorkzoneScope();
   return (
     <TicketManagementBucketPage
       title='Obsolete'
@@ -9,6 +11,7 @@ export default function ObsoletePage() {
       tone='purple'
       operationalBucket={['obsolete']}
       disableLocalSearch
+      initialWorkzone={initialWorkzone}
     />
   );
 }

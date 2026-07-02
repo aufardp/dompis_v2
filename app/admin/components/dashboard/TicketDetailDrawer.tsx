@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { X, AlertTriangle, Shield, RotateCcw } from 'lucide-react';
+import { X, AlertTriangle, Shield, RotateCcw, Pencil, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import type {
@@ -344,7 +344,12 @@ export default function TicketDetailDrawer({
                       <AlertTriangle size={18} className='text-purple-600' />
                     </div>
                     <div className='flex-1'>
-                      <h4 className='text-sm font-bold text-purple-900'>⏸ Ticket Pending</h4>
+                      <h4 className='flex items-center gap-1 text-sm font-bold text-purple-900'>
+                        <span className='inline-flex items-center'>
+                          <AlertTriangle size={14} className='text-purple-600' />
+                        </span>
+                        Ticket Pending
+                      </h4>
                       <p className='mt-1 text-sm text-purple-800'>{ticket.pendingDompis}</p>
                       {ticket.closedAt && (
                         <p className='mt-2 text-xs text-purple-600'>Closed: {formatDateTime(ticket.closedAt)}</p>
@@ -438,7 +443,10 @@ export default function TicketDetailDrawer({
                   onClick={() => onEdit(ticket)}
                   className='flex-1 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-50 active:scale-[0.98] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
                 >
-                  ✏️ Edit Tiket
+                  <span className='inline-flex items-center gap-2'>
+                    <Pencil size={14} />
+                    Edit Tiket
+                  </span>
                 </button>
               )}
               {onUpdateStatus && (
@@ -446,7 +454,10 @@ export default function TicketDetailDrawer({
                   onClick={() => onUpdateStatus(ticket)}
                   className='flex-1 rounded-xl bg-linear-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:from-slate-800 hover:to-slate-700 active:scale-[0.98] dark:from-slate-700 dark:to-slate-600'
                 >
-                  🔄 Update Status
+                  <span className='inline-flex items-center gap-2'>
+                    <RefreshCw size={14} />
+                    Update Status
+                  </span>
                 </button>
               )}
             </div>

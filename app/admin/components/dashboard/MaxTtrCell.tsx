@@ -2,6 +2,7 @@
 
 import { getEffectiveMaxTtrLabel, isBookingBased } from '@/app/libs/tickets/effective';
 import TtrCountdownBadge from './TtrCountdownBadge';
+import { CalendarDays } from 'lucide-react';
 
 interface Props {
   ticket: any;
@@ -16,7 +17,10 @@ export default function MaxTtrCell({ ticket }: Props) {
       {maxTtrLabel ? (
         <>
           {isBooking && (
-            <span className='text-[10px] text-blue-400'>📅 Booking</span>
+            <span className='inline-flex items-center gap-1 text-[10px] text-blue-400'>
+              <CalendarDays size={11} />
+              Booking
+            </span>
           )}
           <span className='text-xs font-medium whitespace-nowrap text-(--text-primary)'>
             {maxTtrLabel}

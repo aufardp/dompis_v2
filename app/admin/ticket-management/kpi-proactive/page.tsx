@@ -1,6 +1,8 @@
 import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketManagementBucketPage';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 
-export default function TicketManagementKpiProactivePage() {
+export default async function TicketManagementKpiProactivePage() {
+  const initialWorkzone = await getInitialWorkzoneScope();
   return (
     <TicketManagementBucketPage
       title='Proactive'
@@ -9,6 +11,7 @@ export default function TicketManagementKpiProactivePage() {
       tone='emerald'
       operationalBucket={['kpi_proactive']}
       disableLocalSearch
+      initialWorkzone={initialWorkzone}
     />
   );
 }

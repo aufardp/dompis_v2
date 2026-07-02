@@ -1,5 +1,6 @@
 'use client';
 import { computeTtrCountdown, TtrStatus } from '@/app/hooks/useTtrCountdown';
+import { AlertTriangle, Clock3 } from 'lucide-react';
 
 const STATUS_STYLE: Record<TtrStatus, string> = {
   overdue: 'bg-red-500/15 text-red-400 border border-red-500/20 animate-pulse',
@@ -18,8 +19,9 @@ export default function TtrCountdownBadge({ ticket }: Props) {
 
   return (
     <div className='inline-flex flex-col items-center gap-0.5'>
-      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums whitespace-nowrap ${STATUS_STYLE[ttr.status]}`}>
-        {ttr.isOverdue ? '⚠ ' : '⏱ '}{ttr.label}
+      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums whitespace-nowrap ${STATUS_STYLE[ttr.status]}`}>
+        {ttr.isOverdue ? <AlertTriangle size={11} className='mr-1 inline-block' /> : <Clock3 size={11} className='mr-1 inline-block' />}
+        {ttr.label}
       </span>
       <span className='text-[9px] text-(--text-secondary)'>
         {ttr.isOverdue ? 'OVERDUE' : 'sisa TTR'}

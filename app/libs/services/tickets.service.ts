@@ -274,6 +274,7 @@ function mapTicket(t: any) {
     contactName: t.contact_name,
     contactPhone: t.contact_phone,
     deviceName: t.device_name,
+    onuRx: t.onu_rx,
     status: t.status,
     statusDate: t.status_date,
     status_update: (() => {
@@ -669,6 +670,7 @@ export class TicketService {
           symptom: true,
           alamat: true,
           device_name: true,
+          onu_rx: true,
           pending_dompis: true,
           sqm_update_reason: true,
           source_ticket: true,

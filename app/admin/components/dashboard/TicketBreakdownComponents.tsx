@@ -38,7 +38,7 @@ export function FlaggingSummaryRow({
           <p className='text-[9px] font-bold tracking-[1px] text-(--text-muted) uppercase'>
             {label}
           </p>
-          <p className={clsx('mt-0.5 text-sm font-black', color)}>
+          <p className={clsx('mt-0.5 text-sm font-semibold', color)}>
             {Number(value ?? 0).toLocaleString('id-ID')}
           </p>
         </div>
@@ -93,10 +93,10 @@ export function TicketTypeBreakdownStrip({
                 )}
               >
                 <div className='flex items-start justify-between gap-3'>
-                  <p className='min-w-0 truncate text-xs font-black text-(--text-primary)'>
+                  <p className='min-w-0 truncate text-xs font-semibold text-(--text-primary)'>
                     {item.label}
                   </p>
-                  <span className='shrink-0 text-sm font-black text-(--text-primary)'>
+                  <span className='shrink-0 text-sm font-semibold text-(--text-primary)'>
                     {Number(item.total ?? 0).toLocaleString('id-ID')}
                   </span>
                 </div>
@@ -113,7 +113,7 @@ export function TicketTypeBreakdownStrip({
                       <p className='text-[9px] font-bold tracking-[0.8px] text-(--text-muted) uppercase'>
                         {label}
                       </p>
-                      <p className='text-xs font-black text-(--text-primary)'>
+                      <p className='text-xs font-semibold text-(--text-primary)'>
                         {Number(value ?? 0).toLocaleString('id-ID')}
                       </p>
                     </div>

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -50,23 +51,24 @@ function ToastItem({
   const styles = {
     success: {
       wrap: 'border-green-200 bg-white shadow-[0_8px_30px_rgba(22,163,74,0.18)] dark:border-green-500/20 dark:bg-slate-800',
-      icon: '✅',
+      icon: CheckCircle2,
       bar: 'bg-green-500',
       title: 'text-green-800 dark:text-green-400',
     },
     error: {
       wrap: 'border-red-200 bg-white shadow-[0_8px_30px_rgba(220,38,38,0.18)] dark:border-red-500/20 dark:bg-slate-800',
-      icon: '❌',
+      icon: AlertCircle,
       bar: 'bg-red-500',
       title: 'text-red-800 dark:text-red-400',
     },
     info: {
       wrap: 'border-blue-200 bg-white shadow-[0_8px_30px_rgba(59,130,246,0.18)] dark:border-blue-500/20 dark:bg-slate-800',
-      icon: 'ℹ️',
+      icon: Info,
       bar: 'bg-blue-500',
       title: 'text-blue-800 dark:text-blue-400',
     },
   }[toast.type];
+  const Icon = styles.icon;
 
   return (
     <div
@@ -80,9 +82,9 @@ function ToastItem({
       />
 
       <div className='flex items-start gap-3'>
-        <span className='text-xl leading-none'>{styles.icon}</span>
+        <Icon className='h-5 w-5 shrink-0 text-current' />
         <div className='min-w-0 flex-1'>
-          <p className={`text-sm font-black ${styles.title}`}>{toast.title}</p>
+          <p className={`text-sm font-semibold ${styles.title}`}>{toast.title}</p>
           {toast.message && (
             <p className='mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400'>
               {toast.message}
@@ -93,7 +95,7 @@ function ToastItem({
           onClick={() => onDismiss(toast.id)}
           className='shrink-0 text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400'
         >
-          ✕
+          <X size={14} />
         </button>
       </div>
     </div>

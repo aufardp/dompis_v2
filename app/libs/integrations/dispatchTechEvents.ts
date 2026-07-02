@@ -9,6 +9,14 @@ const MAX_BACKOFF_MS = 15 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 100;
 
+export const DISPATCHABLE_TECH_EVENT_TYPES = [
+  'TICKET_STATUS_CHANGED',
+  'TICKET_ASSIGNED',
+  'TICKET_UNASSIGNED',
+  'TICKET_CREATED',
+  'TICKET_CLOSED',
+] as const;
+
 function computeBackoff(attempt: number) {
   const ms = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
   return Math.min(ms, MAX_BACKOFF_MS);
@@ -84,16 +92,7 @@ export async function dispatchTechEvents() {
     prisma.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
-        event_type: {
-          notIn: [
-            'TICKET_RAW_CREATED',
-            'TICKET_RAW_UPDATED',
-            'TICKET_RAW_STATUS_CHANGED',
-            'TICKET_RAW_DELETED',
-            'INGESTION_COMPLETE',
-            'INGESTION_FAILED',
-          ],
-        },
+        event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
         OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
       },
       orderBy: { created_at: 'asc' },

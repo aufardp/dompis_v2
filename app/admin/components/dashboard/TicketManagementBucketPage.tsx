@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
@@ -24,7 +25,10 @@ import TicketTableTabs from './TicketTableTabs';
 import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
 import TicketTableValidasi from './TicketTableValidasi';
-import { FlaggingSummaryRow, TicketTypeBreakdownStrip } from './TicketBreakdownComponents';
+import {
+  FlaggingSummaryRow,
+  TicketTypeBreakdownStrip,
+} from './TicketBreakdownComponents';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -66,6 +70,7 @@ type BucketPageProps = {
     dept?: 'all' | 'b2b' | 'b2c';
   };
   headerSlot?: ReactNode;
+  initialWorkzone?: string;
 };
 
 function patchTicketAssignmentInCache(
@@ -134,12 +139,14 @@ export default function TicketManagementBucketPage({
   disableLocalSearch = false,
   extraWorkboard,
   headerSlot,
+  initialWorkzone = '',
 }: BucketPageProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
-  const [workzoneFilter, setWorkzoneFilter] = useState('');
+  const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
+    usePersistentWorkzoneScope(initialWorkzone);
   const [dateRange, setDateRange] = useState<DateRange>();
   const isUnspecBucket = operationalBucket.includes('non_kpi_unspec');
   const canBypassClose =
@@ -185,7 +192,7 @@ export default function TicketManagementBucketPage({
   }, [searchParams]);
   const isFocusedTicketMode = Boolean(focusTicketId);
   const defaultTicketPageLimit = isFocusedTicketMode ? 10 : 50;
-  const effectiveSearchQuery = (searchQuery.trim() || routeSearchQuery.trim());
+  const effectiveSearchQuery = searchQuery.trim() || routeSearchQuery.trim();
   const normalizedSearchQuery = effectiveSearchQuery.toLowerCase();
 
   const scrollSectionToSearchHit = useCallback(
@@ -270,18 +277,20 @@ export default function TicketManagementBucketPage({
     operationalBucket,
     regulerOnly,
     anomalyBucket,
-    excludeSymptom: extraWorkboard?.symptom,
+    // excludeSymptom: extraWorkboard?.symptom,
     includeValidasi: true,
     startDate: startDateStr,
     endDate: endDateStr,
   } as const;
-  const fetchDailyOptions =
-    activeTab === 'b2c' || activeTab === 'b2b';
+  const fetchDailyOptions = activeTab === 'b2c' || activeTab === 'b2b';
   const fetchValidasiTickets =
-    fetchDailyOptions || activeTab === 'validasi' || Boolean(effectiveSearchQuery);
+    fetchDailyOptions ||
+    activeTab === 'validasi' ||
+    Boolean(effectiveSearchQuery);
 
   const b2cPageData = useDailyTicketPage({
     ...sharedFilters,
+    excludeSymptom: extraWorkboard?.symptom,
     dept: 'b2c',
     ticketType: [...ticketTypeFilter, ...b2cTicketTypeFilter],
     statusUpdate: [...statusUpdateFilter, ...b2cHasilVisitFilter],
@@ -297,6 +306,7 @@ export default function TicketManagementBucketPage({
 
   const b2bPageData = useDailyTicketPage({
     ...sharedFilters,
+    excludeSymptom: extraWorkboard?.symptom,
     dept: 'b2b',
     ticketType: [...ticketTypeFilter, ...b2bTicketTypeFilter],
     statusUpdate: [...statusUpdateFilter, ...b2bHasilVisitFilter],
@@ -341,7 +351,7 @@ export default function TicketManagementBucketPage({
     operationalBucket,
     regulerOnly,
     anomalyBucket,
-    excludeSymptom: extraWorkboard?.symptom,
+    // excludeSymptom: extraWorkboard?.symptom,
     ticketType: ticketTypeFilter,
     statusUpdate: statusUpdateFilter,
     ticketStatus: CLOSE_STATUS_VALUES,
@@ -451,22 +461,25 @@ export default function TicketManagementBucketPage({
     return badges;
   }, [anomalyBucket, operationalBucket, regulerOnly]);
 
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    setB2bPage(1);
-    setB2cPage(1);
-    setSemuaPage(1);
-    setClosePage(1);
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      setB2bPage(1);
+      setB2cPage(1);
+      setSemuaPage(1);
+      setClosePage(1);
 
-    const nextParams = new URLSearchParams(searchParams.toString());
-    const trimmedQuery = query.trim();
-    if (trimmedQuery) nextParams.set('search', trimmedQuery);
-    else nextParams.delete('search');
-    const nextUrl = nextParams.toString()
-      ? `${pathname}?${nextParams.toString()}`
-      : pathname;
-    router.replace(nextUrl, { scroll: false });
-  }, [pathname, router, searchParams]);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      const trimmedQuery = query.trim();
+      if (trimmedQuery) nextParams.set('search', trimmedQuery);
+      else nextParams.delete('search');
+      const nextUrl = nextParams.toString()
+        ? `${pathname}?${nextParams.toString()}`
+        : pathname;
+      router.replace(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   const handleWorkzoneChange = useCallback((value: string) => {
     setWorkzoneFilter(value);
@@ -656,7 +669,11 @@ export default function TicketManagementBucketPage({
         ticketAny.status_update,
         ticketAny.ticketIdGamas,
       ]
-        .map((value) => String(value ?? '').trim().toLowerCase())
+        .map((value) =>
+          String(value ?? '')
+            .trim()
+            .toLowerCase(),
+        )
         .filter(Boolean);
 
       return values.some((value) => value.includes(normalizedSearchQuery));
@@ -718,15 +735,20 @@ export default function TicketManagementBucketPage({
         ticketAny.status_update,
         ticketAny.ticketIdGamas,
       ]
-        .map((value) => String(value ?? '').trim().toLowerCase())
+        .map((value) =>
+          String(value ?? '')
+            .trim()
+            .toLowerCase(),
+        )
         .filter(Boolean);
 
       return values.some((value) => value.includes(normalizedSearchQuery));
     };
 
-    return [...b2cPageData.validasiTickets, ...b2bPageData.validasiTickets].some(
-      matchTicket,
-    );
+    return [
+      ...b2cPageData.validasiTickets,
+      ...b2bPageData.validasiTickets,
+    ].some(matchTicket);
   }, [
     b2bPageData.validasiTickets,
     b2cPageData.validasiTickets,
@@ -801,7 +823,7 @@ export default function TicketManagementBucketPage({
                     <div className='flex items-start gap-2.5'>
                       <div
                         className={clsx(
-                          'grid h-10 w-10 place-items-center rounded-2xl text-[0.95rem] font-black uppercase shadow-sm ring-1 ring-white/10',
+                          'grid h-10 w-10 place-items-center rounded-2xl text-[0.95rem] font-semibold uppercase shadow-sm ring-1 ring-white/10',
                           TONE_CLASSES[tone],
                         )}
                       >
@@ -811,7 +833,7 @@ export default function TicketManagementBucketPage({
                         <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
                           Ticket Management
                         </p>
-                        <h1 className='mt-1 text-[1.35rem] leading-none font-black tracking-[-0.03em] text-(--text-primary) md:text-[1.6rem]'>
+                        <h1 className='mt-1 text-[1.35rem] leading-none font-semibold tracking-[-0.03em] text-(--text-primary) md:text-[1.6rem]'>
                           {title}
                         </h1>
                         <p className='mt-1.5 max-w-2xl text-[13px] leading-5 text-(--text-secondary)'>
@@ -844,7 +866,9 @@ export default function TicketManagementBucketPage({
                                   className='hover:bg-surface-2 absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-(--text-muted) transition-colors hover:text-(--text-primary)'
                                   aria-label='Clear search'
                                 >
-                                  <span className='text-lg leading-none'>×</span>
+                                  <span className='text-lg leading-none'>
+                                    ×
+                                  </span>
                                 </button>
                               )}
                             </div>
@@ -887,7 +911,7 @@ export default function TicketManagementBucketPage({
                           <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                             {label}
                           </p>
-                          <p className='mt-0.5 text-[1rem] font-black text-(--text-primary) md:text-[1.1rem]'>
+                          <p className='mt-0.5 text-[1rem] font-semibold text-(--text-primary) md:text-[1.1rem]'>
                             {value}
                           </p>
                         </div>
@@ -976,7 +1000,7 @@ export default function TicketManagementBucketPage({
               {extraWorkboard && !isUnspecBucket && (
                 <div ref={extraWorkboardTableRef} className='space-y-3'>
                   <div className='flex items-center justify-between'>
-                    <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                    <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                       {extraWorkboard.title}
                     </h2>
                     <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
@@ -1016,7 +1040,7 @@ export default function TicketManagementBucketPage({
 
               <div ref={semuaTableRef} className='space-y-3'>
                 <div className='flex items-center justify-between'>
-                  <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                  <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                     Semua Workboard
                   </h2>
                   <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
@@ -1054,7 +1078,7 @@ export default function TicketManagementBucketPage({
           {activeTab === 'unspecOhi' && extraWorkboard && (
             <div ref={extraWorkboardTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   {extraWorkboard.title}
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
@@ -1094,7 +1118,7 @@ export default function TicketManagementBucketPage({
           {activeTab === 'b2c' && (
             <div ref={b2cTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   B2C Workboard
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
@@ -1124,15 +1148,15 @@ export default function TicketManagementBucketPage({
                 forceMainTabKey={searchQuery.trim()}
                 searching={Boolean(effectiveSearchQuery)}
                 mainTable={
-                <TicketTable
-                  tickets={b2cPageData.tickets}
-                  tableSummary={b2cPageData.summary}
-                  loading={b2cPageData.loading}
-                  isRefreshing={b2cPageData.isRefreshing}
-                  searching={Boolean(effectiveSearchQuery)}
-                  onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
-                  showBypassClose={canBypassClose}
-                  highlightQuery={effectiveSearchQuery}
+                  <TicketTable
+                    tickets={b2cPageData.tickets}
+                    tableSummary={b2cPageData.summary}
+                    loading={b2cPageData.loading}
+                    isRefreshing={b2cPageData.isRefreshing}
+                    searching={Boolean(effectiveSearchQuery)}
+                    onAssign={(ticketId) => onAssign(ticketId, 'b2c')}
+                    showBypassClose={canBypassClose}
+                    highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2cPageData.pagination.currentPage,
                       totalPages: b2cPageData.pagination.totalPages,
@@ -1174,7 +1198,7 @@ export default function TicketManagementBucketPage({
           {activeTab === 'b2b' && (
             <div ref={b2bTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   B2B Workboard
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
@@ -1204,15 +1228,15 @@ export default function TicketManagementBucketPage({
                 forceMainTabKey={searchQuery.trim()}
                 searching={Boolean(effectiveSearchQuery)}
                 mainTable={
-                <TicketTableB2B
-                  tickets={b2bPageData.tickets}
-                  tableSummary={b2bPageData.summary}
-                  loading={b2bPageData.loading}
-                  isRefreshing={b2bPageData.isRefreshing}
-                  searching={Boolean(effectiveSearchQuery)}
-                  onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
-                  showBypassClose={canBypassClose}
-                  highlightQuery={effectiveSearchQuery}
+                  <TicketTableB2B
+                    tickets={b2bPageData.tickets}
+                    tableSummary={b2bPageData.summary}
+                    loading={b2bPageData.loading}
+                    isRefreshing={b2bPageData.isRefreshing}
+                    searching={Boolean(effectiveSearchQuery)}
+                    onAssign={(ticketId) => onAssign(ticketId, 'b2b')}
+                    showBypassClose={canBypassClose}
+                    highlightQuery={effectiveSearchQuery}
                     pagination={{
                       currentPage: b2bPageData.pagination.currentPage,
                       totalPages: b2bPageData.pagination.totalPages,
@@ -1254,7 +1278,7 @@ export default function TicketManagementBucketPage({
           {activeTab === 'validasi' && (
             <div ref={validasiTableRef} className='space-y-5'>
               <div className='space-y-2'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   Validasi B2C
                 </h2>
                 <TicketTableValidasi
@@ -1266,14 +1290,14 @@ export default function TicketManagementBucketPage({
                     total: b2cPageData.validasiPagination.total,
                     limit: b2cPageData.validasiPagination.limit,
                     onPageChange: setB2cValidasiPage,
-                }}
-                loading={b2cPageData.loading}
-                isRefreshing={b2cPageData.isRefreshing}
-                highlightQuery={effectiveSearchQuery}
-              />
+                  }}
+                  loading={b2cPageData.loading}
+                  isRefreshing={b2cPageData.isRefreshing}
+                  highlightQuery={effectiveSearchQuery}
+                />
               </div>
               <div className='space-y-2'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   Validasi B2B
                 </h2>
                 <TicketTableValidasi
@@ -1285,11 +1309,11 @@ export default function TicketManagementBucketPage({
                     total: b2bPageData.validasiPagination.total,
                     limit: b2bPageData.validasiPagination.limit,
                     onPageChange: setB2bValidasiPage,
-                }}
-                loading={b2bPageData.loading}
-                isRefreshing={b2bPageData.isRefreshing}
-                highlightQuery={effectiveSearchQuery}
-              />
+                  }}
+                  loading={b2bPageData.loading}
+                  isRefreshing={b2bPageData.isRefreshing}
+                  highlightQuery={effectiveSearchQuery}
+                />
               </div>
             </div>
           )}
@@ -1297,7 +1321,7 @@ export default function TicketManagementBucketPage({
           {activeTab === 'close' && (
             <div ref={closeTableRef} className='space-y-3'>
               <div className='flex items-center justify-between'>
-                <h2 className='text-lg font-black text-slate-900 dark:text-slate-100'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   Close Tickets
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>

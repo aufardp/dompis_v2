@@ -53,6 +53,7 @@ export interface Ticket {
   ticketIdGamas?: string | null;
 
   deviceName?: string;
+  onuRx?: string | null;
   symptom?: string;
   workzone?: string;
   alamat?: string | null;
@@ -88,6 +89,33 @@ export interface Ticket {
   closedAt?: string | null;
 
   worklogSummary?: string | null;
+  reportedBy?: string | null;
+  tracking?: {
+    assignedAt: string | null;
+    assignedBy: string | null;
+    assignedTo: string | null;
+    pickedUpAt: string | null;
+    onProgressAt: string | null;
+    pendingAt: string | null;
+    closedAt: string | null;
+    pendingDompis: string | null;
+  } | null;
+  activityLog?: Array<{
+    id: number;
+    type: string | null;
+    description: string | null;
+    userName: string | null;
+    roleId: number | null;
+    createdAt: string;
+  }>;
+  assignmentHistory?: Array<{
+    id: number;
+    assignerName: string | null;
+    technicianName: string | null;
+    assignedAt: string;
+    unassignedAt: string | null;
+    isActive: boolean;
+  }>;
 
   // Sync metadata fields
   syncDate?: string | null;

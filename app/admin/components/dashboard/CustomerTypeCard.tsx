@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 interface CustomerTypeCardProps {
-  icon: string;
+  icon: LucideIcon;
   name: string;
   total: number;
   open: number;
@@ -62,6 +63,7 @@ export default function CustomerTypeCard({
   pPlusCount = 0,
   totalAll,
 }: CustomerTypeCardProps) {
+  const Icon = icon;
   const shareOfAll =
     totalAll && totalAll > 0 ? ((total / totalAll) * 100).toFixed(1) : null;
   const stats = [
@@ -86,7 +88,7 @@ export default function CustomerTypeCard({
       <div className='relative z-10 flex items-start justify-between gap-3'>
         <div className='flex min-w-0 flex-col gap-1.5'>
           <span
-            className='text-[10px] font-black tracking-[0.22em] uppercase opacity-90'
+            className='text-[10px] font-semibold tracking-[0.22em] uppercase opacity-90'
             style={{ color: accentColor }}
           >
             {name}
@@ -109,15 +111,15 @@ export default function CustomerTypeCard({
             )}
           </div>
         </div>
-        <div className='grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-(--surface-2) text-sm font-black ring-1 ring-(--border)'>
-          {icon}
+        <div className='grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-(--surface-2) text-sm font-semibold ring-1 ring-(--border)'>
+          <Icon size={16} />
         </div>
       </div>
 
       <div className='relative z-10 mt-3'>
         <div className='flex items-baseline gap-2'>
           <h2
-            className='text-[2.2rem] leading-none font-black tracking-tight'
+            className='text-[2.2rem] leading-none font-semibold tracking-tight'
             style={{ color: active ? accentColor : 'inherit' }}
           >
             {total.toLocaleString()}
@@ -146,7 +148,7 @@ export default function CustomerTypeCard({
               </span>
               <div className='flex items-baseline gap-1.5'>
                 <span
-                  className='text-xs font-black text-slate-700 dark:text-slate-300'
+                  className='text-xs font-semibold text-slate-700 dark:text-slate-300'
                   style={{
                     color: stat.label === 'SQM' ? accentColor : undefined,
                   }}

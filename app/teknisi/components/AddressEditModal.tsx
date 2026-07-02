@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AlertTriangle, Lightbulb, MapPin, Save } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
 interface Props {
@@ -99,7 +100,7 @@ export default function AddressEditModal({
         <div className='shrink-0 border-b border-slate-100 px-5 pt-3 pb-4'>
           <div className='mb-2 flex items-center gap-2.5'>
             <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-lg'>
-              📍
+              <MapPin size={18} className='text-blue-600' />
             </div>
             <div>
               <h2 className='text-base font-bold text-slate-900'>
@@ -139,7 +140,14 @@ export default function AddressEditModal({
               <span
                 className={`text-xs ${isEmpty ? 'font-semibold text-red-600' : 'text-slate-500'}`}
               >
-                {isEmpty ? '⚠ Alamat wajib diisi' : 'Alamat lengkap'}
+                {isEmpty ? (
+                  <span className='inline-flex items-center gap-1'>
+                    <AlertTriangle size={12} />
+                    Alamat wajib diisi
+                  </span>
+                ) : (
+                  'Alamat lengkap'
+                )}
               </span>
               <span
                 className={`text-xs font-medium ${
@@ -156,7 +164,10 @@ export default function AddressEditModal({
           {/* Tips */}
           <div className='rounded-xl border border-blue-100 bg-blue-50 p-3'>
             <p className='mb-1 text-[11px] font-semibold text-blue-700'>
-              💡 Tips:
+              <span className='inline-flex items-center gap-1'>
+                <Lightbulb size={12} />
+                Tips:
+              </span>
             </p>
             <ul className='list-inside list-disc space-y-0.5 text-[10px] text-blue-600'>
               <li>Sertakan nama jalan, nomor, RT/RW</li>
@@ -179,7 +190,7 @@ export default function AddressEditModal({
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className='flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 text-sm font-black text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:shadow-none'
+            className='flex h-12.5 flex-1 items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:shadow-none'
           >
             {saving ? (
               <>
@@ -188,7 +199,7 @@ export default function AddressEditModal({
               </>
             ) : (
               <>
-                <span className='text-base'>💾</span>
+                <Save size={16} />
                 Simpan Alamat
               </>
             )}

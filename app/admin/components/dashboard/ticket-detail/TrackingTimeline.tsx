@@ -2,7 +2,14 @@
 
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { ClipboardList } from 'lucide-react';
+import {
+  ClipboardList,
+  CheckCircle2,
+  Hand,
+  PauseCircle,
+  Wrench,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import type { TicketDetail } from './types';
 
@@ -10,7 +17,7 @@ interface TimelineEvent {
   time: string;
   label: string;
   detail: string;
-  icon: string;
+  icon: LucideIcon;
   color: string;
   sortOrder: number;
 }
@@ -26,58 +33,58 @@ export default function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
     const assignerName = tracking.assignedBy
       || assignmentHistory.find(h => h.isActive)?.assignerName
       || activityLog.find(a => a.type?.toLowerCase().includes('assign'))?.userName;
-    timelineEvents.push({
-      time: tracking.assignedAt,
-      label: 'Tiket Di-assign',
-      detail: `Oleh: ${assignerName ?? '—'} → ${tracking.assignedTo ?? '—'}`,
-      icon: '📋',
-      color: 'blue',
-      sortOrder: 1,
-    });
+      timelineEvents.push({
+        time: tracking.assignedAt,
+        label: 'Tiket Di-assign',
+        detail: `Oleh: ${assignerName ?? '—'} → ${tracking.assignedTo ?? '—'}`,
+        icon: ClipboardList,
+        color: 'blue',
+        sortOrder: 1,
+      });
   }
 
   if (tracking?.pickedUpAt) {
-    timelineEvents.push({
-      time: tracking.pickedUpAt,
-      label: 'Tiket Diambil (Pickup)',
-      detail: tracking.assignedTo ?? '—',
-      icon: '🤚',
-      color: 'indigo',
-      sortOrder: 2,
-    });
+      timelineEvents.push({
+        time: tracking.pickedUpAt,
+        label: 'Tiket Diambil (Pickup)',
+        detail: tracking.assignedTo ?? '—',
+        icon: Hand,
+        color: 'indigo',
+        sortOrder: 2,
+      });
   }
 
   if (tracking?.onProgressAt) {
-    timelineEvents.push({
-      time: tracking.onProgressAt,
-      label: 'Mulai Dikerjakan',
-      detail: tracking.assignedTo ?? '—',
-      icon: '🔧',
-      color: 'amber',
-      sortOrder: 3,
-    });
+      timelineEvents.push({
+        time: tracking.onProgressAt,
+        label: 'Mulai Dikerjakan',
+        detail: tracking.assignedTo ?? '—',
+        icon: Wrench,
+        color: 'amber',
+        sortOrder: 3,
+      });
   }
 
   if (tracking?.pendingAt) {
-    timelineEvents.push({
-      time: tracking.pendingAt,
-      label: 'Pending',
-      detail: tracking.pendingDompis ?? '—',
-      icon: '⏸️',
-      color: 'orange',
-      sortOrder: 4,
-    });
+      timelineEvents.push({
+        time: tracking.pendingAt,
+        label: 'Pending',
+        detail: tracking.pendingDompis ?? '—',
+        icon: PauseCircle,
+        color: 'orange',
+        sortOrder: 4,
+      });
   }
 
   if (tracking?.closedAt) {
-    timelineEvents.push({
-      time: tracking.closedAt,
-      label: 'Tiket Ditutup',
-      detail: tracking.assignedTo ?? '—',
-      icon: '✅',
-      color: 'emerald',
-      sortOrder: 5,
-    });
+      timelineEvents.push({
+        time: tracking.closedAt,
+        label: 'Tiket Ditutup',
+        detail: tracking.assignedTo ?? '—',
+        icon: CheckCircle2,
+        color: 'emerald',
+        sortOrder: 5,
+      });
   }
 
   timelineEvents.sort((a, b) => a.sortOrder - b.sortOrder);
@@ -113,7 +120,7 @@ export default function TrackingTimeline({ ticket }: { ticket: TicketDetail }) {
                             : 'bg-indigo-500',
                   )}
                 >
-                  <span>{event.icon}</span>
+                  <event.icon size={10} />
                 </div>
                 <div className='min-w-0 flex-1 pt-0.5'>
                   <p className='text-xs font-semibold text-slate-700 dark:text-slate-200'>

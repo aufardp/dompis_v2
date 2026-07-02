@@ -161,7 +161,7 @@ export default function OperationalFocusQueue({
                   >
                     {item.icon}
                   </span>
-                  <p className='truncate text-[10px] font-black tracking-wide uppercase'>
+                  <p className='truncate text-[10px] font-semibold tracking-wide uppercase'>
                     {item.label}
                   </p>
                 </div>
@@ -186,7 +186,7 @@ export default function OperationalFocusQueue({
               <div className='mt-4'>
                 <p
                   className={cn(
-                    'text-[1.6rem] leading-none font-black tracking-tight',
+                    'text-[1.6rem] leading-none font-semibold tracking-tight',
                     style.num,
                   )}
                 >

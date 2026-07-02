@@ -7,19 +7,29 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Ticket } from '@/app/types/ticket';
 import { useToast } from './hooks/useToast';
+import {
+  CheckCircle2,
+  ClipboardList,
+  Heart,
+  Home,
+  LayoutGrid,
+  Search,
+  Ticket as TicketIcon,
+  X,
+} from 'lucide-react';
 
 import {
   useTickets,
   usePullToRefresh,
-  useTabScroll,
 } from './TeknisiDashboard/hooks';
 import {
-  TicketCard,
-  FilterTabs,
-  StatsCards,
   PullToRefresh,
 } from './TeknisiDashboard/components';
 import { TicketFilter } from './TeknisiDashboard/constants/ticket';
+import DashboardHeader from './DashboardHeader';
+import StatusGrid from './StatusGrid';
+import FilterChips from './FilterChips';
+import TicketCard from './TeknisiDashboard/components/TicketCard';
 
 const TicketDetailModal = dynamic(() => import('./TicketDetailModal'), {
   ssr: false,
@@ -67,23 +77,21 @@ function SearchBar({ value, onChange }: SearchBarProps) {
 
   return (
     <div className='relative'>
-      <span className='pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-400 dark:text-slate-500'>
-        🔍
-      </span>
+      <Search className='pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-(--text-tertiary)' />
       <input
         type='text'
         placeholder='Cari nomor tiket... (contoh: INC45671234)'
         value={inputValue}
         onChange={handleChange}
-        className='w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-700 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500'
+        className='w-full rounded-[28px] border border-(--border) bg-(--surface) py-3 pr-10 pl-10 text-sm text-(--text-primary) shadow-sm transition placeholder:text-(--text-tertiary) focus:border-black focus:ring-2 focus:ring-black/10 focus:outline-none dark:focus:border-white dark:focus:ring-white/10'
       />
       {inputValue && (
         <button
           type='button'
           onClick={handleClear}
-          className='absolute top-1/2 right-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition-colors hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600'
+          className='absolute top-1/2 right-3 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-(--surface-2) text-(--text-secondary) transition-colors hover:bg-(--surface-3)'
         >
-          ×
+          <X size={12} />
         </button>
       )}
     </div>
@@ -135,7 +143,7 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className='flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          className='flex min-h-11 items-center rounded-full border border-(--border) bg-(--surface) px-3 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-50'
         >
           ←
         </button>
@@ -143,7 +151,7 @@ function Pagination({
           p === '...' ? (
             <span
               key={`ellipsis-${i}`}
-              className='flex h-8 w-8 items-center justify-center text-sm text-slate-400 dark:text-slate-500'
+              className='flex h-8 w-8 items-center justify-center text-sm text-(--text-tertiary)'
             >
               …
             </span>
@@ -154,8 +162,8 @@ function Pagination({
               onClick={() => handlePageChange(p as number)}
               className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
                 p === currentPage
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'text-(--text-secondary) hover:bg-(--surface-2)'
               }`}
             >
               {p}
@@ -166,12 +174,12 @@ function Pagination({
           type='button'
           onClick={() => handlePageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className='flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          className='flex min-h-11 items-center rounded-full border border-(--border) bg-(--surface) px-3 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-50'
         >
           →
         </button>
       </div>
-      <p className='text-xs text-slate-400 dark:text-slate-500'>
+      <p className='text-xs text-(--text-tertiary)'>
         Menampilkan {from}–{to} dari {totalItems} tiket
       </p>
     </div>
@@ -206,15 +214,12 @@ export default function TeknisiDashboard() {
     disabled: showDetailModal || showUpdateModal,
   });
 
-  const { tabsRef, tabButtonRefs, showLeftFade, showRightFade } = useTabScroll({
-    currentFilter: filter,
-  });
-
-  const handleSelectTicket = useCallback((ticket: Ticket) => {
-    setShowUpdateModal(false);
-    setSelectedTicket(ticket);
-    setShowDetailModal(true);
-  }, []);
+  const handleSelectTicket = useCallback(
+    (ticket: Ticket) => {
+      router.push(`/teknisi/ticket/${ticket.idTicket}`);
+    },
+    [router],
+  );
 
   const handleTicketUpdated = useCallback(
     (type?: 'close' | 'pickup' | 'resume') => {
@@ -224,7 +229,7 @@ export default function TeknisiDashboard() {
       setShowDetailModal(false);
       if (type === 'close') {
         showSuccess(
-          'Tiket Berhasil Ditutup! 🎉',
+          'Tiket Berhasil Ditutup!',
           'Tiket telah berhasil di-close.',
         );
       } else if (type === 'pickup') {
@@ -262,10 +267,7 @@ export default function TeknisiDashboard() {
     setShowUpdateModal(false);
     setSelectedTicket(null);
     void refresh();
-    showSuccess(
-      'Update Tiket Tersimpan ✓',
-      'Status tiket berhasil di-pending.',
-    );
+    showSuccess('Update Tiket Tersimpan', 'Status tiket berhasil di-pending.');
   }, [refresh, showSuccess]);
 
   const handlePageChange = useCallback(
@@ -280,7 +282,7 @@ export default function TeknisiDashboard() {
   const emptyMessage = (() => {
     if (searchQuery.trim()) {
       return {
-        icon: '🔍',
+        icon: Search,
         title: `Tiket "${searchQuery}" tidak ditemukan`,
         subtitle: 'Coba cek nomor tiket kembali atau hapus pencarian',
         showClearButton: true,
@@ -288,14 +290,14 @@ export default function TeknisiDashboard() {
     }
     if (filter === 'closed') {
       return {
-        icon: '✅',
+        icon: CheckCircle2,
         title: 'Belum ada ticket selesai',
         subtitle: 'Ticket yang selesai akan muncul di sini',
         showClearButton: false,
       };
     }
     return {
-      icon: '📋',
+      icon: ClipboardList,
       title: 'Tidak ada ticket',
       subtitle: 'Ticket akan muncul ketika ditugaskan kepada Anda',
       showClearButton: false,
@@ -303,7 +305,7 @@ export default function TeknisiDashboard() {
   })();
 
   return (
-    <div className='min-h-dvh bg-linear-to-br from-slate-50 to-slate-100 px-4 pt-4 pb-6 dark:from-slate-900 dark:to-slate-950'>
+    <div className='min-h-dvh bg-(--bg) px-4 pt-4 pb-28'>
       {/* Toast Notifications */}
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
 
@@ -315,106 +317,58 @@ export default function TeknisiDashboard() {
       />
 
       {/* Konten atas — dalam max-w-2xl */}
-      <div className='mx-auto max-w-2xl space-y-4'>
-        {/* Header */}
-        <div className='flex items-center justify-between'>
-          <div>
-            <h1 className='text-xl font-bold text-slate-800 sm:text-2xl dark:text-slate-100'>
-              My Tickets
-            </h1>
-            <p className='text-xs text-slate-500 sm:text-sm dark:text-slate-400'>
-              Manage your assigned tickets
-            </p>
-          </div>
+      <div className='mx-auto max-w-2xl space-y-6'>
+        <DashboardHeader
+          loading={loading}
+          refreshing={ptrRefreshing}
+          onRefresh={refresh}
+        />
 
-          <div className='flex items-center gap-2'>
-            <button
-              type='button'
-              onClick={() => router.push('/teknisi/join')}
-              className='flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm hover:bg-blue-100 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
-              title='Scan Invite'
-            >
-              <span>📷</span>
-              <span className='hidden text-sm font-semibold sm:inline'>Scan Invite</span>
-            </button>
+        <StatusGrid
+          stats={stats}
+          loading={loading}
+          activeFilter={filter}
+          onFilterChange={setFilter as (f: TicketFilter) => void}
+        />
 
-            <button
-              type='button'
-              onClick={() => void refresh()}
-              disabled={loading || ptrRefreshing}
-              className='flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:h-auto sm:w-auto sm:gap-2 sm:px-3 sm:py-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-              title='Refresh'
-            >
-              <span
-                className={
-                  loading || ptrRefreshing
-                    ? 'inline-block animate-spin'
-                    : 'inline-block'
-                }
-              >
-                ↻
-              </span>
-              <span className='hidden text-sm font-semibold text-slate-700 sm:inline dark:text-slate-200'>
-                Refresh
-              </span>
-            </button>
-          </div>
+        <div className='space-y-3'>
+          <SearchBar value={searchQuery} onChange={setSearchQuery} />
+          <FilterChips
+            stats={stats}
+            activeFilter={filter}
+            onFilterChange={setFilter as (f: TicketFilter) => void}
+          />
         </div>
 
-        {/* Stats Cards */}
-        <StatsCards stats={stats} loading={loading} />
+        {filteredTickets.length > 0 && (
+          <section className='space-y-3'>
+            <div className='flex items-end justify-between'>
+              <div>
+                <p className='text-[10px] font-bold tracking-[0.32em] text-(--text-tertiary) uppercase'>
+                  Daftar Ticket
+                </p>
+                <h2 className='mt-1 text-lg font-semibold text-(--text-primary)'>
+                  Semua ticket teknisi
+                </h2>
+              </div>
+              <div className='rounded-full border border-(--border) bg-(--surface-2) px-3 py-1 text-xs font-semibold text-(--text-secondary)'>
+                {filteredTickets.length} total
+              </div>
+            </div>
+            <div className='space-y-3'>
+              {paginatedTickets.map((ticket) => (
+                <TicketCard
+                  key={ticket.idTicket}
+                  ticket={ticket}
+                  onClick={handleSelectTicket}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
-        {/* Search Bar */}
-        <SearchBar value={searchQuery} onChange={setSearchQuery} />
-      </div>
-
-      {/* FilterTabs — di LUAR max-w-2xl, -mx-4 sekarang benar-benar full-width */}
-      <FilterTabs
-        currentFilter={filter}
-        onFilterChange={setFilter as (f: TicketFilter) => void}
-        stats={stats}
-        tabsRef={tabsRef}
-        tabButtonRefs={tabButtonRefs}
-        showLeftFade={showLeftFade}
-        showRightFade={showRightFade}
-        onScroll={() => {}}
-      />
-
-      {/* Konten bawah — kembali dalam max-w-2xl */}
-      <div className='mx-auto max-w-2xl space-y-4'>
-        {/* Ticket List */}
-{loading ? (
-          <div className='flex items-center justify-center py-16'>
-            <div className='h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent' />
-          </div>
-        ) : filteredTickets.length === 0 ? (
-          <div className='rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center dark:border-slate-700 dark:bg-slate-800/50'>
-            <div className='mb-3 text-5xl'>{emptyMessage.icon}</div>
-            <p className='text-lg font-medium text-slate-600 dark:text-slate-300'>
-              {emptyMessage.title}
-            </p>
-            <p className='text-sm text-slate-400 dark:text-slate-500'>
-              {emptyMessage.subtitle}
-            </p>
-            {emptyMessage.showClearButton && (
-              <button
-                type='button'
-                onClick={() => setSearchQuery('')}
-                className='mt-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              >
-                Hapus pencarian
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className='grid gap-3'>
-            {paginatedTickets.map((ticket) => (
-              <TicketCard
-                key={ticket.idTicket}
-                ticket={ticket}
-                onClick={handleSelectTicket}
-              />
-            ))}
+        {filteredTickets.length > 0 && (
+          <div className='pt-1'>
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -424,6 +378,35 @@ export default function TeknisiDashboard() {
             />
           </div>
         )}
+
+        <section className='space-y-4'>
+          {loading ? (
+            <div className='flex items-center justify-center py-16'>
+              <div className='h-10 w-10 animate-spin rounded-full border-4 border-black border-t-transparent dark:border-white dark:border-t-transparent' />
+            </div>
+          ) : filteredTickets.length === 0 ? (
+            <div className='rounded-4xl border border-dashed border-(--border) bg-(--surface) py-16 text-center shadow-sm'>
+              <div className='mb-3 flex justify-center'>
+                <emptyMessage.icon className='h-12 w-12 text-(--text-tertiary)' />
+              </div>
+              <p className='text-lg font-bold text-(--text-primary)'>
+                {emptyMessage.title}
+              </p>
+              <p className='text-sm text-(--text-secondary)'>
+                {emptyMessage.subtitle}
+              </p>
+              {emptyMessage.showClearButton && (
+                <button
+                  type='button'
+                  onClick={() => setSearchQuery('')}
+                  className='mt-4 rounded-full bg-black px-4 py-2 text-sm font-bold text-white transition-all active:scale-95'
+                >
+                  Hapus pencarian
+                </button>
+              )}
+            </div>
+          ) : null}
+        </section>
       </div>
 
       {/* Modals */}
@@ -443,6 +426,50 @@ export default function TeknisiDashboard() {
           onUpdated={handleTicketUpdated}
         />
       )}
+
+      <div className='fixed right-4 bottom-4 left-4 z-40 mx-auto max-w-2xl'>
+        <div className='flex items-center justify-between rounded-[28px] bg-(--surface)/80 px-3 py-2 shadow-lg ring-1 ring-(--border) backdrop-blur-xl'>
+          {[
+            {
+              key: 'home',
+              icon: Home,
+              label: 'Home',
+              onClick: () => setFilter('all') as void,
+            },
+            {
+              key: 'tickets',
+              icon: TicketIcon,
+              label: 'Tickets',
+              onClick: () => setFilter('assigned') as void,
+            },
+            {
+              key: 'favorite',
+              icon: Heart,
+              label: 'Favorite',
+              onClick: () => setFilter('pending') as void,
+            },
+            {
+              key: 'grid',
+              icon: LayoutGrid,
+              label: 'Grid',
+              onClick: () => setFilter('closed') as void,
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type='button'
+                onClick={item.onClick}
+                className='flex flex-1 flex-col items-center gap-1 rounded-[22px] px-3 py-2 text-[10px] font-bold text-(--text-secondary) transition-all active:scale-95'
+              >
+                <Icon size={18} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

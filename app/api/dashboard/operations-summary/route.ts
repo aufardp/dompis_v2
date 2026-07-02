@@ -274,11 +274,14 @@ function buildFocusCountsRawSql(
       SUM(CASE WHEN status IN (${CLOSE_STATUS_SQL}) THEN 1 ELSE 0 END) AS close_count,
       SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND status_update IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned_count,
       SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) THEN 1 ELSE 0 END) AS open_count,
-      SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS diamond,
-      SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-      SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-      SUM(CASE WHEN guarantee_status = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-      SUM(CASE WHEN pending_dompis IS NOT NULL AND pending_dompis != '' THEN 1 ELSE 0 END) AS carry_over
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS diamond,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND guarantee_status = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+      SUM(CASE WHEN pending_dompis IS NOT NULL AND pending_dompis != '' AND (
+        (status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')))
+        OR status_update IN ('pending')
+      ) THEN 1 ELSE 0 END) AS carry_over
     FROM ticket
     WHERE ${whereClause}
   `;
@@ -288,11 +291,14 @@ function buildFocusCountsRawSql(
       SUM(CASE WHEN status IN (${CLOSE_STATUS_SQL}) THEN 1 ELSE 0 END) AS close_count,
       SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND status_update IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned_count,
       SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) THEN 1 ELSE 0 END) AS open_count,
-      SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS diamond,
-      SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
-      SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
-      SUM(CASE WHEN guarantee_status = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
-      SUM(CASE WHEN pending_dompis IS NOT NULL AND pending_dompis != '' THEN 1 ELSE 0 END) AS carry_over
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS diamond,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND ticket_id_gamas IS NOT NULL AND ticket_id_gamas NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
+      SUM(CASE WHEN status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')) AND guarantee_status = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+      SUM(CASE WHEN pending_dompis IS NOT NULL AND pending_dompis != '' AND (
+        (status NOT IN (${CLOSE_STATUS_SQL}) AND (status_update IS NULL OR status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close')))
+        OR status_update IN ('pending')
+      ) THEN 1 ELSE 0 END) AS carry_over
     FROM ticket
     WHERE ${whereClause}
   `;

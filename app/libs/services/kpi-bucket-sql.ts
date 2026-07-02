@@ -107,29 +107,44 @@ function buildNonKpiUnspecSql(tbl: string): string {
 
 function buildNonTechnicalSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
-  return `(${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)}) AND (LOWER(${t}source_ticket) IN ('customer','proactive') AND (
-    LOWER(${t}classification_flag) LIKE '%nontechnical%'
-    OR LOWER(${t}classification_flag) LIKE '%non technical%'
-    OR LOWER(${t}classification_flag) LIKE '%billing%'
+  return `(${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)}) AND (
+    (
+      LOWER(${t}source_ticket) IN ('customer','proactive') AND (
+        LOWER(${t}classification_flag) LIKE '%nontechnical%'
+        OR LOWER(${t}classification_flag) LIKE '%non technical%'
+        OR LOWER(${t}classification_flag) LIKE '%billing%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%unknown%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%unknown%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%permintaan%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%permintaan%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%infracare%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%infracare%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%billing%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%billing%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%digital_spbu%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%digital spbu%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%digitalspbu%'
+        OR LOWER(${t}jenis_tiket_1) LIKE '%non numbering%'
+        OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%nonnumbering%'
+        OR LOWER(${t}jenis_tiket_2) LIKE '%digital_spbu%'
+        OR LOWER(${t}jenis_tiket_2) LIKE '%digital spbu%'
+        OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%digitalspbu%'
+        OR LOWER(${t}jenis_tiket_2) LIKE '%unknown%'
+        OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%unknown%'
+        OR LOWER(${t}symptom) LIKE '%z_nn_01_001%'
+      )
+    )
+    OR ${t}jenis_tiket_1 IS NULL
+    OR ${t}jenis_tiket_1 = ''
+    OR ${t}jenis_tiket_1 = ' '
     OR LOWER(${t}jenis_tiket_1) LIKE '%unknown%'
     OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%unknown%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%permintaan%'
-    OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%permintaan%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%infracare%'
-    OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%infracare%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%billing%'
-    OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%billing%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%digital_spbu%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%digital spbu%'
-    OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%digitalspbu%'
-    OR LOWER(${t}jenis_tiket_1) LIKE '%non numbering%'
-    OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%nonnumbering%'
     OR LOWER(${t}jenis_tiket_2) LIKE '%digital_spbu%'
     OR LOWER(${t}jenis_tiket_2) LIKE '%digital spbu%'
     OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%digitalspbu%'
     OR LOWER(${t}jenis_tiket_2) LIKE '%unknown%'
     OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%unknown%'
-  ) OR ${t}jenis_tiket_1 IS NULL OR ${t}jenis_tiket_1 = '' OR LOWER(${t}jenis_tiket_1) LIKE '%unknown%' OR REPLACE(LOWER(${t}jenis_tiket_1), ' ', '') LIKE '%unknown%' OR LOWER(${t}jenis_tiket_2) LIKE '%digital_spbu%' OR LOWER(${t}jenis_tiket_2) LIKE '%digital spbu%' OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%digitalspbu%' OR LOWER(${t}jenis_tiket_2) LIKE '%unknown%' OR REPLACE(LOWER(${t}jenis_tiket_2), ' ', '') LIKE '%unknown%')`;
+  )`;
 }
 
 function buildSqmUpdateSql(tbl: string): string {

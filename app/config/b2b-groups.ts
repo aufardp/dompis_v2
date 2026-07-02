@@ -1,84 +1,103 @@
+import {
+  Antenna,
+  Building2,
+  ClipboardList,
+  CreditCard,
+  Fuel,
+  Hash,
+  Handshake,
+  Link,
+  Lightbulb,
+  Package,
+  PenSquare,
+  Shield,
+  Smartphone,
+  Wifi,
+  Globe,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
 export interface B2BGroup {
   key: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 export const B2B_GROUPS: B2BGroup[] = [
   {
     key: 'datin',
     label: 'DATIN',
-    icon: '📡',
+    icon: Antenna,
   },
   {
     key: 'indibiz',
     label: 'Indibiz',
-    icon: '🏢',
+    icon: Building2,
   },
   {
     key: 'sqm-ccan',
     label: 'SQM-CCAN',
-    icon: '📋',
+    icon: ClipboardList,
   },
   {
     key: 'reseller',
     label: 'Reseller',
-    icon: '🤝',
+    icon: Handshake,
   },
   {
     key: 'wifi-id',
     label: 'WiFi-ID',
-    icon: '📶',
+    icon: Wifi,
   },
   {
     key: 'digital-spbu',
     label: 'Digital SPBU',
-    icon: '⛽',
+    icon: Fuel,
   },
   {
     key: 'permintaan',
     label: 'Permintaan',
-    icon: '📝',
+    icon: PenSquare,
   },
   {
     key: 'unspec-b2b',
     label: 'Unspec B2B',
-    icon: '❓',
+    icon: Lightbulb,
   },
   {
     key: 'non-numbering',
     label: 'Non Numbering',
-    icon: '🔢',
+    icon: Hash,
   },
   {
     key: 'billing',
     label: 'Billing',
-    icon: '💳',
+    icon: CreditCard,
   },
   {
     key: 'astinet',
     label: 'Astinet',
-    icon: '🌐',
+    icon: Globe,
   },
   {
     key: 'tsel',
     label: 'TSEL',
-    icon: '📱',
+    icon: Smartphone,
   },
   {
     key: 'vpn-ip',
     label: 'VPN IP',
-    icon: '🔒',
+    icon: Shield,
   },
   {
     key: 'metro-e',
     label: 'Metro-E',
-    icon: '🔗',
+    icon: Link,
   },
   {
     key: 'dwdm',
     label: 'DWDM',
-    icon: '💡',
+    icon: Package,
   },
 ];
 

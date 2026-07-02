@@ -1,6 +1,8 @@
 import TicketManagementBucketPage from '@/app/admin/components/dashboard/TicketManagementBucketPage';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 
-export default function TicketManagementNonKpiUnspecPage() {
+export default async function TicketManagementNonKpiUnspecPage() {
+  const initialWorkzone = await getInitialWorkzoneScope();
   return (
     <TicketManagementBucketPage
       title='Unspec'
@@ -9,6 +11,7 @@ export default function TicketManagementNonKpiUnspecPage() {
       tone='amber'
       operationalBucket={['non_kpi_unspec']}
       disableLocalSearch
+      initialWorkzone={initialWorkzone}
       extraWorkboard={{
         title: 'Unspec OHI',
         description: 'Ticket dengan symptom bertema PROACTIVE UNSPEC 2026.',
