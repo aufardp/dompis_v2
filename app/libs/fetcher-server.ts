@@ -5,7 +5,7 @@ export async function fetchWithAuthServer(
   init?: RequestInit & { headers?: Record<string, string> },
 ): Promise<Response> {
   const cookieStore = await cookies();
-  const cookieHeader = cookieStore.toString();
+  const cookieHeader = init?.headers?.cookie || cookieStore.toString();
 
   return fetch(url, {
     ...init,
