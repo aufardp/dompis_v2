@@ -27,6 +27,8 @@ const BATCH_SIZE = 100;
 const MAX_ROWS = 10000;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const SOURCE_TABLE_NAME = 'import_tiket';
+const TRANSACTION_RETRY_MAX = 3;
+const TRANSACTION_RETRY_BASE_DELAY_MS = 250;
 const DATE_STRING_FIELDS: Set<string> = new Set([
   'reported_date',
   'status_date',
@@ -117,6 +119,57 @@ function computeStableHash(payload: Record<string, unknown>): string {
     stable[key] = payload[key] ?? null;
   }
   return createHash('sha256').update(JSON.stringify(stable)).digest('hex');
+}
+
+function isRetryableTransactionError(error: unknown): boolean {
+  const text = [
+    error instanceof Error ? error.message : String(error),
+    typeof error === 'object' && error && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    text.includes('deadlock') ||
+    text.includes('write conflict') ||
+    text.includes('lock wait timeout') ||
+    text.includes('contention') ||
+    text.includes('p2034') ||
+    text.includes('1213') ||
+    text.includes('1205')
+  );
+}
+
+async function withTransactionRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxRetries: number = TRANSACTION_RETRY_MAX,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableTransactionError(error) || attempt === maxRetries - 1) {
+        throw error;
+      }
+
+      const delayMs = TRANSACTION_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      logger.warn(`[ImportTiket] Retrying ${label} after transient transaction error`, {
+        attempt: attempt + 1,
+        maxRetries,
+        delayMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export async function POST(req: Request) {
@@ -250,8 +303,8 @@ export async function POST(req: Request) {
         existingIncidents.map((r) => [String(r.incident ?? ''), r as Record<string, any>]),
       );
 
-      const createOps = [];
-      const updateOps = [];
+      const createOps: Array<ReturnType<typeof prisma.ticket_raw.create>> = [];
+      const updateOps: Array<{ incident: string; op: ReturnType<typeof prisma.ticket_raw.update> }> = [];
 
       for (const { incident, data, raw } of parsedRows) {
         const now = new Date();
@@ -295,9 +348,10 @@ export async function POST(req: Request) {
         };
 
         if (existing) {
-          updateOps.push(
-            prisma.ticket_raw.update({ where: { incident }, data: payload }),
-          );
+          updateOps.push({
+            incident,
+            op: prisma.ticket_raw.update({ where: { incident }, data: payload }),
+          });
         } else {
           createOps.push(
             prisma.ticket_raw.create({ data: payload }),
@@ -306,11 +360,20 @@ export async function POST(req: Request) {
       }
 
       if (createOps.length > 0) {
-        await prisma.$transaction(createOps);
+        await withTransactionRetry(
+          () => prisma.$transaction(createOps),
+          `create batch ${i / BATCH_SIZE + 1}`,
+        );
         inserted += createOps.length;
       }
       if (updateOps.length > 0) {
-        await prisma.$transaction(updateOps);
+        const orderedUpdateOps = updateOps
+          .sort((a, b) => a.incident.localeCompare(b.incident))
+          .map(({ op }) => op);
+        await withTransactionRetry(
+          () => prisma.$transaction(orderedUpdateOps),
+          `update batch ${i / BATCH_SIZE + 1}`,
+        );
         updated += updateOps.length;
       }
     }
