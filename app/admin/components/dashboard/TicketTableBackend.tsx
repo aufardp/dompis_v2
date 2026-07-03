@@ -7,8 +7,7 @@ import TicketDetailDrawer from './TicketDetailDrawer';
 import { ChevronDown, ChevronUp, UserPlus, Eye, MapPin } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
-  computeTicketRanks,
-  calculateAgeInHours,
+  formatAge,
   sortByPriority,
 } from '@/app/libs/tickets/sort';
 import { getJenisStyle } from '@/app/config/jenis-tiket';
@@ -28,16 +27,15 @@ interface TicketRow {
   contactPhone?: string | null;
   alamat?: string | null;
   bookingDate?: string | null;
-  ctype?: string;
   customerType?: string;
-  summary?: string;
+  ctype?: string;
   jenisTiket?: string;
   workzone?: string;
   technicianName?: string | null;
   teknisiUserId?: number | null;
   hasilVisit?: string | null;
-  statusUpdate?: string | null;
   status_update?: string | null;
+  statusUpdate?: string | null;
   closedAt?: string | null;
   reportedDate?: string | null;
   status?: string;
@@ -47,6 +45,7 @@ interface TicketRow {
   maxTtrDiamond?: string | null;
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
+  rank?: number;
 }
 
 interface TicketTableBackendProps {
@@ -182,7 +181,7 @@ export default function TicketTableBackend({
     mobilePage * MOBILE_PAGE_SIZE,
   );
 
-  const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
+
 
   // Fetch ticket detail when drawer opens
   useEffect(() => {
@@ -349,7 +348,6 @@ export default function TicketTableBackend({
                   <tbody className='divide-y divide-(--border)'>
                     {pageTickets.map((ticket) => {
                       const ticketId = ticket.idTicket ?? ticket.ticket;
-                      const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
                       const ttrCountdown = computeTtrCountdown(ticket);
                       const isClosed = isTicketClosed(ticket.status_update ?? ticket.statusUpdate);
                       const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
@@ -361,7 +359,7 @@ export default function TicketTableBackend({
                         >
                           <td className='px-3 py-3 text-center'>
                             <span className='font-mono text-sm font-bold text-(--text-secondary)'>
-                              #{ticketInfo?.rank ?? '-'}
+                              #{ticket.rank ?? '-'}
                             </span>
                           </td>
                           <td className='px-3 py-3'>
@@ -414,7 +412,7 @@ export default function TicketTableBackend({
                           <td className='px-3 py-3 text-center'>
                             <div className='inline-flex flex-col items-center gap-0.5'>
                               <span className='rounded-full bg-(--surface-2) px-2.5 py-0.5 text-[11px] font-bold text-(--text-secondary)'>
-                                {ticketInfo?.ageFormatted ?? '-'}
+                                {formatAge(ticket.reportedDate, ticket.hasilVisit ?? ticket.statusUpdate, ticket.closedAt, ticket.status) ?? '-'}
                               </span>
                               <TtrCountdownBadge ticket={ticket} />
                             </div>

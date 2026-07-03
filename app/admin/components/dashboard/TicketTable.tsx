@@ -14,8 +14,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import {
-  computeTicketRanks,
   calculateAgeInHours,
+  formatAge,
+  getTicketSeverity,
   sortByPriority,
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
@@ -68,6 +69,7 @@ export interface AdminTicketTableProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
+    rank?: number;
   }>;
   loading?: boolean;
   isRefreshing?: boolean;
@@ -105,6 +107,10 @@ export interface AdminTicketTableProps {
     flagging?: string[];
     excludeSymptom?: string;
   };
+  // Controlled sort (server-side)
+  sortField?: SortField;
+  sortOrder?: SortOrder;
+  onSort?: (field: SortField, order: SortOrder) => void;
 }
 
 type TableTicket = NonNullable<AdminTicketTableProps['tickets']>[number];
@@ -305,6 +311,9 @@ export default function TicketTable({
   tableSummary,
   highlightQuery,
   downloadFilters,
+  sortField: controlledSortField,
+  sortOrder: controlledSortOrder,
+  onSort,
 }: AdminTicketTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'priority',
@@ -402,11 +411,16 @@ export default function TicketTable({
   }, [downloadFilters, downloadFormat]);
 
   const handleSort = useCallback((field: SortField) => {
-    setSortConfig((prev) => ({
-      field,
-      order: prev.field === field && prev.order === 'asc' ? 'desc' : 'asc',
-    }));
-  }, []);
+    if (onSort && controlledSortField !== undefined) {
+      const newOrder = controlledSortField === field && controlledSortOrder === 'asc' ? 'desc' : 'asc';
+      onSort(field, newOrder);
+    } else {
+      setSortConfig((prev) => ({
+        field,
+        order: prev.field === field && prev.order === 'asc' ? 'desc' : 'asc',
+      }));
+    }
+  }, [onSort, controlledSortField, controlledSortOrder]);
 
   const toggleExpand = useCallback((ticketId: number | string) => {
     const numericId = Number(ticketId);
@@ -439,13 +453,19 @@ export default function TicketTable({
       .finally(() => setDrawerLoading(false));
   }, [expandedTicketId]);
 
+  const activeSortField = controlledSortField ?? sortConfig.field;
+  const activeSortOrder = controlledSortOrder ?? sortConfig.order;
+
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
-    if (sortConfig.field === 'priority') return sortByPriority(tickets);
+    if (onSort && controlledSortField !== undefined && controlledSortField !== 'priority') {
+      return tickets;
+    }
+    if (activeSortField === 'priority') return sortByPriority(tickets);
     return [...tickets].sort((a, b) => {
       let aVal: any;
       let bVal: any;
-      if (sortConfig.field === 'age') {
+      if (activeSortField === 'age') {
         aVal = calculateAgeInHours(
           a.reportedDate,
           a.hasilVisit,
@@ -459,8 +479,8 @@ export default function TicketTable({
           b.status,
         );
       } else {
-        aVal = a[sortConfig.field as keyof typeof a];
-        bVal = b[sortConfig.field as keyof typeof b];
+        aVal = a[activeSortField as keyof typeof a];
+        bVal = b[activeSortField as keyof typeof b];
       }
       if (aVal == null) aVal = '';
       if (bVal == null) bVal = '';
@@ -468,11 +488,11 @@ export default function TicketTable({
         aVal = aVal.toLowerCase();
         bVal = bVal.toLowerCase();
       }
-      if (aVal < bVal) return sortConfig.order === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortConfig.order === 'asc' ? 1 : -1;
+      if (aVal < bVal) return activeSortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return activeSortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [tickets, sortConfig]);
+  }, [tickets, activeSortField, activeSortOrder, onSort, controlledSortField]);
 
   const currentPage = pagination?.currentPage ?? 1;
   const pageSize = pagination?.limit ?? 10;
@@ -494,7 +514,6 @@ export default function TicketTable({
     mobilePage * MOBILE_PAGE_SIZE,
   );
 
-  const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
   const ticketCountdowns = useMemo(() => {
     const map = new Map<number, TtrCountdown | null>();
     for (const ticket of tickets) {
@@ -517,8 +536,8 @@ export default function TicketTable({
         <span>{label}</span>
         <SortIcon
           field={field}
-          currentField={sortConfig.field}
-          order={sortConfig.order}
+          currentField={activeSortField}
+          order={activeSortOrder}
         />
       </div>
     </th>
@@ -658,7 +677,6 @@ export default function TicketTable({
                     pageTickets.map((ticket) => {
                       const ticketId = ticket.idTicket ?? ticket.ticket;
                       const isExpanded = expandedTicketId === ticketId;
-                      const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
                       const ttrCountdown =
                         ticketCountdowns.get(ticket.idTicket ?? -1) ?? null;
                       const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
@@ -671,6 +689,18 @@ export default function TicketTable({
                               : ttrCountdown.status === 'warning'
                                 ? 'At Risk'
                                 : 'On Track';
+                      const ticketAge = formatAge(
+                        ticket.reportedDate,
+                        ticket.hasilVisit,
+                        ticket.closedAt,
+                        ticket.status,
+                      );
+                      const ticketSeverity = getTicketSeverity(
+                        ticket.reportedDate,
+                        ticket.hasilVisit,
+                        ticket.closedAt,
+                        ticket.status,
+                      );
 
                       return (
                         <TicketRow
@@ -681,9 +711,9 @@ export default function TicketTable({
                           showBypassClose={showBypassClose}
                           isExpanded={isExpanded}
                           onToggleExpand={toggleExpand}
-                          rank={ticketInfo?.rank}
-                          ticketAge={ticketInfo?.ageFormatted}
-                          severity={ticketInfo?.severity}
+                          rank={ticket.rank}
+                          ticketAge={ticketAge}
+                          severity={ticketSeverity}
                           slaLabel={slaLabel}
                           ttrCountdown={ttrCountdown}
                           highlighted={isHighlighted(ticket)}

@@ -96,6 +96,7 @@ type TicketFilters = {
   includeClosed?: boolean;
   globalScope?: boolean;
   sort?: 'asc' | 'desc';
+  sortField?: string;
 };
 
 type TicketTypeOption = {
@@ -882,11 +883,85 @@ async function queryRawWithOptionalIndex<T>(
   }
 }
 
-function buildMainTableOrderBySql(sort: 'asc' | 'desc', today: string): [string, any[]] {
+const SORT_FIELD_MAP: Record<string, string> = {
+  ticket: 'incident',
+  customerType: 'customer_type',
+  customerName: 'customer_name',
+  serviceNo: 'service_no',
+  workzone: 'workzone',
+  bookingDate: 'booking_date',
+  reportedDate: 'reported_date',
+  age: 'reported_date',
+  jenisTiket: 'jenis_tiket_2',
+};
+
+function buildMainTableOrderBySql(
+  sort: 'asc' | 'desc',
+  today: string,
+  sortField?: string,
+): [string, any[]] {
   const reportedDirection = sort === 'asc' ? 'ASC' : 'DESC';
+
+  if (!sortField || sortField === 'priority') {
+    return [
+      `
+        CASE
+          WHEN booking_date IS NOT NULL AND DATE(booking_date) = ? THEN 0
+          WHEN UPPER(COALESCE(flagging_manja, '')) = 'P1' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_DIAMOND', 'HVC DIAMOND', 'DIAMOND') THEN 0
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_PLATINUM', 'HVC PLATINUM', 'PLATINUM') THEN 1
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_GOLD', 'HVC GOLD', 'GOLD') THEN 2
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('REGULER', 'REGULAR') THEN 3
+          ELSE 4
+        END ASC,
+        CASE
+          WHEN booking_date IS NULL THEN 1
+          ELSE 0
+        END ASC,
+        booking_date ASC,
+        reported_date ${reportedDirection},
+        id_ticket ASC
+      `,
+      [today],
+    ];
+  }
+
+  const sqlColumn = SORT_FIELD_MAP[sortField];
+  if (!sqlColumn) {
+    return [
+      `
+        CASE
+          WHEN booking_date IS NOT NULL AND DATE(booking_date) = ? THEN 0
+          WHEN UPPER(COALESCE(flagging_manja, '')) = 'P1' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_DIAMOND', 'HVC DIAMOND', 'DIAMOND') THEN 0
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_PLATINUM', 'HVC PLATINUM', 'PLATINUM') THEN 1
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('HVC_GOLD', 'HVC GOLD', 'GOLD') THEN 2
+          WHEN UPPER(COALESCE(customer_type, '')) IN ('REGULER', 'REGULAR') THEN 3
+          ELSE 4
+        END ASC,
+        CASE
+          WHEN booking_date IS NULL THEN 1
+          ELSE 0
+        END ASC,
+        booking_date ASC,
+        reported_date ${reportedDirection},
+        id_ticket ASC
+      `,
+      [today],
+    ];
+  }
+
+  const sortDir = sort === 'asc' ? 'ASC' : 'DESC';
 
   return [
     `
+      ${sqlColumn} ${sortDir},
       CASE
         WHEN booking_date IS NOT NULL AND DATE(booking_date) = ? THEN 0
         WHEN UPPER(COALESCE(flagging_manja, '')) = 'P1' THEN 1
@@ -904,7 +979,7 @@ function buildMainTableOrderBySql(sort: 'asc' | 'desc', today: string): [string,
         ELSE 0
       END ASC,
       booking_date ASC,
-      reported_date ${reportedDirection},
+      reported_date DESC,
       id_ticket ASC
     `,
     [today],
@@ -1180,41 +1255,47 @@ export class DailyTicketService {
     where: Prisma.ticketWhereInput,
     options: {
       sort: 'asc' | 'desc';
+      sortField?: string;
       offset: number;
       limit: number;
       forceIndex: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi';
       priorityToday?: string | null;
     },
-  ): Promise<number[]> {
+  ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
-      ? buildMainTableOrderBySql(options.sort, options.priorityToday)
+      ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
       : [
           `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
           [],
         ];
     const sqlWithIndex = `
-      SELECT id_ticket
+      SELECT id_ticket,
+             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket FORCE INDEX (${options.forceIndex})
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
     `;
     const sqlWithoutIndex = `
-      SELECT id_ticket
+      SELECT id_ticket,
+             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
     `;
 
-    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
+    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number; rank_global: bigint | number }>>(
       sqlWithIndex,
       sqlWithoutIndex,
       [...params, ...orderParams, options.offset, options.limit],
     );
 
-    return rows.map((row) => row.id_ticket);
+    return rows.map((row) => ({
+      id_ticket: row.id_ticket,
+      rank_global: Number(row.rank_global),
+    }));
   }
 
   private static async countTicketsBySql(
@@ -1613,7 +1694,7 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
-    const { page = 1, limit = 10, sort = 'desc' } = filters ?? {};
+    const { page = 1, limit = 10, sort = 'desc', sortField } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
     const includeValidasiTickets = filters?.includeValidasiTickets !== false;
     const includeSummary = filters?.includeSummary !== false;
@@ -1661,6 +1742,7 @@ export class DailyTicketService {
       : null;
     const ticketIdsPromise = this.fetchTicketIdsBySql(mainTableWhere, {
       sort,
+      sortField: sortField && sortField !== 'priority' ? sortField : undefined,
       offset,
       limit: safeLimit,
       forceIndex: 'idx_ticket_daily_board',
@@ -1731,12 +1813,27 @@ export class DailyTicketService {
       ticketTypeOptionsPromise,
     ]);
 
+    const rankMap = new Map<number, number>();
+    const ticketIdList = ticketIds.map((r) => {
+      rankMap.set(r.id_ticket, r.rank_global);
+      return r.id_ticket;
+    });
+
     const [tickets, validasiTickets] = await Promise.all([
-      hydrateTicketsByIds(ticketIds),
+      hydrateTicketsByIds(ticketIdList),
       includeValidasiTickets
         ? hydrateTicketsByIds(validasiTicketIds)
         : Promise.resolve([] as Awaited<ReturnType<typeof hydrateTicketsByIds>>),
     ]);
+
+    const mappedTickets = tickets.filter((t): t is NonNullable<typeof t> => t != null).map((t) => {
+      const mapped = mapTicket(t);
+      const rank = rankMap.get(t.id_ticket);
+      if (rank !== undefined) {
+        (mapped as any).rank = rank;
+      }
+      return mapped;
+    });
 
     return {
       total,
@@ -1755,7 +1852,7 @@ export class DailyTicketService {
       totalPages: Math.ceil(total / safeLimit),
       statusOptions,
       ticketTypeOptions,
-      data: tickets.map(mapTicket),
+      data: mappedTickets,
       validasiCount: validasiCount,
       validasiPage: safeValidasiPage,
       validasiLimit: safeValidasiLimit,

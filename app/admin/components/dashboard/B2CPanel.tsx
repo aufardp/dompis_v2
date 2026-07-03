@@ -158,6 +158,8 @@ const B2CPanel = memo(function B2CPanel({
   const [b2cPage, setB2cPage] = useState(1);
   const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
   const [b2cClosePage, setB2cClosePage] = useState(1);
+  const [b2cSortField, setB2cSortField] = useState<string | undefined>(undefined);
+  const [b2cSortOrder, setB2cSortOrder] = useState<'asc' | 'desc'>('desc');
   const [activeTab, setActiveTab] = useState<'main' | 'validasi' | 'close'>(
     'main',
   );
@@ -178,6 +180,8 @@ const B2CPanel = memo(function B2CPanel({
     validasiPage: b2cValidasiPage,
     validasiLimit: 10,
     includeValidasiTickets: activeTab === 'validasi',
+    sortField: b2cSortField,
+    sortOrder: b2cSortOrder,
   });
 
   const b2cClosePageData = useDailyTicketPage({
@@ -222,6 +226,12 @@ const B2CPanel = memo(function B2CPanel({
     setB2cPage(1);
     setB2cValidasiPage(1);
     setB2cClosePage(1);
+  }, []);
+
+  const handleB2cSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setB2cSortField(field);
+    setB2cSortOrder(order);
+    setB2cPage(1);
   }, []);
 
   const b2cBaseTickets = useMemo(
@@ -417,6 +427,9 @@ const B2CPanel = memo(function B2CPanel({
                 limit: b2cPageData.pagination.limit,
                 onPageChange: setB2cPage,
               }}
+              sortField={b2cSortField as any}
+              sortOrder={b2cSortOrder}
+              onSort={handleB2cSort}
             />
           }
           tickets={b2cPageData.tickets}
@@ -454,6 +467,9 @@ const B2CPanel = memo(function B2CPanel({
                 limit: b2cClosePageData.pagination.limit,
                 onPageChange: setB2cClosePage,
               }}
+              sortField={b2cSortField as any}
+              sortOrder={b2cSortOrder}
+              onSort={handleB2cSort}
             />
           }
           loading={b2cPageData.loading}

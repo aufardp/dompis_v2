@@ -80,7 +80,9 @@ export function useDailyTicketPage({
   includeValidasiTickets = true,
   includeOptions = true,
   includeClosed = false,
-}: DailyTicketPageFilters) {
+  sortField,
+  sortOrder,
+}: DailyTicketPageFilters & { sortField?: string; sortOrder?: 'asc' | 'desc' }) {
   const searchType = detectSearchType(search);
   const queryKey = queryKeys.tickets.daily({
     search,
@@ -124,8 +126,9 @@ export function useDailyTicketPage({
         limit: String(limit),
         validasiPage: String(validasiPage),
         validasiLimit: String(validasiLimit),
-        sort: 'desc',
+        sort: sortOrder || 'desc',
       });
+      if (sortField) params.set('sortField', sortField);
       if (!includeValidasi) params.set('includeValidasi', 'false');
       if (!includeValidasiTickets) params.set('includeValidasiTickets', 'false');
       if (!includeOptions) params.set('includeOptions', 'false');

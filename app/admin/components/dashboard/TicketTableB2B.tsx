@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import {
-  computeTicketRanks,
   calculateAgeInHours,
+  formatAge,
+  getTicketSeverity,
   sortByPriority,
 } from '@/app/libs/tickets/sort';
 import { TicketCtype } from '@/app/types/ticket';
@@ -70,6 +71,7 @@ export interface AdminTicketTableB2BProps {
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
     statusUpdate?: string | null;
+    rank?: number;
   }>;
   loading?: boolean;
   isRefreshing?: boolean;
@@ -106,6 +108,10 @@ export interface AdminTicketTableB2BProps {
     flagging?: string[];
     excludeSymptom?: string;
   };
+  // Controlled sort (server-side)
+  sortField?: SortField;
+  sortOrder?: SortOrder;
+  onSort?: (field: SortField, order: SortOrder) => void;
 }
 
 type TableTicket = NonNullable<AdminTicketTableB2BProps['tickets']>[number];
@@ -295,6 +301,9 @@ export default function TicketTableB2B({
   tableSummary,
   highlightQuery,
   downloadFilters,
+  sortField: controlledSortField,
+  sortOrder: controlledSortOrder,
+  onSort,
 }: AdminTicketTableB2BProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: 'priority',
@@ -392,11 +401,16 @@ export default function TicketTableB2B({
   }, [downloadFilters, downloadFormat]);
 
   const handleSort = useCallback((field: SortField) => {
-    setSortConfig((prev) => ({
-      field,
-      order: prev.field === field && prev.order === 'asc' ? 'desc' : 'asc',
-    }));
-  }, []);
+    if (onSort && controlledSortField !== undefined) {
+      const newOrder = controlledSortField === field && controlledSortOrder === 'asc' ? 'desc' : 'asc';
+      onSort(field, newOrder);
+    } else {
+      setSortConfig((prev) => ({
+        field,
+        order: prev.field === field && prev.order === 'asc' ? 'desc' : 'asc',
+      }));
+    }
+  }, [onSort, controlledSortField, controlledSortOrder]);
 
   const toggleExpand = useCallback((ticketId: number | string) => {
     const numericId = Number(ticketId);
@@ -435,13 +449,19 @@ export default function TicketTableB2B({
       .finally(() => setDrawerLoading(false));
   }, [expandedTicketId]);
 
+  const activeSortField = controlledSortField ?? sortConfig.field;
+  const activeSortOrder = controlledSortOrder ?? sortConfig.order;
+
   const sortedTickets = useMemo(() => {
     if (!tickets.length) return tickets;
-    if (sortConfig.field === 'priority') return sortByPriority(tickets);
+    if (onSort && controlledSortField !== undefined && controlledSortField !== 'priority') {
+      return tickets;
+    }
+    if (activeSortField === 'priority') return sortByPriority(tickets);
     return [...tickets].sort((a, b) => {
       let aVal: any;
       let bVal: any;
-      if (sortConfig.field === 'age') {
+      if (activeSortField === 'age') {
         aVal = calculateAgeInHours(
           a.reportedDate,
           a.statusUpdate,
@@ -455,8 +475,8 @@ export default function TicketTableB2B({
           b.status,
         );
       } else {
-        aVal = a[sortConfig.field as keyof typeof a];
-        bVal = b[sortConfig.field as keyof typeof b];
+        aVal = a[activeSortField as keyof typeof a];
+        bVal = b[activeSortField as keyof typeof b];
       }
       if (aVal == null) aVal = '';
       if (bVal == null) bVal = '';
@@ -464,11 +484,11 @@ export default function TicketTableB2B({
         aVal = aVal.toLowerCase();
         bVal = bVal.toLowerCase();
       }
-      if (aVal < bVal) return sortConfig.order === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortConfig.order === 'asc' ? 1 : -1;
+      if (aVal < bVal) return activeSortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return activeSortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [tickets, sortConfig]);
+  }, [tickets, activeSortField, activeSortOrder, onSort, controlledSortField]);
 
   const currentPage = pagination?.currentPage ?? 1;
   const pageSize = pagination?.limit ?? 10;
@@ -490,7 +510,6 @@ export default function TicketTableB2B({
     mobilePage * MOBILE_PAGE_SIZE,
   );
 
-  const ticketRanks = useMemo(() => computeTicketRanks(tickets), [tickets]);
   const ticketCountdowns = useMemo(() => {
     const map = new Map<number, TtrCountdown | null>();
     for (const ticket of tickets) {
@@ -513,8 +532,8 @@ export default function TicketTableB2B({
         <span>{label}</span>
         <SortIcon
           field={field}
-          currentField={sortConfig.field}
-          order={sortConfig.order}
+          currentField={activeSortField}
+          order={activeSortOrder}
         />
       </div>
     </th>
@@ -676,7 +695,6 @@ export default function TicketTableB2B({
                     pageTickets.map((ticket) => {
                       const ticketId = ticket.idTicket ?? ticket.ticket;
                       const isExpanded = expandedTicketId === ticketId;
-                      const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
                       const ttrCountdown =
                         ticketCountdowns.get(ticket.idTicket ?? -1) ?? null;
                       const slaLabel: 'On Track' | 'At Risk' | 'Overdue' =
@@ -689,6 +707,18 @@ export default function TicketTableB2B({
                               : ttrCountdown.status === 'warning'
                                 ? 'At Risk'
                                 : 'On Track';
+                      const ticketAge = formatAge(
+                        ticket.reportedDate,
+                        ticket.hasilVisit ?? ticket.statusUpdate,
+                        ticket.closedAt,
+                        ticket.status,
+                      );
+                      const ticketSeverity = getTicketSeverity(
+                        ticket.reportedDate,
+                        ticket.hasilVisit ?? ticket.statusUpdate,
+                        ticket.closedAt,
+                        ticket.status,
+                      );
 
                       return (
                         <TicketRowB2B
@@ -699,9 +729,9 @@ export default function TicketTableB2B({
                           showBypassClose={showBypassClose}
                           isExpanded={isExpanded}
                           onToggleExpand={toggleExpand}
-                          rank={ticketInfo?.rank}
-                          ticketAge={ticketInfo?.ageFormatted}
-                          severity={ticketInfo?.severity}
+                          rank={ticket.rank}
+                          ticketAge={ticketAge}
+                          severity={ticketSeverity}
                           slaLabel={slaLabel}
                           ttrCountdown={ttrCountdown}
                           highlighted={isHighlighted(ticket)}

@@ -8,8 +8,8 @@ import TableEmptyState from '@/app/components/tables/TableEmptyState';
 import TicketDetailDrawer from '../../admin/components/dashboard/TicketDetailDrawer';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import {
-  computeTicketRanks,
-  TicketWithRank,
+  formatAge,
+  getTicketSeverity,
   calculateAgeInHours,
   sortByPriority,
 } from '@/app/libs/tickets/sort';
@@ -149,6 +149,7 @@ interface TicketTableProps {
     maxTtrGold?: string | null;
     maxTtrPlatinum?: string | null;
     maxTtrDiamond?: string | null;
+    rank?: number;
   }>;
   loading?: boolean;
   onAssign?: (ticket: any) => void;
@@ -259,9 +260,7 @@ export default function TicketTable({
     });
   }, [tickets, sortConfig]);
 
-  const ticketRanks = useMemo(() => {
-    return computeTicketRanks(tickets);
-  }, [tickets]);
+
 
   const handleAssign = onAssign || (() => {});
 
@@ -345,7 +344,6 @@ export default function TicketTable({
                   sortedTickets.map((ticket) => {
                     const ticketId = ticket.idTicket ?? ticket.ticket;
                     const isExpanded = expandedTicketId === ticketId;
-                    const ticketInfo = ticketRanks.get(ticket.idTicket ?? -1);
                     return (
                       <TicketRow
                         key={ticketId}
@@ -353,9 +351,9 @@ export default function TicketTable({
                         onAssign={handleAssign}
                         isExpanded={isExpanded}
                         onToggleExpand={() => toggleExpand(ticketId as number)}
-                        rank={ticketInfo?.rank}
-                        ticketAge={ticketInfo?.ageFormatted}
-                        severity={ticketInfo?.severity}
+                        rank={ticket.rank}
+                        ticketAge={formatAge(ticket.reportedDate, ticket.hasilVisit, ticket.closedAt, ticket.status)}
+                        severity={getTicketSeverity(ticket.reportedDate, ticket.hasilVisit, ticket.closedAt, ticket.status)}
                       />
                     );
                   })

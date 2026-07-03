@@ -113,6 +113,8 @@ const B2BPanel = memo(function B2BPanel({
   const [b2bPage, setB2bPage] = useState(1);
   const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
   const [b2bClosePage, setB2bClosePage] = useState(1);
+  const [b2bSortField, setB2bSortField] = useState<string | undefined>(undefined);
+  const [b2bSortOrder, setB2bSortOrder] = useState<'asc' | 'desc'>('desc');
   const [activeTab, setActiveTab] = useState<'main' | 'validasi' | 'close'>(
     'main',
   );
@@ -132,6 +134,8 @@ const B2BPanel = memo(function B2BPanel({
     validasiPage: b2bValidasiPage,
     validasiLimit: 10,
     includeValidasiTickets: activeTab === 'validasi',
+    sortField: b2bSortField,
+    sortOrder: b2bSortOrder,
   });
 
   const b2bClosePageData = useDailyTicketPage({
@@ -147,6 +151,8 @@ const B2BPanel = memo(function B2BPanel({
     includeValidasi: false,
     includeOptions: false,
     enabled: activeTab === 'close',
+    sortField: b2bSortField,
+    sortOrder: b2bSortOrder,
   });
 
   const handleB2bTicketTypeChange = useCallback((types: string[]) => {
@@ -174,6 +180,13 @@ const B2BPanel = memo(function B2BPanel({
     setB2bFlaggingFilter(flags);
     setB2bPage(1);
     setB2bValidasiPage(1);
+    setB2bClosePage(1);
+  }, []);
+
+  const handleB2bSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setB2bSortField(field);
+    setB2bSortOrder(order);
+    setB2bPage(1);
     setB2bClosePage(1);
   }, []);
 
@@ -373,6 +386,9 @@ const B2BPanel = memo(function B2BPanel({
                 limit: b2bPageData.pagination.limit,
                 onPageChange: setB2bPage,
               }}
+              sortField={b2bSortField as any}
+              sortOrder={b2bSortOrder}
+              onSort={handleB2bSort}
             />
           }
           tickets={b2bPageData.tickets}
@@ -410,6 +426,9 @@ const B2BPanel = memo(function B2BPanel({
                 limit: b2bClosePageData.pagination.limit,
                 onPageChange: setB2bClosePage,
               }}
+              sortField={b2bSortField as any}
+              sortOrder={b2bSortOrder}
+              onSort={handleB2bSort}
             />
           }
           loading={b2bPageData.loading}

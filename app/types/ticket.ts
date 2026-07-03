@@ -121,6 +121,9 @@ export interface Ticket {
   syncDate?: string | null;
   syncedAt?: string | null;
   importBatch?: string | null;
+
+  // Global rank (age-based, computed server-side)
+  rank?: number;
 }
 
 export type LockedTicket = {

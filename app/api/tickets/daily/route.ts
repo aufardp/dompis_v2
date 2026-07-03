@@ -87,6 +87,7 @@ export async function GET(request: Request) {
       includeOptions: searchParams.get('includeOptions') === 'false' ? false : true,
       includeClosed: searchParams.get('includeClosed') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
+      sortField: searchParams.get('sortField') || undefined,
     };
 
     // Fetch from database
