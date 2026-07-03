@@ -158,7 +158,7 @@ interface ProjectionCheckpoint {
   neverProjectedCount: number;
 }
 
-interface RawSelectResult {
+export interface RawSelectResult {
   id_ticket: string;
   incident: string | null;
   sourceTable: string | null;
@@ -170,7 +170,7 @@ interface RawSelectResult {
   [key: string]: unknown;
 }
 
-interface ExistingTicket {
+export interface ExistingTicket {
   id_ticket: number;
   incident: string;
   teknisi_user_id: number | null;
@@ -440,7 +440,7 @@ async function getOrCreateCheckpoint(): Promise<
   return row;
 }
 
-function buildProjectionUpsert(
+export function buildProjectionUpsert(
   raw: RawSelectResult,
   existing: ExistingTicket | undefined,
   jenisTiket1: string | null,
