@@ -170,10 +170,14 @@ function checkNonNumberingOverride(
 ): JenisVlookupResult | null {
   const serviceType = (input.service_type ?? '').trim().toUpperCase();
   const symptom = (input.symptom ?? '').trim().toUpperCase();
+  const serviceNo = (input.service_no ?? '').trim().toUpperCase();
   if (
     serviceType === 'NON-NUMBERING' ||
     serviceType === 'NON NUMBERING' ||
-    symptom === 'Z_NN_01_001'
+    serviceType === 'NON_NUMBERING' ||
+    symptom === 'Z_NN_01_001' ||
+    serviceNo === 'NN' ||
+    like(input.classification_path, 'Z_NN')
   ) {
     return {
       jenis_tiket_1: 'NON NUMBERING',
@@ -199,6 +203,19 @@ function checkBillingOverride(
     };
   }
 
+  return null;
+}
+
+/**
+ * Jika symptom = TECHNICAL (exact) atau mengandung PROACTIVE MAINTENANCE UNSPEC → UNSPEC.
+ * Hanya berlaku untuk B2C.
+ */
+function checkUnspecBySymptomOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  if (!isB2C(input.customer_segment)) return null;
+  const symptom = (input.symptom ?? '').trim().toUpperCase();
+  if (symptom === 'TECHNICAL' || symptom.includes('PROACTIVE MAINTENANCE UNSPEC')) {
+    return { jenis_tiket_1: 'UNSPEC', jenis_tiket_2: 'UNSPEC' };
+  }
   return null;
 }
 
@@ -407,6 +424,9 @@ export async function classifyJenisFromVlookup(
   const billingOverride = checkBillingOverride(input);
   if (billingOverride) return billingOverride;
 
+  const unspecOverride = checkUnspecBySymptomOverride(input);
+  if (unspecOverride) return unspecOverride;
+
   const result = isB2C(input.customer_segment)
     ? classifyB2C(input)
     : classifyB2B(input);
@@ -435,6 +455,9 @@ export async function batchClassifyJenisFromVlookup(
 
     const billingOverride = checkBillingOverride(input);
     if (billingOverride) return billingOverride;
+
+    const unspecOverride = checkUnspecBySymptomOverride(input);
+    if (unspecOverride) return unspecOverride;
 
     const result = isB2C(input.customer_segment)
       ? classifyB2C(input)

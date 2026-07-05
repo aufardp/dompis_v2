@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
@@ -200,8 +201,6 @@ export async function GET(req: NextRequest) {
       }
 
       // Avg resolve hours (tracking) via raw SQL join to apply workzone filter
-      const Prisma: any = (await import('@prisma/client')).Prisma;
-
     const wzConditions: any[] = [];
     if (selectedWorkzone) {
       wzConditions.push(Prisma.sql`LOWER(t.workzone) = LOWER(${selectedWorkzone})`);
@@ -213,15 +212,13 @@ export async function GET(req: NextRequest) {
           (wz: string) => Prisma.sql`LOWER(t.workzone) = LOWER(${wz})`,
         );
         wzConditions.push(
-          Prisma.sql`(${Prisma.join(orClauses, Prisma.sql` OR `)})`,
+          Prisma.sql`(${Prisma.join(orClauses, ' OR ')})`,
         );
       }
     }
     const wzSql = wzConditions.length > 0
-      ? Prisma.sql`AND ${Prisma.join(wzConditions, Prisma.sql` AND `)}`
-      : Prisma.empty !== undefined
-        ? Prisma.empty
-        : Prisma.sql``;
+      ? Prisma.sql`AND ${Prisma.join(wzConditions, ' AND ')}`
+      : Prisma.sql``;
 
       const avgRows = await prisma.$queryRaw(
         Prisma.sql`

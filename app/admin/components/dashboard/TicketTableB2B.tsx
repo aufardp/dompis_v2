@@ -401,7 +401,7 @@ export default function TicketTableB2B({
   }, [downloadFilters, downloadFormat]);
 
   const handleSort = useCallback((field: SortField) => {
-    if (onSort && controlledSortField !== undefined) {
+    if (onSort) {
       const newOrder = controlledSortField === field && controlledSortOrder === 'asc' ? 'desc' : 'asc';
       onSort(field, newOrder);
     } else {

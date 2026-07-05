@@ -46,6 +46,7 @@ async function main() {
           source_ticket: true,
           realm: true,
           summary: true,
+          symptom: true,
         },
         take: batchSize,
         skip,
@@ -65,6 +66,7 @@ async function main() {
         source_ticket: t.source_ticket,
         realm: t.realm,
         summary: t.summary,
+        symptom: t.symptom ?? null,
       }));
 
       const results = await batchClassifyJenisFromVlookup(inputs);

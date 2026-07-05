@@ -174,6 +174,16 @@ export default function TicketManagementBucketPage({
     [],
   );
   const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<string[]>([]);
+  const [b2cSortField, setB2cSortField] = useState<string | undefined>(undefined);
+  const [b2cSortOrder, setB2cSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [b2bSortField, setB2bSortField] = useState<string | undefined>(undefined);
+  const [b2bSortOrder, setB2bSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [semuaSortField, setSemuaSortField] = useState<string | undefined>(undefined);
+  const [semuaSortOrder, setSemuaSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [unspecSortField, setUnspecSortField] = useState<string | undefined>(undefined);
+  const [unspecSortOrder, setUnspecSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [closeSortField, setCloseSortField] = useState<string | undefined>(undefined);
+  const [closeSortOrder, setCloseSortOrder] = useState<'asc' | 'desc'>('desc');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
@@ -260,6 +270,24 @@ export default function TicketManagementBucketPage({
       setB2cPage(1);
       setB2bPage(1);
       setSemuaPage(1);
+      setSemuaSortField(undefined);
+      setSemuaSortOrder('desc');
+    }
+    if (activeTab === 'b2c') {
+      setB2cSortField(undefined);
+      setB2cSortOrder('desc');
+    }
+    if (activeTab === 'b2b') {
+      setB2bSortField(undefined);
+      setB2bSortOrder('desc');
+    }
+    if (activeTab === 'unspecOhi') {
+      setUnspecSortField(undefined);
+      setUnspecSortOrder('desc');
+    }
+    if (activeTab === 'close') {
+      setCloseSortField(undefined);
+      setCloseSortOrder('desc');
     }
   }, [activeTab]);
 
@@ -269,6 +297,8 @@ export default function TicketManagementBucketPage({
   const endDateStr = dateRange?.to
     ? format(dateRange.to, 'yyyy-MM-dd')
     : undefined;
+
+  const SEMUA_PAGE_SIZE = 15;
 
   const sharedFilters = {
     search: effectiveSearchQuery,
@@ -302,6 +332,8 @@ export default function TicketManagementBucketPage({
     enabled: activeTab !== 'b2b',
     includeOptions: fetchDailyOptions,
     includeValidasiTickets: fetchValidasiTickets,
+    sortField: b2cSortField,
+    sortOrder: b2cSortOrder,
   });
 
   const b2bPageData = useDailyTicketPage({
@@ -318,6 +350,8 @@ export default function TicketManagementBucketPage({
     enabled: activeTab !== 'b2c',
     includeOptions: fetchDailyOptions,
     includeValidasiTickets: fetchValidasiTickets,
+    sortField: b2bSortField,
+    sortOrder: b2bSortOrder,
   });
 
   const extraWorkboardPageData = useDailyTicketPage({
@@ -342,6 +376,8 @@ export default function TicketManagementBucketPage({
     enabled:
       Boolean(extraWorkboard) &&
       (activeTab === 'semua' || (isUnspecBucket && activeTab === 'unspecOhi')),
+    sortField: unspecSortField,
+    sortOrder: unspecSortOrder,
   });
 
   const closePageData = useDailyTicketPage({
@@ -363,6 +399,25 @@ export default function TicketManagementBucketPage({
     page: closePage,
     limit: 15,
     enabled: true,
+    sortField: closeSortField,
+    sortOrder: closeSortOrder,
+  });
+
+  const semuaPageData = useDailyTicketPage({
+    ...sharedFilters,
+    excludeSymptom: extraWorkboard?.symptom,
+    dept: 'all',
+    ticketType: ticketTypeFilter,
+    statusUpdate: statusUpdateFilter,
+    ticketStatus: ticketStatusFilter,
+    flagging: flaggingFilter,
+    page: semuaPage,
+    limit: SEMUA_PAGE_SIZE,
+    enabled: activeTab === 'semua',
+    includeOptions: false,
+    includeValidasiTickets: false,
+    sortField: semuaSortField,
+    sortOrder: semuaSortOrder,
   });
 
   const totals = useMemo(() => {
@@ -530,6 +585,36 @@ export default function TicketManagementBucketPage({
     setB2bPage(1);
   }, []);
 
+  const handleB2cSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setB2cSortField(field);
+    setB2cSortOrder(order);
+    setB2cPage(1);
+  }, []);
+
+  const handleB2bSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setB2bSortField(field);
+    setB2bSortOrder(order);
+    setB2bPage(1);
+  }, []);
+
+  const handleSemuaSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setSemuaSortField(field);
+    setSemuaSortOrder(order);
+    setSemuaPage(1);
+  }, []);
+
+  const handleUnspecSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setUnspecSortField(field);
+    setUnspecSortOrder(order);
+    setExtraWorkboardPage(1);
+  }, []);
+
+  const handleCloseSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setCloseSortField(field);
+    setCloseSortOrder(order);
+    setClosePage(1);
+  }, []);
+
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({
       predicate: (query) =>
@@ -579,74 +664,28 @@ export default function TicketManagementBucketPage({
     [extraWorkboardPageData.tickets],
   );
 
-  const mergedTickets = useMemo(() => {
-    const combined = [
-      ...(b2cPageData.tickets ?? []),
-      ...(b2bPageData.tickets ?? []),
-    ];
-    const deduped = [...combined].sort(
-      (a, b) => (b.idTicket ?? 0) - (a.idTicket ?? 0),
-    );
+  const mergedTickets = semuaPageData.tickets;
 
-    if (
-      focusedTicket &&
-      !deduped.some(
-        (ticket) => String(ticket.idTicket) === String(focusedTicket.idTicket),
-      )
-    ) {
-      return [focusedTicket, ...deduped];
-    }
+  const mergedTotal = semuaPageData.pagination.total;
 
-    return deduped;
-  }, [b2cPageData.tickets, b2bPageData.tickets, focusedTicket]);
+  const mergedTotalPages = semuaPageData.pagination.totalPages;
 
-  const mergedTotal =
-    (b2cPageData.pagination.total ?? 0) + (b2bPageData.pagination.total ?? 0);
-
-  const SEMUA_PAGE_SIZE = 15;
-  const mergedTotalPages = Math.max(
-    1,
-    Math.ceil(mergedTickets.length / SEMUA_PAGE_SIZE),
-  );
-  const displayMergedTickets = mergedTickets.slice(
-    (semuaPage - 1) * SEMUA_PAGE_SIZE,
-    semuaPage * SEMUA_PAGE_SIZE,
-  );
+  const displayMergedTickets = mergedTickets;
 
   const onCombinedAssign = useCallback(
     (ticketId: number | string) => {
+      const semuaTicket = semuaPageData.tickets.find(
+        (t) => String(t.idTicket) === String(ticketId),
+      );
       const b2cTicket = b2cPageData.tickets.find(
         (t) => String(t.idTicket) === String(ticketId),
       );
-      onAssign(ticketId, b2cTicket ? 'b2c' : 'b2b');
+      onAssign(ticketId, b2cTicket || semuaTicket ? 'b2c' : 'b2b');
     },
-    [b2cPageData.tickets, onAssign],
+    [semuaPageData.tickets, b2cPageData.tickets, onAssign],
   );
 
-  const mergedSummary = useMemo(
-    () => ({
-      total:
-        (b2cPageData.summary.total ?? 0) + (b2bPageData.summary.total ?? 0),
-      open: (b2cPageData.summary.open ?? 0) + (b2bPageData.summary.open ?? 0),
-      assigned:
-        (b2cPageData.summary.assigned ?? 0) +
-        (b2bPageData.summary.assigned ?? 0),
-      close:
-        (b2cPageData.summary.close ?? 0) + (b2bPageData.summary.close ?? 0),
-      ffgCount:
-        (b2cPageData.summary.ffgCount ?? 0) +
-        (b2bPageData.summary.ffgCount ?? 0),
-      gamasCount:
-        (b2cPageData.summary.gamasCount ?? 0) +
-        (b2bPageData.summary.gamasCount ?? 0),
-      p1Count:
-        (b2cPageData.summary.p1Count ?? 0) + (b2bPageData.summary.p1Count ?? 0),
-      pPlusCount:
-        (b2cPageData.summary.pPlusCount ?? 0) +
-        (b2bPageData.summary.pPlusCount ?? 0),
-    }),
-    [b2cPageData.summary, b2bPageData.summary],
-  );
+  const mergedSummary = semuaPageData.summary;
 
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;
@@ -755,11 +794,7 @@ export default function TicketManagementBucketPage({
     normalizedSearchQuery,
   ]);
 
-  const mergedLoading =
-    b2cPageData.loading ||
-    b2bPageData.loading ||
-    b2cPageData.isRefreshing ||
-    b2bPageData.isRefreshing;
+  const mergedLoading = semuaPageData.loading || semuaPageData.isRefreshing;
   const initialLoading =
     b2cPageData.loading ||
     b2bPageData.loading ||
@@ -1034,6 +1069,9 @@ export default function TicketManagementBucketPage({
                       regulerOnly,
                       anomalyBucket,
                     }}
+                    sortField={unspecSortField as any}
+                    sortOrder={unspecSortOrder}
+                    onSort={handleUnspecSort}
                   />
                 </div>
               )}
@@ -1070,6 +1108,9 @@ export default function TicketManagementBucketPage({
                     anomalyBucket,
                     excludeSymptom: extraWorkboard?.symptom,
                   }}
+                  sortField={semuaSortField as any}
+                  sortOrder={semuaSortOrder}
+                  onSort={handleSemuaSort}
                 />
               </div>
             </div>
@@ -1111,6 +1152,9 @@ export default function TicketManagementBucketPage({
                   regulerOnly,
                   anomalyBucket,
                 }}
+                sortField={unspecSortField as any}
+                sortOrder={unspecSortOrder}
+                onSort={handleUnspecSort}
               />
             </div>
           )}
@@ -1175,6 +1219,9 @@ export default function TicketManagementBucketPage({
                       anomalyBucket,
                       excludeSymptom: extraWorkboard?.symptom,
                     }}
+                    sortField={b2cSortField as any}
+                    sortOrder={b2cSortOrder}
+                    onSort={handleB2cSort}
                   />
                 }
                 tickets={b2cPageData.tickets}
@@ -1255,6 +1302,9 @@ export default function TicketManagementBucketPage({
                       anomalyBucket,
                       excludeSymptom: extraWorkboard?.symptom,
                     }}
+                    sortField={b2bSortField as any}
+                    sortOrder={b2bSortOrder}
+                    onSort={handleB2bSort}
                   />
                 }
                 tickets={b2bPageData.tickets}
@@ -1352,6 +1402,9 @@ export default function TicketManagementBucketPage({
                   excludeSymptom: extraWorkboard?.symptom,
                   ticketStatus: CLOSE_STATUS_VALUES,
                 }}
+                sortField={closeSortField as any}
+                sortOrder={closeSortOrder}
+                onSort={handleCloseSort}
               />
             </div>
           )}
