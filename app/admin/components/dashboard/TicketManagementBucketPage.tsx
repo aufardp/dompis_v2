@@ -153,13 +153,14 @@ export default function TicketManagementBucketPage({
     operationalBucket.includes('kpi_proactive') ||
     operationalBucket.includes('sqm_update');
   const [activeTab, setActiveTab] = useState<
-    'semua' | 'unspecOhi' | 'b2c' | 'b2b' | 'validasi' | 'close'
+    'semua' | 'unspecOhi' | 'b2c' | 'b2b' | 'validasi' | 'close' | 'gamas'
   >('semua');
   const [extraWorkboardPage, setExtraWorkboardPage] = useState(1);
   const [b2cPage, setB2cPage] = useState(1);
   const [b2bPage, setB2bPage] = useState(1);
   const [semuaPage, setSemuaPage] = useState(1);
   const [closePage, setClosePage] = useState(1);
+  const [gamasPage, setGamasPage] = useState(1);
   const [b2cValidasiPage, setB2cValidasiPage] = useState(1);
   const [b2bValidasiPage, setB2bValidasiPage] = useState(1);
   const [b2cTicketTypeFilter, setB2cTicketTypeFilter] = useState<string[]>([]);
@@ -184,6 +185,8 @@ export default function TicketManagementBucketPage({
   const [unspecSortOrder, setUnspecSortOrder] = useState<'asc' | 'desc'>('desc');
   const [closeSortField, setCloseSortField] = useState<string | undefined>(undefined);
   const [closeSortOrder, setCloseSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [gamasSortField, setGamasSortField] = useState<string | undefined>(undefined);
+  const [gamasSortOrder, setGamasSortOrder] = useState<'asc' | 'desc'>('desc');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
@@ -194,6 +197,7 @@ export default function TicketManagementBucketPage({
   const validasiTableRef = useRef<HTMLDivElement>(null);
   const semuaTableRef = useRef<HTMLDivElement>(null);
   const closeTableRef = useRef<HTMLDivElement>(null);
+  const gamasTableRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
   const routeSearchQuery = searchParams.get('search') || '';
   const focusTicketId = useMemo(() => {
@@ -235,7 +239,8 @@ export default function TicketManagementBucketPage({
       urlTab === 'b2c' ||
       urlTab === 'b2b' ||
       urlTab === 'validasi' ||
-      urlTab === 'close'
+      urlTab === 'close' ||
+      urlTab === 'gamas'
     ) {
       setActiveTab(urlTab);
     }
@@ -288,6 +293,10 @@ export default function TicketManagementBucketPage({
     if (activeTab === 'close') {
       setCloseSortField(undefined);
       setCloseSortOrder('desc');
+    }
+    if (activeTab === 'gamas') {
+      setGamasSortField(undefined);
+      setGamasSortOrder('desc');
     }
   }, [activeTab]);
 
@@ -418,6 +427,23 @@ export default function TicketManagementBucketPage({
     includeValidasiTickets: false,
     sortField: semuaSortField,
     sortOrder: semuaSortOrder,
+  });
+
+  const gamasPageData = useDailyTicketPage({
+    ...sharedFilters,
+    dept: 'all',
+    ticketType: ticketTypeFilter,
+    statusUpdate: statusUpdateFilter,
+    ticketStatus: ticketStatusFilter,
+    flagging: flaggingFilter,
+    gamasOnly: true,
+    page: gamasPage,
+    limit: 15,
+    enabled: true,
+    includeOptions: false,
+    includeValidasiTickets: false,
+    sortField: gamasSortField,
+    sortOrder: gamasSortOrder,
   });
 
   const totals = useMemo(() => {
@@ -613,6 +639,12 @@ export default function TicketManagementBucketPage({
     setCloseSortField(field);
     setCloseSortOrder(order);
     setClosePage(1);
+  }, []);
+
+  const handleGamasSort = useCallback((field: string, order: 'asc' | 'desc') => {
+    setGamasSortField(field);
+    setGamasSortOrder(order);
+    setGamasPage(1);
   }, []);
 
   const invalidateQueries = useCallback(() => {
@@ -995,6 +1027,7 @@ export default function TicketManagementBucketPage({
                             (b2bPageData.validasiCount ?? 0),
                         ],
                         ['close', 'Close', closePageData.pagination.total],
+                        ['gamas', 'GAMAS', gamasPageData.pagination.total],
                       ] as const
                     ).map(([value, label, count]) => (
                       <button
@@ -1405,6 +1438,45 @@ export default function TicketManagementBucketPage({
                 sortField={closeSortField as any}
                 sortOrder={closeSortOrder}
                 onSort={handleCloseSort}
+              />
+            </div>
+          )}
+
+          {activeTab === 'gamas' && (
+            <div ref={gamasTableRef} className='space-y-3'>
+              <div className='flex items-center justify-between'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
+                  GAMAS Tickets
+                </h2>
+                <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
+                  {gamasPageData.pagination.total} ticket
+                </span>
+              </div>
+              <TicketTable
+                tickets={gamasPageData.tickets}
+                tableSummary={gamasPageData.summary}
+                loading={gamasPageData.loading}
+                isRefreshing={gamasPageData.isRefreshing}
+                searching={Boolean(effectiveSearchQuery)}
+                onAssign={onCombinedAssign}
+                showBypassClose={canBypassClose}
+                highlightQuery={effectiveSearchQuery}
+                pagination={{
+                  currentPage: gamasPageData.pagination.currentPage,
+                  totalPages: gamasPageData.pagination.totalPages,
+                  total: gamasPageData.pagination.total,
+                  limit: gamasPageData.pagination.limit,
+                  onPageChange: setGamasPage,
+                }}
+                downloadFilters={{
+                  dept: 'all',
+                  operationalBucket,
+                  regulerOnly,
+                  anomalyBucket,
+                }}
+                sortField={gamasSortField as any}
+                sortOrder={gamasSortOrder}
+                onSort={handleGamasSort}
               />
             </div>
           )}

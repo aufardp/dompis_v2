@@ -86,6 +86,7 @@ export async function GET(request: Request) {
         searchParams.get('includeValidasiTickets') === 'false' ? false : true,
       includeOptions: searchParams.get('includeOptions') === 'false' ? false : true,
       includeClosed: searchParams.get('includeClosed') === 'true',
+      gamasOnly: searchParams.get('gamasOnly') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
       sortField: searchParams.get('sortField') || undefined,
     };

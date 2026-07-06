@@ -35,6 +35,7 @@ type DailyTicketPageFilters = {
   includeValidasiTickets?: boolean;
   includeOptions?: boolean;
   includeClosed?: boolean;
+  gamasOnly?: boolean;
 };
 
 type PaginationInfo = {
@@ -80,6 +81,7 @@ export function useDailyTicketPage({
   includeValidasiTickets = true,
   includeOptions = true,
   includeClosed = false,
+  gamasOnly = false,
   sortField,
   sortOrder,
 }: DailyTicketPageFilters & { sortField?: string; sortOrder?: 'asc' | 'desc' }) {
@@ -111,6 +113,7 @@ export function useDailyTicketPage({
     includeValidasiTickets,
     includeOptions,
     includeClosed,
+    gamasOnly,
   });
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -133,6 +136,7 @@ export function useDailyTicketPage({
       if (!includeValidasiTickets) params.set('includeValidasiTickets', 'false');
       if (!includeOptions) params.set('includeOptions', 'false');
       if (includeClosed) params.set('includeClosed', 'true');
+      if (gamasOnly) params.set('gamasOnly', 'true');
 
       const normalizedSearch = search?.trim();
       if (normalizedSearch) {

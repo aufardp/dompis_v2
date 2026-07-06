@@ -95,6 +95,7 @@ type TicketFilters = {
   includeOptions?: boolean;
   includeClosed?: boolean;
   globalScope?: boolean;
+  gamasOnly?: boolean;
   sort?: 'asc' | 'desc';
   sortField?: string;
 };
@@ -1133,6 +1134,7 @@ export class DailyTicketService {
       ctype,
       searchType,
       globalScope,
+      gamasOnly,
     } = filters ?? {};
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
@@ -1245,6 +1247,18 @@ export class DailyTicketService {
       where.AND = [
         ...(where.AND ?? []),
         deptSegmentWhere,
+      ];
+    }
+
+    if (gamasOnly) {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          ticket_id_gamas: { not: null },
+        },
+        {
+          ticket_id_gamas: { not: '' },
+        },
       ];
     }
 
