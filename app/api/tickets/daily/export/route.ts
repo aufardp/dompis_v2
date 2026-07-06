@@ -444,6 +444,7 @@ export async function GET(request: Request) {
     const statusUpdateRaw = searchParams.getAll('statusUpdate');
     const ticketStatusRaw = searchParams.getAll('ticketStatus');
     const flaggingRaw = searchParams.getAll('flagging');
+    const gamasOnly = searchParams.get('gamasOnly') === 'true';
 
     const filters = {
       ticketType: ticketTypeRaw,
@@ -504,6 +505,7 @@ export async function GET(request: Request) {
           regulerOnly: regulerOnlyRaw === 'true',
           ticketStatus: ticketStatusRaw,
           statusUpdate: statusUpdateRaw,
+          gamasOnly,
         },
       );
 
@@ -541,6 +543,7 @@ export async function GET(request: Request) {
                 regulerOnly: regulerOnlyRaw === 'true',
                 ticketStatus: ticketStatusRaw,
                 statusUpdate: statusUpdateRaw,
+                gamasOnly,
               },
             ),
           ),

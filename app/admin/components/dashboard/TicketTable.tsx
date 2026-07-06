@@ -106,6 +106,7 @@ export interface AdminTicketTableProps {
     ticketStatus?: string[];
     flagging?: string[];
     excludeSymptom?: string;
+    gamasOnly?: boolean;
   };
   // Controlled sort (server-side)
   sortField?: SortField;
@@ -383,6 +384,7 @@ export default function TicketTable({
       for (const f of downloadFilters.flagging ?? []) {
         params.append('flagging', f);
       }
+      if (downloadFilters.gamasOnly) params.set('gamasOnly', 'true');
 
       const res = await fetchWithAuth(
         `/api/tickets/daily/export?${params.toString()}`,

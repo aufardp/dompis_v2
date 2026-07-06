@@ -1473,6 +1473,7 @@ export default function TicketManagementBucketPage({
                   operationalBucket,
                   regulerOnly,
                   anomalyBucket,
+                  gamasOnly: true,
                 }}
                 sortField={gamasSortField as any}
                 sortOrder={gamasSortOrder}
