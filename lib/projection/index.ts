@@ -45,6 +45,11 @@ const RETRY_BASE_DELAY_MS = parsePositiveIntEnv(
   'PROJECTION_RETRY_BASE_DELAY_MS',
   250,
 );
+const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
+  'PROJECTION_RECONCILIATION_INTERVAL',
+  5,
+);
+let reconciliationCounter = 0;
 
 const TRANSIENT_ERROR_PATTERNS = [
   'deadlock',
@@ -270,7 +275,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'sn_ont', 'tipe_ont', 'guarantee_status', 'lapul', 'gaul', 'onu_rx',
   'jenis_tiket_1', 'jenis_tiket_2', 'channel', 'classification_flag', 'classification_path',
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
-  'description_actual_solution', 'alamat', 'status_date', 'status_update', 'closed_at', 'flagging_manja', 'pending_reason',
+  'description_actual_solution', 'alamat', 'status_date', 'flagging_manja', 'pending_reason',
 ];
 
 const LOG_BULK_COLUMNS: readonly string[] = [
@@ -1001,7 +1006,6 @@ async function projectRecords(
   await setMySQLSessionTimeout(30_000);
 
   try {
-    resetVlookupCache();
     await refreshVlookupCache();
   } catch (error) {
     logger.warn('[Projection] Failed to warm up jenis_vlookup cache:', { error: String(error) });
@@ -1277,50 +1281,57 @@ export async function runProjection(
         : Promise.resolve(),
     ]);
     const RECONCILIATION_TIMEOUT_MS = 10_000;
-    const reconciliation = await Promise.race([
-      getProjectionReconciliationReport(),
-      new Promise<null>(resolve =>
-        setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
-      ),
-    ]).catch(() => null);
-    let finalReconciliation = reconciliation;
+    reconciliationCounter++;
+    let reconciliation = null;
+    let finalReconciliation: Awaited<ReturnType<typeof getProjectionReconciliationReport>> | null = null;
     let autoRepairError: unknown = null;
 
-    if (
-      !options.skipAutoRepair &&
-      reconciliation &&
-      reconciliation.neverProjectedRaw > 0
-    ) {
-      logger.warn('[Projection] Auto-repair triggered:', {
-        neverProjectedRaw: reconciliation.neverProjectedRaw,
-        oldestPending: reconciliation.oldestUnprojectedImportedAt?.toISOString(),
-      });
-      try {
-        const {
-          syncBatchId: _ignoredSyncBatchId,
-          skipAutoRepair: _ignoredSkipAutoRepair,
-          ...repairOptions
-        } = options;
-        await projectRecords(signal, {
-          ...repairOptions,
-          since: new Date(0),
-          mode: 'full',
-          preserveCheckpointCursor: true,
-          batchSize: 200,
-          skipAutoRepair: true,
-        });
-        logger.info('[Projection] Auto-repair complete');
-      } catch (error) {
-        autoRepairError = error;
-        logger.error('[Projection] Auto-repair failed:', { error: String(error) });
-      }
-
-      finalReconciliation = await Promise.race([
+    if (reconciliationCounter >= RECONCILIATION_INTERVAL) {
+      reconciliationCounter = 0;
+      reconciliation = await Promise.race([
         getProjectionReconciliationReport(),
         new Promise<null>(resolve =>
           setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
         ),
-      ]).catch(() => finalReconciliation);
+      ]).catch(() => null);
+      finalReconciliation = reconciliation;
+
+      if (
+        !options.skipAutoRepair &&
+        reconciliation &&
+        reconciliation.neverProjectedRaw > 0
+      ) {
+        logger.warn('[Projection] Auto-repair triggered:', {
+          neverProjectedRaw: reconciliation.neverProjectedRaw,
+          oldestPending: reconciliation.oldestUnprojectedImportedAt?.toISOString(),
+        });
+        try {
+          const {
+            syncBatchId: _ignoredSyncBatchId,
+            skipAutoRepair: _ignoredSkipAutoRepair,
+            ...repairOptions
+          } = options;
+          await projectRecords(signal, {
+            ...repairOptions,
+            since: new Date(0),
+            mode: 'full',
+            preserveCheckpointCursor: true,
+            batchSize: 200,
+            skipAutoRepair: true,
+          });
+          logger.info('[Projection] Auto-repair complete');
+        } catch (error) {
+          autoRepairError = error;
+          logger.error('[Projection] Auto-repair failed:', { error: String(error) });
+        }
+
+        finalReconciliation = await Promise.race([
+          getProjectionReconciliationReport(),
+          new Promise<null>(resolve =>
+            setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
+          ),
+        ]).catch(() => finalReconciliation);
+      }
     }
 
     const projectionHealthy = reconciliation
