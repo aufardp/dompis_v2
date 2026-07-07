@@ -1265,16 +1265,16 @@ export class DailyTicketService {
     return where;
   }
 
-  private static async fetchTicketIdsBySql(
-    where: Prisma.ticketWhereInput,
-    options: {
-      sort: 'asc' | 'desc';
-      sortField?: string;
-      offset: number;
-      limit: number;
-      forceIndex: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi';
-      priorityToday?: string | null;
-    },
+    private static async fetchTicketIdsBySql(
+      where: Prisma.ticketWhereInput,
+      options: {
+        sort: 'asc' | 'desc';
+        sortField?: string;
+        offset: number;
+        limit: number;
+        forceIndex?: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi';
+        priorityToday?: string | null;
+      },
   ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
@@ -1283,10 +1283,13 @@ export class DailyTicketService {
           `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
           [],
         ];
+    const forceIndexClause = options.forceIndex
+      ? `FORCE INDEX (${options.forceIndex})`
+      : '';
     const sqlWithIndex = `
       SELECT id_ticket,
              ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
-      FROM ticket FORCE INDEX (${options.forceIndex})
+      FROM ticket ${forceIndexClause}
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
@@ -1314,12 +1317,15 @@ export class DailyTicketService {
 
   private static async countTicketsBySql(
     where: Prisma.ticketWhereInput,
-    forceIndex: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi',
+    forceIndex?: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi',
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(where);
+    const forceIndexClause = forceIndex
+      ? `FORCE INDEX (${forceIndex})`
+      : '';
     const sqlWithIndex = `
       SELECT COUNT(*) AS total
-      FROM ticket FORCE INDEX (${forceIndex})
+      FROM ticket ${forceIndexClause}
       WHERE ${whereClause}
     `;
     const sqlWithoutIndex = `
@@ -1567,22 +1573,23 @@ export class DailyTicketService {
   static async countStatuses(where: Record<string, any>) {
     const [whereClause, params] = buildSqlWhereClause(where);
 
-    const sqlWithIndex = `
+    const rows = await queryRawWithOptionalIndex<
+      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
+    >(
+      `
       SELECT status, status_update, COUNT(*) AS count
       FROM ticket FORCE INDEX (idx_ticket_daily_board)
       WHERE ${whereClause}
       GROUP BY status, status_update
-    `;
-    const sqlWithoutIndex = `
+    `,
+      `
       SELECT status, status_update, COUNT(*) AS count
       FROM ticket
       WHERE ${whereClause}
       GROUP BY status, status_update
-    `;
-
-    const rows = await queryRawWithOptionalIndex<
-      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
-    >(sqlWithIndex, sqlWithoutIndex, params);
+    `,
+      params,
+    );
 
     const stats: any = {
       total: 0,
@@ -1758,7 +1765,6 @@ export class DailyTicketService {
       sortField: sortField && sortField !== 'priority' ? sortField : undefined,
       offset,
       limit: safeLimit,
-      forceIndex: 'idx_ticket_daily_board',
       priorityToday: toWibDateString(todayWibDateForDb()),
     });
     const validasiTicketIdsPromise = includeValidasi && includeValidasiTickets && validasiBaseWhere
@@ -1803,7 +1809,6 @@ export class DailyTicketService {
       : Promise.resolve([] as TicketTypeOption[]);
     const totalPromise = this.countTicketsBySql(
       mainTableWhere,
-      'idx_ticket_daily_board',
     );
 
     const [
