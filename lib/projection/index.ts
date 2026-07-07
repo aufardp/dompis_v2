@@ -247,6 +247,7 @@ const PROJECTED_FIELDS: Record<string, string> = {
 const PROTECTED_FIELDS = new Set([
   'teknisi_user_id',
   'status_update',
+  'status',
   'rca',
   'sub_rca',
   'status_manja',
@@ -269,7 +270,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'sn_ont', 'tipe_ont', 'guarantee_status', 'lapul', 'gaul', 'onu_rx',
   'jenis_tiket_1', 'jenis_tiket_2', 'channel', 'classification_flag', 'classification_path',
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
-  'description_actual_solution', 'alamat', 'status', 'status_date', 'status_update', 'closed_at', 'flagging_manja', 'pending_reason',
+  'description_actual_solution', 'alamat', 'status_date', 'status_update', 'closed_at', 'flagging_manja', 'pending_reason',
 ];
 
 const LOG_BULK_COLUMNS: readonly string[] = [

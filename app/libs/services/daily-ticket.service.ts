@@ -1439,6 +1439,7 @@ export class DailyTicketService {
     const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
     const mainWithIndex = `
       SELECT
+        id_ticket,
         status,
         status_update,
         guarantee_status,
@@ -1450,6 +1451,7 @@ export class DailyTicketService {
     `;
     const mainWithoutIndex = `
       SELECT
+        id_ticket,
         status,
         status_update,
         guarantee_status,
@@ -1471,29 +1473,24 @@ export class DailyTicketService {
         : Promise.resolve([] as Array<Record<string, unknown>>),
     ]);
 
-    const main = summarizeBucketRows(mainRows as Array<{
-      status: string | null;
-      status_update: string | null;
-      guarantee_status: string | null;
-      ticket_id_gamas: string | null;
-      flagging_manja: string | null;
-      booking_date: string | null;
-    }>);
-    const validasi = summarizeBucketRows(validasiRows as Array<{
-      status: string | null;
-      status_update: string | null;
-      guarantee_status: string | null;
-      ticket_id_gamas: string | null;
-      flagging_manja: string | null;
-      booking_date: string | null;
-    }>);
+    const seen = new Set<number>();
+    const allRows: Array<Record<string, unknown>> = [];
+    for (const row of [...mainRows, ...validasiRows]) {
+      const id = Number(row.id_ticket);
+      if (!seen.has(id)) {
+        seen.add(id);
+        allRows.push(row);
+      }
+    }
 
-    return {
-      ffgCount: main.ffgCount + validasi.ffgCount,
-      gamasCount: main.gamasCount + validasi.gamasCount,
-      p1Count: main.p1Count + validasi.p1Count,
-      pPlusCount: main.pPlusCount + validasi.pPlusCount,
-    };
+    return summarizeBucketRows(allRows as Array<{
+      status: string | null;
+      status_update: string | null;
+      guarantee_status: string | null;
+      ticket_id_gamas: string | null;
+      flagging_manja: string | null;
+      booking_date: string | null;
+    }>);
   }
 
   private static async countValidasiFlaggingSummary(
@@ -1502,6 +1499,7 @@ export class DailyTicketService {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
       SELECT
+        t.id_ticket,
         t.status,
         t.status_update,
         t.guarantee_status,
@@ -1513,6 +1511,7 @@ export class DailyTicketService {
     `;
     const sqlWithoutIndex = `
       SELECT
+        t.id_ticket,
         t.status,
         t.status_update,
         t.guarantee_status,

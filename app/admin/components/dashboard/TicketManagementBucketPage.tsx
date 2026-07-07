@@ -175,17 +175,31 @@ export default function TicketManagementBucketPage({
     [],
   );
   const [b2bFlaggingFilter, setB2bFlaggingFilter] = useState<string[]>([]);
-  const [b2cSortField, setB2cSortField] = useState<string | undefined>(undefined);
+  const [b2cSortField, setB2cSortField] = useState<string | undefined>(
+    undefined,
+  );
   const [b2cSortOrder, setB2cSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [b2bSortField, setB2bSortField] = useState<string | undefined>(undefined);
+  const [b2bSortField, setB2bSortField] = useState<string | undefined>(
+    undefined,
+  );
   const [b2bSortOrder, setB2bSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [semuaSortField, setSemuaSortField] = useState<string | undefined>(undefined);
+  const [semuaSortField, setSemuaSortField] = useState<string | undefined>(
+    undefined,
+  );
   const [semuaSortOrder, setSemuaSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [unspecSortField, setUnspecSortField] = useState<string | undefined>(undefined);
-  const [unspecSortOrder, setUnspecSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [closeSortField, setCloseSortField] = useState<string | undefined>(undefined);
+  const [unspecSortField, setUnspecSortField] = useState<string | undefined>(
+    undefined,
+  );
+  const [unspecSortOrder, setUnspecSortOrder] = useState<'asc' | 'desc'>(
+    'desc',
+  );
+  const [closeSortField, setCloseSortField] = useState<string | undefined>(
+    undefined,
+  );
   const [closeSortOrder, setCloseSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [gamasSortField, setGamasSortField] = useState<string | undefined>(undefined);
+  const [gamasSortField, setGamasSortField] = useState<string | undefined>(
+    undefined,
+  );
   const [gamasSortOrder, setGamasSortOrder] = useState<'asc' | 'desc'>('desc');
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
@@ -440,6 +454,7 @@ export default function TicketManagementBucketPage({
     page: gamasPage,
     limit: 15,
     enabled: true,
+    includeValidasi: false, //tambah ini terakhir
     includeOptions: false,
     includeValidasiTickets: false,
     sortField: gamasSortField,
@@ -623,29 +638,41 @@ export default function TicketManagementBucketPage({
     setB2bPage(1);
   }, []);
 
-  const handleSemuaSort = useCallback((field: string, order: 'asc' | 'desc') => {
-    setSemuaSortField(field);
-    setSemuaSortOrder(order);
-    setSemuaPage(1);
-  }, []);
+  const handleSemuaSort = useCallback(
+    (field: string, order: 'asc' | 'desc') => {
+      setSemuaSortField(field);
+      setSemuaSortOrder(order);
+      setSemuaPage(1);
+    },
+    [],
+  );
 
-  const handleUnspecSort = useCallback((field: string, order: 'asc' | 'desc') => {
-    setUnspecSortField(field);
-    setUnspecSortOrder(order);
-    setExtraWorkboardPage(1);
-  }, []);
+  const handleUnspecSort = useCallback(
+    (field: string, order: 'asc' | 'desc') => {
+      setUnspecSortField(field);
+      setUnspecSortOrder(order);
+      setExtraWorkboardPage(1);
+    },
+    [],
+  );
 
-  const handleCloseSort = useCallback((field: string, order: 'asc' | 'desc') => {
-    setCloseSortField(field);
-    setCloseSortOrder(order);
-    setClosePage(1);
-  }, []);
+  const handleCloseSort = useCallback(
+    (field: string, order: 'asc' | 'desc') => {
+      setCloseSortField(field);
+      setCloseSortOrder(order);
+      setClosePage(1);
+    },
+    [],
+  );
 
-  const handleGamasSort = useCallback((field: string, order: 'asc' | 'desc') => {
-    setGamasSortField(field);
-    setGamasSortOrder(order);
-    setGamasPage(1);
-  }, []);
+  const handleGamasSort = useCallback(
+    (field: string, order: 'asc' | 'desc') => {
+      setGamasSortField(field);
+      setGamasSortOrder(order);
+      setGamasPage(1);
+    },
+    [],
+  );
 
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({
@@ -1027,7 +1054,11 @@ export default function TicketManagementBucketPage({
                             (b2bPageData.validasiCount ?? 0),
                         ],
                         ['close', 'Close', closePageData.pagination.total],
-                        ['gamas', 'GAMAS', gamasPageData.pagination.total],
+                        [
+                          'gamas',
+                          'GAMAS (Open)',
+                          gamasPageData.pagination.total,
+                        ],
                       ] as const
                     ).map(([value, label, count]) => (
                       <button

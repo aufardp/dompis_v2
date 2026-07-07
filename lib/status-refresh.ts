@@ -18,6 +18,7 @@ import { withPrismaReconnect, setMySQLSessionTimeout } from '@/lib/workers/task-
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
 export interface StatusRefreshResult {
   batchId: string;
@@ -702,6 +703,60 @@ async function updateChangedRows(
   return updated;
 }
 
+async function batchCloseTickets(
+  closedRows: ExternalStatusRow[],
+  batchId: string,
+): Promise<number> {
+  if (closedRows.length === 0) return 0;
+  let updated = 0;
+  const now = nowWib();
+
+  for (const chunk of chunkArray(closedRows, UPDATE_CHUNK_SIZE)) {
+    for (let attempt = 0; attempt <= UPDATE_RETRY_MAX; attempt++) {
+      try {
+        const values = chunk.map((row) =>
+          Prisma.sql`(
+            ${row.incident},
+            ${row.normalizedStatus},
+            ${now},
+            ${now}
+          )`,
+        );
+
+        const updatedCount = await withStatusRefreshRetry(
+          () => prisma.$executeRaw`
+          INSERT INTO ticket
+            (incident, status, status_update, closed_at, synced_at)
+          VALUES ${Prisma.join(values)}
+          ON DUPLICATE KEY UPDATE
+            status = VALUES(status),
+            status_update = 'close',
+            closed_at = IF(closed_at IS NULL, VALUES(closed_at), closed_at),
+            synced_at = VALUES(synced_at)
+        `,
+          { label: 'batchCloseTickets', retries: 2, baseDelayMs: 150, failOpen: false },
+        );
+        if (updatedCount === null) throw new Error('Batch close tickets skipped after retries');
+        updated += chunk.length;
+        break;
+      } catch (error) {
+        if (attempt >= UPDATE_RETRY_MAX || !isTransientWriteError(error)) {
+          throw error;
+        }
+        await sleep(150 * (attempt + 1));
+      }
+    }
+  }
+
+  logger.info('Batch close tickets complete', {
+    batchId,
+    closedCount: updated,
+    time: nowWib(),
+  });
+
+  return updated;
+}
+
 async function markChecked(
   candidates: CandidateRow[],
   externalRowsByIncident: Map<string, ExternalStatusRow>,
@@ -952,6 +1007,14 @@ export async function runStatusRefresh(
     }
 
     result.changed = await updateChangedRows(changedRows, batchId);
+
+    const closedRows = changedRows.filter((row) =>
+      CLOSE_STATUS_VALUES.includes(row.normalizedStatus),
+    );
+    if (closedRows.length > 0) {
+      await batchCloseTickets(closedRows, batchId);
+    }
+
     await markChecked(candidates, externalRowsByIncident, batchId);
     result.durationMs = Date.now() - start;
     await finishRunLog(batchId, 'success', result);
