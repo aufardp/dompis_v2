@@ -51,9 +51,17 @@ const RETRY_BASE_DELAY_MS = parsePositiveIntEnv(
 );
 const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
   'PROJECTION_RECONCILIATION_INTERVAL',
-  20,
+  50,
 );
 let reconciliationCounter = 0;
+let cachedCountData: {
+  activeRaw: number;
+  projectedRaw: number;
+  failedRaw: number;
+  tickets: number;
+  timestamp: number;
+} | null = null;
+const COUNT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const TRANSIENT_ERROR_PATTERNS = [
   'deadlock',
@@ -1479,27 +1487,47 @@ export async function getProjectionReconciliationReport(): Promise<{
 
   const neverProjectedRaw = checkpoint?.neverProjectedCount ?? 0;
 
-  const [activeRaw, projectedRaw, failedRaw, tickets, oldestGapRows] =
-    await Promise.all([
+  const now = Date.now();
+  const useCache = cachedCountData && (now - cachedCountData.timestamp) < COUNT_CACHE_TTL_MS;
+
+  let activeRaw: number;
+  let projectedRaw: number;
+  let failedRaw: number;
+  let tickets: number;
+
+  if (useCache) {
+    activeRaw = cachedCountData!.activeRaw;
+    projectedRaw = cachedCountData!.projectedRaw;
+    failedRaw = cachedCountData!.failedRaw;
+    tickets = cachedCountData!.tickets;
+  } else {
+    const [ar, pr, fr, t] = await Promise.all([
       prisma.ticket_raw.count({ where: { isActive: true } }),
       prisma.ticket_projection_log.count({ where: { status: 'success' } }),
       prisma.ticket_projection_log.count({ where: { status: 'failed' } }),
       prisma.ticket.count(),
-      neverProjectedRaw > 0
-        ? prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
-          SELECT tr.importedAt AS importedAt
-          FROM ticket_raw tr
-          WHERE tr.isActive = TRUE
-            AND tr.importedAt IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM ticket_projection_log tpl
-              WHERE tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
-            )
-          ORDER BY tr.importedAt ASC, tr.id_ticket ASC
-          LIMIT 1
-        `
-        : Promise.resolve([] as Array<{ importedAt: Date | null }>),
     ]);
+    activeRaw = ar;
+    projectedRaw = pr;
+    failedRaw = fr;
+    tickets = t;
+    cachedCountData = { activeRaw: ar, projectedRaw: pr, failedRaw: fr, tickets: t, timestamp: now };
+  }
+
+  const oldestGapRows = neverProjectedRaw > 0
+    ? await prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
+        SELECT tr.importedAt AS importedAt
+        FROM ticket_raw tr
+        WHERE tr.isActive = TRUE
+          AND tr.importedAt IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM ticket_projection_log tpl
+            WHERE tpl.ticketRawId = tr.id_ticket AND tpl.status = 'success'
+          )
+        ORDER BY tr.importedAt ASC, tr.id_ticket ASC
+        LIMIT 1
+      `
+    : [] as Array<{ importedAt: Date | null }>;
 
   const oldestUnprojectedImportedAt = oldestGapRows[0]?.importedAt ?? null;
 

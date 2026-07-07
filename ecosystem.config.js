@@ -141,6 +141,7 @@ module.exports = {
         PROJECTION_FULL_SCAN_ENABLED: 'true',
         PROJECTION_FULL_SCAN_CRON: '*/30 * * * *',
         PROJECTION_RUN_ON_START: 'true',
+        PROJECTION_RECONCILIATION_INTERVAL: '50',
         TICKETS_CACHE_TTL: '15',
         DASHBOARD_CACHE_TTL: '30',
       },
