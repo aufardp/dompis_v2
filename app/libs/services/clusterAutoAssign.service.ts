@@ -609,6 +609,28 @@ export class ClusterAutoAssignServiceV2 {
     await Promise.allSettled(workers);
   }
 
+  private static async hasPlottedTechnicians(
+    saIds: number[],
+    today: string,
+  ): Promise<boolean> {
+    const clusters = await prisma.cluster.findMany({
+      where: { sa_id: { in: saIds }, is_active: true },
+      select: { id: true },
+    });
+
+    if (clusters.length === 0) return false;
+
+    const plottedCount = await prisma.cluster_assignment.count({
+      where: {
+        cluster_id: { in: clusters.map((c) => c.id) },
+        assigned_date: today,
+        is_active: true,
+      },
+    });
+
+    return plottedCount > 0;
+  }
+
   static async runBatchV2(
     saIds?: number[],
     actorId: number = SYSTEM_ACTOR.id_user,
@@ -659,6 +681,18 @@ export class ClusterAutoAssignServiceV2 {
 
     const today = AttendanceService.getTodayDateString();
     if (isDev) { logger.info('[AUTO-ASSIGN] Today date:', { today }); }
+
+    if (saIds && saIds.length > 0) {
+      const hasTeknisi = await this.hasPlottedTechnicians(saIds, today);
+      if (!hasTeknisi) {
+        logger.info('[AUTO-ASSIGN] No technicians plotted for SAs, skipping', {
+          saIds,
+          today,
+        });
+        autoAssignLogger.batchComplete(0, 0, 0, 0, Date.now() - startTime);
+        return { total: 0, assigned: 0, skipped: 0, failed: 0, results: [] };
+      }
+    }
 
     const todayDate = todayWibDate();
 

@@ -32,7 +32,7 @@ import { recordRun } from '@/lib/observability/slo-tracker';
 
 const MAX_CONSECUTIVE_ERRORS = 5;
 const CIRCUIT_RESET_MS = 5 * 60 * 1000;
-const AUTO_ASSIGN_SA_BATCH = 10;
+const AUTO_ASSIGN_SA_BATCH = 20;
 const SKIP_IF_DISPATCHED_WITHIN_MS = 60_000;
 const WORKER_NAME = 'ops-worker';
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -42,7 +42,7 @@ const TASK_LOCK_CONFIGS = {
   push:           { ttl: 360, timeout: 5 * 60 * 1000 },
   tech_events:    { ttl: 150, timeout: 2 * 60 * 1000 },
   reguler_webhook: { ttl: 150, timeout: 2 * 60 * 1000 },
-  auto_assign:    { ttl:  75, timeout: 1 * 60 * 1000 },
+  auto_assign:    { ttl: 120, timeout: 2 * 60 * 1000 },
 } as const;
 
 const syncState = createTaskState();
