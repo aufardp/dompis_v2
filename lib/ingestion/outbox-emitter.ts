@@ -129,10 +129,12 @@ export async function emitBulkEvents(
 
   if (eventsToInsert.length === 0) return;
 
+  const OUTBOX_CHUNK_SIZE = 100;
   try {
-    await prisma.tech_event_outbox.createMany({
-      data: eventsToInsert,
-    });
+    for (let i = 0; i < eventsToInsert.length; i += OUTBOX_CHUNK_SIZE) {
+      const chunk = eventsToInsert.slice(i, i + OUTBOX_CHUNK_SIZE);
+      await prisma.tech_event_outbox.createMany({ data: chunk });
+    }
   } catch (error) {
     logger.error('[OutboxEmitter] Failed to emit bulk events:', { error: String(error) });
   }
@@ -155,5 +157,9 @@ export async function createBulkOutboxEvents(
   }));
 
   if (eventsToInsert.length === 0) return;
-  await tx.tech_event_outbox.createMany({ data: eventsToInsert });
+  const OUTBOX_CHUNK_SIZE = 100;
+  for (let i = 0; i < eventsToInsert.length; i += OUTBOX_CHUNK_SIZE) {
+    const chunk = eventsToInsert.slice(i, i + OUTBOX_CHUNK_SIZE);
+    await tx.tech_event_outbox.createMany({ data: chunk });
+  }
 }

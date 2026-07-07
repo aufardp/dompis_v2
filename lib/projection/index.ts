@@ -21,6 +21,10 @@ import { quarantine } from '@/lib/dlq';
 const TIMEZONE = 'Asia/Jakarta';
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
 let consecutiveZeroProcessed = 0;
+let lastCleanupAt = 0;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+let lastHeartbeatAt = 0;
+const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 
 const PROTECTED_STATES = new Set([
   'assigned',
@@ -47,7 +51,7 @@ const RETRY_BASE_DELAY_MS = parsePositiveIntEnv(
 );
 const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
   'PROJECTION_RECONCILIATION_INTERVAL',
-  10,
+  20,
 );
 let reconciliationCounter = 0;
 
@@ -1126,10 +1130,14 @@ async function projectRecords(
           },
         );
 
-        await prisma.ticket_projection_checkpoint.update({
-          where: { name: CHECKPOINT_NAME },
-          data: { heartbeatAt: nowWib() },
-        });
+        const nowMs = Date.now();
+        if (nowMs - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
+          await prisma.ticket_projection_checkpoint.update({
+            where: { name: CHECKPOINT_NAME },
+            data: { heartbeatAt: nowWib() },
+          });
+          lastHeartbeatAt = nowMs;
+        }
         logger.info('[Projection] Sub-batch success:', { size: itemChunk.length, checkpoint: `${chunkLastRecord.importedAt?.toISOString() ?? '-'}:${chunkLastRecord.id_ticket}` });
         const batchDurationMs = Date.now() - chunkStartMs;
         const rowsPerSecond = batchDurationMs > 0
@@ -1518,6 +1526,12 @@ const CLEANUP_RETENTION_DAYS = parsePositiveIntEnv(
 );
 
 export async function cleanupProjectionLogs(): Promise<{ deleted: number }> {
+  const now = Date.now();
+  if (now - lastCleanupAt < CLEANUP_INTERVAL_MS) {
+    return { deleted: 0 };
+  }
+  lastCleanupAt = now;
+
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - CLEANUP_RETENTION_DAYS);
 

@@ -13,7 +13,7 @@ import { getOrSetCache } from '@/lib/cache';
 
 const WORKER_NAMES = ['ingestion-worker', 'projection-worker', 'active-refresh-worker', 'status-refresh-worker', 'ops-worker'] as const;
 const DATABASE_METRICS_CACHE_KEY = 'internal:metrics:db-snapshot';
-const DATABASE_METRICS_CACHE_TTL = 15;
+const DATABASE_METRICS_CACHE_TTL = 60;
 
 type DatabaseMetrics = {
   ticketRawActive: number;
