@@ -519,6 +519,7 @@ model ticket_raw {
   @@index([isActive, sourceTable, sourceUpdatedAt, incident], map: "idx_ticket_raw_active_source_updated_incident")
   @@index([isActive, sourceTable, sourceUpdatedAt(sort: Desc), id_ticket], map: "idx_ticket_raw_status_refresh_seed")
   @@index([importedAt])
+  @@index([importedAt, incident], map: "idx_ticket_raw_imported_incident")
   @@index([importedAt, id_ticket], map: "idx_ticket_raw_projection_cursor")
   @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
   @@index([isActive, importedAt, id_ticket], map: "idx_ticket_raw_active_cursor")
@@ -701,6 +702,7 @@ model ticket_projection_log {
   @@index([syncBatchId])
   @@index([importedAt, ticketRawId])
   @@index([ticketRawId, status], map: "idx_projection_log_raw_status")
+  @@index([projectedAt])
 }
 
 model ticket_status_history {
