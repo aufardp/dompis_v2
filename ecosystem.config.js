@@ -183,6 +183,8 @@ module.exports = {
         ACTIVE_REFRESH_MAX_CONSECUTIVE_ERRORS: '5',
         ACTIVE_REFRESH_CIRCUIT_RESET_MINUTES: '10',
         ACTIVE_REFRESH_RUN_ON_START: 'true',
+        SCHEDULE_OFFSET: '45',
+        RUN_ON_START: 'true',
         TICKETS_CACHE_TTL: '15',
         DASHBOARD_CACHE_TTL: '30',
       },

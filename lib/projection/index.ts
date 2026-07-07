@@ -851,7 +851,7 @@ async function withTransactionRetry<T>(
     try {
       return await prisma.$transaction(fn, {
         isolationLevel: 'ReadCommitted',
-        maxWait: 10_000,
+        maxWait: 30_000,
         timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
       });
     } catch (err: unknown) {
@@ -866,6 +866,8 @@ async function withTransactionRetry<T>(
   throw new Error('Transaction retry exhausted');
 }
 
+const TICKET_UPSERT_CHUNK_SIZE = 500;
+
 async function bulkUpsertTicket(
   tx: Prisma.TransactionClient,
   items: ProjectionItem[],
@@ -873,17 +875,20 @@ async function bulkUpsertTicket(
   if (items.length === 0) return;
   const updateColumns = TICKET_BULK_COLUMNS.filter(c => c !== 'incident');
   const rows = items.map(item => getTicketRow(item));
-  await tx.$executeRaw`
-    INSERT INTO ${sqlIdentifier('ticket')}
-      (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
-    VALUES ${Prisma.join(
-      rows.map(row =>
-        Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
-      ),
-    )}
-    ON DUPLICATE KEY UPDATE
-      ${Prisma.join(updateColumns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
-  `;
+  const chunks = chunkArray(rows, TICKET_UPSERT_CHUNK_SIZE);
+  for (const chunk of chunks) {
+    await tx.$executeRaw`
+      INSERT INTO ${sqlIdentifier('ticket')}
+        (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+      VALUES ${Prisma.join(
+        chunk.map(row =>
+          Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+        ),
+      )}
+      ON DUPLICATE KEY UPDATE
+        ${Prisma.join(updateColumns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
+    `;
+  }
 }
 
 async function bulkInsertTicket(
@@ -892,15 +897,18 @@ async function bulkInsertTicket(
 ): Promise<void> {
   if (items.length === 0) return;
   const rows = items.map(item => getTicketRow(item));
-  await tx.$executeRaw`
-    INSERT IGNORE INTO ${sqlIdentifier('ticket')}
-      (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
-    VALUES ${Prisma.join(
-      rows.map(row =>
-        Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
-      ),
-    )}
-  `;
+  const chunks = chunkArray(rows, TICKET_UPSERT_CHUNK_SIZE);
+  for (const chunk of chunks) {
+    await tx.$executeRaw`
+      INSERT IGNORE INTO ${sqlIdentifier('ticket')}
+        (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+      VALUES ${Prisma.join(
+        chunk.map(row =>
+          Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+        ),
+      )}
+    `;
+  }
 }
 
 async function bulkUpsertProjectionLog(
@@ -1004,6 +1012,14 @@ async function projectRecords(
   await retryFailedProjectionItems(retryMax);
 
   await setMySQLSessionTimeout(30_000);
+
+  try {
+    await cleanupProjectionLogs();
+  } catch (error) {
+    logger.warn('[Projection] Projection_log cleanup failed (non-fatal):', {
+      error: String(error),
+    });
+  }
 
   try {
     await refreshVlookupCache();
@@ -1489,6 +1505,46 @@ export async function getProjectionReconciliationReport(): Promise<{
       neverProjectedCount: 0,
     },
   };
+}
+
+const CLEANUP_RETENTION_DAYS = parsePositiveIntEnv(
+  'PROJECTION_LOG_RETENTION_DAYS',
+  7,
+);
+
+export async function cleanupProjectionLogs(): Promise<{ deleted: number }> {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - CLEANUP_RETENTION_DAYS);
+
+  let totalDeleted = 0;
+  const BATCH_SIZE = 5000;
+
+  logger.info('[Projection] Starting projection_log cleanup:', {
+    retentionDays: CLEANUP_RETENTION_DAYS,
+    cutoffDate: cutoffDate.toISOString(),
+  });
+
+  while (true) {
+    const result = await prisma.$executeRaw`
+      DELETE FROM ticket_projection_log
+      WHERE projectedAt < ${cutoffDate}
+      LIMIT ${BATCH_SIZE}
+    `;
+
+    totalDeleted += Number(result);
+
+    if (Number(result) < BATCH_SIZE) break;
+
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  if (totalDeleted > 0) {
+    logger.info('[Projection] Projection_log cleanup complete:', {
+      deleted: totalDeleted,
+    });
+  }
+
+  return { deleted: totalDeleted };
 }
 
 export async function backfillJenisTiket(
