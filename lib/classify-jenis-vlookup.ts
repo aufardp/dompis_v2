@@ -39,7 +39,7 @@ interface SourceVlookupRow {
   flag2: string | null;
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
 
 let vlookupCache: VlookupCache = {
   byValueId: new Map(),

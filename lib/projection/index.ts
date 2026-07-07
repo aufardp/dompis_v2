@@ -47,7 +47,7 @@ const RETRY_BASE_DELAY_MS = parsePositiveIntEnv(
 );
 const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
   'PROJECTION_RECONCILIATION_INTERVAL',
-  5,
+  10,
 );
 let reconciliationCounter = 0;
 
