@@ -71,6 +71,7 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   pending_reason: true,
   synced_at: true,
   import_batch: true,
+  status: true,
   status_update: true,
   closed_at: true,
   rca: true,

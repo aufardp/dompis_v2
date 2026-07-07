@@ -184,6 +184,7 @@ export interface ExistingTicket {
   pending_reason: string | null;
   synced_at: Date | null;
   import_batch: string | null;
+  status: string | null;
   status_update: string | null;
   closed_at: Date | null;
   rca: string | null;
@@ -276,6 +277,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'jenis_tiket_1', 'jenis_tiket_2', 'channel', 'classification_flag', 'classification_path',
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
   'description_actual_solution', 'alamat', 'status_date', 'flagging_manja', 'pending_reason',
+  'status', 'status_update', 'closed_at',
 ];
 
 const LOG_BULK_COLUMNS: readonly string[] = [
@@ -516,6 +518,7 @@ export function buildProjectionUpsert(
       updateData.closed_at = statusResolution.closedAt;
     }
   } else if (existing) {
+    updateData.status = existing.status ?? null;
     if (existing.status_update !== undefined) {
       updateData.status_update = existing.status_update;
     }
@@ -531,6 +534,7 @@ export function buildProjectionUpsert(
     ...base,
     alamat: raw.street_address,
   };
+  createData.status = raw.status ?? null;
   const createResolution = resolveProjectionStatusUpdate(
     null,
     raw.status ?? null,
@@ -695,6 +699,7 @@ async function prepareProjectionItems(
       pending_reason: true,
       synced_at: true,
       import_batch: true,
+      status: true,
       status_update: true,
       closed_at: true,
       rca: true,
