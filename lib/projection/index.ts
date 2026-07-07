@@ -531,7 +531,7 @@ export function buildProjectionUpsert(
       updateData.closed_at = statusResolution.closedAt;
     }
   } else if (existing) {
-    updateData.status = existing.status ?? null;
+    updateData.status = raw.status ?? existing.status ?? null;
     if (existing.status_update !== undefined) {
       updateData.status_update = existing.status_update;
     }
