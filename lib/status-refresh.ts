@@ -718,6 +718,7 @@ async function batchCloseTickets(
           Prisma.sql`(
             ${row.incident},
             ${row.normalizedStatus},
+            'close',
             ${now},
             ${now}
           )`,

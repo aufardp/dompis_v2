@@ -523,6 +523,7 @@ export function buildProjectionUpsert(
     existing?.teknisi_user_id ?? null,
   );
   if (statusResolution && !statusResolution.protected) {
+    updateData.status = raw.status ?? existing?.status ?? null;
     if (statusResolution.statusUpdate !== undefined) {
       updateData.status_update = statusResolution.statusUpdate;
     }
