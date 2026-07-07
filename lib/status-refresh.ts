@@ -375,6 +375,9 @@ async function fetchHotCandidates(
       WHERE ${sourceTableFilter}
         AND tr.isActive = TRUE
         AND tr.sourceUpdatedAt IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM ticket_raw_finalized f WHERE f.incident = tr.incident
+        )
         AND tr.sourceUpdatedAt >= ${hotWindowStart}
         AND (
           s.incident IS NULL
@@ -422,6 +425,9 @@ async function fetchSafetyCandidates(
         AND ${sourceTableFilter}
         AND tr.sourceTable IS NOT NULL
         AND tr.isActive = TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM ticket_raw_finalized f WHERE f.incident = tr.incident
+        )
         AND s.lastCheckedAt < ${recheckBefore}
         AND (
           tr.sourceUpdatedAt IS NULL

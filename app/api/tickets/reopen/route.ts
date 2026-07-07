@@ -82,6 +82,10 @@ export async function POST(req: Request) {
         },
       });
 
+      await tx.ticket_raw_finalized.deleteMany({
+        where: { incident: ticket.incident },
+      });
+
       await tx.ticket_tracking.updateMany({
         where: { ticket_id: ticketId },
         data: {

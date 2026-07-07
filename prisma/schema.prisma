@@ -523,6 +523,13 @@ model ticket_raw {
   @@index([status, isActive])
 }
 
+model ticket_raw_finalized {
+  incident    String    @id @db.VarChar(50)
+  finalizedAt DateTime  @default(now()) @map("finalized_at") @db.Timestamp(0)
+
+  @@map("ticket_raw_finalized")
+}
+
 model ingestion_checkpoint {
   id                    Int       @id @default(autoincrement())
   tableName             String    @unique @db.VarChar(100)

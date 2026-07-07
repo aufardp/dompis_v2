@@ -604,78 +604,78 @@ async function fetchBatch(
   checkpoint: ProjectionCheckpoint,
   options: Required<Pick<ProjectionOptions, 'batchSize'>> & ProjectionOptions,
 ): Promise<RawSelectResult[]> {
-  const cursorFilter: Prisma.ticket_rawWhereInput =
-    checkpoint.lastProjectedImportedAt
-      ? {
-          OR: [
-            { importedAt: { gt: checkpoint.lastProjectedImportedAt } },
-            {
-              importedAt: checkpoint.lastProjectedImportedAt,
-              id_ticket: { gt: checkpoint.lastProjectedTicketRawId ?? '' },
-            },
-          ],
-        }
-      : {};
+  const cursorSql = checkpoint.lastProjectedImportedAt
+    ? Prisma.sql`AND (tr.importedAt > ${checkpoint.lastProjectedImportedAt} OR (tr.importedAt = ${checkpoint.lastProjectedImportedAt} AND tr.id_ticket > ${checkpoint.lastProjectedTicketRawId ?? ''}))`
+    : Prisma.empty;
 
-  const where: Prisma.ticket_rawWhereInput = {
-    isActive: true,
-    importedAt: { not: null },
-    ...(options.syncBatchId ? { syncBatchId: options.syncBatchId } : {}),
-    ...(options.since ? { importedAt: { gte: options.since } } : cursorFilter),
-  };
+  const syncBatchSql = options.syncBatchId
+    ? Prisma.sql`AND tr.syncBatchId = ${options.syncBatchId}`
+    : Prisma.empty;
 
-  return prisma.ticket_raw.findMany({
-    where,
-    take: options.batchSize,
-    orderBy: [{ importedAt: 'asc' }, { id_ticket: 'asc' }],
-    select: {
-      id_ticket: true,
-      incident: true,
-      sourceTable: true,
-      sourceHash: true,
-      syncVersion: true,
-      status: true,
-      importedAt: true,
-      syncBatchId: true,
-      summary: true,
-      reported_date: true,
-      owner_group: true,
-      customer_segment: true,
-      service_type: true,
-      workzone: true,
-      status_date: true,
-      ticket_id_gamas: true,
-      contact_phone: true,
-      contact_name: true,
-      booking_date: true,
-      source_ticket: true,
-      customer_type: true,
-      customer_name: true,
-      service_no: true,
-      symptom: true,
-      description_actual_solution: true,
-      device_name: true,
-      rk_information: true,
-      witel: true,
-      worklog_summary: true,
-      realm: true,
-      sn_ont: true,
-      tipe_ont: true,
-      guarantee_status: true,
-      lapul: true,
-      gaul: true,
-      onu_rx: true,
-      street_address: true,
-      channel: true,
-      classification_flag: true,
-      classification_path: true,
-      incident_domain: true,
-      solution: true,
-      tsc_result: true,
-      scc_result: true,
-      pending_reason: true,
-    },
-  }) as Promise<RawSelectResult[]>;
+  const sinceSql = options.since
+    ? Prisma.sql`AND tr.importedAt >= ${options.since}`
+    : Prisma.empty;
+
+  return prisma.$queryRaw<RawSelectResult[]>`
+    SELECT
+      tr.id_ticket,
+      tr.incident,
+      tr.sourceTable,
+      tr.sourceHash,
+      tr.syncVersion,
+      tr.status,
+      tr.importedAt,
+      tr.syncBatchId,
+      tr.summary,
+      tr.reported_date,
+      tr.owner_group,
+      tr.customer_segment,
+      tr.service_type,
+      tr.workzone,
+      tr.status_date,
+      tr.ticket_id_gamas,
+      tr.contact_phone,
+      tr.contact_name,
+      tr.booking_date,
+      tr.source_ticket,
+      tr.customer_type,
+      tr.customer_name,
+      tr.service_no,
+      tr.symptom,
+      tr.description_actual_solution,
+      tr.device_name,
+      tr.rk_information,
+      tr.witel,
+      tr.worklog_summary,
+      tr.realm,
+      tr.sn_ont,
+      tr.tipe_ont,
+      tr.guarantee_status,
+      tr.lapul,
+      tr.gaul,
+      tr.onu_rx,
+      tr.street_address,
+      tr.channel,
+      tr.classification_flag,
+      tr.classification_path,
+      tr.incident_domain,
+      tr.solution,
+      tr.tsc_result,
+      tr.scc_result,
+      tr.pending_reason
+    FROM ticket_raw tr
+    WHERE tr.isActive = TRUE
+      AND tr.importedAt IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM ticket_raw_finalized f
+        WHERE f.incident = tr.incident
+      )
+      ${cursorSql}
+      ${syncBatchSql}
+      ${sinceSql}
+    ORDER BY tr.importedAt ASC, tr.id_ticket ASC
+    LIMIT ${options.batchSize}
+  `;
 }
 
 async function prepareProjectionItems(
@@ -975,6 +975,21 @@ async function projectSubBatchAtomically(
       await bulkUpsertTicket(tx, updatedItems);
     }
     await bulkUpsertProjectionLog(tx, items, options.attempts);
+
+    const closedItems = items.filter(i => {
+      if (i.action === 'skipped') return false;
+      const status = (i.raw.status ?? '').trim().toUpperCase();
+      return CLOSE_STATUS_VALUES.includes(status);
+    });
+    if (closedItems.length > 0) {
+      const closedIncidents = closedItems
+        .map(i => i.raw.incident)
+        .filter(Boolean) as string[];
+      await tx.ticket_raw_finalized.createMany({
+        data: closedIncidents.map(incident => ({ incident })),
+        skipDuplicates: true,
+      });
+    }
 
     await advanceCheckpoint(tx, lastRecord, result, options.syncBatchId, {
       preserveCursor: options.preserveCheckpointCursor,
