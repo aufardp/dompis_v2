@@ -979,7 +979,7 @@ async function projectSubBatchAtomically(
     const closedItems = items.filter(i => {
       if (i.action === 'skipped') return false;
       const status = (i.raw.status ?? '').trim().toUpperCase();
-      return CLOSE_STATUS_VALUES.includes(status);
+      return status === 'CLOSED';
     });
     if (closedItems.length > 0) {
       const closedIncidents = closedItems
