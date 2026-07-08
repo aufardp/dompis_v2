@@ -754,16 +754,20 @@ async function processBatch(
     skipped,
   } = await prisma.$transaction(async (tx) => {
     const existingRows = identities.length
-      ? await tx.ticket_raw.findMany({
-          where: { incident: { in: identities } },
-          select: {
-            incident: true,
-            sourceHash: true,
-            status: true,
-            syncVersion: true,
-            sourceUpdatedAt: true,
-          },
-        })
+      ? await tx.$queryRawUnsafe<
+          Array<{
+            incident: string | null;
+            sourceHash: string | null;
+            status: string | null;
+            syncVersion: number;
+            sourceUpdatedAt: Date | null;
+          }>
+        >(
+          `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt
+           FROM ticket_raw FORCE INDEX (ticket_raw_incident_key)
+           WHERE incident IN (${identities.map(() => '?').join(',')})`,
+          ...identities,
+        )
       : [];
     const existingMap = new Map(existingRows.map((row) => [row.incident, row]));
     const events: Array<Parameters<typeof createBulkOutboxEvents>[1][number]> = [];
