@@ -12,21 +12,26 @@ const STATUS_PRIORITY: Record<string, number> = {
   NULL: 0,
 };
 
-export function resolveStatusConflict(existing: string | null, incoming: string | null): string {
+export function resolveStatusConflict(
+  existing: string | null,
+  incoming: string | null,
+): string {
   const existingKey = existing?.toUpperCase() ?? 'NULL';
   const incomingKey = incoming?.toUpperCase() ?? 'NULL';
 
   const existingPriority = STATUS_PRIORITY[existingKey] ?? 0;
   const incomingPriority = STATUS_PRIORITY[incomingKey] ?? 0;
 
-  return incomingPriority >= existingPriority ? (incoming || 'UNKNOWN') : (existing || 'UNKNOWN');
+  return incomingPriority >= existingPriority
+    ? incoming || 'UNKNOWN'
+    : existing || 'UNKNOWN';
 }
 
 export function shouldUpdateRecord(
   existingHash: string | null,
   newHash: string,
   existingStatus: string | null,
-  newStatus: string
+  newStatus: string,
 ): boolean {
   if (!existingHash) return true;
 
@@ -95,13 +100,19 @@ export function resolveConflict(
     };
   }
 
-  const resolvedStatus = resolveStatusConflict(existingRecord.status, newStatus);
+  const resolvedStatus = resolveStatusConflict(
+    existingRecord.status,
+    newStatus,
+  );
 
   return {
     shouldInsert: false,
     shouldUpdate: true,
     newStatus: resolvedStatus,
     newVersion: existingRecord.syncVersion + 1,
-    reason: existingRecord.sourceHash !== newHash ? 'hash_changed' : 'status_conflict',
+    reason:
+      existingRecord.sourceHash !== newHash
+        ? 'hash_changed'
+        : 'status_conflict',
   };
 }

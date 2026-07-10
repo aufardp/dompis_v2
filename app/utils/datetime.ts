@@ -59,10 +59,10 @@ export function parseWIBDateInput(
             day = String(secondNum);
             month = String(firstNum);
           } else {
-            // Ambiguous dates default to MM/DD because the import file
-            // observed in production uses US spreadsheet formatting.
-            month = String(firstNum);
-            day = String(secondNum);
+            // Ambiguous dates default to DD/MM because the system is
+            // used in Indonesia where DD/MM is the standard format.
+            day = String(firstNum);
+            month = String(secondNum);
           }
         }
 
