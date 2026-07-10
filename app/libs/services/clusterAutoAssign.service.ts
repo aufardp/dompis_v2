@@ -10,7 +10,7 @@ import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
 import { logger } from '@/lib/observability/logger';
-import { todayWibDate } from '@/lib/timezone';
+import { todayWibDateForDb } from '@/lib/timezone';
 
 export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
@@ -694,7 +694,7 @@ export class ClusterAutoAssignServiceV2 {
       }
     }
 
-    const todayDate = todayWibDate();
+    const todayDate = todayWibDateForDb();
 
     const allTickets: TicketWithRk[] = await prisma.ticket.findMany({
       where: {
