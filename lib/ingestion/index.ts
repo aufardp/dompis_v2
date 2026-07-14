@@ -1027,7 +1027,7 @@ async function processTable(
   const startMs = Date.now();
   const isBridgeTable =
     isQosmicBridgeConfigured() &&
-    (tableName === 'nossa' || tableName === 'nossa_closed');
+    tableName === 'nossa';
 
   const cursor: ExternalCursorDefinition = isBridgeTable
     ? {
