@@ -6,6 +6,7 @@ import { useDebounce } from '@/app/hooks/useOptimizations';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import TopbarNotifications from './TopbarNotifications';
+import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import {
   Search,
   X,
@@ -399,6 +400,7 @@ export default function Topbar({
 
             <div className='flex flex-wrap items-center justify-end gap-1.5'>
               <TopbarNotifications selectedWorkzone={workzone || undefined} />
+              <ConnectionStatusIndicator />
 
               <div className='relative hidden lg:block xl:block'>
                 <select

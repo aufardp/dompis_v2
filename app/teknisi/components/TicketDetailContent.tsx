@@ -144,7 +144,9 @@ export default function TicketDetailContent({
   isClosed: isTicketClosed,
 }: TicketDetailContentProps) {
   const router = useRouter();
-  const status = normalizeStatus(ticket.status_update, ticket.hasilVisit);
+  const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+  const actualStatus = normalizeStatus(ticket.status_update, ticket.hasilVisit);
+  const status = optimisticStatus ?? actualStatus;
   const activeStep = getActiveStep(status);
   const maxTtr = getMaxTtrInfo(ticket);
 
@@ -327,6 +329,7 @@ export default function TicketDetailContent({
   const handleResume = useCallback(async () => {
     setActionLoading('resume');
     setError(null);
+    setOptimisticStatus('ON_PROGRESS');
     try {
       const res = await fetchWithAuth('/api/tickets/update', {
         method: 'POST',
@@ -338,9 +341,11 @@ export default function TicketDetailContent({
       if (data.success) {
         router.refresh();
       } else {
+        setOptimisticStatus(null);
         setError(data.message || 'Gagal resume ticket');
       }
     } catch {
+      setOptimisticStatus(null);
       setError('Terjadi kesalahan');
     } finally {
       setActionLoading(null);

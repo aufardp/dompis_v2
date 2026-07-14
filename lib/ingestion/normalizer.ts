@@ -43,13 +43,32 @@ const COLUMN_MAPPING: Record<string, string> = {
   c_street_address: 'street_address',
   external_ticket_tier3: 'external_ticket_tier_3',
   datemodified: 'date_modified',
+  // QOSMIC Bridge: bridge sends PascalCase/snake_case mixed names
+  // that toSnakeCase() cannot map to the correct internal field.
+  Last_Work_Log_Date: 'worklog_summary',
+  last_updated_work_log: 'last_update_worklog',
+  Last_Updated_Work_Log: 'last_update_worklog',
+  'Closed/Reopen_By': 'closed_reopen_by',
+  C_REALM: 'realm',
+  C_TSC_RESULT: 'tsc_result',
+  C_SCC_RESULT: 'scc_result',
 };
 
 function toSnakeCase(str: string): string {
-  // Convert camelCase or any case to snake_case
+  // Convert camelCase or PascalCase/PascalCase_With_Underscore to snake_case.
+  //
+  // FIX (QOSMIC Bridge integration): field seperti "Status_Date" dari bridge
+  // sebelumnya jadi "status__date" (underscore ganda) karena regex di bawah
+  // menyisipkan '_' sebelum setiap huruf kapital TANPA memperhitungkan
+  // underscore yang sudah ada di string aslinya. Kolom internal/downstream
+  // (validateExternalRow, resolveIdentityStrict, dst) mengharapkan
+  // "status_date" (satu underscore) — jadi collapse underscore berturut-turut
+  // di akhir. Ini aman utk kolom lama (all-lowercase dari MySQL langsung)
+  // karena mereka tidak pernah punya underscore ganda ke depannya.
   return str
     .replace(/([A-Z])/g, '_$1')
     .replace(/^_/, '')
+    .replace(/_+/g, '_')
     .toLowerCase();
 }
 

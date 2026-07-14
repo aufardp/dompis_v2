@@ -81,6 +81,56 @@ export function broadcastTicketInvalidate(reason?: string) {
   }
 }
 
+export function broadcastTicketUpdated(payload: {
+  ticketId: string;
+  incident: string;
+  changedFields: string[];
+  source: 'ingestion' | 'status-refresh' | 'manual';
+  updatedAt: string;
+}) {
+  const message = JSON.stringify({
+    type: 'ticket:updated',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  broadcastToActive(message);
+  if (isRedisReady()) {
+    void redis.publish('sse:tickets', message).catch(() => {});
+  }
+}
+
+export function broadcastBridgeFreshness(payload: {
+  resource: 'nossa' | 'nossa_closed';
+  lastSyncedAt: string;
+  lagSeconds: number;
+}) {
+  const message = JSON.stringify({
+    type: 'bridge:freshness',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  broadcastToActive(message);
+  if (isRedisReady()) {
+    void redis.publish('sse:tickets', message).catch(() => {});
+  }
+}
+
+export function broadcastTicketViewers(payload: {
+  ticketId: string;
+  viewers: Array<{ userId: string; userName: string; role: string }>;
+  viewerCount: number;
+}) {
+  const message = JSON.stringify({
+    type: 'ticket:viewers',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  broadcastToActive(message);
+  if (isRedisReady()) {
+    void redis.publish('sse:tickets', message).catch(() => {});
+  }
+}
+
 export function registerSSEConnection(controller: ReadableStreamDefaultController, signal?: AbortSignal) {
   activeConnections.add(controller);
   if (signal) {

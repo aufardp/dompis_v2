@@ -2,7 +2,7 @@ import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isRedisReady, redis } from '@/lib/redis';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
-import { publishTicketInvalidate } from '@/lib/sse-redis';
+import { publishTicketInvalidate, publishTicketViewers } from '@/lib/sse-redis';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { withPrismaReconnect, setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 import { logger } from '@/lib/observability/logger';
@@ -489,6 +489,40 @@ export async function runActiveRefresh(
         publishTicketInvalidate('active_refresh'),
       ]);
     }
+
+    // Cleanup stale viewers + broadcast active viewer lists
+    try {
+      const staleThreshold = new Date(Date.now() - 60_000);
+      const staleViewers = await prisma.ticket_active_viewers.deleteMany({
+        where: { last_seen_at: { lt: staleThreshold } },
+      });
+      if (staleViewers.count > 0) {
+        logger.info('[ActiveRefresh] Cleaned up stale viewers', { count: staleViewers.count });
+      }
+
+      const activeTicketIds = await prisma.ticket_active_viewers.groupBy({
+        by: ['ticket_id'],
+        where: { last_seen_at: { gte: staleThreshold } },
+        _count: { user_id: true },
+      });
+
+      for (const group of activeTicketIds) {
+        const viewers = await prisma.ticket_active_viewers.findMany({
+          where: { ticket_id: group.ticket_id, last_seen_at: { gte: staleThreshold } },
+          select: { user_id: true, user_name: true, role: true },
+        });
+        await publishTicketViewers({
+          ticketId: group.ticket_id,
+          viewers: viewers.map((v) => ({
+            userId: v.user_id,
+            userName: v.user_name ?? 'Unknown',
+            role: v.role ?? 'unknown',
+          })),
+          viewerCount: viewers.length,
+        }).catch(() => {});
+      }
+    } catch { /* non-critical */ }
+
     return result;
   } catch (error) {
     result.durationMs = Date.now() - start;

@@ -207,6 +207,7 @@ export default function TeknisiDashboard() {
     setSearchQuery,
     stats,
     refresh,
+    highlightedIncidents,
   } = useTickets('all');
 
   const { pullDistance, ptrReady, ptrRefreshing } = usePullToRefresh({
@@ -361,6 +362,7 @@ export default function TeknisiDashboard() {
                   key={ticket.idTicket}
                   ticket={ticket}
                   onClick={handleSelectTicket}
+                  isHighlighted={highlightedIncidents.has(ticket.ticket)}
                 />
               ))}
             </div>

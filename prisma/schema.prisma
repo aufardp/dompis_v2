@@ -861,6 +861,20 @@ model projection_request {
   @@map("projection_request")
 }
 
+model ticket_active_viewers {
+  id            String   @id @default(uuid())
+  ticket_id     String   @db.VarChar(50)
+  user_id       String   @db.VarChar(50)
+  user_name     String?  @db.VarChar(100)
+  role          String?  @db.VarChar(20)
+  last_seen_at  DateTime @default(now())
+
+  @@unique([ticket_id, user_id])
+  @@index([ticket_id])
+  @@index([last_seen_at])
+  @@map("ticket_active_viewers")
+}
+
 enum ticket_activity_log_activity_type {
   ASSIGN
   REASSIGN

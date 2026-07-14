@@ -86,6 +86,13 @@ const SHARED_CONFIG: EnvVarSpec[] = [
   { name: 'TELEGRAM_BOT_TOKEN', type: 'string', optional: true },
   { name: 'TELEGRAM_CHAT_ID', type: 'string', optional: true },
   { name: 'SLACK_WEBHOOK_URL', type: 'string', optional: true },
+  { name: 'QOSMIC_BRIDGE_ENABLED', type: 'boolean', optional: true },
+  { name: 'QOSMIC_BRIDGE_BASE_URL', type: 'string', optional: true },
+  { name: 'QOSMIC_BRIDGE_TOKEN', type: 'string', optional: true },
+  { name: 'QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN', type: 'int', min: 1, max: 60, optional: true },
+  { name: 'QOSMIC_BRIDGE_TIMEOUT_MS', type: 'int', min: 1000, max: 60000, optional: true },
+  { name: 'QOSMIC_BRIDGE_RETRY_MAX', type: 'int', min: 0, max: 10, optional: true },
+  { name: 'QOSMIC_BRIDGE_MAX_CONCURRENT', type: 'int', min: 1, max: 10, optional: true },
 ];
 
 export function validateWorkerConfig(workerName: string): { valid: boolean; warnings: string[] } {

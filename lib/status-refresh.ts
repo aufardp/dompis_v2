@@ -12,13 +12,15 @@ import {
   normalizeStatus,
 } from '@/lib/ingestion/normalizer';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
-import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { broadcastTicketInvalidate, broadcastTicketUpdated, broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { withPrismaReconnect, setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import { fetchExternalRowsViaBridge } from '@/lib/external-db/qosmic-bridge/status-refresh-adapter';
+import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
 
 export interface StatusRefreshResult {
   batchId: string;
@@ -243,14 +245,14 @@ function parseExternalDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function isChanged(candidate: CandidateRow, external: ExternalStatusRow): boolean {
-  return (
-    candidate.status !== external.normalizedStatus ||
-    candidate.status_date !== external.statusDate ||
-    candidate.date_modified !== external.dateModified ||
-    candidate.worklog_summary !== external.worklogSummary ||
-    candidate.last_update_worklog !== external.lastUpdateWorklog
-  );
+function getChangedFields(candidate: CandidateRow, external: ExternalStatusRow): string[] {
+  const fields: string[] = [];
+  if (candidate.status !== external.normalizedStatus) fields.push('status');
+  if (candidate.status_date !== external.statusDate) fields.push('status_date');
+  if (candidate.date_modified !== external.dateModified) fields.push('date_modified');
+  if (candidate.worklog_summary !== external.worklogSummary) fields.push('worklog_summary');
+  if (candidate.last_update_worklog !== external.lastUpdateWorklog) fields.push('last_update_worklog');
+  return fields;
 }
 
 function mergeSeedCandidates(
@@ -990,14 +992,22 @@ export async function runStatusRefresh(
 
     const changedRows: ExternalStatusRow[] = [];
     const externalRowsByIncident = new Map<string, ExternalStatusRow>();
+    const changedFieldsByIncident = new Map<string, string[]>();
+    const processedTables = new Set<string>();
     for (const [sourceTable, tableCandidates] of byTable) {
       assertNotAborted(signal);
       if (shouldStopForBudget(start)) break;
 
-      const externalRows = await fetchExternalRows(
-        sourceTable,
-        tableCandidates.map((row) => row.incident),
-      );
+      processedTables.add(sourceTable);
+      const externalRows = isQosmicBridgeConfigured()
+        ? await fetchExternalRowsViaBridge(
+            sourceTable,
+            tableCandidates.map((row) => row.incident),
+          )
+        : await fetchExternalRows(
+            sourceTable,
+            tableCandidates.map((row) => row.incident),
+          );
       result.fetched += externalRows.size;
       result.missing += tableCandidates.length - externalRows.size;
 
@@ -1005,8 +1015,10 @@ export async function runStatusRefresh(
         const external = externalRows.get(candidate.incident);
         if (!external) continue;
         externalRowsByIncident.set(candidate.incident, external);
-        if (isChanged(candidate, external)) {
+        const changedFields = getChangedFields(candidate, external);
+        if (changedFields.length > 0) {
           changedRows.push(external);
+          changedFieldsByIncident.set(candidate.incident, changedFields);
         } else {
           result.unchanged++;
         }
@@ -1014,6 +1026,22 @@ export async function runStatusRefresh(
     }
 
     result.changed = await updateChangedRows(changedRows, batchId);
+
+    // Broadcast per-ticket updates (batch limit to avoid flood)
+    if (changedRows.length <= 50) {
+      for (const external of changedRows) {
+        const fields = changedFieldsByIncident.get(external.incident) ?? [];
+        if (fields.length > 0) {
+          broadcastTicketUpdated({
+            ticketId: external.incident,
+            incident: external.incident,
+            changedFields: fields,
+            source: 'status-refresh',
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
 
     const closedRows = changedRows.filter((row) =>
       CLOSE_STATUS_VALUES.includes(row.normalizedStatus),
@@ -1032,6 +1060,13 @@ export async function runStatusRefresh(
       );
       await invalidateTicketsCache();
       broadcastTicketInvalidate('status-refresh');
+    }
+    for (const table of processedTables) {
+      broadcastBridgeFreshness({
+        resource: table as 'nossa' | 'nossa_closed',
+        lastSyncedAt: new Date().toISOString(),
+        lagSeconds: 0,
+      });
     }
     return result;
   } catch (error) {

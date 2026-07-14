@@ -9,6 +9,7 @@ import { getSlaHours, parseWIBDateInput, formatDateTimeWIB } from '@/app/utils/d
 interface TicketCardProps {
   ticket: Ticket;
   onClick: (ticket: Ticket) => void;
+  isHighlighted?: boolean;
 }
 
 function formatPhone(phone: string): string {
@@ -37,7 +38,7 @@ const STATUS_BADGE: Record<string, { label: string; classes: string }> = {
   CLOSE: { label: 'Selesai', classes: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20' },
 };
 
-export default function TicketCard({ ticket, onClick }: TicketCardProps) {
+export default function TicketCard({ ticket, onClick, isHighlighted }: TicketCardProps) {
   const status = ((ticket.status_update ?? ticket.hasilVisit ?? '') as string).toUpperCase().trim();
   const closed = isTicketClosed(ticket.status_update);
   const activeKey = closed ? 'CLOSED' : status;
@@ -64,7 +65,9 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
     <button
       type='button'
       onClick={() => onClick(ticket)}
-      className='group w-full rounded-2xl border border-(--border) bg-(--surface) p-4 text-left shadow-sm transition-all active:scale-[0.98]'
+      className={`group w-full rounded-2xl border border-(--border) bg-(--surface) p-4 text-left shadow-sm transition-all active:scale-[0.98] ${
+        isHighlighted ? 'animate-highlight-fade' : ''
+      }`}
     >
       {/* ── Header: Label + Ticket ID + Status ──────────────── */}
       <div className='flex items-start justify-between gap-2'>

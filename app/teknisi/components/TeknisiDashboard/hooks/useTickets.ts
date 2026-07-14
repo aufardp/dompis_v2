@@ -2,12 +2,12 @@
 
 // app/teknisi/components/TeknisiDashboard/hooks/useTickets.ts
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
-import { useTicketEvents } from '@/app/hooks/useTicketEvents';
+import { useTicketEvents, TicketUpdatedPayload } from '@/app/hooks/useTicketEvents';
 
 interface UseTicketsReturn {
   tickets: Ticket[];
@@ -29,6 +29,7 @@ interface UseTicketsReturn {
     totalAktif: number;
   };
   refresh: () => Promise<void>;
+  highlightedIncidents: Set<string>;
 }
 
 const PAGE_SIZE = 5;
@@ -48,6 +49,8 @@ export function useTickets(
   const [filter, setFilter] = useState<TicketFilter>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [highlightedIncidents, setHighlightedIncidents] = useState<Set<string>>(new Set());
+  const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -73,6 +76,27 @@ export function useTickets(
   // Listen SSE untuk auto-refresh saat admin assign/update tiket
   useTicketEvents({
     onInvalidate: fetchTickets,
+    onTicketUpdated: useCallback((payload: TicketUpdatedPayload) => {
+      const inc = payload.incident;
+      setHighlightedIncidents((prev) => {
+        const next = new Set(prev);
+        next.add(inc);
+        return next;
+      });
+
+      // Clear highlight after 2 seconds
+      const existing = highlightTimersRef.current.get(inc);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        setHighlightedIncidents((prev) => {
+          const next = new Set(prev);
+          next.delete(inc);
+          return next;
+        });
+        highlightTimersRef.current.delete(inc);
+      }, 2000);
+      highlightTimersRef.current.set(inc, timer);
+    }, []),
     enabled: true,
     debounceMs: 1000,
   });
@@ -170,5 +194,6 @@ export function useTickets(
     setSearchQuery,
     stats,
     refresh: fetchTickets,
+    highlightedIncidents,
   };
 }

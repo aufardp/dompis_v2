@@ -546,12 +546,23 @@ phantom-ui {
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
+/* 🔄 Highlight fade untuk ticket yang diupdate via SSE */
+@keyframes highlight-fade {
+  0% { background-color: rgb(251 191 36 / 0.4); }
+  100% { background-color: transparent; }
+}
+
+.animate-highlight-fade {
+  animation: highlight-fade 2s ease-out forwards;
+}
+
 /* 🔧 Aksesibilitas: matikan animasi jika user prefer */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-up,
   .animate-pulse-border,
   .animate-slide-up,
-  .animate-shimmer {
+  .animate-shimmer,
+  .animate-highlight-fade {
     animation: none;
   }
 }

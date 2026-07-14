@@ -3,17 +3,43 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
+export interface TicketUpdatedPayload {
+  ticketId: string;
+  incident: string;
+  changedFields: string[];
+  source: 'ingestion' | 'status-refresh' | 'manual';
+  updatedAt: string;
+}
+
+export interface BridgeFreshnessPayload {
+  resource: 'nossa' | 'nossa_closed';
+  lastSyncedAt: string;
+  lagSeconds: number;
+}
+
+export interface TicketViewersPayload {
+  ticketId: string;
+  viewers: Array<{ userId: string; userName: string; role: string }>;
+  viewerCount: number;
+}
+
 type TicketEvent =
   | { type: 'connected'; ts: number }
   | { type: 'heartbeat'; ts: number }
   | { type: 'invalidate'; reason: string; ts: number }
-  | { type: 'sync'; syncType: 'start' | 'complete' | 'error'; inserted?: number; updated?: number; error?: string; ts: number };
+  | { type: 'sync'; syncType: 'start' | 'complete' | 'error'; inserted?: number; updated?: number; error?: string; ts: number }
+  | (TicketUpdatedPayload & { type: 'ticket:updated'; ts: string })
+  | (BridgeFreshnessPayload & { type: 'bridge:freshness'; ts: string })
+  | (TicketViewersPayload & { type: 'ticket:viewers'; ts: string });
 
 interface UseTicketEventsOptions {
   onInvalidate: () => void;
   onSyncStart?: () => void;
   onSyncComplete?: (data: { inserted?: number; updated?: number }) => void;
   onSyncError?: (error: string) => void;
+  onTicketUpdated?: (payload: TicketUpdatedPayload) => void;
+  onBridgeFreshness?: (payload: BridgeFreshnessPayload) => void;
+  onTicketViewers?: (payload: TicketViewersPayload) => void;
   enabled?: boolean;
   debounceMs?: number;
   fallbackPollingMs?: number;
@@ -24,6 +50,9 @@ export function useTicketEvents({
   onSyncStart,
   onSyncComplete,
   onSyncError,
+  onTicketUpdated,
+  onBridgeFreshness,
+  onTicketViewers,
   enabled = true,
   debounceMs = 500,
   fallbackPollingMs = 15_000,
@@ -44,6 +73,9 @@ export function useTicketEvents({
   const onSyncStartRef = useRef(onSyncStart);
   const onSyncCompleteRef = useRef(onSyncComplete);
   const onSyncErrorRef = useRef(onSyncError);
+  const onTicketUpdatedRef = useRef(onTicketUpdated);
+  const onBridgeFreshnessRef = useRef(onBridgeFreshness);
+  const onTicketViewersRef = useRef(onTicketViewers);
 
   useEffect(() => {
     onInvalidateRef.current = onInvalidate;
@@ -60,6 +92,18 @@ export function useTicketEvents({
   useEffect(() => {
     if (onSyncError) onSyncErrorRef.current = onSyncError;
   }, [onSyncError]);
+
+  useEffect(() => {
+    if (onTicketUpdated) onTicketUpdatedRef.current = onTicketUpdated;
+  }, [onTicketUpdated]);
+
+  useEffect(() => {
+    if (onBridgeFreshness) onBridgeFreshnessRef.current = onBridgeFreshness;
+  }, [onBridgeFreshness]);
+
+  useEffect(() => {
+    if (onTicketViewers) onTicketViewersRef.current = onTicketViewers;
+  }, [onTicketViewers]);
 
   const triggerFallbackPolling = useCallback(() => {
     if (!enabled || isPublicRoute || !mountedRef.current) return;
@@ -123,6 +167,22 @@ export function useTicketEvents({
             if (document.hidden) return;
             onInvalidateRef.current();
           }, debounceMs);
+          return;
+        }
+
+        if (event.type === 'ticket:updated') {
+          onTicketUpdatedRef.current?.(event as TicketUpdatedPayload);
+          return;
+        }
+
+        if (event.type === 'bridge:freshness') {
+          onBridgeFreshnessRef.current?.(event as BridgeFreshnessPayload);
+          return;
+        }
+
+        if (event.type === 'ticket:viewers') {
+          onTicketViewersRef.current?.(event as TicketViewersPayload);
+          return;
         }
       } catch {
         /* ignore malformed */

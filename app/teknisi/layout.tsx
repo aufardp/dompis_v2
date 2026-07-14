@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import UserMenu from '../components/layout/user-menu/UserMenu';
 import LogoutConfirmModal from '../components/layout/LogoutConfirmModal';
+import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { useTheme } from '@/app/contexts/ThemeContext';
 
@@ -113,6 +114,9 @@ export default function TeknisiLayout({
             {attendance?.checked_in && (
               <AttendancePill status={attendance.status} time={checkInTime} />
             )}
+
+            {/* Connection status */}
+            <ConnectionStatusIndicator />
 
             {/* Theme toggle */}
             <button

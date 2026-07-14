@@ -34,6 +34,13 @@ import { logger } from '@/lib/observability/logger';
 import { isRedisReady, redis } from '@/lib/redis';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
+import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
+import { broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
+import {
+  iterateNossaOpen,
+  iterateNossaClosedIncremental,
+  iterateNossaClosedBackfill,
+} from '@/lib/external-db/qosmic-bridge/nossa';
 
 const DEFAULT_CHUNK_SIZE = parsePositiveIntEnv('INGESTION_CHUNK_SIZE', 1000);
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('INGESTION_BATCH_SIZE', 500);
@@ -253,7 +260,7 @@ const COLUMN_MAX_LENGTH: Record<string, number> = {
 
 type IngestionMode = 'initial' | 'incremental' | 'recovery' | 'force_resync';
 
-interface ChunkResult {
+export interface ChunkResult {
   processed: number;
   inserted: number;
   updated: number;
@@ -501,7 +508,7 @@ async function getOrCreateCheckpoint(
   return row;
 }
 
-function buildRawData(
+export function buildRawData(
   row: NormalizedExternalRow,
   sourceHash: string,
   now: Date,
@@ -942,6 +949,74 @@ async function processBatch(
   return result;
 }
 
+/**
+ * Shared helper: normalize and process a page of raw rows through the batch
+ * pipeline (validation → identity resolution → conflict resolution → upsert →
+ * quarantine → events → checkpoint). Used by both MySQL and bridge paths.
+ */
+export async function processRawRows(
+  rawRows: Record<string, unknown>[],
+  tableName: string,
+  batchId: string,
+  cursor: ExternalCursorDefinition,
+  result: ChunkResult,
+  signal?: AbortSignal,
+): Promise<void> {
+  const normalizedRows = rawRows.map((row) =>
+    normalizeExternalRow(row as unknown as ExternalRow, tableName),
+  );
+  for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+    const rawWindow = rawRows.slice(
+      offset,
+      Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+    ) as Record<string, unknown>[];
+    const normalizedWindow = normalizedRows.slice(
+      offset,
+      Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+    );
+    const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
+    const nextCursor = getRowCursor(lastRaw, cursor);
+    const chunkResult = await withRetry(
+      () =>
+        processBatch(
+          normalizedWindow,
+          rawWindow,
+          tableName,
+          batchId,
+          offset,
+          nextCursor,
+          cursor,
+          result,
+          signal,
+        ),
+      {
+        retryMax: DEFAULT_RETRY_MAX,
+        signal,
+        label: 'process_batch',
+        context: {
+          component: 'ingestion',
+          tableName,
+          batchId,
+          chunkStartOffset: offset,
+          chunkSize: normalizedWindow.length,
+        },
+        onRetry: () => {
+          result.retried++;
+        },
+      },
+    );
+    result.processed = (result.processed ?? 0) + chunkResult.processed;
+    result.inserted += chunkResult.inserted;
+    result.updated += chunkResult.updated;
+    result.skipped += chunkResult.skipped;
+    result.failed += chunkResult.failed;
+    result.quarantined = (result.quarantined ?? 0) + chunkResult.quarantined;
+    result.retried = (result.retried ?? 0) + chunkResult.retried;
+    result.errors.push(...chunkResult.errors);
+    if (result.errors.length > 100) result.errors.length = 100;
+  }
+}
+
 async function processTable(
   tableName: string,
   batchId: string,
@@ -950,28 +1025,43 @@ async function processTable(
 ): Promise<ChunkResult> {
   const startedAt = nowWib();
   const startMs = Date.now();
-  const cursor = await getExternalCursorDefinition(tableName);
-  const persisted = await getOrCreateCheckpoint(tableName, cursor);
-  const totalRows = await fetchTableCount(tableName);
+  const isBridgeTable =
+    isQosmicBridgeConfigured() &&
+    (tableName === 'nossa' || tableName === 'nossa_closed');
 
-  // Cursor stale detection: if cursor is set but no records processed in 24h, reset
-  if ((persisted.lastCursorId || persisted.lastModifiedAt) && totalRows > 0) {
-    const cursorAge = persisted.lastModifiedAt
-      ? Date.now() - persisted.lastModifiedAt.getTime()
-      : null;
-    const staleThresholdMs =
-      (parseInt(process.env.INGESTION_CURSOR_STALE_HOURS || '24', 10)) * 60 * 60_000;
-    if (cursorAge !== null && cursorAge > staleThresholdMs) {
-      logger.warn('Ingestion cursor may be stale, resetting to 24h window', {
-        component: 'ingestion', tableName, cursorAge,
-        lastModifiedAt: persisted.lastModifiedAt?.toISOString(),
-      });
-      persisted.lastCursorId = null;
-      persisted.lastModifiedAt = new Date(Date.now() - staleThresholdMs);
-      await prisma.ingestion_checkpoint.update({
-        where: { tableName },
-        data: { lastCursorId: null, lastModifiedAt: persisted.lastModifiedAt },
-      });
+  const cursor: ExternalCursorDefinition = isBridgeTable
+    ? {
+        idColumn: null,
+        modifiedColumn: null,
+        createdAtColumn: null,
+        strategy: 'snapshot',
+        columns: [],
+      }
+    : await getExternalCursorDefinition(tableName);
+  const persisted = await getOrCreateCheckpoint(tableName, cursor);
+  let totalRows = 0;
+  if (!isBridgeTable) {
+    totalRows = await fetchTableCount(tableName);
+
+    // Cursor stale detection: if cursor is set but no records processed in 24h, reset
+    if ((persisted.lastCursorId || persisted.lastModifiedAt) && totalRows > 0) {
+      const cursorAge = persisted.lastModifiedAt
+        ? Date.now() - persisted.lastModifiedAt.getTime()
+        : null;
+      const staleThresholdMs =
+        (parseInt(process.env.INGESTION_CURSOR_STALE_HOURS || '24', 10)) * 60 * 60_000;
+      if (cursorAge !== null && cursorAge > staleThresholdMs) {
+        logger.warn('Ingestion cursor may be stale, resetting to 24h window', {
+          component: 'ingestion', tableName, cursorAge,
+          lastModifiedAt: persisted.lastModifiedAt?.toISOString(),
+        });
+        persisted.lastCursorId = null;
+        persisted.lastModifiedAt = new Date(Date.now() - staleThresholdMs);
+        await prisma.ingestion_checkpoint.update({
+          where: { tableName },
+          data: { lastCursorId: null, lastModifiedAt: persisted.lastModifiedAt },
+        });
+      }
     }
   }
 
@@ -1054,88 +1144,125 @@ async function processTable(
   const tomorrowStart = new Date(wibNowMs + 86400000).toISOString().slice(0, 10) + ' 00:00:00';
 
   try {
-    while (hasMore) {
-      assertNotAborted(signal);
-      const rawRows = await withRetry(
-        () =>
-          usesSnapshotScan
-            ? fetchTableRows(tableName, {
-                limit: DEFAULT_CHUNK_SIZE,
-                offset: snapshotOffset,
-                orderBy: cursor.idColumn ?? cursor.columns[0]?.name ?? 'id',
-                columns: cursor.columns.map((c) => c.name),
-                dateFilterColumn: cursor.modifiedColumn,
-                dateFilterStart: todayStart,
-                dateFilterEnd: tomorrowStart,
-              })
-            : fetchTableRowsByCursor(tableName, {
-                limit: DEFAULT_CHUNK_SIZE,
-                idColumn: cursor.idColumn,
-                modifiedColumn: cursor.modifiedColumn,
-                lastCursorId: activeCursor.lastCursorId,
-                lastModifiedAt: activeCursor.lastModifiedAt,
-                columns: cursor.columns.map((c) => c.name),
-              }),
-        {
-          retryMax: DEFAULT_RETRY_MAX,
-          signal,
-          label: 'fetch_external_rows',
-          context: {
+    if (isBridgeTable) {
+      // ====== BRIDGE PATH ======
+      // Bridge generators handle pagination internally (no hasMore loop needed).
+      if (tableName === 'nossa') {
+        for await (const rawRows of iterateNossaOpen({ limit: DEFAULT_CHUNK_SIZE })) {
+          if (rawRows.length === 0) break;
+          await processRawRows(
+            rawRows as unknown as Record<string, unknown>[],
+            tableName,
+            batchId,
+            cursor,
+            result,
+            signal,
+          );
+          logger.info('[Ingestion] Bridge nossa page processed', {
             component: 'ingestion',
             tableName,
             batchId,
-            cursorStrategy: cursor.strategy,
-            snapshotOffset: usesSnapshotScan ? snapshotOffset : undefined,
-            lastCursorId: usesSnapshotScan ? undefined : activeCursor.lastCursorId,
-            lastModifiedAt: usesSnapshotScan
-              ? undefined
-              : activeCursor.lastModifiedAt?.toISOString() ?? null,
-          },
-          onRetry: () => {
-            result.retried++;
-          },
-        },
-      );
-
-      if (rawRows.length === 0) break;
-      const normalizedRows = rawRows.map((row) =>
-        normalizeExternalRow(row as unknown as ExternalRow, tableName),
-      );
-      for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
-        const rawWindow = rawRows.slice(
-          offset,
-          Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
-        ) as Record<string, unknown>[];
-        const normalizedWindow = normalizedRows.slice(
-          offset,
-          Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
-        );
-        const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
-        const nextCursor = getRowCursor(lastRaw, cursor);
-        const chunkResult = await withRetry(
-          () =>
-            processBatch(
-              normalizedWindow,
-              rawWindow,
+            mode,
+            pageRows: rawRows.length,
+            processed: result.processed,
+            inserted: result.inserted,
+            updated: result.updated,
+          });
+        }
+      } else if (tableName === 'nossa_closed') {
+        const isBackfill = mode === 'initial' || mode === 'force_resync';
+        if (isBackfill) {
+          const fromDate = '2026-01-01';
+          const toDate = new Date().toISOString().slice(0, 10);
+          for await (const { window: dateWindow, rows } of iterateNossaClosedBackfill(fromDate, toDate)) {
+            if (rows.length === 0) break;
+            await processRawRows(
+              rows as unknown as Record<string, unknown>[],
               tableName,
               batchId,
-              offset,
-              nextCursor,
               cursor,
               result,
               signal,
-            ),
+            );
+            logger.info('[Ingestion] Bridge backfill page processed', {
+              component: 'ingestion',
+              tableName,
+              batchId,
+              dateWindow,
+              pageRows: rows.length,
+              processed: result.processed,
+              inserted: result.inserted,
+              updated: result.updated,
+            });
+          }
+        } else {
+          for await (const rawRows of iterateNossaClosedIncremental(1)) {
+            if (rawRows.length === 0) break;
+            await processRawRows(
+              rawRows as unknown as Record<string, unknown>[],
+              tableName,
+              batchId,
+              cursor,
+              result,
+              signal,
+            );
+            logger.info('[Ingestion] Bridge incremental page processed', {
+              component: 'ingestion',
+              tableName,
+              batchId,
+              pageRows: rawRows.length,
+              processed: result.processed,
+              inserted: result.inserted,
+              updated: result.updated,
+            });
+          }
+        }
+      }
+      // Bridge tables don't use traditional cursor; just record last run time.
+      activeCursor = { lastCursorId: null, lastModifiedAt: nowWib() };
+      broadcastBridgeFreshness({
+        resource: tableName as 'nossa' | 'nossa_closed',
+        lastSyncedAt: nowWib().toISOString(),
+        lagSeconds: 0,
+      });
+    } else {
+      // ====== EXISTING MYSQL PATH ======
+      while (hasMore) {
+        assertNotAborted(signal);
+        const rawRows = await withRetry(
+          () =>
+            usesSnapshotScan
+              ? fetchTableRows(tableName, {
+                  limit: DEFAULT_CHUNK_SIZE,
+                  offset: snapshotOffset,
+                  orderBy: cursor.idColumn ?? cursor.columns[0]?.name ?? 'id',
+                  columns: cursor.columns.map((c) => c.name),
+                  dateFilterColumn: cursor.modifiedColumn,
+                  dateFilterStart: todayStart,
+                  dateFilterEnd: tomorrowStart,
+                })
+              : fetchTableRowsByCursor(tableName, {
+                  limit: DEFAULT_CHUNK_SIZE,
+                  idColumn: cursor.idColumn,
+                  modifiedColumn: cursor.modifiedColumn,
+                  lastCursorId: activeCursor.lastCursorId,
+                  lastModifiedAt: activeCursor.lastModifiedAt,
+                  columns: cursor.columns.map((c) => c.name),
+                }),
           {
             retryMax: DEFAULT_RETRY_MAX,
             signal,
-            label: 'process_batch',
+            label: 'fetch_external_rows',
             context: {
               component: 'ingestion',
               tableName,
               batchId,
-              chunkStartOffset: offset,
-              chunkSize: normalizedWindow.length,
+              cursorStrategy: cursor.strategy,
               snapshotOffset: usesSnapshotScan ? snapshotOffset : undefined,
+              lastCursorId: usesSnapshotScan ? undefined : activeCursor.lastCursorId,
+              lastModifiedAt: usesSnapshotScan
+                ? undefined
+                : activeCursor.lastModifiedAt?.toISOString() ?? null,
             },
             onRetry: () => {
               result.retried++;
@@ -1143,28 +1270,75 @@ async function processTable(
           },
         );
 
-        result.processed += chunkResult.processed;
-        result.inserted += chunkResult.inserted;
-        result.updated += chunkResult.updated;
-        result.skipped += chunkResult.skipped;
-        result.failed += chunkResult.failed;
-        result.quarantined += chunkResult.quarantined;
-        result.errors.push(...chunkResult.errors);
-        if (result.errors.length > 100) result.errors.length = 100;
-        activeCursor = {
-          lastCursorId: nextCursor.lastCursorId,
-          lastModifiedAt: normalizeModifiedCheckpoint(
-            cursor,
-            nextCursor.lastModifiedAt,
-          ),
-        };
+        if (rawRows.length === 0) break;
+        const normalizedRows = rawRows.map((row) =>
+          normalizeExternalRow(row as unknown as ExternalRow, tableName),
+        );
+        for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+          const rawWindow = rawRows.slice(
+            offset,
+            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+          ) as Record<string, unknown>[];
+          const normalizedWindow = normalizedRows.slice(
+            offset,
+            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+          );
+          const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
+          const nextCursor = getRowCursor(lastRaw, cursor);
+          const chunkResult = await withRetry(
+            () =>
+              processBatch(
+                normalizedWindow,
+                rawWindow,
+                tableName,
+                batchId,
+                offset,
+                nextCursor,
+                cursor,
+                result,
+                signal,
+              ),
+            {
+              retryMax: DEFAULT_RETRY_MAX,
+              signal,
+              label: 'process_batch',
+              context: {
+                component: 'ingestion',
+                tableName,
+                batchId,
+                chunkStartOffset: offset,
+                chunkSize: normalizedWindow.length,
+                snapshotOffset: usesSnapshotScan ? snapshotOffset : undefined,
+              },
+              onRetry: () => {
+                result.retried++;
+              },
+            },
+          );
+
+          result.processed += chunkResult.processed;
+          result.inserted += chunkResult.inserted;
+          result.updated += chunkResult.updated;
+          result.skipped += chunkResult.skipped;
+          result.failed += chunkResult.failed;
+          result.quarantined += chunkResult.quarantined;
+          result.errors.push(...chunkResult.errors);
+          if (result.errors.length > 100) result.errors.length = 100;
+          activeCursor = {
+            lastCursorId: nextCursor.lastCursorId,
+            lastModifiedAt: normalizeModifiedCheckpoint(
+              cursor,
+              nextCursor.lastModifiedAt,
+            ),
+          };
+        }
+        if (usesSnapshotScan) {
+          activeCursor = { lastCursorId: null, lastModifiedAt: null };
+          snapshotOffset += rawRows.length;
+        }
+        hasMore = rawRows.length === DEFAULT_CHUNK_SIZE;
+        logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
       }
-      if (usesSnapshotScan) {
-        activeCursor = { lastCursorId: null, lastModifiedAt: null };
-        snapshotOffset += rawRows.length;
-      }
-      hasMore = rawRows.length === DEFAULT_CHUNK_SIZE;
-      logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
     }
 
     const successData = {

@@ -42,6 +42,23 @@ export async function publishTicketInvalidate(reason?: string) {
   await redis.publish('sse:tickets', payload);
 }
 
+export async function publishTicketViewers(payload: {
+  ticketId: string;
+  viewers: Array<{ userId: string; userName: string; role: string }>;
+  viewerCount: number;
+}) {
+  if (!isRedisReady()) {
+    logger.warn('[SSE-Redis] Redis not ready, skipping publish');
+    return;
+  }
+  const message = JSON.stringify({
+    type: 'ticket:viewers',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  await redis.publish('sse:tickets', message);
+}
+
 function isRedisReady(): boolean {
   return redis?.status === 'ready';
 }
