@@ -61,8 +61,8 @@ Maps external column names → internal snake_case. 6 bridge-specific mappings:
 - `GET /api/nossa/search?incident=INC51123643`
 - Auth: admin, teknisi, helpdesk, superadmin
 - Rate limit: 30 req/60s
-- Priority: `interactive` (didahulukan dari background sync)
-- Menggunakan `fetchByIncidentAnyStatus()` → coba `nossa` dulu, fallback ke `nossa_closed`
+- Query `ticket_raw` lokal via Prisma (tidak konsumsi rate limit bridge)
+- Menentukan `resource` dari `row.sourceTable`
 
 ### 6. Backfill Script (`scripts/qosmic-bridge-backfill.ts`)
 - `npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14`
@@ -97,10 +97,8 @@ scheduleEveryMinutes(STATUS_REFRESH_INTERVAL_MINUTES)
 ### Search (real-time, via API)
 ```
 GET /api/nossa/search?incident=INC51123643
-  → enqueueBridgeCall(fetchByIncidentAnyStatus, 'interactive')
-    → fetchByIncident('nossa', incident) → jika ketemu, return
-    → fetchByIncident('nossa_closed', incident) → jika ketemu, return
-  → normalizeExternalRow
+  → prisma.ticket_raw.findFirst({ where: { incident } })
+  → resource = row.sourceTable === 'nossa' ? 'nossa' : 'nossa_closed'
   → return { success, data, resource, found }
 ```
 
@@ -117,10 +115,10 @@ npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14
 
 | Pemicu | Worker/Script | Interval | Data |
 |--------|--------------|----------|------|
-| Periodik | `dompis-ingestion-worker` | Tiap `INGESTION_INTERVAL_MINUTES` (2 menit) | `nossa`: full scan; `nossa_closed`: 1 hari terakhir |
-| Startup | `dompis-ingestion-worker` | Sekali saat start (`RUN_ON_START=true`) | Sama seperti periodik |
-| Status refresh | `dompis-status-refresh-worker` | Tiap `STATUS_REFRESH_INTERVAL_MINUTES` (1 menit) | Per-ticket lookup untuk ticket yang stale |
-| Active refresh | `dompis-active-refresh-worker` | Tiap `ACTIVE_REFRESH_INTERVAL_MINUTES` (3 menit) | Per-ticket lookup untuk ticket aktif |
+| Periodik | `dompis-data-worker` | Tiap 1 menit (saat lock didapat) | `nossa`: full scan; `nossa_closed`: 7 hari terakhir |
+| Startup | `dompis-data-worker` | Sekali saat start (`RUN_ON_START=true`) | Sama seperti periodik |
+| Status refresh | `dompis-data-worker` | Tiap 1 menit (fase setelah ingestion) | Per-ticket lookup untuk ticket yang stale |
+| Active refresh | `dompis-data-worker` | Tiap 1 menit (fase setelah status refresh) | Per-ticket lookup untuk ticket aktif |
 | User search | API `GET /api/nossa/search` | On-demand via UI | Single incident lookup |
 | Backfill | `npm run bridge:backfill` | One-shot manual | `nossa_closed` historical range |
 | Force resync | `npm run ingestion:force-resync` | One-shot manual | Full backfill + incremental |
@@ -135,12 +133,14 @@ npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14
 - `QOSMIC_BRIDGE_TIMEOUT_MS=15000` — request timeout
 - `QOSMIC_BRIDGE_RETRY_MAX=4` — max retries
 - `QOSMIC_BRIDGE_MAX_CONCURRENT=3` — local concurrency
+- `QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN=6` — budget backfill (sisa 14 untuk ingestion+refresh)
+- `DATA_WORKER_BACKFILL_ENABLED=true` — aktifkan backfill startup di data-worker
 
 Jika `QOSMIC_BRIDGE_ENABLED=false` atau tidak dikonfigurasi, fallback penuh ke MySQL langsung.
 
 ## Catatan Penting
 
-- **Rate limit 20 req/menit** shared untuk SEMUA konsumen (ingestion + status refresh + search). Budget: ingestion ~3.5 req/min, status refresh ~15 req/min, search interaktif memotong antrian.
+- **Rate limit 20 req/menit** shared untuk SEMUA konsumen. Budget: data-worker (ingestion + refresh) 14 req/min, backfill 6 req/min. Search interaktif tidak konsumsi rate limit (query lokal).
 - **Queue priority**: `interactive` (UI search) selalu didahulukan dari `background` (sync workers).
 - **Bulk vs single**: Bridge tidak punya batch endpoint. Ingestion pakai paginated iterators; status refresh pakai per-ticket lookup.
 - **Overflow handling**: Jika window `nossa_closed` > 5000 baris, window di-bisect otomatis.

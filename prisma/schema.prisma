@@ -319,19 +319,13 @@ model ticket {
 
   @@index([teknisi_user_id], map: "fk_ticket_user")
   @@index([teknisi_user_id, status_update, rk_information], map: "idx_auto_assign_lookup")
-  @@index([customer_type, sync_date], map: "idx_ctype_sync")
   @@index([customer_type], map: "idx_customer_type")
   @@index([jenis_tiket_1], map: "idx_jenis_tiket_1")
   @@index([jenis_tiket_2], map: "idx_jenis_tiket_2")
-  @@index([pending_reason, sync_date], map: "idx_pending_sync")
   @@index([status_update], map: "idx_status_update")
   @@index([sync_date], map: "idx_sync_date")
-  @@index([sync_date, status, reported_date], map: "idx_ticket_daily_sync_status_reported")
-  @@index([sync_date, status_update], map: "idx_sync_status")
-  @@index([sync_date, workzone], map: "idx_sync_workzone")
   @@index([status_update, status, reported_date], map: "idx_ticket_validasi_status_reported")
   @@index([teknisi_user_id, status_update], map: "idx_tech_status")
-  @@index([sync_date, teknisi_user_id, status_update, rk_information, jam_expired], map: "idx_ticket_autoassign_daily")
   @@index([flagging_manja], map: "idx_ticket_flagging")
   @@index([guarantee_status], map: "idx_ticket_guarantee")
   @@index([service_no], map: "idx_ticket_search_service_no")
@@ -344,16 +338,13 @@ model ticket {
   @@index([worklog_summary, status, reported_date], map: "idx_ticket_validasi_worklog_reported")
   @@index([status], map: "idx_ticket_status")
   @@index([witel], map: "idx_ticket_witel")
-  @@index([sync_date, jenis_tiket_1], map: "idx_sync_date_jenis1")
-  @@index([sync_date, customer_type, status_update], map: "idx_ops_sync_ctype_status")
-  @@index([sync_date, customer_type, jenis_tiket_2], map: "idx_ops_sync_ctype_jenis2")
   @@index([workzone, status_update], map: "idx_ticket_sync_workzone_statusupdate")
-  @@index([sync_date, status_update, booking_date, customer_type], map: "idx_ticket_daily_board")
-  @@index([sync_date, status_update, reported_date, customer_type], map: "idx_ticket_daily_validasi")
   @@index([synced_at, id_ticket], map: "idx_ticket_active_refresh_synced")
   @@index([customer_segment], map: "idx_ticket_customer_segment")
   @@index([source_ticket], map: "idx_ticket_source_ticket")
   @@index([closed_at], map: "idx_ticket_closed_at")
+  @@index([workzone, status, status_update, closed_at], map: "idx_ticket_dashboard_main")
+  @@index([teknisi_user_id, status, status_update, closed_at], map: "idx_ticket_teknisi_dashboard")
 }
 
 model ticket_activity_log {
@@ -856,6 +847,7 @@ model projection_request {
   processedAt   DateTime? @map("processed_at") @db.Timestamp(0)
 
   @@index([processedAt, id])
+  @@index([source, syncBatchId, createdAt], map: "idx_projection_request_source_created")
   @@map("projection_request")
 }
 
