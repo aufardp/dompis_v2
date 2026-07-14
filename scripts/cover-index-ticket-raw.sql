@@ -22,3 +22,10 @@ DROP INDEX `ticket_raw_customer_id_service_no_reported_date_idx` ON ticket_raw;
 -- 4. Drop index sourceHash tunggal — sudah tercover oleh idx_ticket_raw_lookup
 --    sourceHash hanya muncul sebagai SELECT, bukan di WHERE/JOIN
 DROP INDEX `ticket_raw_sourceHash_idx` ON ticket_raw;
+
+-- 5. Drop index (sourceTable, incident) — incident sudah unique key,
+--    query WHERE sourceTable= ? sudah dilayani oleh idx_ticket_raw_source_updated
+DROP INDEX `ticket_raw_sourceTable_incident_idx` ON ticket_raw;
+
+-- 6. Update statistik agar optimizer MySQL pakai index baru dengan benar
+ANALYZE TABLE ticket_raw;
