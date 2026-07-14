@@ -908,9 +908,29 @@ async function recordMetrics(
   }
 }
 
+const PROJECTION_DEBOUNCE_KEY = 'projection:debounce';
+const PROJECTION_DEBOUNCE_SECONDS = 30;
+
 async function requestImmediateProjection(syncBatchId: string): Promise<void> {
   if (process.env.STATUS_REFRESH_TRIGGER_PROJECTION === 'false') return;
   if (!isRedisReady()) return;
+
+  // Debounce: hanya publish sekali setiap 30 detik untuk mengurangi flood
+  // ke projection worker.
+  try {
+    const setResult = await redis.set(
+      PROJECTION_DEBOUNCE_KEY,
+      Date.now().toString(),
+      'EX',
+      PROJECTION_DEBOUNCE_SECONDS,
+      'NX',
+    );
+    if (setResult !== 'OK') {
+      return;
+    }
+  } catch {
+    // Redis error — tetap lanjut (fail-open)
+  }
 
   await redis.publish(
     PROJECTION_REQUEST_CHANNEL,

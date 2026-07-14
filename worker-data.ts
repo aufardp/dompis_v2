@@ -97,6 +97,9 @@ async function runWeeklyBackfill(): Promise<void> {
   });
 }
 
+const PROJECTION_DEBOUNCE_KEY = 'projection:debounce';
+const PROJECTION_DEBOUNCE_SECONDS = 30;
+
 async function requestImmediateProjection(syncBatchId?: string | null): Promise<void> {
   if (process.env.DATA_WORKER_TRIGGER_PROJECTION === 'false') return;
 
@@ -119,6 +122,23 @@ async function requestImmediateProjection(syncBatchId?: string | null): Promise<
       batchId: syncBatchId,
     });
     return;
+  }
+
+  // Debounce: hanya publish sekali setiap 30 detik untuk mengurangi flood
+  // ke projection worker.
+  try {
+    const setResult = await redis.set(
+      PROJECTION_DEBOUNCE_KEY,
+      Date.now().toString(),
+      'EX',
+      PROJECTION_DEBOUNCE_SECONDS,
+      'NX',
+    );
+    if (setResult !== 'OK') {
+      return; // masih dalam window debounce, skip
+    }
+  } catch {
+    // Redis error — tetap lanjut publish (fail-open)
   }
 
   try {

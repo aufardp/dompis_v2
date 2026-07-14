@@ -424,9 +424,29 @@ async function runLimited<T>(
   }
 }
 
+const PROJECTION_DEBOUNCE_KEY = 'projection:debounce';
+const PROJECTION_DEBOUNCE_SECONDS = 30;
+
 async function requestProjectionRefresh(syncBatchId?: string | null): Promise<void> {
   if (process.env.INGESTION_TRIGGER_PROJECTION === 'false') return;
   if (!isRedisReady()) return;
+
+  // Debounce: hanya publish sekali setiap 30 detik untuk mengurangi flood
+  // ke projection worker. Ingestion per-page bisa trigger berkali-kali.
+  try {
+    const setResult = await redis.set(
+      PROJECTION_DEBOUNCE_KEY,
+      Date.now().toString(),
+      'EX',
+      PROJECTION_DEBOUNCE_SECONDS,
+      'NX',
+    );
+    if (setResult !== 'OK') {
+      return; // masih dalam window debounce, skip
+    }
+  } catch {
+    // Redis error — tetap lanjut publish (fail-open)
+  }
 
   try {
     await redis.publish(
