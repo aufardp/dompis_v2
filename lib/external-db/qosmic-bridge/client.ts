@@ -17,22 +17,33 @@ import { checkRateLimit } from '@/lib/ratelimit';
 import { isRedisReady } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 
-const BASE_URL = process.env.QOSMIC_BRIDGE_BASE_URL; // e.g. https://qosmic.solusee.id/api/metabase-bridge
+const BASE_URL = process.env.QOSMIC_BRIDGE_BASE_URL;
 const TOKEN = process.env.QOSMIC_BRIDGE_TOKEN;
+
+// Global bridge limit: 20 req/min shared across all consumers.
+// We split into two reserved budgets:
+//   - 14 req/min for ingestion + status refresh (key: qosmic-bridge:global)
+//   - 6 req/min for backfill (key: qosmic-bridge:backfill)
+// This prevents backfill from starving day-to-day sync operations.
 const RATE_LIMIT_PER_MIN = parsePositiveIntEnv(
   'QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN',
   20,
 );
+const RATE_LIMIT_BACKFILL_PER_MIN = parsePositiveIntEnv(
+  'QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN',
+  6,
+);
+const RATE_LIMIT_NON_BACKFILL_PER_MIN = RATE_LIMIT_PER_MIN - RATE_LIMIT_BACKFILL_PER_MIN;
+
+export const RATE_LIMIT_KEY = 'qosmic-bridge:global';
+export const RATE_LIMIT_KEY_BACKFILL = 'qosmic-bridge:backfill';
+
 const REQUEST_TIMEOUT_MS = parsePositiveIntEnv(
   'QOSMIC_BRIDGE_TIMEOUT_MS',
   15_000,
 );
 const MAX_RETRIES = parsePositiveIntEnv('QOSMIC_BRIDGE_RETRY_MAX', 4);
 const RETRY_BASE_MS = parsePositiveIntEnv('QOSMIC_BRIDGE_RETRY_BASE_MS', 800);
-
-// Global limiter key — SATU key untuk semua endpoint karena limit dokumentasinya
-// per API key, bukan per endpoint.
-const RATE_LIMIT_KEY = 'qosmic-bridge:global';
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -72,23 +83,44 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const localTimestamps: number[] = [];
+// Per-key local timestamps for in-memory rate limit fallback.
+const localTimestampsByKey = new Map<string, number[]>();
 let localFallbackActive = false;
 let lastRedisRecoverCheck = 0;
 const REDIS_RECOVER_INTERVAL_MS = 30_000;
 
-function checkLocalRateLimit(limit: number): boolean {
+function getLimitForKey(key: string): number {
+  return key === RATE_LIMIT_KEY_BACKFILL
+    ? RATE_LIMIT_BACKFILL_PER_MIN
+    : RATE_LIMIT_NON_BACKFILL_PER_MIN;
+}
+
+function checkLocalRateLimit(key: string, limit: number): boolean {
   const now = Date.now();
   const windowStart = now - 60_000;
 
-  while (localTimestamps.length > 0 && localTimestamps[0] < windowStart) {
-    localTimestamps.shift();
+  let timestamps = localTimestampsByKey.get(key);
+  if (!timestamps) {
+    timestamps = [];
+    localTimestampsByKey.set(key, timestamps);
   }
 
-  if (localTimestamps.length >= limit) return false;
+  while (timestamps.length > 0 && timestamps[0] < windowStart) {
+    timestamps.shift();
+  }
 
-  localTimestamps.push(now);
+  if (timestamps.length >= limit) return false;
+
+  timestamps.push(now);
   return true;
+}
+
+function clearLocalTimestamps(key?: string): void {
+  if (key) {
+    localTimestampsByKey.set(key, []);
+  } else {
+    localTimestampsByKey.clear();
+  }
 }
 
 /**
@@ -96,12 +128,17 @@ function checkLocalRateLimit(limit: number): boolean {
  *   1. Redis sliding window (cross-process, akurat) — primary
  *   2. In-memory per-process counter — fallback kalau Redis down
  *
- * Saat Redis pulih, otomatis balik ke mode normal tanpa restart.
- * Dipanggil SEBELUM setiap HTTP request ke bridge.
+ * `rateLimitKey` menentukan budget mana yang dipakai:
+ *   - 'qosmic-bridge:backfill'   → 6 req/min
+ *   - 'qosmic-bridge:global'     → 14 req/min (default, untuk ingestion + refresh)
  */
-async function waitForRateLimitSlot(label: string): Promise<void> {
+async function waitForRateLimitSlot(
+  label: string,
+  key: string = RATE_LIMIT_KEY,
+): Promise<void> {
   const maxWaitMs = 90_000;
   const waitStart = Date.now();
+  const limit = getLimitForKey(key);
 
   for (;;) {
     if (Date.now() - waitStart > maxWaitMs) {
@@ -115,8 +152,8 @@ async function waitForRateLimitSlot(label: string): Promise<void> {
     if (useRedis) {
       try {
         const result = await checkRateLimit(
-          RATE_LIMIT_KEY,
-          RATE_LIMIT_PER_MIN,
+          key,
+          limit,
           60,
           { failOpen: false },
         );
@@ -124,7 +161,7 @@ async function waitForRateLimitSlot(label: string): Promise<void> {
           if (localFallbackActive) {
             logger.info('[QosmicBridge] Redis pulih, kembali ke mode normal');
             localFallbackActive = false;
-            localTimestamps.length = 0;
+            clearLocalTimestamps();
           }
           return;
         }
@@ -132,8 +169,9 @@ async function waitForRateLimitSlot(label: string): Promise<void> {
         const waitMs = Math.max(250, result.resetAt * 1000 - Date.now());
         logger.info('[QosmicBridge] Menunggu slot rate-limit', {
           label,
+          key,
           waitMs,
-          limitPerMin: RATE_LIMIT_PER_MIN,
+          limitPerMin: limit,
         });
         await sleep(Math.min(waitMs, 5_000));
         continue;
@@ -141,21 +179,23 @@ async function waitForRateLimitSlot(label: string): Promise<void> {
         if (!localFallbackActive) {
           logger.warn('[QosmicBridge] Redis gagal, fallback ke rate limit lokal', {
             label,
+            key,
             error: error instanceof Error ? error.message : String(error),
           });
           localFallbackActive = true;
           lastRedisRecoverCheck = Date.now();
-          localTimestamps.length = 0;
+          clearLocalTimestamps();
         }
         lastRedisRecoverCheck = Date.now();
       }
     }
 
-    if (!checkLocalRateLimit(RATE_LIMIT_PER_MIN)) {
+    if (!checkLocalRateLimit(key, limit)) {
       logger.info('[QosmicBridge] Rate limit lokal penuh, menunggu...', {
         label,
-        used: localTimestamps.length,
-        limit: RATE_LIMIT_PER_MIN,
+        key,
+        used: localTimestampsByKey.get(key)?.length ?? 0,
+        limit,
       });
       await sleep(5_000);
       continue;
@@ -171,7 +211,10 @@ function isRetryableStatus(status: number): boolean {
 
 export interface QosmicBridgeRequestOptions {
   query?: Record<string, string | number | undefined>;
-  label: string; // untuk logging/observability, mis. 'nossa.list', 'nossa_closed.by_incident'
+  label: string;
+  /** Rate limit key. Default 'qosmic-bridge:global' (14 req/min).
+   *  Backfill should pass 'qosmic-bridge:backfill' (6 req/min). */
+  rateLimitKey?: string;
 }
 
 /**
@@ -201,7 +244,7 @@ export async function qosmicBridgeGet<T = unknown>(
 
   let attempt = 0;
   while (true) {
-    await waitForRateLimitSlot(options.label);
+    await waitForRateLimitSlot(options.label, options.rateLimitKey);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

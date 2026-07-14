@@ -42,7 +42,7 @@ function deriveCriticalSummary(panels: PanelData[]): CriticalSummary {
 
   for (const panel of panels) {
     for (const area of panel.areas) {
-      const areaOpen = area.sas.reduce((s, sa) => s + sa.counts.reduce((ss, v) => ss + v, 0), 0);
+      const areaOpen = (area.sas ?? []).reduce((s, sa) => sa ? s + (sa.counts ?? []).reduce((ss, v) => ss + v, 0) : s, 0);
       if (areaOpen > maxAreaOpen) {
         maxAreaOpen = areaOpen;
         worstArea = area.name;

@@ -181,6 +181,7 @@ function groupTicketsByBucket(
 
   for (const ticket of assignedTickets) {
     const bucket = initial[getBucketKey(ticket)];
+    if (!bucket) continue;
     const status = String(ticket.statusUpdate ?? '').toLowerCase();
     if (status === 'on_progress') bucket.counts.on_progress += 1;
     else if (status === 'pending') bucket.counts.pending += 1;
@@ -190,6 +191,7 @@ function groupTicketsByBucket(
 
   for (const ticket of closedTickets) {
     const bucket = initial[getBucketKey(ticket)];
+    if (!bucket) continue;
     bucket.counts.closed += 1;
     pushJenis(bucket, ticket);
   }

@@ -56,8 +56,6 @@ const SCHEDULE_OFFSET = 0;
 const state = createTaskState();
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
 
-const BACKFILL_SCHEDULE_MINUTES = 7 * 24 * 60; // 7 hari
-
 async function runWeeklyBackfill(): Promise<void> {
   if (process.env.DATA_WORKER_BACKFILL_ENABLED !== 'true') return;
   if (!isQosmicBridgeConfigured()) return;
@@ -405,11 +403,18 @@ async function startWorker(): Promise<void> {
     scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => void runDataWorkerTask()), 'data-worker', SCHEDULE_OFFSET, { maxIntervalMinutes: 10, idleThreshold: 5 }),
   );
 
-  scheduledTasks.push(
-    scheduleEveryMinutes(BACKFILL_SCHEDULE_MINUTES, () => runWithCorrelationContext('weekly-backfill', () => void runWeeklyBackfill()), 'weekly-backfill', 60),
-  );
+  // Backfill: run once after startup delay, not on recurring schedule.
+  // This avoids long-running contention with the data worker's shared bridge
+  // rate-limit budget (20 req/min total: 14 for ingestion+refresh, 6 for backfill).
+  const BACKFILL_STARTUP_DELAY_MS = 5 * 60 * 1000;
+  const backfillTimer = setTimeout(() => {
+    runWithCorrelationContext('weekly-backfill', () => void runWeeklyBackfill());
+  }, BACKFILL_STARTUP_DELAY_MS);
 
-  installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
+  installShutdownHandlers(WORKER_NAME, scheduledTasks, state, () => {
+    clearTimeout(backfillTimer);
+    return Promise.resolve();
+  });
 
   if (RUN_ON_START) {
     runWithCorrelationContext(WORKER_NAME, () => void runDataWorkerTask());

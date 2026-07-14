@@ -2,7 +2,7 @@
 // QOSMIC Bridge — fungsi level tinggi utk nossa & nossa_closed
 // ==========================================
 
-import { qosmicBridgeGet, QosmicBridgeError } from './client';
+import { qosmicBridgeGet, QosmicBridgeError, RATE_LIMIT_KEY_BACKFILL } from './client';
 import { QosmicQueryResponse, QosmicRawRow, QosmicResource } from './types';
 import {
   DateWindow,
@@ -30,6 +30,7 @@ async function listPage<T = QosmicRawRow>(
   resource: QosmicResource,
   params: ListQueryParams & { offset: number },
   label: string,
+  rateLimitKey?: string,
 ): Promise<QosmicQueryResponse<T>> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
   return qosmicBridgeGet<QosmicQueryResponse<T>>(resourcePath(resource), {
@@ -41,6 +42,7 @@ async function listPage<T = QosmicRawRow>(
       limit,
       offset: params.offset,
     },
+    rateLimitKey,
   });
 }
 
@@ -143,6 +145,7 @@ export async function* iterateNossaOpen<T = QosmicRawRow>(
 export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
   window: DateWindow,
   params: Omit<ListQueryParams, 'dateFrom' | 'dateTo'> = {},
+  rateLimitKey?: string,
 ): AsyncGenerator<T[], void, void> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
   const buffer: T[][] = [];
@@ -160,6 +163,7 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
         offset,
       },
       'nossa_closed.window',
+      rateLimitKey,
     );
 
     if (res.data.length === 0) break;
@@ -202,7 +206,7 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
     },
   );
   for (const half of halves) {
-    yield* iterateNossaClosedWindow<T>(half, params);
+    yield* iterateNossaClosedWindow<T>(half, params, rateLimitKey);
   }
 }
 
@@ -228,6 +232,8 @@ export async function* iterateNossaClosedIncremental<T = QosmicRawRow>(
  * Backfill historis penuh (one-off script, BUKAN untuk dipanggil worker
  * interval-menit). Dari `fromDate` (di-clamp otomatis oleh API ke
  * 2026-01-01 kalau lebih awal) s/d `toDate`.
+ * Menggunakan budget rate-limit terpisah (6 req/min) agar tidak mengganggu
+ * ingestion dan status refresh yang berjalan di process yang sama.
  */
 export async function* iterateNossaClosedBackfill<T = QosmicRawRow>(
   fromDate: string,
@@ -243,8 +249,10 @@ export async function* iterateNossaClosedBackfill<T = QosmicRawRow>(
   });
 
   for (const window of windows) {
-    for await (const rows of iterateNossaClosedWindow<T>(window, params)) {
+    for await (const rows of iterateNossaClosedWindow<T>(window, params, RATE_LIMIT_KEY_BACKFILL)) {
       yield { window, rows };
     }
   }
 }
+
+

@@ -78,7 +78,7 @@ export default function TicketDurationPanel({
     let bestName = '-';
     let bestCount = 0;
     for (const area of panel.areas) {
-      const areaCount = area.sas.reduce((sum, sa) => sum + sa.counts.reduce((s, v) => s + v, 0), 0);
+      const areaCount = (area.sas ?? []).reduce((sum, sa) => sa ? sum + (sa.counts ?? []).reduce((s, v) => s + v, 0) : sum, 0);
       if (areaCount > bestCount) {
         bestCount = areaCount;
         bestName = area.name;
