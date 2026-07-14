@@ -61,6 +61,10 @@ const DEFAULT_TRANSACTION_TIMEOUT_MS = parsePositiveIntEnv(
 const MYSQL_MAX_PREPARED_STATEMENT_PLACEHOLDERS = 65_535;
 const MYSQL_PLACEHOLDER_SAFETY_MARGIN = 5_000;
 
+// Adaptive backoff: turunkan chunk size otomatis saat timeout
+let adaptiveWriteChunkSize = DEFAULT_WRITE_CHUNK_SIZE;
+const MIN_WRITE_CHUNK_SIZE = 10;
+
 const TRANSIENT_ERROR_PATTERNS = [
   'deadlock',
   'lock wait timeout',
@@ -965,14 +969,14 @@ export async function processRawRows(
   const normalizedRows = rawRows.map((row) =>
     normalizeExternalRow(row as unknown as ExternalRow, tableName),
   );
-  for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+  for (let offset = 0; offset < rawRows.length; offset += adaptiveWriteChunkSize) {
     const rawWindow = rawRows.slice(
       offset,
-      Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+      Math.min(offset + adaptiveWriteChunkSize, rawRows.length),
     ) as Record<string, unknown>[];
     const normalizedWindow = normalizedRows.slice(
       offset,
-      Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+      Math.min(offset + adaptiveWriteChunkSize, normalizedRows.length),
     );
     const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
     const nextCursor = getRowCursor(lastRaw, cursor);
@@ -1001,6 +1005,10 @@ export async function processRawRows(
           chunkSize: normalizedWindow.length,
         },
         onRetry: () => {
+          adaptiveWriteChunkSize = Math.max(
+            MIN_WRITE_CHUNK_SIZE,
+            Math.floor(adaptiveWriteChunkSize / 2),
+          );
           result.retried++;
         },
       },
@@ -1196,7 +1204,7 @@ async function processTable(
             });
           }
         } else {
-          for await (const rawRows of iterateNossaClosedIncremental(1)) {
+          for await (const rawRows of iterateNossaClosedIncremental(7)) {
             if (rawRows.length === 0) break;
             await processRawRows(
               rawRows as unknown as Record<string, unknown>[],

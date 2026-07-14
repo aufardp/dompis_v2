@@ -1,10 +1,13 @@
 import 'dotenv/config';
 import { connectDB, prisma } from '@/app/libs/prisma';
-import { runIngestion } from '@/lib/ingestion';
+import { runIngestion, processRawRows } from '@/lib/ingestion';
+import type { ChunkResult } from '@/lib/ingestion';
 import { runStatusRefresh } from '@/lib/status-refresh';
 import { runActiveRefresh } from '@/lib/active-refresh';
 import { isRedisReady, redis } from '@/lib/redis';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
+import { iterateNossaClosedBackfill } from '@/lib/external-db/qosmic-bridge/nossa';
+import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
 import {
   cleanupWorkerLock,
   createTaskState,
@@ -52,6 +55,49 @@ const SCHEDULE_OFFSET = 0;
 
 const state = createTaskState();
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
+
+const BACKFILL_SCHEDULE_MINUTES = 7 * 24 * 60; // 7 hari
+
+async function runWeeklyBackfill(): Promise<void> {
+  if (process.env.DATA_WORKER_BACKFILL_ENABLED !== 'true') return;
+  if (!isQosmicBridgeConfigured()) return;
+
+  const now = new Date();
+  const dateTo = now.toISOString().slice(0, 10);
+  const from = new Date(now);
+  from.setDate(from.getDate() - 14);
+  const dateFrom = from.toISOString().slice(0, 10);
+
+  const batchId = `weekly-backfill-${Date.now()}`;
+  const cursor = { idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot' as const, columns: [] };
+  const result: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+
+  logger.info('[WeeklyBackfill] Starting', { dateFrom, dateTo, batchId });
+
+  try {
+    for await (const { window: dateWindow, rows } of iterateNossaClosedBackfill(dateFrom, dateTo)) {
+      if (rows.length === 0) continue;
+      await processRawRows(
+        rows as unknown as Record<string, unknown>[],
+        'nossa_closed',
+        batchId,
+        cursor,
+        result,
+      );
+    }
+  } catch (error) {
+    logger.error('[WeeklyBackfill] Gagal', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  logger.info('[WeeklyBackfill] Selesai', {
+    processed: result.processed,
+    inserted: result.inserted,
+    updated: result.updated,
+  });
+}
 
 async function requestImmediateProjection(syncBatchId?: string | null): Promise<void> {
   if (process.env.DATA_WORKER_TRIGGER_PROJECTION === 'false') return;
@@ -357,6 +403,10 @@ async function startWorker(): Promise<void> {
 
   scheduledTasks.push(
     scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => void runDataWorkerTask()), 'data-worker', SCHEDULE_OFFSET, { maxIntervalMinutes: 10, idleThreshold: 5 }),
+  );
+
+  scheduledTasks.push(
+    scheduleEveryMinutes(BACKFILL_SCHEDULE_MINUTES, () => runWithCorrelationContext('weekly-backfill', () => void runWeeklyBackfill()), 'weekly-backfill', 60),
   );
 
   installShutdownHandlers(WORKER_NAME, scheduledTasks, state);

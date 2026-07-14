@@ -404,7 +404,7 @@ export default function TechnicianSummaryTable({
                   </td>
 
                   {BUCKET_COLUMNS.flatMap((bucket) => {
-                    const group = bucketGroups[bucket.key];
+                    const group = bucketGroups[bucket.key] ?? emptyBucketGroup(bucket.key);
                     const style = BUCKET_STYLES[bucket.key];
                     const cells: Array<{
                       key: BucketStatusKey;

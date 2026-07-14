@@ -112,7 +112,7 @@ export default function DurationTable({
             return (
               <Fragment key={area.name}>
                 {(() => {
-                  const areaCounts = area.sas.reduce(
+                  const areaCounts = area.sas.filter(Boolean).reduce(
                     (acc, sa) => sa.counts.map((c, i) => acc[i] + c),
                     new Array<number>(bucketCount).fill(0),
                   );
@@ -153,7 +153,7 @@ export default function DurationTable({
                     </tr>
                   );
                 })()}
-                {isExpanded && area.sas.map((sa) => {
+                {isExpanded && area.sas.filter(Boolean).map((sa) => {
                   const saTotal = sa.counts.reduce((s, v) => s + v, 0);
                   return (
                     <tr key={`${area.name}-${sa.name}`} className="hover:bg-(--surface-2)">
