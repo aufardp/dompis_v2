@@ -102,6 +102,7 @@ module.exports = {
         DATA_WORKER_CIRCUIT_RESET_MINUTES: '10',
         DATA_WORKER_RUN_ON_START: 'true',
         DATA_WORKER_TRIGGER_PROJECTION: 'true',
+        EXTERNAL_TABLE_NAMES: 'nossa,nossa_closed,piloting_tickets',
         INGESTION_ENABLED: 'true',
         INGESTION_TIMEOUT_MINUTES: '30',
         INGESTION_CHUNK_SIZE: '300',
