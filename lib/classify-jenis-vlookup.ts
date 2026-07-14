@@ -273,6 +273,14 @@ function classifyB2C(input: JenisVlookupInput): JenisVlookupResult {
     }
   }
 
+  // Fallback untuk B2C (PL-TSEL/DCS) tanpa channel yang match
+  if (!jenis1) {
+    const st = (service_type ?? '').trim().toUpperCase();
+    if (['INTERNET', 'VOICE', 'IPTV'].includes(st)) {
+      jenis1 = 'REGULER';
+    }
+  }
+
   // jenis_tiket_2
   let jenis2: string | null = null;
 

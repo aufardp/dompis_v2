@@ -21,6 +21,7 @@
     "ingestion:recovery": "tsx scripts/ingestion-recovery.ts",
     "ingestion:force-resync": "tsx scripts/ingestion-force-resync.ts",
     "ingestion:reconcile": "tsx scripts/ingestion-reconcile.ts",
+    "backfill:jenis-tiket": "tsx scripts/backfill-jenis-tiket.ts",
     "test:ingestion": "tsx scripts/test-ingestion.ts",
     "projection:initial": "tsx scripts/projection-initial.ts",
     "projection:incremental": "tsx scripts/projection-incremental.ts",
