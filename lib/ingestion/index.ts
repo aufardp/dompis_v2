@@ -776,7 +776,7 @@ async function processBatch(
                   }>
                 >(
                   `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt
-                   FROM ticket_raw FORCE INDEX (ticket_raw_incident_key)
+                   FROM ticket_raw
                    WHERE incident IN (${chunk.map(() => '?').join(',')})`,
                   ...chunk,
                 ),
