@@ -1019,7 +1019,9 @@ export async function runStatusRefresh(
       if (shouldStopForBudget(start)) break;
 
       processedTables.add(sourceTable);
-      const externalRows = isQosmicBridgeConfigured()
+      const BRIDGE_TABLES = new Set(['nossa', 'nossa_closed']);
+      const useBridge = BRIDGE_TABLES.has(sourceTable) && isQosmicBridgeConfigured();
+      const externalRows = useBridge
         ? await fetchExternalRowsViaBridge(
             sourceTable,
             tableCandidates.map((row) => row.incident),
@@ -1082,11 +1084,13 @@ export async function runStatusRefresh(
       broadcastTicketInvalidate('status-refresh');
     }
     for (const table of processedTables) {
-      broadcastBridgeFreshness({
-        resource: table as 'nossa' | 'nossa_closed',
-        lastSyncedAt: new Date().toISOString(),
-        lagSeconds: 0,
-      });
+      if (table === 'nossa' || table === 'nossa_closed') {
+        broadcastBridgeFreshness({
+          resource: table,
+          lastSyncedAt: new Date().toISOString(),
+          lagSeconds: 0,
+        });
+      }
     }
     return result;
   } catch (error) {

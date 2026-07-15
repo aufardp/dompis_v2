@@ -48,7 +48,7 @@ export async function GET(req: Request) {
       });
     }
 
-    const resource = row.sourceTable === 'nossa' ? 'nossa' : 'nossa_closed';
+    const resource = row.sourceTable ?? 'nossa_closed';
 
     const data = {
       incident: row.incident,
