@@ -1173,85 +1173,13 @@ async function processTable(
 
   try {
     if (isBridgeTable) {
-      // ====== BRIDGE PATH ======
-      // Bridge generators handle pagination internally (no hasMore loop needed).
-      if (tableName === 'nossa') {
-        for await (const rawRows of iterateNossaOpen({ limit: DEFAULT_CHUNK_SIZE })) {
-          if (rawRows.length === 0) break;
-          await processRawRows(
-            rawRows as unknown as Record<string, unknown>[],
-            tableName,
-            batchId,
-            cursor,
-            result,
-            signal,
-          );
-          logger.info('[Ingestion] Bridge nossa page processed', {
-            component: 'ingestion',
-            tableName,
-            batchId,
-            mode,
-            pageRows: rawRows.length,
-            processed: result.processed,
-            inserted: result.inserted,
-            updated: result.updated,
-          });
-        }
-      } else if (tableName === 'nossa_closed') {
-        const isBackfill = mode === 'initial' || mode === 'force_resync';
-        if (isBackfill) {
-          const fromDate = '2026-01-01';
-          const toDate = new Date().toISOString().slice(0, 10);
-          for await (const { window: dateWindow, rows } of iterateNossaClosedBackfill(fromDate, toDate)) {
-            if (rows.length === 0) break;
-            await processRawRows(
-              rows as unknown as Record<string, unknown>[],
-              tableName,
-              batchId,
-              cursor,
-              result,
-              signal,
-            );
-            logger.info('[Ingestion] Bridge backfill page processed', {
-              component: 'ingestion',
-              tableName,
-              batchId,
-              dateWindow,
-              pageRows: rows.length,
-              processed: result.processed,
-              inserted: result.inserted,
-              updated: result.updated,
-            });
-          }
-        } else {
-          for await (const rawRows of iterateNossaClosedIncremental(7)) {
-            if (rawRows.length === 0) break;
-            await processRawRows(
-              rawRows as unknown as Record<string, unknown>[],
-              tableName,
-              batchId,
-              cursor,
-              result,
-              signal,
-            );
-            logger.info('[Ingestion] Bridge incremental page processed', {
-              component: 'ingestion',
-              tableName,
-              batchId,
-              pageRows: rawRows.length,
-              processed: result.processed,
-              inserted: result.inserted,
-              updated: result.updated,
-            });
-          }
-        }
-      }
-      // Bridge tables don't use traditional cursor; just record last run time.
-      activeCursor = { lastCursorId: null, lastModifiedAt: nowWib() };
-      broadcastBridgeFreshness({
-        resource: tableName as 'nossa' | 'nossa_closed',
-        lastSyncedAt: nowWib().toISOString(),
-        lagSeconds: 0,
+      // Bridge ingestion skipped — piloting_tickets is primary source with 82 columns.
+      // Status refresh still uses bridge API for real-time per-ticket updates (13 columns).
+      logger.info('[Ingestion] Bridge ingestion skipped for table (piloting_tickets is primary)', {
+        component: 'ingestion',
+        tableName,
+        batchId,
+        mode,
       });
     } else {
       // ====== EXISTING MYSQL PATH ======
