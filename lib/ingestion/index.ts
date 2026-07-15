@@ -596,6 +596,21 @@ function toSqlValue(value: unknown): unknown {
   return value;
 }
 
+function sanitizeForJson(value: unknown): unknown {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (Array.isArray(value)) return value.map(sanitizeForJson);
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = sanitizeForJson(v);
+    }
+    return result;
+  }
+  return value;
+}
+
 function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow[] {
   return [...rows].sort((a, b) =>
     String(a.incident ?? '').localeCompare(String(b.incident ?? '')),
@@ -713,7 +728,7 @@ async function processBatch(
           sourceTable,
           batchId,
           reason: fatalErrors.map(e => e.message).join('; ').slice(0, 255),
-          rawPayload: (rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
+          rawPayload: sanitizeForJson(rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
         });
         result.quarantined++;
         result.processed++;
@@ -735,7 +750,7 @@ async function processBatch(
           sourceTable,
           batchId,
           reason: identity.reason ?? 'invalid identity',
-          rawPayload: (rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
+          rawPayload: sanitizeForJson(rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
           sourceHash,
         });
         result.quarantined++;
@@ -747,8 +762,8 @@ async function processBatch(
         quarantined.push({
           sourceTable,
           batchId,
-          reason: `invalid date_modified: ${row.date_modified}`,
-          rawPayload: (rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
+          reason: 'invalid date_modified value from source',
+          rawPayload: sanitizeForJson(rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
           sourceHash,
         });
         result.quarantined++;
@@ -767,7 +782,7 @@ async function processBatch(
         sourceTable,
         batchId,
         reason: `normalization failed: ${String(error)}`.slice(0, 255),
-        rawPayload: (rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
+        rawPayload: sanitizeForJson(rawRows[i] ?? row._rawPayload) as Prisma.InputJsonValue,
       });
       result.quarantined++;
       result.processed++;
