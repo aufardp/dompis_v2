@@ -970,7 +970,7 @@ export async function runStatusRefresh(
 
   const sourceTables = getTableNames();
   result.backlogEstimate = await estimateBacklog(sourceTables);
-  await setMySQLSessionTimeout(25_000);
+  await setMySQLSessionTimeout(60_000);
   await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {

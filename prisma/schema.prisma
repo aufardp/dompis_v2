@@ -663,6 +663,7 @@ model status_refresh_ticket_state {
   @@index([lastCheckedAt])
   @@index([lastCheckedAt, incident], map: "idx_status_refresh_due_incident")
   @@index([sourceTable, lastCheckedAt])
+  @@index([lastCheckedAt, incident, sourceTable, lastSourceHash], map: "idx_status_refresh_safety_covering")
 }
 
 model ticket_projection_log {
