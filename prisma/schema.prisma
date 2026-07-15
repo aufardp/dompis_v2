@@ -499,7 +499,6 @@ model ticket_raw {
   rawPayload                  Json?
 
   @@index([isActive, lastSeenAt])
-  @@index([isActive], map: "idx_ticket_raw_isActive")
   @@index([sourceTable, sourceUpdatedAt])
   @@index([isActive, sourceTable, sourceUpdatedAt, incident], map: "idx_ticket_raw_active_source_updated_incident")
   @@index([isActive, sourceTable, sourceUpdatedAt(sort: Desc), id_ticket, status, sourceHash], map: "idx_ticket_raw_status_refresh_seed")
@@ -508,7 +507,6 @@ model ticket_raw {
   @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
   @@index([isActive, importedAt, id_ticket], map: "idx_ticket_raw_active_cursor")
   @@index([isActive, status, synced_at], map: "idx_ticket_raw_status_refresh")
-  @@index([status, isActive])
   @@index([incident, sourceHash, status, syncVersion, sourceUpdatedAt], map: "idx_ticket_raw_lookup")
 }
 
