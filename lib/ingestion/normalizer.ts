@@ -13,6 +13,14 @@ export interface StrictIdentityResolution {
   reason?: string;
 }
 
+const DATE_FIELDS = new Set([
+  'reported_date',
+  'date_modified',
+  'booking_date',
+  'status_date',
+  'resolve_date',
+]);
+
 function toMySQLDateString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) {
@@ -25,6 +33,28 @@ function toMySQLDateString(value: unknown): string | null {
     return `${y}-${m}-${d} ${h}:${min}:${s}`;
   }
   return String(value);
+}
+
+function normalizeDateString(value: string): string {
+  // Normalize ISO 8601 date string (e.g. "2026-07-15T08:50:03+07:00")
+  // to MySQL datetime format in WIB: "2026-07-15 08:50:03".
+  const trimmed = value.trim();
+  if (!trimmed.includes('T') && !trimmed.includes('Z')) return value;
+
+  const hasTz = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  const withTz = hasTz ? trimmed : `${trimmed}+07:00`;
+  const parsed = new Date(withTz);
+  if (isNaN(parsed.getTime())) return value;
+
+  // Convert to WIB (UTC+7) for display
+  const wib = new Date(parsed.getTime() + 7 * 60 * 60 * 1000);
+  const y = wib.getUTCFullYear();
+  const m = String(wib.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(wib.getUTCDate()).padStart(2, '0');
+  const h = String(wib.getUTCHours()).padStart(2, '0');
+  const min = String(wib.getUTCMinutes()).padStart(2, '0');
+  const s = String(wib.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
 }
 
 const FIELDS_TO_REMOVE = new Set([
@@ -92,9 +122,13 @@ export function normalizeExternalRow(
       ? COLUMN_MAPPING[key]
       : toSnakeCase(key);
 
-    // Convert Date objects to MySQL datetime string without timezone conversion
+    // Convert Date objects and ISO 8601 date strings to MySQL datetime format
     const processedValue =
-      value instanceof Date ? toMySQLDateString(value) : (value ?? null);
+      value instanceof Date
+        ? toMySQLDateString(value)
+        : DATE_FIELDS.has(normalizedKey) && typeof value === 'string'
+          ? normalizeDateString(value)
+          : (value ?? null);
     normalized[normalizedKey] = processedValue;
     rawPayload[key] = processedValue;
   }
