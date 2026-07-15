@@ -1255,6 +1255,9 @@ async function processTable(
       });
     } else {
       // ====== EXISTING MYSQL PATH ======
+      const openOnlyFilter = tableName === 'piloting_tickets'
+        ? "`status_validasi` = 'OPEN'"
+        : undefined;
       while (hasMore) {
         assertNotAborted(signal);
         const rawRows = await withRetry(
@@ -1276,6 +1279,7 @@ async function processTable(
                   lastCursorId: activeCursor.lastCursorId,
                   lastModifiedAt: activeCursor.lastModifiedAt,
                   columns: cursor.columns.map((c) => c.name),
+                  extraWhere: openOnlyFilter,
                 }),
           {
             retryMax: DEFAULT_RETRY_MAX,
@@ -1366,6 +1370,36 @@ async function processTable(
         }
         hasMore = rawRows.length === DEFAULT_CHUNK_SIZE;
         logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
+      }
+
+      // Catch CLOSE transitions for piloting_tickets — fetch once right after close
+      if (
+        tableName === 'piloting_tickets' &&
+        activeCursor.lastModifiedAt
+      ) {
+        const closeRows = await fetchTableRowsByCursor(tableName, {
+          limit: 10000,
+          idColumn: cursor.idColumn,
+          modifiedColumn: cursor.modifiedColumn,
+          lastCursorId: null,
+          lastModifiedAt: activeCursor.lastModifiedAt,
+          columns: cursor.columns.map((c) => c.name),
+          extraWhere: "`status_validasi` = 'CLOSE'",
+        });
+        if (closeRows.length > 0) {
+          logger.info('[CLOSE-catch] Detected CLOSE transitions', {
+            count: closeRows.length,
+            tableName,
+          });
+          await processRawRows(
+            closeRows as Record<string, unknown>[],
+            tableName,
+            batchId,
+            cursor,
+            result,
+            signal,
+          );
+        }
       }
     }
 

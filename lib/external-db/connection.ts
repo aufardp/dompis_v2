@@ -359,6 +359,7 @@ export async function fetchTableRowsByCursor(
     columns?: string[];
     dateFilterStart?: string | null;
     dateFilterEnd?: string | null;
+    extraWhere?: string;
   },
 ): Promise<RowDataPacket[]> {
   assertSafeIdentifier(tableName);
@@ -398,6 +399,10 @@ export async function fetchTableRowsByCursor(
   }
 
   if (options.modifiedColumn) orderBy.push(`\`${options.modifiedColumn}\` ASC`);
+  if (options.extraWhere) {
+    clauses.push(options.extraWhere);
+  }
+
   if (options.idColumn) orderBy.push(`\`${options.idColumn}\` ASC`);
   if (orderBy.length === 0) orderBy.push('1 ASC');
 
