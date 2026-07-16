@@ -1288,7 +1288,10 @@ export class DailyTicketService {
 
     const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
       sql,
-      [...params, ...orderParams, options.offset, options.limit],
+      ...params,
+      ...orderParams,
+      options.offset,
+      options.limit,
     );
 
     return rows.map((row) => ({
@@ -1307,7 +1310,7 @@ export class DailyTicketService {
       WHERE ${whereClause}
     `;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, ...params);
 
     return Number(rows[0]?.total ?? 0);
   }
@@ -1391,7 +1394,7 @@ export class DailyTicketService {
       WHERE ${whereClause}
     `;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, ...params);
 
     return Number(rows[0]?.total ?? 0);
   }
@@ -1517,7 +1520,9 @@ export class DailyTicketService {
 
     const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number }>>(
       sql,
-      [...params, options.offset, options.limit],
+      ...params,
+      options.offset,
+      options.limit,
     );
 
     return rows.map((row) => row.id_ticket);
@@ -1541,7 +1546,7 @@ export class DailyTicketService {
 
     const rows = await prisma.$queryRawUnsafe<
       Array<{ status: string | null; status_update: string | null; count: bigint | number }>
-    >(sql, params);
+    >(sql, ...params);
 
     const stats: any = {
       total: 0,
