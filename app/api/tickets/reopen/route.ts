@@ -54,6 +54,7 @@ export async function POST(req: Request) {
           status_update: true,
           teknisi_user_id: true,
           workzone: true,
+          needs_validation: true,
         },
       });
 
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
       const isValidationState =
         currentStatus === 'close' ||
         currentStatus === 'closed' ||
-        isTicketClosed(ticket.status_update);
+        isTicketClosed(ticket.status_update) ||
+        ticket.needs_validation === true;
 
       if (!isValidationState) {
         throw new Error('Ticket is not in validation / closed state');
@@ -79,6 +81,9 @@ export async function POST(req: Request) {
           status_update: 'open',
           closed_at: null,
           teknisi_user_id: null,
+          needs_validation: false,
+          validation_reason: null,
+          validation_flagged_at: null,
         },
       });
 
