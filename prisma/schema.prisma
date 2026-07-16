@@ -343,7 +343,7 @@ model ticket {
   @@index([customer_segment], map: "idx_ticket_customer_segment")
   @@index([source_ticket], map: "idx_ticket_source_ticket")
   @@index([closed_at], map: "idx_ticket_closed_at")
-  @@index([workzone, status, status_update, closed_at], map: "idx_ticket_dashboard_main")
+  @@index([workzone, status, status_update, closed_at, reported_date], map: "idx_ticket_dashboard_main")
   @@index([teknisi_user_id, status, status_update, closed_at], map: "idx_ticket_teknisi_dashboard")
   @@index([needs_validation], map: "idx_ticket_needs_validation")
 }
