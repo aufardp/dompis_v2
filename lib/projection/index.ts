@@ -15,6 +15,8 @@ import {
   normalizeStatusUpdate,
   CLOSE_STATUS_VALUES,
 } from '@/app/libs/ticket-utils';
+import { classifyNeedsValidation } from '@/lib/projection/classify-validation';
+import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 
@@ -203,6 +205,8 @@ export interface ExistingTicket {
   sub_rca: string | null;
   status_manja: string | null;
   alamat: string | null;
+  needs_validation: boolean;
+  validation_reason: string | null;
 }
 
 interface ExistingProjectionLog {
@@ -543,6 +547,21 @@ export function buildProjectionUpsert(
   const newFlagging = computeFlaggingManja(raw.booking_date as string | null);
   if (newFlagging) updateData.flagging_manja = newFlagging;
 
+  // --- Validation classification ---
+  const validationInput = {
+    status: raw.status ?? null,
+    statusUpdate: (updateData.status_update as string) ?? null,
+    worklogSummary: (raw.worklog_summary as string) ?? null,
+  };
+  const validationResult = classifyNeedsValidation(validationInput);
+  updateData.needs_validation = validationResult.needsValidation;
+  updateData.validation_reason = validationResult.reason;
+  if (validationResult.needsValidation && !existing?.needs_validation) {
+    updateData.validation_flagged_at = now;
+  } else if (!validationResult.needsValidation) {
+    updateData.validation_flagged_at = null;
+  }
+
   const createData: Record<string, unknown> = {
     ...base,
     alamat: raw.street_address,
@@ -560,6 +579,17 @@ export function buildProjectionUpsert(
     createData.status_update = 'open';
   }
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
+
+  const createValidation = classifyNeedsValidation({
+    status: raw.status ?? null,
+    statusUpdate: (createData.status_update as string) ?? null,
+    worklogSummary: (raw.worklog_summary as string) ?? null,
+  });
+  createData.needs_validation = createValidation.needsValidation;
+  createData.validation_reason = createValidation.reason;
+  if (createValidation.needsValidation) {
+    createData.validation_flagged_at = now;
+  }
 
   return {
     upsert: {
@@ -719,6 +749,8 @@ async function prepareProjectionItems(
       sub_rca: true,
       status_manja: true,
       alamat: true,
+      needs_validation: true,
+      validation_reason: true,
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
@@ -1262,6 +1294,9 @@ async function projectRecords(
     where: { name: CHECKPOINT_NAME },
     data: { status: 'success', neverProjectedCount: 0, completedAt: nowWib() },
   });
+
+  broadcastTicketInvalidate('projection');
+
   return result;
 }
 

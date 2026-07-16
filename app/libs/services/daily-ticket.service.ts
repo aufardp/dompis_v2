@@ -537,6 +537,7 @@ function mapTicket(t: any) {
     syncDate: toWibDateString(t.sync_date),
     technicianName: t.users?.nama,
     worklogSummary: t.worklog_summary,
+    validationReason: t.validation_reason,
     syncedAt: toWibString(t.synced_at),
     importBatch: t.import_batch,
     importedAt: toWibString(t.imported_at),
@@ -1344,6 +1345,13 @@ export class DailyTicketService {
   }
 
   private static buildValidasiCondition(): Prisma.ticketWhereInput {
+    if (process.env.VALIDASI_FLAG_ENABLED === 'true') {
+      return {
+        status: { notIn: [...CLOSE_STATUS_VALUES] },
+        needs_validation: true,
+      };
+    }
+
     return {
       status: { notIn: [...CLOSE_STATUS_VALUES] },
       OR: [

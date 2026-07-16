@@ -33,6 +33,7 @@ interface TicketTableRow {
   maxTtrDiamond?: string | null;
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
+  validationReason?: string | null;
 }
 
 interface TicketTableTabsProps {

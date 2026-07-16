@@ -306,6 +306,9 @@ model ticket {
   rca                         String?                     @db.VarChar(100)
   sub_rca                     String?                     @db.VarChar(100)
   teknisi_user_id             Int?
+  needs_validation            Boolean                     @default(false)
+  validation_reason           String?                     @db.VarChar(64)
+  validation_flagged_at       DateTime?                   @db.Timestamp(0)
   closed_at                   DateTime?                   @db.Timestamp(0)
   sync_date                   DateTime?                   @db.Date
   synced_at                   DateTime?                   @db.Timestamp(0)
@@ -342,6 +345,7 @@ model ticket {
   @@index([closed_at], map: "idx_ticket_closed_at")
   @@index([workzone, status, status_update, closed_at], map: "idx_ticket_dashboard_main")
   @@index([teknisi_user_id, status, status_update, closed_at], map: "idx_ticket_teknisi_dashboard")
+  @@index([needs_validation], map: "idx_ticket_needs_validation")
 }
 
 model ticket_activity_log {

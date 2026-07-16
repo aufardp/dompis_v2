@@ -78,6 +78,8 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   sub_rca: true,
   status_manja: true,
   alamat: true,
+  needs_validation: true,
+  validation_reason: true,
 } as const;
 
 export async function projectSingleTicket(

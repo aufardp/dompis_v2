@@ -32,6 +32,7 @@ interface TicketRow {
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
   guaranteeStatus?: string | null;
+  validationReason?: string | null;
 }
 
 interface TicketTableValidasiProps {
@@ -431,6 +432,15 @@ export default function TicketTableValidasi({
                       <p>{renderAgeSLA(ticket)}</p>
                     </div>
                   </div>
+                  {ticket.validationReason && (
+                    <div className='mt-1'>
+                      <span className='text-[10px] text-(--text-secondary)'>
+                        {ticket.validationReason === 'tech_closed_worklog'
+                          ? 'Alasan: Worklog menunjukkan sudah selesai'
+                          : 'Alasan: Status update: close'}
+                      </span>
+                    </div>
+                  )}
                   <div className='mt-3 flex items-center justify-between'>
                     <div className='max-w-[50%] truncate'>
                       <p className='text-[10px] text-(--text-secondary)'>
@@ -642,6 +652,13 @@ export default function TicketTableValidasi({
                                   Menunggu Dorong Insera
                                 </span>
                               </div>
+                              {ticket.validationReason && (
+                                <span className='text-[10px] text-(--text-secondary)'>
+                                  {ticket.validationReason === 'tech_closed_worklog'
+                                    ? 'Alasan: Worklog menunjukkan sudah selesai'
+                                    : 'Alasan: Status update: close'}
+                                </span>
+                              )}
                             </div>
                           </td>
                         </tr>
