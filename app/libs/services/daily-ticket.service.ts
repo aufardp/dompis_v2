@@ -872,17 +872,11 @@ async function hydrateTicketsByIds(ids: number[]) {
 }
 
 async function queryRawWithOptionalIndex<T>(
-  sqlWithIndex: string,
+  _sqlWithIndex: string,
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  try {
-    return await prisma.$queryRawUnsafe<T>(sqlWithIndex, ...params);
-  } catch (error) {
-    if (!isMissingIndexError(error)) throw error;
-    console.warn('[DailyTicketService] FORCE INDEX skipped:', String((error as Error)?.message ?? error));
-    return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
-  }
+  return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
 }
 
 const SORT_FIELD_MAP: Record<string, string> = {
@@ -1273,7 +1267,6 @@ export class DailyTicketService {
         sortField?: string;
         offset: number;
         limit: number;
-        forceIndex?: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi';
         priorityToday?: string | null;
       },
   ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
@@ -1284,18 +1277,7 @@ export class DailyTicketService {
           `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
           [],
         ];
-    const forceIndexClause = options.forceIndex
-      ? `FORCE INDEX (${options.forceIndex})`
-      : '';
-    const sqlWithIndex = `
-      SELECT id_ticket,
-             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
-      FROM ticket ${forceIndexClause}
-      WHERE ${whereClause}
-      ORDER BY ${orderByClause}
-      LIMIT ?, ?
-    `;
-    const sqlWithoutIndex = `
+    const sql = `
       SELECT id_ticket,
              ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket
@@ -1304,9 +1286,8 @@ export class DailyTicketService {
       LIMIT ?, ?
     `;
 
-    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number; rank_global: bigint | number }>>(
-      sqlWithIndex,
-      sqlWithoutIndex,
+    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
+      sql,
       [...params, ...orderParams, options.offset, options.limit],
     );
 
@@ -1318,28 +1299,15 @@ export class DailyTicketService {
 
   private static async countTicketsBySql(
     where: Prisma.ticketWhereInput,
-    forceIndex?: 'idx_ticket_daily_board' | 'idx_ticket_daily_validasi',
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(where);
-    const forceIndexClause = forceIndex
-      ? `FORCE INDEX (${forceIndex})`
-      : '';
-    const sqlWithIndex = `
-      SELECT COUNT(*) AS total
-      FROM ticket ${forceIndexClause}
-      WHERE ${whereClause}
-    `;
-    const sqlWithoutIndex = `
+    const sql = `
       SELECT COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
 
-    const rows = await queryRawWithOptionalIndex<Array<{ total: bigint | number }>>(
-      sqlWithIndex,
-      sqlWithoutIndex,
-      params,
-    );
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, params);
 
     return Number(rows[0]?.total ?? 0);
   }
@@ -1416,23 +1384,14 @@ export class DailyTicketService {
   private static async countValidasiTickets(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<number> {
-    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
-    const sqlWithIndex = `
-      SELECT COUNT(*) AS total
-      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-      WHERE ${sql}
-    `;
-    const sqlWithoutIndex = `
+    const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
+    const sql = `
       SELECT COUNT(*) AS total
       FROM ticket
-      WHERE ${sql}
+      WHERE ${whereClause}
     `;
 
-    const rows = await queryRawWithOptionalIndex<Array<{ total: bigint | number }>>(
-      sqlWithIndex,
-      sqlWithoutIndex,
-      params,
-    );
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, params);
 
     return Number(rows[0]?.total ?? 0);
   }
@@ -1547,25 +1506,17 @@ export class DailyTicketService {
     validasiBaseWhere: Prisma.ticketWhereInput,
     options: { sort: 'asc' | 'desc'; offset: number; limit: number },
   ): Promise<number[]> {
-    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
-    const sqlWithIndex = `
-      SELECT id_ticket, reported_date
-      FROM ticket FORCE INDEX (idx_ticket_daily_validasi)
-      WHERE ${sql}
-      ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
-      LIMIT ?, ?
-    `;
-    const sqlWithoutIndex = `
+    const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
+    const sql = `
       SELECT id_ticket, reported_date
       FROM ticket
-      WHERE ${sql}
+      WHERE ${whereClause}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
       LIMIT ?, ?
     `;
 
-    const rows = await queryRawWithOptionalIndex<Array<{ id_ticket: number }>>(
-      sqlWithIndex,
-      sqlWithoutIndex,
+    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number }>>(
+      sql,
       [...params, options.offset, options.limit],
     );
 
@@ -1581,23 +1532,16 @@ export class DailyTicketService {
   static async countStatuses(where: Record<string, any>) {
     const [whereClause, params] = buildSqlWhereClause(where);
 
-    const rows = await queryRawWithOptionalIndex<
-      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
-    >(
-      `
-      SELECT status, status_update, COUNT(*) AS count
-      FROM ticket FORCE INDEX (idx_ticket_daily_board)
-      WHERE ${whereClause}
-      GROUP BY status, status_update
-    `,
-      `
+    const sql = `
       SELECT status, status_update, COUNT(*) AS count
       FROM ticket
       WHERE ${whereClause}
       GROUP BY status, status_update
-    `,
-      params,
-    );
+    `;
+
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
+    >(sql, params);
 
     const stats: any = {
       total: 0,
