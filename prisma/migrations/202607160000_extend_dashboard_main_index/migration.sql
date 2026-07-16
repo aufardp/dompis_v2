@@ -64,3 +64,58 @@ SET @stmt := IF(@index_exists > 0,
 PREPARE stmt FROM @stmt;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- Extend idx_ticket_teknisi_dashboard (same pattern for teknisi role)
+-- ============================================================
+
+-- Step 4: Rename old teknisi index
+SET @index_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'ticket'
+    AND index_name = 'idx_ticket_teknisi_dashboard'
+);
+
+SET @stmt := IF(@index_exists > 0,
+  'ALTER TABLE ticket RENAME INDEX idx_ticket_teknisi_dashboard TO idx_ticket_teknisi_dashboard_old, ALGORITHM=INSTANT, LOCK=NONE',
+  'SELECT 1'
+);
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Step 5: Create new teknisi index with reported_date
+SET @index_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'ticket'
+    AND index_name = 'idx_ticket_teknisi_dashboard'
+);
+
+SET @stmt := IF(@index_exists = 0,
+  'ALTER TABLE ticket ADD INDEX idx_ticket_teknisi_dashboard (teknisi_user_id, status, status_update, closed_at, reported_date), ALGORITHM=INSTANT, LOCK=NONE',
+  'SELECT 1'
+);
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Step 6: Drop old renamed teknisi index
+SET @index_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'ticket'
+    AND index_name = 'idx_ticket_teknisi_dashboard_old'
+);
+
+SET @stmt := IF(@index_exists > 0,
+  'ALTER TABLE ticket DROP INDEX idx_ticket_teknisi_dashboard_old, ALGORITHM=INSTANT, LOCK=NONE',
+  'SELECT 1'
+);
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
