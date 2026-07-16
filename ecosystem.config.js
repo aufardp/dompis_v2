@@ -30,6 +30,7 @@ module.exports = {
         QOSMIC_BRIDGE_TIMEOUT_MS: '15000',
         QOSMIC_BRIDGE_RETRY_MAX: '4',
         QOSMIC_BRIDGE_MAX_CONCURRENT: '3',
+        VALIDASI_FLAG_ENABLED: 'true',
       },
       autorestart: true,
       watch: false,
