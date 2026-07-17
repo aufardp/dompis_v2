@@ -311,13 +311,13 @@ export default function Sidebar({
   }).summary.total;
 
   function useCachedBucketCount(key: string): number | undefined {
-    const { data } = useQuery<number | undefined>({
+    const { data } = useQuery<number | null>({
       queryKey: ['bucket-count', key],
-      queryFn: () => undefined,
+      queryFn: () => null,
       staleTime: Infinity,
       retry: false,
     });
-    return data;
+    return data ?? undefined;
   }
 
   const kpiCustomerTotal = useCachedBucketCount('kpi_customer') ?? kpiCustomerFallback;
