@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   Archive,
@@ -249,7 +250,7 @@ export default function Sidebar({
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
 
-  const kpiCustomerTotal = useDailyTicketPage({
+  const kpiCustomerFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_customer'],
     page: 1,
@@ -259,7 +260,7 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  const kpiProactiveTotal = useDailyTicketPage({
+  const kpiProactiveFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_proactive'],
     page: 1,
@@ -269,7 +270,7 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  const nonKpiUnspecTotal = useDailyTicketPage({
+  const nonKpiUnspecFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_kpi_unspec'],
     page: 1,
@@ -279,7 +280,7 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  const nonTechnicalTotal = useDailyTicketPage({
+  const nonTechnicalFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_technical'],
     page: 1,
@@ -289,7 +290,7 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  const sqmUpdateTotal = useDailyTicketPage({
+  const sqmUpdateFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['sqm_update'],
     page: 1,
@@ -299,7 +300,7 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  const obsoleteTotal = useDailyTicketPage({
+  const obsoleteFallback = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['obsolete'],
     page: 1,
@@ -308,6 +309,23 @@ export default function Sidebar({
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary.total;
+
+  function useCachedBucketCount(key: string): number | undefined {
+    const { data } = useQuery<number | undefined>({
+      queryKey: ['bucket-count', key],
+      queryFn: () => undefined,
+      staleTime: Infinity,
+      retry: false,
+    });
+    return data;
+  }
+
+  const kpiCustomerTotal = useCachedBucketCount('kpi_customer') ?? kpiCustomerFallback;
+  const kpiProactiveTotal = useCachedBucketCount('kpi_proactive') ?? kpiProactiveFallback;
+  const nonKpiUnspecTotal = useCachedBucketCount('non_kpi_unspec') ?? nonKpiUnspecFallback;
+  const nonTechnicalTotal = useCachedBucketCount('non_technical') ?? nonTechnicalFallback;
+  const sqmUpdateTotal = useCachedBucketCount('sqm_update') ?? sqmUpdateFallback;
+  const obsoleteTotal = useCachedBucketCount('obsolete') ?? obsoleteFallback;
 
   useEffect(() => {
     let cancelled = false;

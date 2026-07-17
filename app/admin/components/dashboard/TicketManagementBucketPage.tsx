@@ -788,6 +788,13 @@ export default function TicketManagementBucketPage({
   const mergedSummary = semuaPageData.summary;
 
   const bucketKey = operationalBucket[0];
+
+  useEffect(() => {
+    if (bucketKey && mergedSummary.total > 0) {
+      queryClient.setQueryData(['bucket-count', bucketKey], mergedSummary.total);
+    }
+  }, [bucketKey, mergedSummary.total, queryClient]);
+
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;
 
