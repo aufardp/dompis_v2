@@ -249,7 +249,7 @@ export default function Sidebar({
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
 
-  const kpiCustomerSummary = useDailyTicketPage({
+  const { pagination: kpiCustomerPagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_customer'],
     page: 1,
@@ -257,9 +257,9 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
-  const kpiProactiveSummary = useDailyTicketPage({
+  const { pagination: kpiProactivePagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_proactive'],
     page: 1,
@@ -267,9 +267,9 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
-  const nonKpiUnspecSummary = useDailyTicketPage({
+  const { pagination: nonKpiUnspecPagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_kpi_unspec'],
     page: 1,
@@ -277,9 +277,9 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
-  const nonTechnicalSummary = useDailyTicketPage({
+  const { pagination: nonTechnicalPagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_technical'],
     page: 1,
@@ -287,9 +287,9 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
-  const sqmUpdateSummary = useDailyTicketPage({
+  const { pagination: sqmUpdatePagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['sqm_update'],
     page: 1,
@@ -297,9 +297,9 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
-  const obsoleteSummary = useDailyTicketPage({
+  const { pagination: obsoletePagination } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['obsolete'],
     page: 1,
@@ -307,7 +307,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
-  }).summary;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -495,17 +495,17 @@ export default function Sidebar({
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
                             const count =
                               item.key === 'kpi-customer'
-                                ? kpiCustomerSummary.open + kpiCustomerSummary.assigned
+                                ? kpiCustomerPagination.total
                                 : item.key === 'kpi-proactive'
-                                  ? kpiProactiveSummary.open + kpiProactiveSummary.assigned
+                                  ? kpiProactivePagination.total
                                   : item.key === 'non-kpi-unspec'
-                                    ? nonKpiUnspecSummary.open + nonKpiUnspecSummary.assigned
+                                    ? nonKpiUnspecPagination.total
                                     : item.key === 'non-technical'
-                                      ? nonTechnicalSummary.open + nonTechnicalSummary.assigned
+                                      ? nonTechnicalPagination.total
                                       : item.key === 'sqm-update'
-                                        ? sqmUpdateSummary.open + sqmUpdateSummary.assigned
+                                        ? sqmUpdatePagination.total
                                         : item.key === 'obsolete'
-                                          ? obsoleteSummary.open + obsoleteSummary.assigned
+                                          ? obsoletePagination.total
                                           : undefined;
 
                             return (
