@@ -430,7 +430,6 @@ export default function TicketManagementBucketPage({
 
   const semuaPageData = useDailyTicketPage({
     ...sharedFilters,
-    excludeSymptom: extraWorkboard?.symptom,
     dept: 'all',
     ticketType: ticketTypeFilter,
     statusUpdate: statusUpdateFilter,
