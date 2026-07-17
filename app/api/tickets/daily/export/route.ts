@@ -38,8 +38,9 @@ function buildExportCacheKey(
   statusUpdate: string[],
   ticketStatus: string[],
   flagging: string[],
+  validasiOnly: boolean,
 ): string {
-  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}`;
+  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}:${validasiOnly ? 'v' : 'm'}`;
 }
 
 function getExportColumns() {
@@ -428,13 +429,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
-    const dept = (searchParams.get('dept') ?? 'b2c') as 'b2b' | 'b2c';
+    const dept = searchParams.get('dept') ?? 'b2c';
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
     const ctype = searchParams.get('ctype') ?? '';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
+    const FETCH_PAGE_SIZE = 250;
 
     const ticketTypeRaw = searchParams.getAll('ticketType');
     const ticketGroupRaw = searchParams.getAll('ticketGroup');
@@ -445,6 +447,7 @@ export async function GET(request: Request) {
     const ticketStatusRaw = searchParams.getAll('ticketStatus');
     const flaggingRaw = searchParams.getAll('flagging');
     const gamasOnly = searchParams.get('gamasOnly') === 'true';
+    const validasiOnly = searchParams.get('validasiOnly') === 'true';
 
     const filters = {
       ticketType: ticketTypeRaw,
@@ -474,6 +477,7 @@ export async function GET(request: Request) {
       statusUpdateRaw,
       ticketStatusRaw,
       flaggingRaw,
+      validasiOnly,
     );
 
     const cached = await getCache(cacheKey);
@@ -481,8 +485,93 @@ export async function GET(request: Request) {
 
     if (cached) {
       allTickets = cached as any[];
+    } else if (validasiOnly) {
+      const fetchValidasiForDept = async (
+        d: 'b2b' | 'b2c',
+      ): Promise<any[]> => {
+        const results: any[] = [];
+        const firstRes = await DailyTicketService.getDailyTicketTable(
+          user.role,
+          user.id_user,
+          {
+            page: 1,
+            limit: FETCH_PAGE_SIZE,
+            dept: d,
+            search: search || undefined,
+            searchType,
+            workzone: workzone || undefined,
+            ctype: ctype || undefined,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            validasiPage: 1,
+            validasiLimit: FETCH_PAGE_SIZE,
+            includeValidasi: true,
+            includeSummary: false,
+            includeOptions: false,
+            ticketGroup: ticketGroupRaw,
+            operationalBucket: operationalBucketRaw,
+            anomalyBucket: anomalyBucketRaw,
+            regulerOnly: regulerOnlyRaw === 'true',
+            ticketStatus: ticketStatusRaw,
+            statusUpdate: statusUpdateRaw,
+            gamasOnly,
+          },
+        );
+
+        results.push(...(firstRes.validasiTickets ?? []));
+
+        const vPages = firstRes.validasiTotalPages ?? 1;
+        if (vPages > 1) {
+          const remainingPages = Array.from({ length: vPages - 1 }, (_, i) => i + 2);
+          const pageResults = await Promise.all(
+            remainingPages.map((p) =>
+              DailyTicketService.getDailyTicketTable(
+                user.role,
+                user.id_user,
+                {
+                  page: 1,
+                  limit: FETCH_PAGE_SIZE,
+                  dept: d,
+                  search: search || undefined,
+                  searchType,
+                  workzone: workzone || undefined,
+                  ctype: ctype || undefined,
+                  startDate: startDate || undefined,
+                  endDate: endDate || undefined,
+                  validasiPage: p,
+                  validasiLimit: FETCH_PAGE_SIZE,
+                  includeValidasi: true,
+                  includeSummary: false,
+                  includeOptions: false,
+                  ticketGroup: ticketGroupRaw,
+                  operationalBucket: operationalBucketRaw,
+                  anomalyBucket: anomalyBucketRaw,
+                  regulerOnly: regulerOnlyRaw === 'true',
+                  ticketStatus: ticketStatusRaw,
+                  statusUpdate: statusUpdateRaw,
+                  gamasOnly,
+                },
+              ),
+            ),
+          );
+          for (const pageRes of pageResults) {
+            results.push(...(pageRes.validasiTickets ?? []));
+          }
+        }
+
+        return results;
+      };
+
+      if (dept === 'all') {
+        const [b2cTickets, b2bTickets] = await Promise.all([
+          fetchValidasiForDept('b2c'),
+          fetchValidasiForDept('b2b'),
+        ]);
+        allTickets = [...b2cTickets, ...b2bTickets];
+      } else {
+        allTickets = await fetchValidasiForDept(dept as 'b2b' | 'b2c');
+      }
     } else {
-      const FETCH_PAGE_SIZE = 250;
       const firstRes = await DailyTicketService.getDailyTicketTable(
         user.role,
         user.id_user,
@@ -575,7 +664,7 @@ export async function GET(request: Request) {
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const label = dept.toUpperCase();
+    const label = validasiOnly ? 'Validasi' : dept.toUpperCase();
     const filenameBase = `Tiket_${label}_${dateStr}`;
 
     if (format === 'csv') {

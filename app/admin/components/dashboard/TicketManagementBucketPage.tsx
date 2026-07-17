@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
@@ -201,6 +201,8 @@ export default function TicketManagementBucketPage({
     undefined,
   );
   const [gamasSortOrder, setGamasSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [validasiDownloadFormat, setValidasiDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
+  const [validasiDownloading, setValidasiDownloading] = useState(false);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
   );
@@ -673,6 +675,43 @@ export default function TicketManagementBucketPage({
     },
     [],
   );
+
+  const handleValidasiDownload = useCallback(async () => {
+    setValidasiDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('format', validasiDownloadFormat);
+      params.set('validasiOnly', 'true');
+      params.set('dept', 'all');
+      if (dateRange?.from) params.set('startDate', dateRange.from.toISOString());
+      if (dateRange?.to) params.set('endDate', dateRange.to.toISOString());
+      if (effectiveSearchQuery) params.set('search', effectiveSearchQuery);
+
+      const res = await fetchWithAuth(
+        `/api/tickets/daily/export?${params.toString()}`,
+      );
+      if (!res) {
+        alert('Export gagal: session expired');
+        return;
+      }
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.message ?? 'Export gagal');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Tiket_Validasi_${validasiDownloadFormat}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message ?? 'Export gagal');
+    } finally {
+      setValidasiDownloading(false);
+    }
+  }, [validasiDownloadFormat, dateRange, effectiveSearchQuery]);
 
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({
@@ -1391,6 +1430,35 @@ export default function TicketManagementBucketPage({
 
           {activeTab === 'validasi' && (
             <div ref={validasiTableRef} className='space-y-5'>
+              <div className='flex items-center justify-between'>
+                <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
+                  Validasi Tickets
+                </h2>
+                <div className='flex items-center gap-2'>
+                  <select
+                    value={validasiDownloadFormat}
+                    onChange={(e) =>
+                      setValidasiDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                    }
+                    className='bg-surface rounded border border-(--border) px-1.5 py-1 text-xs text-(--text-secondary)'
+                  >
+                    <option value='xlsx'>XLSX</option>
+                    <option value='csv'>CSV</option>
+                  </select>
+                  <button
+                    onClick={handleValidasiDownload}
+                    disabled={validasiDownloading}
+                    className='flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
+                  >
+                    {validasiDownloading ? (
+                      <Loader2 size={14} className='animate-spin' />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    Download
+                  </button>
+                </div>
+              </div>
               <div className='space-y-2'>
                 <h2 className='text-lg font-semibold text-slate-900 dark:text-slate-100'>
                   Validasi B2C
