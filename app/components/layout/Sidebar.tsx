@@ -249,7 +249,7 @@ export default function Sidebar({
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
 
-  const { pagination: kpiCustomerPagination } = useDailyTicketPage({
+  const { summary: kpiCustomerSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_customer'],
     page: 1,
@@ -259,7 +259,7 @@ export default function Sidebar({
     includeOptions: false,
   });
 
-  const { pagination: kpiProactivePagination } = useDailyTicketPage({
+  const { summary: kpiProactiveSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_proactive'],
     page: 1,
@@ -269,7 +269,7 @@ export default function Sidebar({
     includeOptions: false,
   });
 
-  const { pagination: nonKpiUnspecPagination } = useDailyTicketPage({
+  const { summary: nonKpiUnspecSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_kpi_unspec'],
     page: 1,
@@ -279,7 +279,7 @@ export default function Sidebar({
     includeOptions: false,
   });
 
-  const { pagination: nonTechnicalPagination } = useDailyTicketPage({
+  const { summary: nonTechnicalSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_technical'],
     page: 1,
@@ -289,7 +289,7 @@ export default function Sidebar({
     includeOptions: false,
   });
 
-  const { pagination: sqmUpdatePagination } = useDailyTicketPage({
+  const { summary: sqmUpdateSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['sqm_update'],
     page: 1,
@@ -299,7 +299,7 @@ export default function Sidebar({
     includeOptions: false,
   });
 
-  const { pagination: obsoletePagination } = useDailyTicketPage({
+  const { summary: obsoleteSummary } = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['obsolete'],
     page: 1,
@@ -495,17 +495,17 @@ export default function Sidebar({
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
                             const count =
                               item.key === 'kpi-customer'
-                                ? kpiCustomerPagination.total
+                                ? kpiCustomerSummary.total
                                 : item.key === 'kpi-proactive'
-                                  ? kpiProactivePagination.total
+                                  ? kpiProactiveSummary.total
                                   : item.key === 'non-kpi-unspec'
-                                    ? nonKpiUnspecPagination.total
+                                    ? nonKpiUnspecSummary.total
                                     : item.key === 'non-technical'
-                                      ? nonTechnicalPagination.total
+                                      ? nonTechnicalSummary.total
                                       : item.key === 'sqm-update'
-                                        ? sqmUpdatePagination.total
+                                        ? sqmUpdateSummary.total
                                         : item.key === 'obsolete'
-                                          ? obsoletePagination.total
+                                          ? obsoleteSummary.total
                                           : undefined;
 
                             return (
