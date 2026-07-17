@@ -12,7 +12,11 @@ import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
-import { useSetBucketCount } from '@/app/contexts/TicketSummaryContext';
+import {
+  BucketCountContext,
+  SetBucketCountContext,
+  useSetBucketCount,
+} from '@/app/contexts/TicketSummaryContext';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
@@ -145,6 +149,10 @@ export default function TicketManagementBucketPage({
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
+  const [bucketCounts, setBucketCounts] = useState<Record<string, number>>({});
+  const setBucketCountLocal = useCallback((key: string, count: number) => {
+    setBucketCounts((prev) => ({ ...prev, [key]: count }));
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope(initialWorkzone);
@@ -939,12 +947,13 @@ export default function TicketManagementBucketPage({
   ]);
 
   return (
-    <>
-      <AdminLayout
-        onSearch={disableLocalSearch ? undefined : handleSearch}
-        onWorkzoneChange={handleWorkzoneChange}
-        selectedWorkzone={workzoneFilter}
-      >
+    <BucketCountContext.Provider value={bucketCounts}>
+      <SetBucketCountContext.Provider value={setBucketCountLocal}>
+        <AdminLayout
+          onSearch={disableLocalSearch ? undefined : handleSearch}
+          onWorkzoneChange={handleWorkzoneChange}
+          selectedWorkzone={workzoneFilter}
+        >
         <div className='space-y-5'>
           {searchLoading ? (
             <div className='flex min-h-72 items-center justify-center rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
@@ -1626,6 +1635,7 @@ export default function TicketManagementBucketPage({
           }}
         />
       )}
-    </>
+      </SetBucketCountContext.Provider>
+    </BucketCountContext.Provider>
   );
 }
