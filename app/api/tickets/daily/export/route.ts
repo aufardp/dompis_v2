@@ -585,7 +585,7 @@ export async function GET(request: Request) {
           ctype: ctype || undefined,
           startDate: startDate || undefined,
           endDate: endDate || undefined,
-          includeValidasi: true,
+          includeValidasi: false,
           includeSummary: false,
           includeOptions: false,
           ticketGroup: ticketGroupRaw,
@@ -599,13 +599,10 @@ export async function GET(request: Request) {
       );
 
       allTickets.push(...(firstRes.data ?? []));
-      allTickets.push(...(firstRes.validasiTickets ?? []));
 
       const totalPages = firstRes.totalPages ?? 1;
-      const validasiTotalPages = firstRes.validasiTotalPages ?? 1;
-      const pageCount = Math.max(totalPages, validasiTotalPages);
-      if (pageCount > 1) {
-        const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
+      if (totalPages > 1) {
+        const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
         const pageResults = await Promise.all(
           remainingPages.map((p) =>
             DailyTicketService.getDailyTicketTable(
@@ -621,9 +618,7 @@ export async function GET(request: Request) {
                 ctype: ctype || undefined,
                 startDate: startDate || undefined,
                 endDate: endDate || undefined,
-                validasiPage: p,
-                validasiLimit: FETCH_PAGE_SIZE,
-                includeValidasi: true,
+                includeValidasi: false,
                 includeSummary: false,
                 includeOptions: false,
                 ticketGroup: ticketGroupRaw,
@@ -639,7 +634,6 @@ export async function GET(request: Request) {
         );
         for (const pageRes of pageResults) {
           allTickets.push(...(pageRes.data ?? []));
-          allTickets.push(...(pageRes.validasiTickets ?? []));
         }
       }
 

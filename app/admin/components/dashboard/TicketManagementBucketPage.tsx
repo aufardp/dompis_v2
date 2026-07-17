@@ -683,6 +683,9 @@ export default function TicketManagementBucketPage({
       params.set('format', validasiDownloadFormat);
       params.set('validasiOnly', 'true');
       params.set('dept', 'all');
+      for (const bucket of operationalBucket) params.append('operationalBucket', bucket);
+      if (regulerOnly) params.set('regulerOnly', 'true');
+      for (const bucket of anomalyBucket) params.append('anomalyBucket', bucket);
       if (dateRange?.from) params.set('startDate', dateRange.from.toISOString());
       if (dateRange?.to) params.set('endDate', dateRange.to.toISOString());
       if (effectiveSearchQuery) params.set('search', effectiveSearchQuery);
@@ -711,7 +714,7 @@ export default function TicketManagementBucketPage({
     } finally {
       setValidasiDownloading(false);
     }
-  }, [validasiDownloadFormat, dateRange, effectiveSearchQuery]);
+  }, [validasiDownloadFormat, dateRange, effectiveSearchQuery, operationalBucket, regulerOnly, anomalyBucket]);
 
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({
