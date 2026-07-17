@@ -255,7 +255,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
@@ -266,7 +265,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
@@ -277,7 +275,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
@@ -288,7 +285,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
@@ -299,7 +295,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
@@ -310,7 +305,6 @@ export default function Sidebar({
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
-    includeValidasi: false,
     includeValidasiTickets: false,
     includeOptions: false,
   }).summary;
