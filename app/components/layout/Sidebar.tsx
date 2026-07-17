@@ -23,9 +23,9 @@ import {
   MapPinned,
   Ticket,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
-import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import Image from 'next/image';
 
@@ -249,65 +249,29 @@ export default function Sidebar({
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
 
-  const { summary: kpiCustomerSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_customer'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
+  const { data: bucketCounts } = useQuery({
+    queryKey: ['bucket-counts', selectedWorkzone],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedWorkzone) params.set('workzone', selectedWorkzone);
+      const res = await fetchWithAuth(`/api/tickets/bucket-counts?${params}`);
+      if (!res) throw new Error('No response');
+      const json = await res.json();
+      if (!json?.success) throw new Error(json?.message || 'Failed to fetch bucket counts');
+      return json.data as Record<string, number>;
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
-  const { summary: kpiProactiveSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_proactive'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-  });
-
-  const { summary: nonKpiUnspecSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_kpi_unspec'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-  });
-
-  const { summary: nonTechnicalSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_technical'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-  });
-
-  const { summary: sqmUpdateSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['sqm_update'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-  });
-
-  const { summary: obsoleteSummary } = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['obsolete'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-  });
+  const bucketKeyMap: Record<string, string> = useMemo(() => ({
+    'kpi-customer': 'kpi_customer',
+    'kpi-proactive': 'kpi_proactive',
+    'non-kpi-unspec': 'non_kpi_unspec',
+    'non-technical': 'non_technical',
+    'sqm-update': 'sqm_update',
+    'obsolete': 'obsolete',
+  }), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -493,20 +457,7 @@ export default function Sidebar({
                           {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => {
                             const subActive = pathname === item.path;
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
-                            const count =
-                              item.key === 'kpi-customer'
-                                ? kpiCustomerSummary.total
-                                : item.key === 'kpi-proactive'
-                                  ? kpiProactiveSummary.total
-                                  : item.key === 'non-kpi-unspec'
-                                    ? nonKpiUnspecSummary.total
-                                    : item.key === 'non-technical'
-                                      ? nonTechnicalSummary.total
-                                      : item.key === 'sqm-update'
-                                        ? sqmUpdateSummary.total
-                                        : item.key === 'obsolete'
-                                          ? obsoleteSummary.total
-                                          : undefined;
+                            const count = bucketCounts?.[bucketKeyMap[item.key]];
 
                             return (
                               <SubmenuButton
