@@ -2883,31 +2883,4 @@ export class DailyTicketService {
 
     return result;
   }
-
-  static async getBucketCounts(
-    role: string,
-    userId: number,
-    options?: { workzone?: string },
-  ): Promise<Record<string, number>> {
-    const buckets: Array<{ key: string; bucket: string[] }> = [
-      { key: 'kpi_customer', bucket: ['kpi_customer'] },
-      { key: 'kpi_proactive', bucket: ['kpi_proactive'] },
-      { key: 'non_kpi_unspec', bucket: ['non_kpi_unspec'] },
-      { key: 'non_technical', bucket: ['non_technical'] },
-      { key: 'sqm_update', bucket: ['sqm_update'] },
-      { key: 'obsolete', bucket: ['obsolete'] },
-    ];
-    const results: Record<string, number> = {};
-    for (const { key, bucket } of buckets) {
-      const filters: TicketFilters = {
-        dept: 'all',
-        operationalBucket: bucket,
-        workzone: options?.workzone,
-      };
-      const where = await this.buildDailyTicketWhere(role, userId, filters);
-      const mainTableWhere = this.buildMainTableWhere(where);
-      results[key] = await this.countTicketsBySql(mainTableWhere);
-    }
-    return results;
-  }
 }

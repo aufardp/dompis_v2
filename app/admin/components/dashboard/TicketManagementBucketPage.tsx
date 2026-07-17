@@ -12,11 +12,6 @@ import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
-import {
-  BucketCountContext,
-  SetBucketCountContext,
-  useSetBucketCount,
-} from '@/app/contexts/TicketSummaryContext';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
@@ -39,14 +34,6 @@ const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
   { ssr: false, loading: () => null },
 );
-
-function SetupBucketCount({ bucketKey, total }: { bucketKey?: string; total: number }) {
-  const setBucketCount = useSetBucketCount();
-  useEffect(() => {
-    if (bucketKey && total > 0) setBucketCount(bucketKey, total);
-  }, [bucketKey, total, setBucketCount]);
-  return null;
-}
 
 type AssignResult = {
   technicianId: number | null;
@@ -157,10 +144,6 @@ export default function TicketManagementBucketPage({
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
-  const [bucketCounts, setBucketCounts] = useState<Record<string, number>>({});
-  const setBucketCountLocal = useCallback((key: string, count: number) => {
-    setBucketCounts((prev) => ({ ...prev, [key]: count }));
-  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope(initialWorkzone);
@@ -948,10 +931,8 @@ export default function TicketManagementBucketPage({
   ]);
 
   return (
-    <BucketCountContext.Provider value={bucketCounts}>
-      <SetBucketCountContext.Provider value={setBucketCountLocal}>
-        <SetupBucketCount bucketKey={bucketKey} total={mergedSummary.total} />
-        <AdminLayout
+    <>
+      <AdminLayout
           onSearch={disableLocalSearch ? undefined : handleSearch}
           onWorkzoneChange={handleWorkzoneChange}
           selectedWorkzone={workzoneFilter}
@@ -1637,7 +1618,6 @@ export default function TicketManagementBucketPage({
           }}
         />
       )}
-      </SetBucketCountContext.Provider>
-    </BucketCountContext.Provider>
+    </>
   );
 }
