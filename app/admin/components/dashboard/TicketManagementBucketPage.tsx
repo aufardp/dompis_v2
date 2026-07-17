@@ -40,6 +40,14 @@ const AssignTechnicianModal = dynamic(
   { ssr: false, loading: () => null },
 );
 
+function SetupBucketCount({ bucketKey, total }: { bucketKey?: string; total: number }) {
+  const setBucketCount = useSetBucketCount();
+  useEffect(() => {
+    if (bucketKey && total > 0) setBucketCount(bucketKey, total);
+  }, [bucketKey, total, setBucketCount]);
+  return null;
+}
+
 type AssignResult = {
   technicianId: number | null;
   technicianName: string | null;
@@ -798,13 +806,6 @@ export default function TicketManagementBucketPage({
   const mergedSummary = semuaPageData.summary;
 
   const bucketKey = operationalBucket[0];
-  const setBucketCount = useSetBucketCount();
-  useEffect(() => {
-    if (bucketKey && mergedSummary.total > 0) {
-      setBucketCount(bucketKey, mergedSummary.total);
-    }
-  }, [bucketKey, mergedSummary.total, setBucketCount]);
-
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;
 
@@ -949,6 +950,7 @@ export default function TicketManagementBucketPage({
   return (
     <BucketCountContext.Provider value={bucketCounts}>
       <SetBucketCountContext.Provider value={setBucketCountLocal}>
+        <SetupBucketCount bucketKey={bucketKey} total={mergedSummary.total} />
         <AdminLayout
           onSearch={disableLocalSearch ? undefined : handleSearch}
           onWorkzoneChange={handleWorkzoneChange}
