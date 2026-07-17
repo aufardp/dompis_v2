@@ -434,10 +434,12 @@ export default function TicketTableValidasi({
                   </div>
                   {ticket.validationReason && (
                     <div className='mt-1'>
-                      <span className='text-[10px] text-(--text-secondary)'>
-                        {ticket.validationReason === 'tech_closed_worklog'
-                          ? 'Alasan: Worklog menunjukkan sudah selesai'
-                          : 'Alasan: Status update: close'}
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        ticket.validationReason === 'Status update: close'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                      }`}>
+                        {ticket.validationReason}
                       </span>
                     </div>
                   )}
@@ -653,10 +655,12 @@ export default function TicketTableValidasi({
                                 </span>
                               </div>
                               {ticket.validationReason && (
-                                <span className='text-[10px] text-(--text-secondary)'>
-                                  {ticket.validationReason === 'tech_closed_worklog'
-                                    ? 'Alasan: Worklog menunjukkan sudah selesai'
-                                    : 'Alasan: Status update: close'}
+                                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  ticket.validationReason === 'Status update: close'
+                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                                }`}>
+                                  {ticket.validationReason}
                                 </span>
                               )}
                             </div>

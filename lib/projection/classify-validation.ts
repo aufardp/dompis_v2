@@ -11,7 +11,7 @@ export interface ValidationClassificationInput {
 
 export interface ValidationClassificationResult {
   needsValidation: boolean;
-  reason: 'tech_closed_worklog' | 'status_update_close' | null;
+  reason: 'Worklog menunjukkan sudah selesai' | 'Status update: close' | null;
 }
 
 export function classifyNeedsValidation(
@@ -28,7 +28,7 @@ export function classifyNeedsValidation(
   // status_update = 'close' → trigger validasi
   const su = (statusUpdate ?? '').trim().toLowerCase();
   if (su === 'close') {
-    return { needsValidation: true, reason: 'status_update_close' };
+    return { needsValidation: true, reason: 'Status update: close' };
   }
 
   // worklog match regex (case-insensitive) dengan negation check
@@ -38,7 +38,7 @@ export function classifyNeedsValidation(
     if (match && match.index !== undefined) {
       const afterMatch = wl.slice(match.index + match[0].length);
       if (!VALIDATION_NEGATE.test(afterMatch)) {
-        return { needsValidation: true, reason: 'tech_closed_worklog' };
+        return { needsValidation: true, reason: 'Worklog menunjukkan sudah selesai' };
       }
     }
   }
