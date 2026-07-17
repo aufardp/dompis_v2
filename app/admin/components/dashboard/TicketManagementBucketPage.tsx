@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import type { Ticket as DailyTicket } from '@/app/types/ticket';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { useSetBucketCount } from '@/app/contexts/TicketSummaryContext';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
@@ -787,6 +788,14 @@ export default function TicketManagementBucketPage({
   );
 
   const mergedSummary = semuaPageData.summary;
+
+  const bucketKey = operationalBucket[0];
+  const setBucketCount = useSetBucketCount();
+  useEffect(() => {
+    if (bucketKey && mergedSummary.total > 0) {
+      setBucketCount(bucketKey, mergedSummary.total);
+    }
+  }, [bucketKey, mergedSummary.total, setBucketCount]);
 
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;

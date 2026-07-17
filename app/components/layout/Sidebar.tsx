@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useBucketCounts } from '@/app/contexts/TicketSummaryContext';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import Image from 'next/image';
@@ -249,7 +250,9 @@ export default function Sidebar({
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
 
-  const { data: bucketCounts } = useQuery({
+  const contextCounts = useBucketCounts();
+
+  const { data: fallbackCounts } = useQuery({
     queryKey: ['bucket-counts', selectedWorkzone],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -457,7 +460,7 @@ export default function Sidebar({
                           {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => {
                             const subActive = pathname === item.path;
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
-                            const count = bucketCounts?.[bucketKeyMap[item.key]];
+                            const count = contextCounts[bucketKeyMap[item.key]] ?? fallbackCounts?.[bucketKeyMap[item.key]];
 
                             return (
                               <SubmenuButton
