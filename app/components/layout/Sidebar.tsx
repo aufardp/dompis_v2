@@ -501,17 +501,17 @@ export default function Sidebar({
                             const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
                             const count =
                               item.key === 'kpi-customer'
-                                ? kpiCustomerSummary.open
+                                ? kpiCustomerSummary.open + kpiCustomerSummary.assigned
                                 : item.key === 'kpi-proactive'
-                                  ? kpiProactiveSummary.open
+                                  ? kpiProactiveSummary.open + kpiProactiveSummary.assigned
                                   : item.key === 'non-kpi-unspec'
-                                    ? nonKpiUnspecSummary.open
+                                    ? nonKpiUnspecSummary.open + nonKpiUnspecSummary.assigned
                                     : item.key === 'non-technical'
-                                      ? nonTechnicalSummary.open
+                                      ? nonTechnicalSummary.open + nonTechnicalSummary.assigned
                                       : item.key === 'sqm-update'
-                                        ? sqmUpdateSummary.open
+                                        ? sqmUpdateSummary.open + sqmUpdateSummary.assigned
                                         : item.key === 'obsolete'
-                                          ? obsoleteSummary.open
+                                          ? obsoleteSummary.open + obsoleteSummary.assigned
                                           : undefined;
 
                             return (
