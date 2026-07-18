@@ -70,8 +70,9 @@ export class AlertTicketService {
     const where: Record<string, any> = {
       // Only today's sync (WIB date)
       sync_date: todayWib,
-      // Only Diamond tickets
+      // Only Diamond tickets — Customer bucket only
       customer_type: 'HVC_DIAMOND',
+      source_ticket: { in: ['CUSTOMER', 'customer'] },
       // Exclude closed tickets by status OR status_update
       AND: [
         {
@@ -154,6 +155,7 @@ export class AlertTicketService {
     const where: Record<string, any> = {
       sync_date: todayWib,
       customer_type: 'HVC_DIAMOND',
+      source_ticket: { in: ['CUSTOMER', 'customer'] },
       AND: [
         {
           OR: [

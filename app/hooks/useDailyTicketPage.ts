@@ -193,6 +193,12 @@ export function useDailyTicketPage({
           p1Count?: number;
           pPlusCount?: number;
         };
+        customerTypeSummary?: {
+          hvcDiamond: number;
+          hvcPlatinum: number;
+          hvcGold: number;
+          reguler: number;
+        };
         statusOptions?: string[];
         ticketTypeOptions?: TicketTypeOption[];
         validasiTickets: Ticket[];
@@ -235,6 +241,12 @@ export function useDailyTicketPage({
         gamasCount: 0,
         p1Count: 0,
         pPlusCount: 0,
+      },
+      customerTypeSummary: data?.customerTypeSummary ?? {
+        hvcDiamond: 0,
+        hvcPlatinum: 0,
+        hvcGold: 0,
+        reguler: 0,
       },
       statusOptions: data?.statusOptions ?? [],
       ticketTypeOptions: data?.ticketTypeOptions ?? [],

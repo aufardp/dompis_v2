@@ -47,6 +47,51 @@ export function FlaggingSummaryRow({
   );
 }
 
+type CustomerTypeCounts = {
+  hvcDiamond?: number;
+  hvcPlatinum?: number;
+  hvcGold?: number;
+  reguler?: number;
+};
+
+export function CustomerTypeSummaryRow({
+  counts,
+  compact = false,
+}: {
+  counts: CustomerTypeCounts;
+  compact?: boolean;
+}) {
+  const items = [
+    ['Diamond', counts.hvcDiamond, 'text-sky-600 dark:text-sky-300'],
+    ['Platinum', counts.hvcPlatinum, 'text-indigo-600 dark:text-indigo-300'],
+    ['Gold', counts.hvcGold, 'text-amber-600 dark:text-amber-300'],
+    ['Reguler', counts.reguler, 'text-emerald-600 dark:text-emerald-400'],
+  ] as const;
+
+  return (
+    <div
+      className={clsx(
+        'grid gap-2',
+        compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-4',
+      )}
+    >
+      {items.map(([label, value, color]) => (
+        <div
+          key={label}
+          className='rounded-2xl border border-(--border) bg-(--bg) px-2 py-2 text-center shadow-sm'
+        >
+          <p className='text-[9px] font-bold tracking-[1px] text-(--text-muted) uppercase'>
+            {label}
+          </p>
+          <p className={clsx('mt-0.5 text-sm font-semibold', color)}>
+            {Number(value ?? 0).toLocaleString('id-ID')}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type TicketTypeBreakdown = {
   key: string;
   label: string;

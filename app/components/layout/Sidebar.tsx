@@ -25,6 +25,7 @@ import {
   Ticket,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
@@ -431,6 +432,7 @@ export default function Sidebar({
               <span className='rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] text-slate-600 uppercase dark:border-white/10 dark:bg-white/6 dark:text-slate-200'>
                 {selectedWorkzoneLabel}
               </span>
+              <ConnectionStatusIndicator />
             </div>
           </div>
 

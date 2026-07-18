@@ -116,6 +116,13 @@ type FlaggingSummary = {
   pPlusCount: number;
 };
 
+type CustomerTypeSummary = {
+  hvcDiamond: number;
+  hvcPlatinum: number;
+  hvcGold: number;
+  reguler: number;
+};
+
 type TicketManagementBucketSummary = {
   total: number;
   open: number;
@@ -1469,6 +1476,41 @@ export class DailyTicketService {
     }>);
   }
 
+  private static async countCustomerTypes(
+    mainTableWhere: Prisma.ticketWhereInput,
+  ): Promise<CustomerTypeSummary> {
+    const [sql, params] = buildSqlWhereClause(mainTableWhere);
+    const query = `
+      SELECT
+        COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type,
+        COUNT(*) AS cnt
+      FROM ticket
+      WHERE ${sql}
+      GROUP BY raw_type
+    `;
+    const rows = await prisma.$queryRawUnsafe<Array<{ raw_type: string; cnt: bigint }>>(query, ...params);
+
+    let hvcDiamond = 0;
+    let hvcPlatinum = 0;
+    let hvcGold = 0;
+    let reguler = 0;
+
+    for (const row of rows) {
+      const raw = row.raw_type.trim().toLowerCase();
+      if (['hvc_diamond', 'hvc diamond', 'diamond'].includes(raw)) {
+        hvcDiamond += Number(row.cnt);
+      } else if (['hvc_platinum', 'hvc platinum', 'platinum'].includes(raw)) {
+        hvcPlatinum += Number(row.cnt);
+      } else if (['hvc_gold', 'hvc gold', 'gold'].includes(raw)) {
+        hvcGold += Number(row.cnt);
+      } else if (['reguler', 'regular'].includes(raw)) {
+        reguler += Number(row.cnt);
+      }
+    }
+
+    return { hvcDiamond, hvcPlatinum, hvcGold, reguler };
+  }
+
   private static async countValidasiFlaggingSummary(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<Array<Record<string, unknown>>> {
@@ -1750,6 +1792,14 @@ export class DailyTicketService {
           p1Count: 0,
           pPlusCount: 0,
         });
+    const customerTypePromise = includeSummary
+      ? this.countCustomerTypes(mainTableWhere)
+      : Promise.resolve({
+          hvcDiamond: 0,
+          hvcPlatinum: 0,
+          hvcGold: 0,
+          reguler: 0,
+        });
     const validasiCountPromise = includeValidasi && validasiBaseWhere
       ? this.countValidasiTickets(validasiBaseWhere)
       : Promise.resolve(0);
@@ -1772,6 +1822,7 @@ export class DailyTicketService {
       total,
       summary,
       flaggingSummary,
+      customerTypeSummary,
       validasiCount,
       ticketIds,
       validasiTicketIds,
@@ -1781,6 +1832,7 @@ export class DailyTicketService {
       totalPromise,
       summaryPromise,
       flaggingSummaryPromise,
+      customerTypePromise,
       validasiCountPromise,
       ticketIdsPromise,
       validasiTicketIdsPromise,
@@ -1822,6 +1874,7 @@ export class DailyTicketService {
         close: summary.close,
         ...flaggingSummary,
       },
+      customerTypeSummary,
       page: safePage,
       limit: safeLimit,
       totalPages: Math.ceil(total / safeLimit),

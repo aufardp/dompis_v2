@@ -27,6 +27,7 @@ import { FilterBarB2B } from './filterbarb2b';
 import { FilterBarB2C } from './filterbarb2c';
 import TicketTableValidasi from './TicketTableValidasi';
 import {
+  CustomerTypeSummaryRow,
   FlaggingSummaryRow,
   TicketTypeBreakdownStrip,
 } from './TicketBreakdownComponents';
@@ -467,6 +468,9 @@ export default function TicketManagementBucketPage({
     const b2c = b2cPageData.summary;
     const b2b = b2bPageData.summary;
     const extra = extraWorkboardPageData.summary;
+    const b2cCust = b2cPageData.customerTypeSummary;
+    const b2bCust = b2bPageData.customerTypeSummary;
+    const extraCust = extraWorkboardPageData.customerTypeSummary;
     return {
       total: (b2c.total ?? 0) + (b2b.total ?? 0) + (extra.total ?? 0),
       open: (b2c.open ?? 0) + (b2b.open ?? 0) + (extra.open ?? 0),
@@ -480,12 +484,25 @@ export default function TicketManagementBucketPage({
       p1Count: (b2c.p1Count ?? 0) + (b2b.p1Count ?? 0) + (extra.p1Count ?? 0),
       pPlusCount:
         (b2c.pPlusCount ?? 0) + (b2b.pPlusCount ?? 0) + (extra.pPlusCount ?? 0),
+      customerTypes: {
+        hvcDiamond:
+          (b2cCust?.hvcDiamond ?? 0) + (b2bCust?.hvcDiamond ?? 0) + (extraCust?.hvcDiamond ?? 0),
+        hvcPlatinum:
+          (b2cCust?.hvcPlatinum ?? 0) + (b2bCust?.hvcPlatinum ?? 0) + (extraCust?.hvcPlatinum ?? 0),
+        hvcGold:
+          (b2cCust?.hvcGold ?? 0) + (b2bCust?.hvcGold ?? 0) + (extraCust?.hvcGold ?? 0),
+        reguler:
+          (b2cCust?.reguler ?? 0) + (b2bCust?.reguler ?? 0) + (extraCust?.reguler ?? 0),
+      },
     };
   }, [
     b2bPageData.summary,
     b2cPageData.summary,
     extraWorkboardPageData.summary,
     closePageData.pagination.total,
+    b2bPageData.customerTypeSummary,
+    b2cPageData.customerTypeSummary,
+    extraWorkboardPageData.customerTypeSummary,
   ]);
 
   useEffect(() => {
@@ -1072,16 +1089,29 @@ export default function TicketManagementBucketPage({
                     </div>
                   </div>
 
-                  <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
-                    <div className='mb-2.5 flex items-center justify-between gap-2'>
-                      <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
-                        Flagging Summary
-                      </p>
-                      <span className='text-[10px] font-semibold text-(--text-muted)'>
-                        Prioritas harian
-                      </span>
+                  <div className='mt-3 flex gap-3'>
+                    <div className='flex-1 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+                      <div className='mb-2.5 flex items-center justify-between gap-2'>
+                        <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                          Flagging Summary
+                        </p>
+                        <span className='text-[10px] font-semibold text-(--text-muted)'>
+                          Prioritas harian
+                        </span>
+                      </div>
+                      <FlaggingSummaryRow counts={totals} />
                     </div>
-                    <FlaggingSummaryRow counts={totals} />
+                    <div className='flex-1 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+                      <div className='mb-2.5 flex items-center justify-between gap-2'>
+                        <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+                          Customer Type
+                        </p>
+                        <span className='text-[10px] font-semibold text-(--text-muted)'>
+                          Berdasarkan tipe pelanggan
+                        </span>
+                      </div>
+                      <CustomerTypeSummaryRow counts={totals.customerTypes} />
+                    </div>
                   </div>
                   {headerSlot && (
                     <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
