@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { subscribe, getSnapshot } from '@/app/libs/bucket-sync-store';
 import clsx from 'clsx';
 import {
   Archive,
@@ -310,22 +310,21 @@ export default function Sidebar({
     includeOptions: false,
   }).summary.total;
 
-  function useCachedBucketCount(key: string): number | undefined {
-    const { data } = useQuery<number | null>({
-      queryKey: ['bucket-count', key],
-      queryFn: () => null,
-      staleTime: Infinity,
-      retry: false,
-    });
-    return data ?? undefined;
-  }
+  const syncedCounts = useSyncExternalStore(subscribe, getSnapshot);
 
-  const kpiCustomerTotal = useCachedBucketCount('kpi_customer') ?? kpiCustomerFallback;
-  const kpiProactiveTotal = useCachedBucketCount('kpi_proactive') ?? kpiProactiveFallback;
-  const nonKpiUnspecTotal = useCachedBucketCount('non_kpi_unspec') ?? nonKpiUnspecFallback;
-  const nonTechnicalTotal = useCachedBucketCount('non_technical') ?? nonTechnicalFallback;
-  const sqmUpdateTotal = useCachedBucketCount('sqm_update') ?? sqmUpdateFallback;
-  const obsoleteTotal = useCachedBucketCount('obsolete') ?? obsoleteFallback;
+  const kpiCustomerTotal = syncedCounts['kpi-customer'] ?? kpiCustomerFallback;
+  const kpiProactiveTotal = syncedCounts['kpi-proactive'] ?? kpiProactiveFallback;
+  const nonKpiUnspecTotal = syncedCounts['non-kpi-unspec'] ?? nonKpiUnspecFallback;
+  const nonTechnicalTotal = syncedCounts['non-technical'] ?? nonTechnicalFallback;
+  const sqmUpdateTotal = syncedCounts['sqm-update'] ?? sqmUpdateFallback;
+  const obsoleteTotal = syncedCounts['obsolete'] ?? obsoleteFallback;
+
+  console.log('[SIDEBAR] display:', {
+    syncedCounts,
+    nonKpiUnspecFallback,
+    nonKpiUnspecTotal,
+    kpiCustomerTotal,
+  });
 
   useEffect(() => {
     let cancelled = false;

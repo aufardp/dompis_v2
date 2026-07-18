@@ -17,6 +17,7 @@ import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { setBucketCount } from '@/app/libs/bucket-sync-store';
 import type { DateRange } from 'react-day-picker';
 import DateRangePicker from '@/app/admin/semesta/components/filters/DateRangePicker';
 import TicketTable from './TicketTable';
@@ -788,12 +789,21 @@ export default function TicketManagementBucketPage({
   const mergedSummary = semuaPageData.summary;
 
   const bucketKey = operationalBucket[0];
+  const navKey = bucketKey?.replace(/_/g, '-');
 
   useEffect(() => {
     if (bucketKey && mergedSummary.total > 0) {
       queryClient.setQueryData(['bucket-count', bucketKey], mergedSummary.total);
     }
   }, [bucketKey, mergedSummary.total, queryClient]);
+
+  useEffect(() => {
+    console.log('[BUCKET] navKey:', navKey, 'totals.total:', totals.total);
+    if (navKey && totals.total > 0) {
+      console.log('[BUCKET] calling setBucketCount with totals.total');
+      setBucketCount(navKey, totals.total);
+    }
+  }, [navKey, totals.total]);
 
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;

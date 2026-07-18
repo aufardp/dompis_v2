@@ -11,6 +11,7 @@ import { sheetsQueue } from '@/lib/worker-queue';
 import { dispatchRegulerWebhook } from '@/app/libs/integrations/dispatchRegulerWebhook';
 import { retryQuarantinedItems } from '@/lib/ingestion';
 import { retryQuarantined as retryIntegrationDlq, getQuarantineSources } from '@/lib/dlq';
+import { resetAllStaleAssignedTickets } from '@/lib/active-refresh';
 import { fetchTableCount, getTableNames } from '@/lib/external-db/connection';
 import { sendWarningAlert, sendCriticalAlert } from '@/lib/observability/notifier';
 import {
@@ -489,9 +490,10 @@ async function startWorker() {
     cron.schedule('*/5 * * * *', () => runWithCorrelationContext('ops-worker', () => void runDlqRetry())),
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void logWorkerHealth())),
     cron.schedule('0 6 * * *', () => runWithCorrelationContext('ops-worker', () => void runReconciliation())),
+    cron.schedule('5 0 * * *', () => runWithCorrelationContext('ops-worker', () => void resetAllStaleAssignedTickets())),
   ];
 
-  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am)', { component: 'worker' });
+  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05)', { component: 'worker' });
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },

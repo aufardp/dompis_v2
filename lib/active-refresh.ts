@@ -204,7 +204,7 @@ async function fetchActiveOpen(
   `;
 }
 
-async function resetStaleAssignedTickets(
+export async function resetStaleAssignedTickets(
   today: Date,
   batchId: string,
   limit: number,
@@ -260,6 +260,18 @@ async function resetStaleAssignedTickets(
   ]);
 
   return ids.length;
+}
+
+export async function resetAllStaleAssignedTickets(signal?: AbortSignal): Promise<number> {
+  const today = todayWibDateForDb();
+  const batchId = `midnight-reset-${Date.now()}`;
+  let total = 0;
+  while (!signal?.aborted) {
+    const count = await resetStaleAssignedTickets(today, batchId, 500);
+    if (count === 0) break;
+    total += count;
+  }
+  return total;
 }
 
 async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
@@ -400,16 +412,6 @@ export async function runActiveRefresh(
           if (!Number.isNaN(parsed.getTime())) lastSyncedAt = parsed;
         }
       } catch { /* fall through */ }
-    }
-
-    const resetLimit = Math.max(1, Math.min(effectiveBatchSize, 200));
-    const staleAssignedResetCount = await resetStaleAssignedTickets(
-      today,
-      batchId,
-      resetLimit,
-    );
-    if (staleAssignedResetCount > 0) {
-      result.updated += staleAssignedResetCount;
     }
 
     while (
