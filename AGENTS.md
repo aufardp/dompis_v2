@@ -141,6 +141,7 @@ npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14
 - `QOSMIC_BRIDGE_ENABLED=true` — master switch
 - `QOSMIC_BRIDGE_BASE_URL` — endpoint bridge
 - `QOSMIC_BRIDGE_TOKEN` — bearer token
+- `INGESTION_CONCURRENCY=1` — proses tabel sequential (jangan >1, sebab lock contention upsert ke ticket_raw)
 - `QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN=20` — global rate limit
 - `QOSMIC_BRIDGE_TIMEOUT_MS=15000` — request timeout
 - `QOSMIC_BRIDGE_RETRY_MAX=4` — max retries
