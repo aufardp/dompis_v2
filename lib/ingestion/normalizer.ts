@@ -178,6 +178,15 @@ export function normalizeExternalRow(
     rawPayload[key] = processedValue;
   }
 
+  // Normalize various SQM summary prefixes to consistent format
+  // so bucket classification (which checks startsWith('[SQM-UPDATE]')) works.
+  const summary = normalized.summary;
+  if (typeof summary === 'string') {
+    normalized.summary = summary
+      .replace(/\[SQM_UPDATE\]/gi, '[SQM-UPDATE]')
+      .replace(/\[SQM-UPDATE\]\s*\[SQM-UPDATE\]/gi, '[SQM-UPDATE]');
+  }
+
   return {
     ...normalized,
     _sourceTable: sourceTable,

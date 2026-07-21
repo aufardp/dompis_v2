@@ -80,6 +80,7 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   alamat: true,
   needs_validation: true,
   validation_reason: true,
+  sqm_update_reason: true,
 } as const;
 
 export async function projectSingleTicket(

@@ -207,6 +207,7 @@ export interface ExistingTicket {
   alamat: string | null;
   needs_validation: boolean;
   validation_reason: string | null;
+  sqm_update_reason: string | null;
 }
 
 interface ExistingProjectionLog {
@@ -518,6 +519,12 @@ export function buildProjectionUpsert(
     }
   }
 
+  // Protect SQM-UPDATE summary — don't let bridge overwrite it
+  // if user has flagged this ticket as SQM update.
+  if (existing?.sqm_update_reason) {
+    delete base.summary;
+  }
+
   const updateData = { ...base };
   if (existing?.teknisi_user_id) delete updateData.alamat;
 
@@ -751,6 +758,7 @@ async function prepareProjectionItems(
       alamat: true,
       needs_validation: true,
       validation_reason: true,
+      sqm_update_reason: true,
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));

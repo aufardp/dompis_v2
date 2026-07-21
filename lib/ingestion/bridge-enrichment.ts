@@ -12,6 +12,11 @@ const ENRICHMENT_BATCH_SIZE = parsePositiveIntEnv(
 
 // Fields that bridge cannot fill — enrichment targets from piloting_tickets.
 // These are non-BRIDGE_FIELDS from FIELDS_TO_MAP (minus 'incident').
+function formatError(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  try { return JSON.stringify(error); } catch { return String(error); }
+}
+
 const ENRICHMENT_FIELDS = [
   'ttr_customer',
   'contact_phone',
@@ -120,7 +125,7 @@ export async function runBridgeEnrichment(
   } catch (error) {
     logger.error('[Enrichment] Cross-database join query failed', {
       batchId,
-      error: error instanceof Error ? error.message : String(error),
+      errorMessage: formatError(error),
     });
     return result;
   }
@@ -145,7 +150,7 @@ export async function runBridgeEnrichment(
     logger.error('[Enrichment] Query piloting_tickets enrichment data failed', {
       batchId,
       count: ptIncidents.length,
-      error: error instanceof Error ? error.message : String(error),
+      errorMessage: formatError(error),
     });
     return result;
   }
@@ -186,7 +191,7 @@ export async function runBridgeEnrichment(
     } catch (error) {
       logger.warn('[Enrichment] Normalize row failed', {
         incident: String(row?.incident ?? 'unknown'),
-        error: error instanceof Error ? error.message : String(error),
+        errorMessage: formatError(error),
       });
     }
   }
@@ -223,7 +228,7 @@ export async function runBridgeEnrichment(
     logger.error('[Enrichment] Batch upsert failed', {
       batchId,
       updates: updates.length,
-      error: error instanceof Error ? error.message : String(error),
+      errorMessage: formatError(error),
     });
   }
 
