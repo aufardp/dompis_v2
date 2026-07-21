@@ -76,7 +76,7 @@ export function ChartTooltipContent({
     typeof labelFormatter === 'function' ? labelFormatter(label) : label;
 
   return (
-    <div className='bg-surface-2 w-[240px] rounded-xl border border-(--border) p-3 shadow-xl'>
+    <div className='bg-surface-2 w-60 rounded-xl border border-(--border) p-3 shadow-xl'>
       <div className='mb-2 text-xs font-semibold tracking-wide text-(--text-secondary)'>
         {renderedLabel}
       </div>

@@ -194,9 +194,9 @@ function checkNonNumberingOverride(
 function checkBillingOverride(
   input: JenisVlookupInput,
 ): JenisVlookupResult | null {
-  const classificationFlag = (input.classification_flag ?? '').trim().toUpperCase();
+  const symptom = (input.symptom ?? '').trim().toUpperCase();
 
-  if (classificationFlag === 'BILLING') {
+  if (symptom.includes('BILLING')) {
     return {
       jenis_tiket_1: 'BILLING',
       jenis_tiket_2: 'BILLING',

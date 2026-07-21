@@ -36,6 +36,7 @@ import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
 import { broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
+import { runBridgeEnrichment } from './bridge-enrichment';
 import {
   iterateNossaOpen,
   iterateNossaClosedIncremental,
@@ -178,12 +179,33 @@ const TICKET_RAW_BULK_COLUMNS = [
   'importedAt',
   'rawPayload',
   'status',
+  'source_system',
   'sourceUpdatedAt',
   'sync_date',
   'synced_at',
   'import_batch',
   ...FIELDS_TO_MAP.filter((field) => field !== 'incident'),
 ] as const;
+
+// Fields owned by QOSMIC Bridge — bridge overwrites these on upsert.
+// piloting_tickets (MySQL) must NOT update these to prevent stale scraped data
+// from reverting real-time bridge values.
+const BRIDGE_FIELDS = new Set([
+  'incident', 'summary', 'reported_date', 'owner_group', 'owner',
+  'customer_segment', 'service_type', 'witel', 'workzone', 'status',
+  'status_date', 'ticket_id_gamas', 'reported_by', 'contact_email',
+  'booking_date', 'description_assignment', 'reported_priority',
+  'source_ticket', 'external_ticket_id', 'channel', 'customer_type',
+  'closed_by', 'closed_reopen_by', 'customer_id', 'customer_name',
+  'service_id', 'service_no', 'slg', 'technology', 'gaul',
+  'date_modified', 'incident_domain', 'region', 'symptom',
+  'technician', 'worklog_summary', 'last_update_worklog', 'realm',
+  'ttr_agent', 'ttr_mitra', 'ttr_nasional', 'ttr_pending',
+  'ttr_region', 'ttr_witel', 'ttr_end_to_end', 'guarantee_status',
+  'resolve_date', 'impacted_site', 'tsc_result', 'scc_result',
+  'cause', 'resolution', 'solution', 'description_actual_solution',
+  'device_name', 'rk_information',
+]);
 
 const COLUMN_MAX_LENGTH: Record<string, number> = {
   onu_rx: 10,
@@ -559,6 +581,12 @@ export function buildRawData(
     sync_date: todayWibDateForDb(),
     synced_at: now,
     import_batch: batchId,
+    source_system:
+      sourceTable === 'nossa'
+        ? 'qosmic_nossa'
+        : sourceTable === 'nossa_closed'
+          ? 'qosmic_nossa_closed'
+          : 'scrap',
   };
 
   for (const field of FIELDS_TO_MAP) {
@@ -621,6 +649,7 @@ async function bulkUpsertTicketRaw(
   tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
   updateColumns: readonly TicketRawBulkColumn[],
+  sourceTable?: string,
 ): Promise<void> {
   if (rows.length === 0) return;
 
@@ -633,8 +662,13 @@ async function bulkUpsertTicketRaw(
     ),
   );
   const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
+  const isBridge = sourceTable === 'nossa' || sourceTable === 'nossa_closed';
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
+    .filter((column) => {
+      if (isBridge) return BRIDGE_FIELDS.has(column);
+      return !BRIDGE_FIELDS.has(column);
+    })
     .map(
       (column) =>
         Prisma.sql`${sqlIdentifier(column)} = VALUES(${sqlIdentifier(column)})`,
@@ -895,7 +929,7 @@ async function processBatch(
     const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
     assertNotAborted(signal);
-    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
+    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, sourceTable);
     // Skip heartbeat upsert — hash & status unchanged, no data to write.
     // lastSeenAt tracking is not critical; stale detection uses updated_at.
     if (quarantined.length > 0) {
@@ -1188,14 +1222,75 @@ async function processTable(
 
   try {
     if (isBridgeTable) {
-      // Bridge ingestion skipped — piloting_tickets is primary source with 82 columns.
-      // Status refresh still uses bridge API for real-time per-ticket updates (13 columns).
-      logger.info('[Ingestion] Bridge ingestion skipped for table (piloting_tickets is primary)', {
-        component: 'ingestion',
-        tableName,
-        batchId,
-        mode,
-      });
+      const iterator = tableName === 'nossa'
+        ? iterateNossaOpen({
+            dateFrom: todayStart.slice(0, 10),
+            dateTo: tomorrowStart.slice(0, 10),
+          })
+        : iterateNossaClosedIncremental(1);
+      for await (const rows of iterator) {
+        assertNotAborted(signal);
+        if (rows.length === 0) continue;
+        const rawRows = rows as unknown as Record<string, unknown>[];
+        totalRows += rawRows.length;
+        const normalizedRows = rawRows.map((row) =>
+          normalizeExternalRow(row as unknown as ExternalRow, tableName),
+        );
+        for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+          const rawWindow = rawRows.slice(
+            offset,
+            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+          ) as Record<string, unknown>[];
+          const normalizedWindow = normalizedRows.slice(
+            offset,
+            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+          );
+          const chunkResult = await withRetry(
+            () =>
+              processBatch(
+                normalizedWindow,
+                rawWindow,
+                tableName,
+                batchId,
+                offset,
+                { lastCursorId: null, lastModifiedAt: null },
+                cursor,
+                result,
+                signal,
+              ),
+            {
+              retryMax: DEFAULT_RETRY_MAX,
+              signal,
+              label: 'process_batch',
+              context: {
+                component: 'ingestion',
+                tableName,
+                batchId,
+                chunkStartOffset: offset,
+                chunkSize: normalizedWindow.length,
+              },
+              onRetry: () => {
+                result.retried++;
+              },
+            },
+          );
+          result.processed += chunkResult.processed;
+          result.inserted += chunkResult.inserted;
+          result.updated += chunkResult.updated;
+          result.skipped += chunkResult.skipped;
+          result.failed += chunkResult.failed;
+          result.quarantined += chunkResult.quarantined;
+          result.errors.push(...chunkResult.errors);
+          if (result.errors.length > 100) result.errors.length = 100;
+        }
+        logger.info('[Ingestion] Bridge batch complete:', {
+          tableName,
+          mode,
+          batchRows: rawRows.length,
+          processed: result.processed,
+          totalRows,
+        });
+      }
     } else {
       // ====== EXISTING MYSQL PATH ======
       const openOnlyFilter = tableName === 'piloting_tickets'
@@ -1315,35 +1410,6 @@ async function processTable(
         logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
       }
 
-      // Catch CLOSE transitions for piloting_tickets — fetch once right after close
-      if (
-        tableName === 'piloting_tickets' &&
-        activeCursor.lastModifiedAt
-      ) {
-        const closeRows = await fetchTableRowsByCursor(tableName, {
-          limit: 10000,
-          idColumn: cursor.idColumn,
-          modifiedColumn: cursor.modifiedColumn,
-          lastCursorId: null,
-          lastModifiedAt: activeCursor.lastModifiedAt,
-          columns: cursor.columns.map((c) => c.name),
-          extraWhere: "`status_validasi` = 'CLOSE'",
-        });
-        if (closeRows.length > 0) {
-          logger.info('[CLOSE-catch] Detected CLOSE transitions', {
-            count: closeRows.length,
-            tableName,
-          });
-          await processRawRows(
-            closeRows as Record<string, unknown>[],
-            tableName,
-            batchId,
-            cursor,
-            result,
-            signal,
-          );
-        }
-      }
     }
 
     const successData = {
@@ -1523,6 +1589,10 @@ async function runIngestionMode(
         throw error;
       }
     });
+
+    // Enrich bridge rows with data from piloting_tickets
+    const enrichResult = await runBridgeEnrichment(batchId, signal);
+    result.inserted += enrichResult.enriched;
 
     const duration = Date.now() - start;
     const rowsPerSecond = duration > 0
