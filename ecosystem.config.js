@@ -108,6 +108,7 @@ module.exports = {
         DATA_WORKER_TRIGGER_PROJECTION: 'true',
         DATA_WORKER_BACKFILL_ENABLED: 'false',
         EXTERNAL_TABLE_NAMES: 'nossa,nossa_closed,piloting_tickets',
+        PRISMA_CONNECTION_LIMIT: '25',
         INGESTION_ENABLED: 'true',
         INGESTION_TIMEOUT_MINUTES: '30',
         INGESTION_CHUNK_SIZE: '100',
