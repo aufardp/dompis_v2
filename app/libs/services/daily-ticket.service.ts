@@ -883,7 +883,8 @@ async function queryRawWithOptionalIndex<T>(
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
+  const query = sqlWithoutIndex.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(15000) */ ');
+  return prisma.$queryRawUnsafe<T>(query, ...params);
 }
 
 const SORT_FIELD_MAP: Record<string, string> = {

@@ -281,7 +281,11 @@ export async function qosmicBridgeGet<T = unknown>(
           retryable,
         });
 
-        if (retryable && attempt < MAX_RETRIES) {
+        // 502 (Bad Gateway) means bridge or upstream is down — retry won't help.
+        // Fast-fail after 1 attempt to avoid wasting 2 minutes.
+        const effectiveMaxRetries = res.status === 502 ? 1 : MAX_RETRIES;
+
+        if (retryable && attempt < effectiveMaxRetries) {
           attempt++;
           const retryAfterHeader = res.headers.get('retry-after');
           const retryAfterMs = retryAfterHeader

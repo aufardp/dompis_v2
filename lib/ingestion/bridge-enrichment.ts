@@ -108,48 +108,46 @@ export async function runBridgeEnrichment(
     return result;
   }
 
-  // 1. Find bridge rows needing enrichment that ALSO exist in piloting_tickets.
-  //    Uses cross-database JOIN (both DBs on same MySQL server).
-  let joinRows: Array<{ incident: string }>;
+  // 1. Fetch bridge rows needing enrichment from ticket_raw
+  let rawRows: Array<{ incident: string }>;
   try {
-    joinRows = await prisma.$queryRaw<Array<{ incident: string }>>`
-      SELECT tr.incident
-      FROM ticket_raw tr
-      INNER JOIN \`bot_dompis_db\`.\`piloting_tickets\` pt ON tr.incident = pt.incident COLLATE utf8mb4_unicode_ci
-      WHERE tr.sourceTable IN ('nossa', 'nossa_closed')
-        AND tr.contact_phone IS NULL
-        AND tr.isActive = 1
-        AND tr.incident IS NOT NULL
+    rawRows = await prisma.$queryRaw<Array<{ incident: string }>>`
+      SELECT incident
+      FROM ticket_raw
+      WHERE sourceTable IN ('nossa', 'nossa_closed')
+        AND contact_phone IS NULL
+        AND isActive = 1
+        AND incident IS NOT NULL
       LIMIT ${ENRICHMENT_BATCH_SIZE}
     `;
   } catch (error) {
-    logger.error('[Enrichment] Cross-database join query failed', {
+    logger.error('[Enrichment] Fetch ticket_raw enrichment candidates failed', {
       batchId,
       errorMessage: formatError(error),
     });
     return result;
   }
 
-  result.scanned = joinRows.length;
-  if (joinRows.length === 0) {
+  result.scanned = rawRows.length;
+  if (rawRows.length === 0) {
     logger.info('[Enrichment] No bridge rows need enrichment', { batchId });
     return result;
   }
 
-  const ptIncidents = joinRows.map((r) => r.incident).filter(Boolean);
+  const rawIncidents = rawRows.map((r) => r.incident).filter(Boolean);
 
-  // 2. Fetch full enrichment data from piloting_tickets
-  const placeholders = ptIncidents.map(() => '?').join(',');
+  // 2. Fetch matching enrichment data from piloting_tickets (direct external pool, no COLLATE)
+  const placeholders = rawIncidents.map(() => '?').join(',');
   let rows: RowDataPacket[];
   try {
     [rows] = await externalPool.query<RowDataPacket[]>(
       `SELECT * FROM piloting_tickets WHERE incident IN (${placeholders})`,
-      ptIncidents,
+      rawIncidents,
     );
   } catch (error) {
     logger.error('[Enrichment] Query piloting_tickets enrichment data failed', {
       batchId,
-      count: ptIncidents.length,
+      count: rawIncidents.length,
       errorMessage: formatError(error),
     });
     return result;
@@ -158,7 +156,7 @@ export async function runBridgeEnrichment(
   if (rows.length === 0) {
     logger.info('[Enrichment] No piloting_tickets rows found for enrichment incidents', {
       batchId,
-      count: ptIncidents.length,
+      count: rawIncidents.length,
     });
     return result;
   }
