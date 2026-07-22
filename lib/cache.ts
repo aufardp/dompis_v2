@@ -13,8 +13,8 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 }
 
 export const TICKETS_CACHE_TTL = parsePositiveIntEnv('TICKETS_CACHE_TTL', 15);
-export const DASHBOARD_CACHE_TTL = parsePositiveIntEnv('DASHBOARD_CACHE_TTL', 30);
-export const STATS_CACHE_TTL = parsePositiveIntEnv('STATS_CACHE_TTL', 30);
+export const DASHBOARD_CACHE_TTL = parsePositiveIntEnv('DASHBOARD_CACHE_TTL', 300);
+export const STATS_CACHE_TTL = parsePositiveIntEnv('STATS_CACHE_TTL', 300);
 
 const DEFAULT_TTL = 60;
 const DEFAULT_MAX_CACHE_BYTES = 512 * 1024;
@@ -192,6 +192,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Local mutex: pastikan hanya 1 fn() berjalan per key dalam satu proses
+const pendingRebuilds = new Map<string, Promise<unknown>>();
+
+async function dedupeRebuild<T>(key: string, fn: () => Promise<T>, ttl: number, staleTtl: number): Promise<T> {
+  const existing = pendingRebuilds.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const data = await fn();
+      await setCache(key, data, ttl);
+      await setCache(`stale:${key}`, data, staleTtl);
+      return data;
+    } finally {
+      pendingRebuilds.delete(key);
+    }
+  })();
+
+  pendingRebuilds.set(key, promise);
+  return promise;
+}
+
 /**
  * Cache-aside helper: ambil dari cache, jika miss jalankan fn() lalu simpan.
  *
@@ -224,10 +246,7 @@ export async function getOrSetCache<T>(
       const recheck = await getCache<T>(key);
       if (recheck !== null) return recheck;
 
-      const data = await fn();
-      await setCache(key, data, ttl);
-      await setCache(staleKey, data, staleTtl);
-      return data;
+      return await dedupeRebuild(key, fn, ttl, staleTtl);
     } finally {
       await releaseLock(lockKey, lockResult.ownerId).catch(() => {});
     }
@@ -240,14 +259,12 @@ export async function getOrSetCache<T>(
     if (retry !== null) return retry;
   }
 
-  // 4. Last resort: serve stale data (still fresh enough for dashboard)
+  // 4. Last resort: serve stale data
   const stale = await getCache<T>(staleKey);
   if (stale !== null) return stale;
 
-  // 5. No stale data either — fallback to direct compute
-  const data = await fn();
-  await setCache(key, data, ttl).catch(() => {});
-  return data;
+  // 5. No stale data — rebuild via local mutex (hanya 1 yg jalan)
+  return await dedupeRebuild(key, fn, ttl, staleTtl);
 }
 
 /**
