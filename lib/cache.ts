@@ -244,7 +244,7 @@ export async function getOrSetCache<T>(
   const lockKey = `cache:rebuild:${key}`;
 
   // 2. Try distributed lock — only 1 request rebuilds
-  const lockResult = await acquireLock(lockKey, 10);
+  const lockResult = await acquireLock(lockKey, 45);
   if (lockResult.acquired) {
     try {
       // Double-check cache after acquiring lock

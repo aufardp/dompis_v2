@@ -455,7 +455,7 @@ async function queryRawWithOptionalIndex<T>(
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  const withHint = (sql: string) => sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(15000) */ ');
+  const withHint = (sql: string) => sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(30000) */ ');
   try {
     return await prisma.$queryRawUnsafe<T>(withHint(sqlWithIndex), ...params);
   } catch (error) {
