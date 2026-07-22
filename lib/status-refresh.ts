@@ -982,6 +982,7 @@ export async function runStatusRefresh(
     const externalRowsByIncident = new Map<string, ExternalStatusRow>();
     const changedFieldsByIncident = new Map<string, string[]>();
     const processedTables = new Set<string>();
+    const bridgeClosedRows: ExternalStatusRow[] = [];
     for (const [sourceTable, tableCandidates] of byTable) {
       assertNotAborted(signal);
       if (shouldStopForBudget(start)) break;
@@ -989,15 +990,19 @@ export async function runStatusRefresh(
       processedTables.add(sourceTable);
       const BRIDGE_TABLES = new Set(['nossa', 'nossa_closed']);
       const useBridge = BRIDGE_TABLES.has(sourceTable) && isQosmicBridgeConfigured();
-      const externalRows = useBridge
-        ? await fetchExternalRowsViaBridge(
-            sourceTable,
-            tableCandidates.map((row) => row.incident),
-          )
-        : await fetchExternalRows(
-            sourceTable,
-            tableCandidates.map((row) => row.incident),
-          );
+      let externalRows: Map<string, ExternalStatusRow>;
+      if (useBridge) {
+        const bridgeResult = await fetchExternalRowsViaBridge(
+          sourceTable,
+          tableCandidates.map((row) => row.incident),
+        );
+        externalRows = bridgeResult.rows;
+      } else {
+        externalRows = await fetchExternalRows(
+          sourceTable,
+          tableCandidates.map((row) => row.incident),
+        );
+      }
       result.fetched += externalRows.size;
       result.missing += tableCandidates.length - externalRows.size;
 
@@ -1007,37 +1012,43 @@ export async function runStatusRefresh(
         externalRowsByIncident.set(candidate.incident, external);
         const changedFields = getChangedFields(candidate, external);
         if (changedFields.length > 0) {
-          changedRows.push(external);
+          result.changed++;
           changedFieldsByIncident.set(candidate.incident, changedFields);
+          if (useBridge && CLOSE_STATUS_VALUES.includes(external.normalizedStatus)) {
+            bridgeClosedRows.push(external);
+          }
+          if (!useBridge) {
+            changedRows.push(external);
+          }
         } else {
           result.unchanged++;
         }
       }
     }
 
-    result.changed = await updateChangedRows(changedRows, batchId);
+    // Bridge: adapter already upserted to ticket_raw; handle closed rows for ticket table
+    if (bridgeClosedRows.length > 0) {
+      await batchCloseTickets(bridgeClosedRows, batchId);
+    }
+
+    // Non-bridge: upsert changes to ticket_raw
+    if (changedRows.length > 0) {
+      const upsertedCount = await updateChangedRows(changedRows, batchId);
+    }
 
     // Broadcast per-ticket updates (batch limit to avoid flood)
-    if (changedRows.length <= 50) {
-      for (const external of changedRows) {
-        const fields = changedFieldsByIncident.get(external.incident) ?? [];
+    if (changedFieldsByIncident.size <= 50) {
+      for (const [incident, fields] of changedFieldsByIncident) {
         if (fields.length > 0) {
           broadcastTicketUpdated({
-            ticketId: external.incident,
-            incident: external.incident,
+            ticketId: incident,
+            incident,
             changedFields: fields,
             source: 'status-refresh',
             updatedAt: new Date().toISOString(),
           });
         }
       }
-    }
-
-    const closedRows = changedRows.filter((row) =>
-      CLOSE_STATUS_VALUES.includes(row.normalizedStatus),
-    );
-    if (closedRows.length > 0) {
-      await batchCloseTickets(closedRows, batchId);
     }
 
     await markChecked(candidates, externalRowsByIncident, batchId);

@@ -48,11 +48,16 @@ export async function getCache<T>(key: string): Promise<T | null> {
 
   try {
     const data = await redis.get(key);
-    if (!data) return null;
+    if (!data) {
+      redis.incr('dompis:cache:misses').catch(() => {});
+      return null;
+    }
+    redis.incr('dompis:cache:hits').catch(() => {});
     const raw = data.startsWith('gz:') ? decodeCompressedPayload(data) : data;
     return JSON.parse(raw) as T;
   } catch (error) {
     logger.error('[Cache] Error getting key:', { key, error: String(error) });
+    redis.incr('dompis:cache:misses').catch(() => {});
     return null;
   }
 }

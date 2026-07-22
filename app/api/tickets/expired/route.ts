@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { toEnumValue, toPositiveInt } from '@/lib/http-query';
+import { getOrSetCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +39,16 @@ export async function GET(request: Request) {
       searchParams.get('status') ||
       undefined;
 
-    const expiredTickets = await TicketService.getExpiredTickets(
-      user.role,
-      user.id_user,
-      saId,
-      { dept, ticketType, statusUpdate },
-    );
+    const cacheKey = `expired:${user.role}:${user.id_user}:${saId || 'all'}:${dept || 'all'}:${ticketType || 'all'}:${statusUpdate || 'all'}`;
+
+    const expiredTickets = await getOrSetCache(cacheKey, async () => {
+      return TicketService.getExpiredTickets(
+        user.role,
+        user.id_user,
+        saId,
+        { dept, ticketType, statusUpdate },
+      );
+    }, 30);
 
     return NextResponse.json({
       success: true,

@@ -13,21 +13,24 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { getOrSetCacheSimple, deleteCache } from '@/lib/cache';
 
 export async function GET() {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
-    const areas = await prisma.area.findMany({
-      take: 500,
-      select: { id_area: true, nama_area: true },
-      orderBy: { nama_area: 'asc' },
-    });
+    const options = await getOrSetCacheSimple('area:list', async () => {
+      const areas = await prisma.area.findMany({
+        take: 500,
+        select: { id_area: true, nama_area: true },
+        orderBy: { nama_area: 'asc' },
+      });
 
-    const options = areas.map((a) => ({
-      value: a.id_area,
-      label: a.nama_area,
-    }));
+      return areas.map((a) => ({
+        value: a.id_area,
+        label: a.nama_area,
+      }));
+    }, 300);
 
     return NextResponse.json(
       { success: true, data: options },
@@ -57,6 +60,8 @@ export async function POST(request: Request) {
     const validated = createAreaSchema.parse(body);
 
     const id = await createArea(validated);
+
+    await deleteCache('area:list');
 
     return NextResponse.json({
       success: true,
@@ -98,6 +103,8 @@ export async function PUT(request: Request) {
       nama_area: validated.nama_area,
     });
 
+    await deleteCache('area:list');
+
     return NextResponse.json({
       success: true,
       message: 'Area updated successfully',
@@ -138,6 +145,8 @@ export async function DELETE(request: Request) {
     }
 
     await deleteArea(id);
+
+    await deleteCache('area:list');
 
     return NextResponse.json({
       success: true,

@@ -71,6 +71,10 @@ async function collectPrometheusMetrics(): Promise<string> {
     dompis_db_outbox_pending: { help: 'Pending tech_event_outbox records', type: 'gauge' },
     dompis_external_db_connected: { help: 'External DB connection status (1=connected)', type: 'gauge' },
     dompis_projection_backlog: { help: 'Never-projected ticket_raw records', type: 'gauge' },
+    dompis_cache_hits_total: { help: 'Total Redis cache hits', type: 'counter' },
+    dompis_cache_misses_total: { help: 'Total Redis cache misses', type: 'counter' },
+    dompis_db_query_timeouts_total: { help: 'Total Prisma query timeouts (Error 3024)', type: 'counter' },
+    dompis_db_slow_queries_total: { help: 'Total slow Prisma queries detected', type: 'counter' },
   };
 
   for (const [name, meta] of Object.entries(metadata)) {
@@ -167,6 +171,18 @@ async function collectPrometheusMetrics(): Promise<string> {
   lines.push(`dompis_db_ticket_count ${ticketCount}`);
   lines.push(`dompis_db_outbox_pending ${pendingOutbox}`);
   lines.push(`dompis_external_db_connected ${externalDbConnected ? 1 : 0}`);
+
+  // Cache metrics
+  const cacheHits = await redis.get('dompis:cache:hits').catch(() => null);
+  const cacheMisses = await redis.get('dompis:cache:misses').catch(() => null);
+  lines.push(`dompis_cache_hits_total ${parseInt(cacheHits ?? '0', 10)}`);
+  lines.push(`dompis_cache_misses_total ${parseInt(cacheMisses ?? '0', 10)}`);
+
+  // DB query metrics
+  const queryTimeouts = await redis.get('dompis:db:query_timeouts').catch(() => null);
+  const slowQueries = await redis.get('dompis:db:slow_queries').catch(() => null);
+  lines.push(`dompis_db_query_timeouts_total ${parseInt(queryTimeouts ?? '0', 10)}`);
+  lines.push(`dompis_db_slow_queries_total ${parseInt(slowQueries ?? '0', 10)}`);
 
   return lines.join('\n') + '\n';
 }
