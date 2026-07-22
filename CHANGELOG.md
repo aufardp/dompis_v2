@@ -6,7 +6,33 @@ Setiap perubahan ditambahkan ke bagian atas file, perubahan terbaru paling atas.
 
 ---
 
-## [Phase 3] — Dashboard Query Caching (Redis) — 22 Juli 2026
+## [Phase 3b] — Status Refresh Fix: Enable Terminal Tickets Refresh — 22 Juli 2026
+
+### Masalah
+Tiket yang sudah CLOSED tidak pernah di-refresh oleh status refresh. Tiga query (`fetchHotCandidates`, `fetchSafetyCandidates`, `seedRefreshState`) semuanya exclude `FINAL_STATUS_VALUES` (`closed`, `close`, `resolved`, `cancelled`). Akibatnya:
+- Bridge incremental hanya ambil data 7 hari via `status_date`
+- Status refresh skip tiket terminal → tidak bisa update status yang berubah setelah closed
+- Banyak tiket stuck dengan status lama
+
+### File Diubah
+
+#### `lib/status-refresh.ts`
+
+| Perubahan | Baris | Keterangan |
+|-----------|-------|------------|
+| Hapus `FINAL_STATUS_VALUES` constant | ~94-110 | Seluruh array dihapus — tidak lagi dibutuhkan |
+| Hapus filter di `fetchHotCandidates` | ~389-392 | `AND tr.status NOT IN (FINAL_STATUS_VALUES)` dihapus |
+| Hapus filter di `fetchSafetyCandidates` | ~438-441 | Sama, filter dihapus |
+| Hapus filter di `seedRefreshState` | ~539 | `.filter(FINAL_STATUS_SET.has(...))` dihapus |
+| Hapus backlog estimation filter | ~333-336 | `AND tr.status NOT IN (FINAL_STATUS_VALUES)` dihapus |
+
+### Dampak
+- Semua tiket (termasuk CLOSED) bisa masuk antrian status refresh
+- `fetchByIncident` (tidak terikat window tanggal) ambil data terbaru dari bridge
+- Prioritas tetap: 70% hot tickets (sourceUpdatedAt ≤ 15 menit), 30% safety (tiket lama)
+- Safety candidates diurutkan least-recently-checked first — tiket yang paling lama tidak dicek diproses duluan
+
+## [Phase 3a] — Dashboard Query Caching (Redis) — 22 Juli 2026
 
 ### Masalah
 15 parallel dashboard queries (masing-masing 7-29s) menghabiskan pool 20 koneksi → pool exhaustion → MySQL crash.

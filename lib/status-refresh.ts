@@ -91,24 +91,6 @@ const METRICS_TTL_SECONDS = 24 * 60 * 60;
 const UPDATE_CHUNK_SIZE = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_CHUNK_SIZE', 50);
 const UPDATE_RETRY_MAX = parsePositiveIntEnv('STATUS_REFRESH_UPDATE_RETRY_MAX', 3);
 
-const FINAL_STATUS_VALUES = [
-  'closed',
-  'Closed',
-  'CLOSED',
-  'close',
-  'Close',
-  'CLOSE',
-  'resolved',
-  'Resolved',
-  'RESOLVED',
-  'cancelled',
-  'Cancelled',
-  'CANCELLED',
-  'canceled',
-  'Canceled',
-  'CANCELED',
-];
-
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] || '', 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -330,11 +312,7 @@ async function estimateBacklog(sourceTables: string[]): Promise<number | null> {
         WHERE tr.incident IS NOT NULL
           AND ${sourceTableFilter}
           AND tr.isActive = TRUE
-          AND (
-            tr.status IS NULL
-            OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
-          )
-        LIMIT 5001
+          LIMIT 5001
       ) x
     `;
     return Number(rows[0]?.count ?? 0);
@@ -386,10 +364,6 @@ async function fetchHotCandidates(
           OR s.lastCheckedAt < tr.sourceUpdatedAt
           OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
         )
-        AND (
-          tr.status IS NULL
-          OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
-        )
       ORDER BY tr.sourceUpdatedAt ASC, tr.id_ticket ASC
       LIMIT ${limit}
     `,
@@ -436,10 +410,6 @@ async function fetchSafetyCandidates(
           OR tr.sourceUpdatedAt < ${hotWindowStart}
         )
         AND (
-          tr.status IS NULL
-          OR tr.status NOT IN (${Prisma.join(FINAL_STATUS_VALUES)})
-        )
-        AND (
           s.lastCheckedAt < tr.sourceUpdatedAt
           OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
           OR tr.sourceUpdatedAt IS NULL
@@ -457,7 +427,6 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
   const seedLimit = Math.min(Math.max(limit, SEED_BATCH_SIZE), 200);
   const dueAt = new Date(nowWib().getTime() - RECHECK_MINUTES * 60_000 - 1000);
   const hotWindowStart = getHotWindowStart();
-  const FINAL_STATUS_SET = new Set(FINAL_STATUS_VALUES.map(s => s.toLowerCase()));
   const sourceTableWhere =
     sourceTables.length > 0
       ? { sourceTable: { in: sourceTables } }
@@ -536,7 +505,6 @@ async function seedRefreshState(limit: number, sourceTables: string[]): Promise<
   const recentStateSet = new Set((recentStateRows ?? []).map((row) => row.incident));
   const toSeed = candidates
     .filter((candidate) => !recentStateSet.has(candidate.incident))
-    .filter((c) => !c.status || !FINAL_STATUS_SET.has(c.status.toLowerCase()))
     .slice(0, seedLimit);
 
   if (toSeed.length === 0) return;
