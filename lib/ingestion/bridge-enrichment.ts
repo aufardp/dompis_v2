@@ -114,7 +114,7 @@ export async function runBridgeEnrichment(
   try {
     joinRows = await prisma.$queryRaw<Array<{ incident: string }>>`
       SELECT tr.incident
-      FROM ticket_raw tr USE INDEX (idx_ticket_raw_enrichment)
+      FROM ticket_raw tr
       INNER JOIN \`bot_dompis_db\`.\`piloting_tickets\` pt ON tr.incident = pt.incident COLLATE utf8mb4_unicode_ci
       WHERE tr.sourceTable IN ('nossa', 'nossa_closed')
         AND tr.contact_phone IS NULL
