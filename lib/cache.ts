@@ -1,5 +1,6 @@
 import { logger } from '@/lib/observability/logger';
 import redis, { ensureRedisReady } from '@/lib/redis';
+import { acquireLock, releaseLock } from '@/lib/distributed-lock';
 import { gzipSync, gunzipSync } from 'node:zlib';
 
 export interface CacheOptions {
@@ -187,26 +188,79 @@ export async function invalidateTechniciansCache(): Promise<void> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Cache-aside helper: ambil dari cache, jika miss jalankan fn() lalu simpan.
  *
  * @example
  * const data = await getOrSetCache('stats:dashboard', () => fetchStats(), 120);
+ *
+ * Protection:
+ * - Distributed lock (10s) mencegah stampede saat cache expire
+ * - Stale fallback (300s) serve data basi jika DB down
+ * - 3x retry (100ms interval) nunggu rebuild dari requestor lain
  */
 export async function getOrSetCache<T>(
   key: string,
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
+  staleTtl: number = 300,
 ): Promise<T> {
-  // Try cache first
+  // 1. Try fresh cache first
   const cached = await getCache<T>(key);
   if (cached !== null) return cached;
 
-  // Cache miss — compute
+  const staleKey = `stale:${key}`;
+  const lockKey = `cache:rebuild:${key}`;
+
+  // 2. Try distributed lock — only 1 request rebuilds
+  const lockResult = await acquireLock(lockKey, 10);
+  if (lockResult.acquired) {
+    try {
+      // Double-check cache after acquiring lock
+      const recheck = await getCache<T>(key);
+      if (recheck !== null) return recheck;
+
+      const data = await fn();
+      await setCache(key, data, ttl);
+      await setCache(staleKey, data, staleTtl);
+      return data;
+    } finally {
+      await releaseLock(lockKey, lockResult.ownerId).catch(() => {});
+    }
+  }
+
+  // 3. Lock not acquired — wait and retry cache (300ms max)
+  for (let i = 0; i < 3; i++) {
+    await sleep(100);
+    const retry = await getCache<T>(key);
+    if (retry !== null) return retry;
+  }
+
+  // 4. Last resort: serve stale data (still fresh enough for dashboard)
+  const stale = await getCache<T>(staleKey);
+  if (stale !== null) return stale;
+
+  // 5. No stale data either — fallback to direct compute
   const data = await fn();
+  await setCache(key, data, ttl).catch(() => {});
+  return data;
+}
 
-  // Store synchronously — blocking is negligible vs recompute cost
+/**
+ * Same as getOrSetCache but without stampede protection — for non-critical cache.
+ */
+export async function getOrSetCacheSimple<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number = DEFAULT_TTL,
+): Promise<T> {
+  const cached = await getCache<T>(key);
+  if (cached !== null) return cached;
+  const data = await fn();
   await setCache(key, data, ttl);
-
   return data;
 }

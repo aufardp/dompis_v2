@@ -17,6 +17,7 @@ import {
 } from '@/app/libs/ticket-utils';
 import { classifyNeedsValidation } from '@/lib/projection/classify-validation';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { invalidateTicketsCache } from '@/lib/cache';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 
@@ -1304,6 +1305,9 @@ async function projectRecords(
   });
 
   broadcastTicketInvalidate('projection');
+  invalidateTicketsCache().catch((err) =>
+    logger.warn('[Projection] Cache invalidation failed:', { error: String(err) }),
+  );
 
   return result;
 }
