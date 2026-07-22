@@ -338,26 +338,6 @@ function buildTrendKeys(from: Date, to: Date, granularity: 'day' | 'month') {
   return keys;
 }
 
-interface AnalyticsGroupRow {
-  workzone: string | null;
-  jenis_tiket_2: string | null;
-  customer_segment: string | null;
-  ticket_id_gamas: string | null;
-  reported_date: string | null;
-  status_update: string | null;
-  _count_all: bigint;
-}
-
-interface TrendGroupRow {
-  status_update: string | null;
-  workzone: string | null;
-  customer_type: string | null;
-  customer_segment: string | null;
-  jenis_tiket_2: string | null;
-  reported_date: string | null;
-  _count_all: bigint;
-}
-
 function bucketAnalyticsType(group: {
   jenis_tiket_2: string | null;
   customer_segment: string | null;
@@ -836,16 +816,12 @@ export class TicketService {
     const spanDays = differenceInCalendarDays(rangeTo, rangeFrom) + 1;
     const granularity: 'day' | 'month' = spanDays > 60 ? 'month' : 'day';
 
-    // --- QUERY 1: Main groupBy (raw SQL + timeout hint) ---
-    const [groupWhere, groupParams] = buildSqlWhereClause(where);
-    const groups = await prisma.$queryRawUnsafe<AnalyticsGroupRow[]>(`
-      SELECT /*+ MAX_EXECUTION_TIME(30000) */
-        workzone, jenis_tiket_2, customer_segment, ticket_id_gamas, reported_date, status_update,
-        COUNT(*) AS _count_all
-      FROM ticket
-      WHERE ${groupWhere}
-      GROUP BY workzone, jenis_tiket_2, customer_segment, ticket_id_gamas, reported_date, status_update
-    `, ...groupParams);
+    // --- QUERY 1: Main groupBy ---
+    const groups = await prisma.ticket.groupBy({
+      where,
+      by: ['workzone', 'jenis_tiket_2', 'customer_segment', 'ticket_id_gamas', 'reported_date', 'status_update'],
+      _count: { _all: true },
+    });
 
     // --- WORKZONE FILTER for raw SQL queries ---
     const workzoneFilter = await (async (): Promise<{
@@ -903,7 +879,7 @@ export class TicketService {
     if (!workzoneFilter.skip) {
       try {
         gaulRows = await prisma.$queryRaw`
-          SELECT /*+ MAX_EXECUTION_TIME(15000) */
+          SELECT
             t1.service_no,
             COUNT(DISTINCT t1.incident) AS occurrences,
             t1.workzone,
@@ -946,7 +922,7 @@ export class TicketService {
     if (!workzoneFilter.skip) {
       try {
         lapulRows = await prisma.$queryRaw`
-          SELECT /*+ MAX_EXECUTION_TIME(15000) */
+          SELECT
             tr.incident,
             COUNT(*) AS occurrences,
             t.workzone,
@@ -985,7 +961,7 @@ export class TicketService {
     };
 
     for (const g of groups) {
-      const count = Number(g._count_all);
+      const count = g._count._all;
       const rawJenis = (g.jenis_tiket_2 ?? '').trim();
       const jenisLower = rawJenis.toLowerCase();
       const jenisLabel = JENIS_LABEL[jenisLower] || rawJenis || 'Unknown';
@@ -1187,18 +1163,23 @@ export class TicketService {
     const workzoneMap = new Map<string, number>();
     const metrics = { total: 0, open: 0, onProgress: 0, closed: 0 };
 
-    const [groupWhere2, groupParams2] = buildSqlWhereClause(where);
-    const groups = await prisma.$queryRawUnsafe<TrendGroupRow[]>(`
-      SELECT /*+ MAX_EXECUTION_TIME(30000) */
-        status_update, workzone, customer_type, customer_segment, jenis_tiket_2, reported_date,
-        COUNT(*) AS _count_all
-      FROM ticket
-      WHERE ${groupWhere2}
-      GROUP BY status_update, workzone, customer_type, customer_segment, jenis_tiket_2, reported_date
-    `, ...groupParams2);
+    const groups = await prisma.ticket.groupBy({
+      where,
+      by: [
+        'status_update',
+        'workzone',
+        'customer_type',
+        'customer_segment',
+        'jenis_tiket_2',
+        'reported_date',
+      ],
+      _count: {
+        _all: true,
+      },
+    });
 
     for (const group of groups) {
-      const count = Number(group._count_all);
+      const count = group._count._all;
       const status = String(group.status_update ?? '').trim().toLowerCase();
       const typeBucket = bucketAnalyticsType(group);
       const workzoneName = String(group.workzone ?? '').trim() || 'Unknown';
@@ -1625,7 +1606,7 @@ export class TicketService {
     const [whereClause, params] = buildSqlWhereClause(slaExpiredWhere);
 
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         t.id_ticket, t.incident, t.customer_type, t.reported_date,
         t.status_update, t.teknisi_user_id, t.workzone, t.contact_name, t.service_no,
         u.nama AS technician_name

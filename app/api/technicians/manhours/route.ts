@@ -12,7 +12,6 @@ import {
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWIB } from '@/app/utils/datetime';
 import { logger } from '@/lib/observability/logger';
-import { getOrSetCache } from '@/lib/cache';
 
 /**
  * GET /api/technicians/manhours
@@ -83,28 +82,28 @@ export async function GET(req: NextRequest) {
     // Get admin's workzones for filtering
     const adminWorkzones = await getWorkzonesForUser(user.id_user);
 
-    const cacheKey = `manhours:${dateFromStr}:${dateToStr}:${sto || 'all'}:${name || 'all'}`;
+    // Calculate manhours
+    const rows = await calculateManhours(
+      {
+        dateFrom,
+        dateTo,
+        sto,
+        name,
+      },
+      adminWorkzones,
+    );
 
-    const result = await getOrSetCache(cacheKey, async () => {
-      const rows = await calculateManhours(
-        {
-          dateFrom,
-          dateTo,
-          sto,
-          name,
-        },
-        adminWorkzones,
-      );
+    // Get configs for dynamic column headers
+    const configs = await getManhourConfigs();
 
-      const configs = await getManhourConfigs();
-      const stoOptions = await getStoOptions(adminWorkzones);
-
-      return { rows, configs, stoOptions };
-    }, 120);
+    // Get STO options for filter dropdown
+    const stoOptions = await getStoOptions(adminWorkzones);
 
     return NextResponse.json({
       success: true,
-      ...result,
+      rows,
+      configs,
+      stoOptions,
       dateFrom: formatDate(dateFrom),
       dateTo: formatDate(dateTo),
     });

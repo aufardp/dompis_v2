@@ -211,7 +211,7 @@ async function runAllTasks(signal: AbortSignal): Promise<void> {
         ingestionState.lastError = null;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error('Ingestion task failed', { errorMessage: message });
+        logger.error('Ingestion task failed', { error: message });
         await recordRun('ingestion', 0, false, { error: message });
         ingestionState.lastError = message;
         ingestionState.consecutiveErrors++;

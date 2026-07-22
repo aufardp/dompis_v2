@@ -69,7 +69,7 @@ async function fetchAllTickets(
       includeClosed: true,
     });
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         t.id_ticket,
         t.incident,
         t.summary,

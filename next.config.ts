@@ -1,21 +1,16 @@
 import type { NextConfig } from 'next';
+import bundleAnalyzer from '@next/bundle-analyzer';
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
-
-  outputFileTracingExcludes: {
-    '**/*': [
-      'scripts/**/*',
-      'worker-runtime/**/*',
-      'docs/**/*',
-      '.agents/**/*',
-      'ecosystem.config.js',
-    ],
-  },
 
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react'],
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

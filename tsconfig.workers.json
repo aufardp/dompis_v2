@@ -3,8 +3,8 @@
   "compilerOptions": {
     "allowJs": false,
     "declaration": false,
-    "incremental": true,
-    "isolatedModules": true,
+    "incremental": false,
+    "isolatedModules": false,
     "module": "CommonJS",
     "moduleResolution": "node",
     "noEmit": false,

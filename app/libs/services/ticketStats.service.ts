@@ -40,7 +40,7 @@ export class TicketStatsService {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await prisma.$queryRawUnsafe(`
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         status_update,
         CUSTOMER_TYPE,
         JENIS_TIKET,

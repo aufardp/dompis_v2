@@ -17,8 +17,6 @@ import {
 } from '@/app/libs/ticket-utils';
 import { classifyNeedsValidation } from '@/lib/projection/classify-validation';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
-import { invalidateTicketsCache } from '@/lib/cache';
-import { prewarmDashboardCache } from '@/lib/dashboard/prewarm';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 
@@ -209,7 +207,6 @@ export interface ExistingTicket {
   alamat: string | null;
   needs_validation: boolean;
   validation_reason: string | null;
-  sqm_update_reason: string | null;
 }
 
 interface ExistingProjectionLog {
@@ -521,12 +518,6 @@ export function buildProjectionUpsert(
     }
   }
 
-  // Protect SQM-UPDATE summary — don't let bridge overwrite it
-  // if user has flagged this ticket as SQM update.
-  if (existing?.sqm_update_reason) {
-    delete base.summary;
-  }
-
   const updateData = { ...base };
   if (existing?.teknisi_user_id) delete updateData.alamat;
 
@@ -760,7 +751,6 @@ async function prepareProjectionItems(
       alamat: true,
       needs_validation: true,
       validation_reason: true,
-      sqm_update_reason: true,
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
@@ -1306,12 +1296,6 @@ async function projectRecords(
   });
 
   broadcastTicketInvalidate('projection');
-  invalidateTicketsCache().catch((err) =>
-    logger.warn('[Projection] Cache invalidation failed:', { error: String(err) }),
-  );
-  prewarmDashboardCache().catch((err) =>
-    logger.warn('[Projection] Dashboard prewarm failed:', { error: String(err) }),
-  );
 
   return result;
 }

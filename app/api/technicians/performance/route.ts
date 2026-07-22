@@ -222,7 +222,7 @@ export async function GET(req: NextRequest) {
 
       const avgRows = await prisma.$queryRaw(
         Prisma.sql`
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */ tt.assigned_to as tech_id,
+      SELECT tt.assigned_to as tech_id,
              AVG(TIMESTAMPDIFF(SECOND, tt.assigned_at, tt.closed_at)) / 3600 as avg_hours,
              COUNT(*) as n
       FROM ticket_tracking tt

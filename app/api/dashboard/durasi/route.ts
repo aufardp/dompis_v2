@@ -353,7 +353,7 @@ async function getFilteredTickets(
 
     const unionSql = parts.join(' UNION ALL ');
     const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(15000) */
+    SELECT
       COALESCE(r.nama_region, 'UNKNOWN') AS region,
       COALESCE(a.nama_area, 'UNKNOWN')   AS area,
       COALESCE(sa.nama_sa, 'UNKNOWN')    AS sa_name,

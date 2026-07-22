@@ -1,18 +1,48 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '@/app/libs/prisma';
-import { iterateNossaOpen, iterateNossaClosedIncremental } from './nossa';
+// ==========================================
+// Pengganti fetchExternalRows() di lib/status-refresh.ts
+// ==========================================
+//
+// CARA PAKAI:
+// 1. Tambahkan import ini di lib/status-refresh.ts:
+//      import { fetchExternalRowsViaBridge } from '@/lib/external-db/qosmic-bridge/status-refresh-adapter';
+// 2. Ganti pemanggilan `fetchExternalRows(sourceTable, incidents)` (baris ~997)
+//    menjadi `fetchExternalRowsViaBridge(sourceTable, incidents)`.
+// 3. Fungsi lama `fetchExternalRows` (baris 562-625, yang query MySQL
+//    `WHERE incident IN (...)`) BOLEH tetap ada di file (tidak usah dihapus)
+//    selama masa transisi — dilindungi feature flag QOSMIC_BRIDGE_ENABLED,
+//    lihat di bawah. Ini bukan penggantian permanen sampai Anda yakin bridge
+//    stabil di produksi.
+//
+// PERBEDAAN PERILAKU YANG PERLU DIKETAHUI (bukan bug, tapi trade-off arsitektur):
+// - MySQL langsung: SATU query utk N incident sekaligus.
+// - Bridge: TIDAK ada batch endpoint — jadi ini melakukan N request terpisah
+//   (satu per incident), diatur lewat antrian bounded-concurrency (queue.ts)
+//   dan rate limiter global 20/menit (client.ts). Utk STATUS_REFRESH_BATCH_SIZE
+//   besar (default 100), ini akan JAUH lebih lambat dari MySQL langsung.
+//   => WAJIB turunkan STATUS_REFRESH_BATCH_SIZE (lihat catatan di bagian akhir).
+// - worklog_summary / last_update_worklog: field ini dipakai kode existing
+//   Anda tapi TIDAK muncul di contoh dokumentasi bridge (yang cuma
+//   menunjukkan Incident/Status/Status_Date/Regional/Witel). Kode di bawah
+//   tetap mencoba membaca field ini secara graceful (null kalau tidak ada) —
+//   TAPI ini perlu diverifikasi manual sekali dengan hit nyata ke bridge
+//   utk incident yang Anda tahu punya worklog, supaya yakin field ini
+//   memang ikut terbawa atau tidak.
+
+import { fetchByIncident } from './nossa';
+import { enqueueBridgeCall } from './queue';
 import { isQosmicBridgeConfigured } from './client';
 import {
   normalizeExternalRow,
   normalizeStatus,
 } from '@/lib/ingestion/normalizer';
 import { logger } from '@/lib/observability/logger';
-import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import type {
   ExternalRow,
   NormalizedExternalRow,
 } from '@/lib/external-db/types';
 
+// Tipe ini HARUS sama persis dengan yang dideklarasikan di status-refresh.ts.
+// Kalau di file aslinya bentuknya beda, sesuaikan definisi ini juga.
 interface ExternalStatusRow {
   incident: string;
   sourceTable: string;
@@ -23,8 +53,6 @@ interface ExternalStatusRow {
   lastUpdateWorklog: string | null;
   sourceUpdatedAt: Date;
 }
-
-const UPSERT_CHUNK_SIZE = 50;
 
 function trimTo(value: unknown, maxLen: number): string | null {
   if (value === null || value === undefined) return null;
@@ -39,6 +67,16 @@ function parseExternalDate(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function nowWib(): Date {
+  return new Date();
+}
+
+/**
+ * Resource bridge cuma 'nossa' | 'nossa_closed'. `sourceTable` di kode Anda
+ * seharusnya sudah bernilai persis salah satu dari dua ini (nama tabel
+ * EXTERNAL_TABLE_NAMES) — kalau ternyata beda (mis. ada alias lain),
+ * sesuaikan mapping di sini.
+ */
 function toResource(sourceTable: string): 'nossa' | 'nossa_closed' {
   if (sourceTable === 'nossa' || sourceTable === 'nossa_closed')
     return sourceTable;
@@ -47,284 +85,97 @@ function toResource(sourceTable: string): 'nossa' | 'nossa_closed' {
   );
 }
 
-function rawToExternalStatusRow(
-  rawRow: Record<string, unknown>,
-  sourceTable: string,
-): ExternalStatusRow | null {
-  const normalized = normalizeExternalRow(
-    rawRow as unknown as ExternalRow,
-    sourceTable,
-  ) as NormalizedExternalRow;
-
-  const incident = trimTo(normalized.incident, 50);
-  if (!incident) return null;
-
-  return {
-    incident,
-    sourceTable,
-    normalizedStatus: normalizeStatus(
-      trimTo(normalized.status, 50) ?? undefined,
-    ),
-    statusDate: trimTo(normalized.status_date, 100),
-    dateModified: trimTo(normalized.date_modified, 50),
-    worklogSummary: trimTo(normalized.worklog_summary, 100),
-    lastUpdateWorklog: trimTo(normalized.last_update_worklog, 100),
-    sourceUpdatedAt: parseExternalDate(normalized.date_modified) ?? nowWib(),
-  };
-}
-
-function hasChanged(
-  existing: {
-    status: string | null;
-    status_date: string | null;
-    date_modified: string | null;
-    worklog_summary: string | null;
-    last_update_worklog: string | null;
-  },
-  bridge: ExternalStatusRow,
-): boolean {
-  return (
-    existing.status !== bridge.normalizedStatus ||
-    existing.status_date !== bridge.statusDate ||
-    existing.date_modified !== bridge.dateModified ||
-    existing.worklog_summary !== bridge.worklogSummary ||
-    existing.last_update_worklog !== bridge.lastUpdateWorklog
-  );
-}
-
-async function fetchExistingFromTicketRaw(
-  incidents: string[],
-  sourceTable: string,
-): Promise<
-  Map<
-    string,
-    {
-      status: string | null;
-      status_date: string | null;
-      date_modified: string | null;
-      worklog_summary: string | null;
-      last_update_worklog: string | null;
-    }
-  >
-> {
-  const map = new Map<
-    string,
-    {
-      status: string | null;
-      status_date: string | null;
-      date_modified: string | null;
-      worklog_summary: string | null;
-      last_update_worklog: string | null;
-    }
-  >();
-  if (incidents.length === 0) return map;
-
-  const chunks: string[][] = [];
-  for (let i = 0; i < incidents.length; i += 500) {
-    chunks.push(incidents.slice(i, i + 500));
-  }
-
-  for (const chunk of chunks) {
-    const rows = await prisma.ticket_raw.findMany({
-      where: {
-        incident: { in: chunk },
-        sourceTable,
-        isActive: true,
-      },
-      select: {
-        incident: true,
-        status: true,
-        status_date: true,
-        date_modified: true,
-        worklog_summary: true,
-        last_update_worklog: true,
-      },
-    });
-    for (const row of rows) {
-      if (!row.incident) continue;
-      map.set(row.incident, {
-        status: row.status,
-        status_date: row.status_date,
-        date_modified: row.date_modified,
-        worklog_summary: row.worklog_summary,
-        last_update_worklog: row.last_update_worklog,
-      });
-    }
-  }
-
-  return map;
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
-
-async function upsertChangedRows(
-  rows: ExternalStatusRow[],
-  batchId: string,
-): Promise<number> {
-  if (rows.length === 0) return 0;
-  let updated = 0;
-  const now = nowWib();
-  const today = todayWibDateForDb();
-
-  for (const chunk of chunkArray(rows, UPSERT_CHUNK_SIZE)) {
-    try {
-      const values = chunk.map((row) =>
-        Prisma.sql`(
-          ${row.incident},
-          ${row.normalizedStatus},
-          ${row.statusDate},
-          ${row.dateModified},
-          ${row.worklogSummary},
-          ${row.lastUpdateWorklog},
-          ${row.sourceUpdatedAt},
-          ${now},
-          ${now},
-          ${batchId},
-          ${today},
-          ${now},
-          ${batchId}
-        )`,
-      );
-
-      await prisma.$executeRaw`
-        INSERT INTO ticket_raw
-          (
-            incident,
-            status,
-            status_date,
-            date_modified,
-            worklog_summary,
-            last_update_worklog,
-            sourceUpdatedAt,
-            lastSeenAt,
-            importedAt,
-            syncBatchId,
-            sync_date,
-            synced_at,
-            import_batch
-          )
-        VALUES ${Prisma.join(values)}
-        ON DUPLICATE KEY UPDATE
-          status = VALUES(status),
-          status_date = VALUES(status_date),
-          date_modified = VALUES(date_modified),
-          worklog_summary = VALUES(worklog_summary),
-          last_update_worklog = VALUES(last_update_worklog),
-          sourceUpdatedAt = VALUES(sourceUpdatedAt),
-          lastSeenAt = VALUES(lastSeenAt),
-          importedAt = VALUES(importedAt),
-          syncBatchId = VALUES(syncBatchId),
-          syncVersion = syncVersion + 1,
-          isActive = TRUE,
-          sync_date = VALUES(sync_date),
-          synced_at = VALUES(synced_at),
-          import_batch = VALUES(import_batch)
-      `;
-      updated += chunk.length;
-    } catch (error) {
-      logger.error('[QosmicBridge] Upsert changed rows gagal', {
-        error: error instanceof Error ? error.message : String(error),
-        count: chunk.length,
-      });
-    }
-  }
-
-  return updated;
-}
-
+/**
+ * Drop-in replacement utk fetchExternalRows() versi MySQL. Signature dan
+ * bentuk return SAMA PERSIS supaya caller di status-refresh.ts tidak perlu
+ * diubah.
+ */
 export async function fetchExternalRowsViaBridge(
   sourceTable: string,
-  _incidents: string[],
-): Promise<{ rows: Map<string, ExternalStatusRow>; changedCount: number }> {
+  incidents: string[],
+): Promise<Map<string, ExternalStatusRow>> {
   const mapped = new Map<string, ExternalStatusRow>();
-  let changedCount = 0;
+  if (incidents.length === 0) return mapped;
 
   if (!isQosmicBridgeConfigured()) {
     logger.error(
-      '[QosmicBridge] Belum dikonfigurasi — status-refresh bridge dilewati',
-      { sourceTable },
+      '[QosmicBridge] Belum dikonfigurasi (QOSMIC_BRIDGE_BASE_URL/TOKEN kosong) — status-refresh dilewati utk batch ini',
+      {
+        sourceTable,
+        incidentCount: incidents.length,
+      },
     );
-    return { rows: mapped, changedCount: 0 };
+    return mapped;
   }
 
   const resource = toResource(sourceTable);
-  const bridgeRows: ExternalStatusRow[] = [];
 
-  logger.info('[QosmicBridge] Mulai paginated fetch untuk status refresh', {
-    sourceTable,
-    resource,
+  const results = await Promise.allSettled(
+    incidents.map((incident) =>
+      enqueueBridgeCall(
+        () => fetchByIncident<Record<string, unknown>>(resource, incident),
+        'background',
+      ),
+    ),
+  );
+
+  let notFound = 0;
+  let failed = 0;
+
+  results.forEach((result, index) => {
+    const incident = incidents[index];
+
+    if (result.status === 'rejected') {
+      failed++;
+      logger.warn(
+        '[QosmicBridge] fetchByIncident gagal, dilewati (akan dicoba lagi run berikutnya)',
+        {
+          sourceTable,
+          incident,
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+        },
+      );
+      return;
+    }
+
+    const rawRow = result.value;
+    if (!rawRow) {
+      notFound++;
+      return;
+    }
+
+    const normalized = normalizeExternalRow(
+      rawRow as unknown as ExternalRow,
+      sourceTable,
+    ) as NormalizedExternalRow;
+
+    const normalizedIncident = trimTo(normalized.incident, 50);
+    if (!normalizedIncident) return;
+
+    mapped.set(normalizedIncident, {
+      incident: normalizedIncident,
+      sourceTable,
+      normalizedStatus: normalizeStatus(
+        trimTo(normalized.status, 50) ?? undefined,
+      ),
+      statusDate: trimTo(normalized.status_date, 100),
+      dateModified: trimTo(normalized.date_modified, 50),
+      worklogSummary: trimTo(normalized.worklog_summary, 100),
+      lastUpdateWorklog: trimTo(normalized.last_update_worklog, 100),
+      sourceUpdatedAt: parseExternalDate(normalized.date_modified) ?? nowWib(),
+    });
   });
 
-  try {
-    if (resource === 'nossa') {
-      for await (const page of iterateNossaOpen()) {
-        for (const rawRow of page) {
-          const row = rawToExternalStatusRow(rawRow, sourceTable);
-          if (row) bridgeRows.push(row);
-        }
-      }
-    } else {
-      for await (const page of iterateNossaClosedIncremental(7)) {
-        for (const rawRow of page) {
-          const row = rawToExternalStatusRow(rawRow, sourceTable);
-          if (row) bridgeRows.push(row);
-        }
-      }
-    }
-  } catch (error) {
-    logger.error('[QosmicBridge] Paginated fetch gagal', {
-      sourceTable,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { rows: mapped, changedCount: 0 };
-  }
+  logger.info('[QosmicBridge] Batch status-refresh selesai', {
+    sourceTable,
+    requested: incidents.length,
+    found: mapped.size,
+    notFound,
+    failed,
+  });
 
-  if (bridgeRows.length === 0) {
-    logger.info('[QosmicBridge] Tidak ada data dari bridge', { sourceTable });
-    return { rows: mapped, changedCount: 0 };
-  }
-
-  // Build full map for caller
-  for (const row of bridgeRows) {
-    mapped.set(row.incident, row);
-  }
-
-  // Batch-read existing values from ticket_raw
-  const incidentList = [...mapped.keys()];
-  const existingMap = await fetchExistingFromTicketRaw(incidentList, sourceTable);
-
-  // Detect changes
-  const changedRows: ExternalStatusRow[] = [];
-  for (const row of bridgeRows) {
-    const existing = existingMap.get(row.incident);
-    if (!existing || hasChanged(existing, row)) {
-      changedRows.push(row);
-    }
-  }
-
-  // Upsert changed rows langsung ke ticket_raw
-  const batchId = `bridge-refresh-${Date.now()}`;
-  if (changedRows.length > 0) {
-    const upserted = await upsertChangedRows(changedRows, batchId);
-    changedCount = upserted;
-    logger.info('[QosmicBridge] Status refresh bridge selesai', {
-      sourceTable,
-      totalFromBridge: bridgeRows.length,
-      changed: changedRows.length,
-      upserted,
-    });
-  } else {
-    logger.info('[QosmicBridge] Tidak ada perubahan data bridge', {
-      sourceTable,
-      totalFromBridge: bridgeRows.length,
-    });
-  }
-
-  return { rows: mapped, changedCount };
+  return mapped;
 }

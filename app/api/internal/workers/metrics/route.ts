@@ -7,7 +7,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getMetricAgeMs, parseProjectionCheckpointMeta } from '@/lib/observability/worker-health';
 import { getOrSetCache } from '@/lib/cache';
 
-const CACHE_TTL_SECONDS = 30;
+const CACHE_TTL_SECONDS = 5;
 const CACHE_KEY = 'internal_workers_metrics:v1';
 
 function metric(name: string, value: number, labels: Record<string, string> = {}): string {

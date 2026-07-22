@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '@/lib/observability/logger';
-import redis from '@/lib/redis';
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -15,11 +14,11 @@ const prismaLogConfig: any =
   process.env.NODE_ENV === 'development'
     ? ['query', 'info', 'warn', 'error']
     : enableSlowQueryLogging
-      ? [{ emit: 'event', level: 'query' }, { emit: 'event', level: 'error' }]
-      : [{ emit: 'event', level: 'error' }];
+      ? [{ emit: 'event', level: 'query' }, { emit: 'stdout', level: 'error' }]
+      : ['error'];
 
 const dbUrl = process.env.DATABASE_URL
-  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=10&connect_timeout=15`
+  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=60&connect_timeout=15`
   : undefined;
 
 export const prisma =
@@ -33,30 +32,9 @@ export const prisma =
       : undefined,
   });
 
-if (process.env.NODE_ENV !== 'development') {
-  (prisma as any).$on('error', (event: any) => {
-    const message = event.message || String(event);
-    logger.error('Prisma query error', {
-      component: 'prisma',
-      target: event.target,
-      message,
-    });
-
-    if (
-      message.includes('3024') ||
-      message.includes('Query execution was interrupted') ||
-      message.includes('max_execution_time')
-    ) {
-      redis.incr('dompis:db:query_timeouts').catch(() => {});
-    }
-  });
-}
-
 if (enableSlowQueryLogging) {
   (prisma as any).$on('query', (event: any) => {
     if (event.duration < slowQueryThresholdMs) return;
-
-    redis.incr('dompis:db:slow_queries').catch(() => {});
 
     const statement = event.query.replace(/\s+/g, ' ').trim();
     logger.warn('Slow Prisma query detected', {

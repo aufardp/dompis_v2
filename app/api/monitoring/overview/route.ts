@@ -10,7 +10,7 @@ import { getOnlineUsers } from '@/lib/monitoring/online-users';
 import { getProjectionHealth, getSyncHealth } from '@/lib/sync-metrics/metrics';
 import { getOrSetCache } from '@/lib/cache';
 
-const CACHE_TTL_SECONDS = 30;
+const CACHE_TTL_SECONDS = 5;
 const CACHE_KEY = 'monitoring_overview:v1';
 
 function numberFrom(value: unknown): number {

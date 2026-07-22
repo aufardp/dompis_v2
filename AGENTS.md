@@ -64,18 +64,7 @@ Maps external column names → internal snake_case. 6 bridge-specific mappings:
 - Query `ticket_raw` lokal via Prisma (tidak konsumsi rate limit bridge)
 - Menentukan `resource` dari `row.sourceTable`
 
-### 6. Bridge Enrichment (`lib/ingestion/bridge-enrichment.ts`)
-- **Tujuan**: mengisi 25 enrichment fields (`contact_phone`, `onu_rx`, `classification_flag`, dll) dari `piloting_tickets` ke bridge rows (`nossa`/`nossa_closed`)
-- **Trigger**: Dipanggil dari `runIngestionMode()` setelah semua `processTable()` selesai
-- **Metode**: Cross-database JOIN antara `ticket_raw` (dompis_db) dan `piloting_tickets` (bot_dompis_db) via Prisma `$queryRaw`
-  - `COLLATE utf8mb4_unicode_ci` pada join column (collation mismatch kedua tabel)
-- **Batch**: 2000 per siklus, oldest-first (`ORDER BY tr.importedAt ASC`)
-- **Upsert**: `INSERT ... ON DUPLICATE KEY UPDATE` hanya menyentuh 25 enrichment fields, tidak menyentuh BRIDGE_FIELDS
-- **Column safety**: Nilai di-truncate sesuai `CHARACTER_MAXIMUM_LENGTH` tiap kolom (misal `onu_rx: varchar(10)`)
-- **Flow**: cross-db JOIN → fetch `*` dari PT → normalize → batch upsert
-- Diperlukan index: `idx_ticket_raw_enrichment(contact_phone, sourceTable, isActive, importedAt)` di `ticket_raw`
-
-### 7. Backfill Script (`scripts/qosmic-bridge-backfill.ts`)
+### 6. Backfill Script (`scripts/qosmic-bridge-backfill.ts`)
 - `npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14`
 - Iterate `iterateNossaClosedBackfill` → `processRawRows` per page
 - Graceful shutdown via SIGINT/SIGTERM, progress log per window
@@ -91,7 +80,6 @@ scheduleEveryMinutes(INGESTION_INTERVAL_MINUTES)
         → iterateNossaOpen() → processRawRows → ticket_raw upsert
       → processTable('nossa_closed', 'incremental')
         → iterateNossaClosedIncremental(1) → processRawRows → ticket_raw upsert
-      → runBridgeEnrichment() // isi 25 enrichment fields dari piloting_tickets
   → requestImmediateProjection()
 ```
 
@@ -141,15 +129,12 @@ npm run bridge:backfill -- --from 2026-01-01 --to 2026-07-14
 - `QOSMIC_BRIDGE_ENABLED=true` — master switch
 - `QOSMIC_BRIDGE_BASE_URL` — endpoint bridge
 - `QOSMIC_BRIDGE_TOKEN` — bearer token
-- `INGESTION_CONCURRENCY=1` — proses tabel sequential (jangan >1, sebab lock contention upsert ke ticket_raw)
 - `QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN=20` — global rate limit
 - `QOSMIC_BRIDGE_TIMEOUT_MS=15000` — request timeout
 - `QOSMIC_BRIDGE_RETRY_MAX=4` — max retries
 - `QOSMIC_BRIDGE_MAX_CONCURRENT=3` — local concurrency
 - `QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN=6` — budget backfill (sisa 14 untuk ingestion+refresh)
 - `DATA_WORKER_BACKFILL_ENABLED=true` — aktifkan backfill startup di data-worker
-- `INGESTION_ENRICHMENT_ENABLED=true` — master switch enrichment
-- `INGESTION_ENRICHMENT_BATCH_SIZE=2000` — rows per cycle (max: ~2500 due to MySQL placeholder limit)
 
 Jika `QOSMIC_BRIDGE_ENABLED=false` atau tidak dikonfigurasi, fallback penuh ke MySQL langsung.
 
@@ -160,4 +145,3 @@ Jika `QOSMIC_BRIDGE_ENABLED=false` atau tidak dikonfigurasi, fallback penuh ke M
 - **Bulk vs single**: Bridge tidak punya batch endpoint. Ingestion pakai paginated iterators; status refresh pakai per-ticket lookup.
 - **Overflow handling**: Jika window `nossa_closed` > 5000 baris, window di-bisect otomatis.
 - **Backward compatibility**: Bridge opsional; tanpa konfigurasi, semua jalan seperti sebelumnya via MySQL.
-- **Enrichment catch-up**: ~306K bridge rows menunggu enrichment (per July 2026). 2000 per siklus → ~153 siklus (~2.5 jam). Index `idx_ticket_raw_enrichment` harus ada untuk performa.

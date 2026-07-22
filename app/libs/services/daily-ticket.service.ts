@@ -6,43 +6,19 @@ import {
   resolveWorkzoneName,
 } from '../../helpers/ticket.helpers';
 import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
-import { createHash } from 'crypto';
-
-const queryCache = new Map<string, { data: unknown; expiry: number }>();
-
-function withQueryCache<T>(
-  sql: string,
-  params: unknown[],
-  fn: () => Promise<T>,
-  ttlMs = 3000,
-): Promise<T> {
-  const key = createHash('md5')
-    .update(sql + JSON.stringify(params))
-    .digest('hex');
-  const entry = queryCache.get(key);
-  if (entry && entry.expiry > Date.now())
-    return Promise.resolve(entry.data as T);
-  return fn().then((result) => {
-    queryCache.set(key, { data: result, expiry: Date.now() + ttlMs });
-    if (queryCache.size > 200) {
-      const now = Date.now();
-      for (const [k, v] of queryCache) {
-        if (v.expiry < now) queryCache.delete(k);
-      }
-    }
-    return result;
-  });
-}
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
-import { getJenisWhereClause, JENIS_MAP } from '@/app/config/jenis-tiket';
 import {
-  type AnomalyBucketKey,
-  normalizeAnomalyBucketKey,
-  type OperationalBucketKey,
-  normalizeOperationalBucketKey,
-} from '@/app/config/operational-buckets';
+  getJenisWhereClause,
+  JENIS_MAP,
+} from '@/app/config/jenis-tiket';
+import {
+   type AnomalyBucketKey,
+   normalizeAnomalyBucketKey,
+   type OperationalBucketKey,
+   normalizeOperationalBucketKey,
+ } from '@/app/config/operational-buckets';
 import {
   buildKpiBucketFilterSql,
   type KpiBucketKey,
@@ -54,12 +30,7 @@ import {
 } from './ticket-buckets';
 import { addHours, startOfDay, startOfHour } from 'date-fns';
 import { format, fromZonedTime, toZonedTime } from 'date-fns-tz';
-import {
-  toWibString,
-  toWibDateString,
-  todayWibDateForDb,
-  getTodayWibRange,
-} from '@/lib/timezone';
+import { toWibString, toWibDateString, todayWibDateForDb, getTodayWibRange } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
@@ -78,12 +49,7 @@ type BucketSummary = {
 };
 
 type BucketSummaryMap = Record<
-  | 'kpi_customer'
-  | 'kpi_proactive'
-  | 'non_kpi_unspec'
-  | 'non_technical'
-  | 'sqm_update'
-  | 'obsolete',
+  'kpi_customer' | 'kpi_proactive' | 'non_kpi_unspec' | 'non_technical' | 'sqm_update' | 'obsolete',
   BucketSummary
 >;
 
@@ -178,12 +144,7 @@ type TicketManagementOverviewSummary = {
     pPlusCount: number;
   };
   cards: Record<
-    | 'kpiCustomer'
-    | 'kpiProactive'
-    | 'nonKpiUnspec'
-    | 'nonTechnical'
-    | 'sqmUpdate'
-    | 'obsolete',
+    'kpiCustomer' | 'kpiProactive' | 'nonKpiUnspec' | 'nonTechnical' | 'sqmUpdate' | 'obsolete',
     TicketManagementBucketSummary
   >;
 };
@@ -228,9 +189,7 @@ function normalizeStringList(value: string | string[] | undefined): string[] {
 }
 
 function normalizeTicketStatusFilter(value: unknown): string {
-  return String(value ?? '')
-    .trim()
-    .toUpperCase();
+  return String(value ?? '').trim().toUpperCase();
 }
 
 function buildTicketSearchWhere(
@@ -243,10 +202,7 @@ function buildTicketSearchWhere(
   const isNumericLike = /^[\d\s+().-]+$/.test(term);
   const compactNumber = term.replace(/[^\d]/g, '');
 
-  if (
-    searchType === 'service' ||
-    (isNumericLike && compactNumber.length >= 4)
-  ) {
+  if (searchType === 'service' || (isNumericLike && compactNumber.length >= 4)) {
     return {
       OR: [
         { service_no: { equals: compactNumber } },
@@ -256,8 +212,7 @@ function buildTicketSearchWhere(
     };
   }
 
-  const isTicketCodeLike =
-    /^[a-z0-9_-]{3,}$/i.test(term) && !term.includes(' ');
+  const isTicketCodeLike = /^[a-z0-9_-]{3,}$/i.test(term) && !term.includes(' ');
   if (searchType === 'ticket_code' || isTicketCodeLike) {
     return {
       OR: [
@@ -426,7 +381,9 @@ function applyFlaggingWhere(
   if (flags.includes('P+')) clauses.push({ flagging_manja: 'P+' });
   if (flags.includes('EXPIRED')) {
     clauses.push({
-      AND: [{ booking_date: { lt: yesterdayStart } }],
+      AND: [
+        { booking_date: { lt: yesterdayStart } },
+      ],
     });
   }
   if (flags.includes('FFG')) clauses.push({ guarantee_status: 'guarantee' });
@@ -596,14 +553,10 @@ function mapTicket(t: any) {
 
 function isMissingIndexError(error: unknown): boolean {
   const message = String((error as { message?: string })?.message ?? '');
-  return (
-    message.includes('Code: `1176`') || /doesn't exist in table/i.test(message)
-  );
+  return message.includes('Code: `1176`') || /doesn't exist in table/i.test(message);
 }
 
-export function buildSqlWhereClause(
-  baseWhere: Prisma.ticketWhereInput,
-): [string, any[]] {
+export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]] {
   const conditions: string[] = [];
   const params: any[] = [];
 
@@ -711,22 +664,13 @@ export function buildSqlWhereClause(
         if (operator.not !== undefined) {
           if (operator.not === null) {
             conditions.push(`\`${key}\` IS NOT NULL`);
-          } else if (
-            typeof operator.not === 'object' &&
-            operator.not.contains !== undefined
-          ) {
+          } else if (typeof operator.not === 'object' && operator.not.contains !== undefined) {
             conditions.push(`\`${key}\` NOT LIKE ?`);
             params.push(`%${operator.not.contains}%`);
-          } else if (
-            typeof operator.not === 'object' &&
-            operator.not.startsWith !== undefined
-          ) {
+          } else if (typeof operator.not === 'object' && operator.not.startsWith !== undefined) {
             conditions.push(`\`${key}\` NOT LIKE ?`);
             params.push(`${operator.not.startsWith}%`);
-          } else if (
-            typeof operator.not === 'object' &&
-            operator.not.endsWith !== undefined
-          ) {
+          } else if (typeof operator.not === 'object' && operator.not.endsWith !== undefined) {
             conditions.push(`\`${key}\` NOT LIKE ?`);
             params.push(`%${operator.not.endsWith}`);
           } else {
@@ -785,10 +729,75 @@ function parseCountValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function summarizeBucketRows(
+  rows: Array<{
+    status: string | null;
+    status_update: string | null;
+    guarantee_status: string | null;
+    ticket_id_gamas: string | null;
+    flagging_manja: string | null;
+    booking_date: string | null;
+  }>,
+): BucketSummary {
+  const summary: BucketSummary = {
+    total: rows.length,
+    open: 0,
+    assigned: 0,
+    onProgress: 0,
+    pending: 0,
+    close: 0,
+    ffgCount: 0,
+    gamasCount: 0,
+    p1Count: 0,
+    pPlusCount: 0,
+  };
+
+  for (const row of rows) {
+    const status = String(row.status ?? '').trim().toUpperCase();
+    const statusUpdate = String(row.status_update ?? '').trim().toLowerCase();
+
+    if (CLOSE_STATUS_VALUES.includes(status)) {
+      summary.close += 1;
+    } else if (statusUpdate === 'assigned') {
+      summary.assigned += 1;
+    } else if (statusUpdate === 'on_progress') {
+      summary.onProgress += 1;
+    } else if (statusUpdate === 'pending') {
+      summary.pending += 1;
+    } else {
+      summary.open += 1;
+    }
+
+    if (String(row.guarantee_status ?? '').trim().toLowerCase() === 'guarantee') {
+      summary.ffgCount += 1;
+    }
+
+    const gamas = String(row.ticket_id_gamas ?? '').trim().toLowerCase();
+    if (gamas && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(gamas)) {
+      summary.gamasCount += 1;
+    }
+
+    const effectiveFlag = resolveEffectiveFlagging(
+      String(row.flagging_manja ?? '').trim().toUpperCase(),
+      row.booking_date,
+    );
+
+    if (effectiveFlag === 'P1') {
+      summary.p1Count += 1;
+    }
+
+    if (effectiveFlag === 'P+') {
+      summary.pPlusCount += 1;
+    }
+  }
+
+  return summary;
+}
+
 function buildStatusCategorySql(tbl = ''): string {
   const t = tbl ? `${tbl}.` : '';
-  const closeStatusesSql = CLOSE_STATUS_VALUES.map(
-    (status) => `'${status.replace(/'/g, "''")}'`,
+  const closeStatusesSql = CLOSE_STATUS_VALUES.map((status) =>
+    `'${status.replace(/'/g, "''")}'`,
   ).join(', ');
 
   return `
@@ -822,10 +831,7 @@ function buildBucketSummarySelect(bucket: KpiBucketKey, tbl = ''): string {
   ].join(',\n');
 }
 
-function buildBucketSummaryProjectionSql(
-  bucket: KpiBucketKey,
-  tbl = '',
-): string {
+function buildBucketSummaryProjectionSql(bucket: KpiBucketKey, tbl = ''): string {
   const t = tbl ? `${tbl}.` : '';
   const bucketSql = buildKpiBucketFilterSql(bucket, tbl);
   const prefix = `${bucket}`;
@@ -839,10 +845,7 @@ function buildBucketSummaryProjectionSql(
   ].join(',\n');
 }
 
-function normalizeBucketSummaryRow(
-  row: Record<string, unknown> | undefined,
-  bucket: KpiBucketKey,
-): BucketSummary {
+function normalizeBucketSummaryRow(row: Record<string, unknown> | undefined, bucket: KpiBucketKey): BucketSummary {
   return {
     total: parseCountValue(row?.[`${bucket}__total`]),
     open: parseCountValue(row?.[`${bucket}__open`]),
@@ -869,25 +872,18 @@ async function hydrateTicketsByIds(ids: number[]) {
     },
   });
 
-  const ticketMap = new Map(
-    tickets.map((ticket) => [ticket.id_ticket, ticket]),
-  );
-  return ids.map((id) => ticketMap.get(id)).filter(Boolean);
+  const ticketMap = new Map(tickets.map((ticket) => [ticket.id_ticket, ticket]));
+  return ids
+    .map((id) => ticketMap.get(id))
+    .filter(Boolean);
 }
 
 async function queryRawWithOptionalIndex<T>(
-  sqlWithIndex: string,
+  _sqlWithIndex: string,
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  const withHint = (sql: string) =>
-    sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(30000) */ ');
-  try {
-    return await prisma.$queryRawUnsafe<T>(withHint(sqlWithIndex), ...params);
-  } catch (error) {
-    if (!isMissingIndexError(error)) throw error;
-    return prisma.$queryRawUnsafe<T>(withHint(sqlWithoutIndex), ...params);
-  }
+  return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
 }
 
 const SORT_FIELD_MAP: Record<string, string> = {
@@ -1034,27 +1030,9 @@ export class DailyTicketService {
         {
           OR: [
             { AND: [{ sync_date: today }, { status: { not: 'closed' } }] },
-            {
-              AND: [
-                { sync_date: today },
-                { status: 'closed' },
-                { closed_at: { gte: todayStart } },
-              ],
-            },
-            {
-              AND: [
-                { sync_date: today },
-                { status_update: 'close' },
-                { status: 'closed' },
-              ],
-            },
-            {
-              AND: [
-                { pending_dompis: { not: null } },
-                { pending_dompis: { not: '' } },
-                { status: { not: 'closed' } },
-              ],
-            },
+            { AND: [{ sync_date: today }, { status: 'closed' }, { closed_at: { gte: todayStart } }] },
+            { AND: [{ sync_date: today }, { status_update: 'close' }, { status: 'closed' }] },
+            { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { not: 'closed' } }] },
           ],
         },
       ];
@@ -1065,33 +1043,9 @@ export class DailyTicketService {
       ...(where.AND ?? []),
       {
         OR: [
-          {
-            AND: [
-              { sync_date: today },
-              { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-            ],
-          },
-          {
-            AND: [
-              { sync_date: today },
-              { status: { in: [...CLOSE_STATUS_VALUES] } },
-              { closed_at: { gte: todayStart } },
-            ],
-          },
-          {
-            AND: [
-              { sync_date: today },
-              { status_update: 'close' },
-              { status: { in: [...CLOSE_STATUS_VALUES] } },
-            ],
-          },
-          {
-            AND: [
-              { pending_dompis: { not: null } },
-              { pending_dompis: { not: '' } },
-              { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-            ],
-          },
+          { status: { notIn: [...CLOSE_STATUS_VALUES] } },
+          { AND: [{ status: { in: [...CLOSE_STATUS_VALUES] } }, { closed_at: { gte: todayStart } }] },
+          { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { notIn: [...CLOSE_STATUS_VALUES] } }] },
         ],
       },
     ];
@@ -1187,17 +1141,12 @@ export class DailyTicketService {
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
     const effectiveRole =
-      globalScope &&
-      (role === 'admin' || role === 'superadmin' || role === 'super_admin')
+      globalScope && (role === 'admin' || role === 'superadmin' || role === 'super_admin')
         ? 'superadmin'
         : role;
 
     const where: Record<string, any> = {
-      ...(await this.buildWorkzoneWhere(
-        effectiveRole,
-        userId,
-        selectedWorkzone,
-      )),
+      ...(await this.buildWorkzoneWhere(effectiveRole, userId, selectedWorkzone)),
     };
 
     const isLegacyKpi = Array.isArray(operationalBucket)
@@ -1207,7 +1156,10 @@ export class DailyTicketService {
 
     const searchWhere = buildTicketSearchWhere(search, searchType);
     if (searchWhere) {
-      where.AND = [...(where.AND ?? []), searchWhere];
+      where.AND = [
+        ...(where.AND ?? []),
+        searchWhere,
+      ];
     }
 
     if (Number.isFinite(ticketId) && Number(ticketId) > 0) {
@@ -1294,7 +1246,10 @@ export class DailyTicketService {
 
     const deptSegmentWhere = buildDeptSegmentWhere(dept);
     if (deptSegmentWhere) {
-      where.AND = [...(where.AND ?? []), deptSegmentWhere];
+      where.AND = [
+        ...(where.AND ?? []),
+        deptSegmentWhere,
+      ];
     }
 
     if (gamasOnly) {
@@ -1312,40 +1267,39 @@ export class DailyTicketService {
     return where;
   }
 
-  private static async fetchTicketIdsBySql(
-    where: Prisma.ticketWhereInput,
-    options: {
-      sort: 'asc' | 'desc';
-      sortField?: string;
-      offset: number;
-      limit: number;
-      priorityToday?: string | null;
-    },
+    private static async fetchTicketIdsBySql(
+      where: Prisma.ticketWhereInput,
+      options: {
+        sort: 'asc' | 'desc';
+        sortField?: string;
+        offset: number;
+        limit: number;
+        priorityToday?: string | null;
+      },
   ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
-      ? buildMainTableOrderBySql(
-          options.sort,
-          options.priorityToday,
-          options.sortField,
-        )
+      ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
       : [
           `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
           [],
         ];
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        id_ticket,
-        ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+      SELECT id_ticket,
+             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ id_ticket: number; rank_global: bigint | number }>
-    >(sql, ...params, ...orderParams, options.offset, options.limit);
+    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
+      sql,
+      ...params,
+      ...orderParams,
+      options.offset,
+      options.limit,
+    );
 
     return rows.map((row) => ({
       id_ticket: row.id_ticket,
@@ -1358,15 +1312,12 @@ export class DailyTicketService {
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        COUNT(*) AS total
+      SELECT COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ total: bigint | number }>
-    >(sql, ...params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, ...params);
 
     return Number(rows[0]?.total ?? 0);
   }
@@ -1393,7 +1344,10 @@ export class DailyTicketService {
   ): Prisma.ticketWhereInput | null {
     return {
       ...where,
-      AND: [...(where.AND ?? []), this.buildValidasiCondition()],
+      AND: [
+        ...(where.AND ?? []),
+        this.buildValidasiCondition(),
+      ],
     };
   }
 
@@ -1430,9 +1384,7 @@ export class DailyTicketService {
     where: Prisma.ticketWhereInput,
     ...clauses: Prisma.ticketWhereInput[]
   ): Prisma.ticketWhereInput {
-    const activeClauses = clauses.filter(
-      (clause) => Object.keys(clause).length > 0,
-    );
+    const activeClauses = clauses.filter((clause) => Object.keys(clause).length > 0);
     if (activeClauses.length === 0) return where;
     return {
       AND: [where, ...activeClauses],
@@ -1444,22 +1396,17 @@ export class DailyTicketService {
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        COUNT(*) AS total
+      SELECT COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ total: bigint | number }>
-    >(sql, ...params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, ...params);
 
     return Number(rows[0]?.total ?? 0);
   }
 
-  private static normalizeFlaggingSummary(
-    row?: Record<string, unknown>,
-  ): FlaggingSummary {
+  private static normalizeFlaggingSummary(row?: Record<string, unknown>): FlaggingSummary {
     return {
       ffgCount: Number(row?.ffg ?? 0),
       gamasCount: Number(row?.gamas ?? 0),
@@ -1473,108 +1420,60 @@ export class DailyTicketService {
     validasiBaseWhere?: Prisma.ticketWhereInput | null,
   ): Promise<FlaggingSummary> {
     const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
-
-    let validasiSql = '';
-    let validasiParams: unknown[] = [];
-    if (validasiBaseWhere) {
-      [validasiSql, validasiParams] = buildSqlWhereClause(validasiBaseWhere);
-    }
-    const allParams: unknown[] = validasiBaseWhere
-      ? [...mainParams, ...validasiParams]
-      : [...mainParams];
-
-    const closeStatusesSql = CLOSE_STATUS_VALUES.map(
-      (s) => `'${s.replace(/'/g, "''")}'`,
-    ).join(', ');
-    const statusCategorySql = `CASE
-      WHEN UPPER(TRIM(COALESCE(status, ''))) IN (${closeStatusesSql}) THEN 'close'
-      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'assigned' THEN 'assigned'
-      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'on_progress' THEN 'on_progress'
-      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'pending' THEN 'pending'
-      ELSE 'open'
-    END`;
-    const guaranteeCondition = `LOWER(TRIM(COALESCE(guarantee_status, ''))) = 'guarantee'`;
-    const gamasCondition = `ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na')`;
-    const p1pPlusFilter = `(COALESCE(flagging_manja, '') != '' OR COALESCE(booking_date, '') != '')`;
-
-    const mainSubquery = `SELECT 1 AS src, id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date FROM ticket WHERE ${mainSql}`;
-    const p1MainSubquery = `SELECT 1 AS src, id_ticket, flagging_manja, booking_date FROM ticket WHERE ${mainSql} AND ${p1pPlusFilter}`;
-
-    let validasiSubquery = '';
-    let p1ValidasiSubquery = '';
-    if (validasiBaseWhere) {
-      validasiSubquery = ` UNION ALL SELECT 2 AS src, t.id_ticket, t.status, t.status_update, t.guarantee_status, t.ticket_id_gamas, t.flagging_manja, t.booking_date FROM ticket t WHERE ${validasiSql}`;
-      p1ValidasiSubquery = ` UNION ALL SELECT 2 AS src, t.id_ticket, t.flagging_manja, t.booking_date FROM ticket t WHERE ${validasiSql} AND (COALESCE(t.flagging_manja, '') != '' OR COALESCE(t.booking_date, '') != '')`;
-    }
-
-    const aggSql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        COUNT(*) AS total,
-        COALESCE(SUM(CASE WHEN sc = 'close' THEN 1 ELSE 0 END), 0) AS close,
-        COALESCE(SUM(CASE WHEN sc = 'assigned' THEN 1 ELSE 0 END), 0) AS assigned,
-        COALESCE(SUM(CASE WHEN sc = 'on_progress' THEN 1 ELSE 0 END), 0) AS onProgress,
-        COALESCE(SUM(CASE WHEN sc = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
-        COALESCE(SUM(CASE WHEN sc = 'open' THEN 1 ELSE 0 END), 0) AS open,
-        COALESCE(SUM(CASE WHEN ${guaranteeCondition} THEN 1 ELSE 0 END), 0) AS ffgCount,
-        COALESCE(SUM(CASE WHEN ${gamasCondition} THEN 1 ELSE 0 END), 0) AS gamasCount
-      FROM (
-        SELECT ${statusCategorySql} AS sc, guarantee_status, ticket_id_gamas
-        FROM (
-          SELECT status, status_update, guarantee_status, ticket_id_gamas,
-                 ROW_NUMBER() OVER (PARTITION BY id_ticket ORDER BY src) AS rn
-          FROM (${mainSubquery}${validasiSubquery}) c
-        ) r WHERE rn = 1
-      ) a
+    const mainWithIndex = `
+      SELECT
+        id_ticket,
+        status,
+        status_update,
+        guarantee_status,
+        ticket_id_gamas,
+        flagging_manja,
+        booking_date
+      FROM ticket
+      WHERE ${mainSql}
+    `;
+    const mainWithoutIndex = `
+      SELECT
+        id_ticket,
+        status,
+        status_update,
+        guarantee_status,
+        ticket_id_gamas,
+        flagging_manja,
+        booking_date
+      FROM ticket
+      WHERE ${mainSql}
     `;
 
-    const p1Sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        flagging_manja, booking_date
-      FROM (
-        SELECT flagging_manja, booking_date,
-               ROW_NUMBER() OVER (PARTITION BY id_ticket ORDER BY src) AS rn
-        FROM (${p1MainSubquery}${p1ValidasiSubquery}) c
-      ) r WHERE rn = 1
-    `;
-
-    const [aggRows, p1pPlusRows] = await Promise.all([
-      prisma.$queryRawUnsafe<Array<Record<string, bigint>>>(
-        aggSql,
-        ...allParams,
+    const [mainRows, validasiRows] = await Promise.all([
+      queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+        mainWithIndex,
+        mainWithoutIndex,
+        mainParams,
       ),
-      prisma.$queryRawUnsafe<
-        Array<{ flagging_manja: string | null; booking_date: string | null }>
-      >(p1Sql, ...allParams),
+      validasiBaseWhere
+        ? this.countValidasiFlaggingSummary(validasiBaseWhere)
+        : Promise.resolve([] as Array<Record<string, unknown>>),
     ]);
 
-    const row = aggRows[0];
-    let p1Count = 0;
-    let pPlusCount = 0;
-
-    for (const r of p1pPlusRows) {
-      const eff = resolveEffectiveFlagging(
-        String(r.flagging_manja ?? '')
-          .trim()
-          .toUpperCase(),
-        r.booking_date,
-      );
-      if (eff === 'P1') p1Count++;
-      if (eff === 'P+') pPlusCount++;
+    const seen = new Set<number>();
+    const allRows: Array<Record<string, unknown>> = [];
+    for (const row of [...mainRows, ...validasiRows]) {
+      const id = Number(row.id_ticket);
+      if (!seen.has(id)) {
+        seen.add(id);
+        allRows.push(row);
+      }
     }
 
-    const result: FlaggingSummary & Record<string, number> = {
-      ffgCount: Number(row.ffgCount),
-      gamasCount: Number(row.gamasCount),
-      p1Count,
-      pPlusCount,
-    };
-    result.total = Number(row.total);
-    result.close = Number(row.close);
-    result.assigned = Number(row.assigned);
-    result.onProgress = Number(row.onProgress);
-    result.pending = Number(row.pending);
-    result.open = Number(row.open);
-    return result;
+    return summarizeBucketRows(allRows as Array<{
+      status: string | null;
+      status_update: string | null;
+      guarantee_status: string | null;
+      ticket_id_gamas: string | null;
+      flagging_manja: string | null;
+      booking_date: string | null;
+    }>);
   }
 
   private static async countCustomerTypes(
@@ -1582,16 +1481,14 @@ export class DailyTicketService {
   ): Promise<CustomerTypeSummary> {
     const [sql, params] = buildSqlWhereClause(mainTableWhere);
     const query = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type,
         COUNT(*) AS cnt
       FROM ticket
       WHERE ${sql}
       GROUP BY raw_type
     `;
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ raw_type: string; cnt: bigint }>
-    >(query, ...params);
+    const rows = await prisma.$queryRawUnsafe<Array<{ raw_type: string; cnt: bigint }>>(query, ...params);
 
     let hvcDiamond = 0;
     let hvcPlatinum = 0;
@@ -1614,14 +1511,49 @@ export class DailyTicketService {
     return { hvcDiamond, hvcPlatinum, hvcGold, reguler };
   }
 
+  private static async countValidasiFlaggingSummary(
+    validasiBaseWhere: Prisma.ticketWhereInput,
+  ): Promise<Array<Record<string, unknown>>> {
+    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
+    const sqlWithIndex = `
+      SELECT
+        t.id_ticket,
+        t.status,
+        t.status_update,
+        t.guarantee_status,
+        t.ticket_id_gamas,
+        t.flagging_manja,
+        t.booking_date
+      FROM ticket t
+      WHERE ${sql}
+    `;
+    const sqlWithoutIndex = `
+      SELECT
+        t.id_ticket,
+        t.status,
+        t.status_update,
+        t.guarantee_status,
+        t.ticket_id_gamas,
+        t.flagging_manja,
+        t.booking_date
+      FROM ticket t
+      WHERE ${sql}
+    `;
+
+    return queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+      sqlWithIndex,
+      sqlWithoutIndex,
+      params,
+    );
+  }
+
   private static async fetchValidasiTicketIds(
     validasiBaseWhere: Prisma.ticketWhereInput,
     options: { sort: 'asc' | 'desc'; offset: number; limit: number },
   ): Promise<number[]> {
     const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        id_ticket, reported_date
+      SELECT id_ticket, reported_date
       FROM ticket
       WHERE ${whereClause}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
@@ -1648,19 +1580,14 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(where);
 
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
-        status, status_update, COUNT(*) AS count
+      SELECT status, status_update, COUNT(*) AS count
       FROM ticket
       WHERE ${whereClause}
       GROUP BY status, status_update
     `;
 
     const rows = await prisma.$queryRawUnsafe<
-      Array<{
-        status: string | null;
-        status_update: string | null;
-        count: bigint | number;
-      }>
+      Array<{ status: string | null; status_update: string | null; count: bigint | number }>
     >(sql, ...params);
 
     const stats: any = {
@@ -1709,10 +1636,7 @@ export class DailyTicketService {
 
     return rows
       .map((row) => String(row.status ?? '').trim())
-      .filter(
-        (status, index, arr) =>
-          status.length > 0 && arr.indexOf(status) === index,
-      );
+      .filter((status, index, arr) => status.length > 0 && arr.indexOf(status) === index);
   }
 
   static async getTicketTypeOptions(
@@ -1750,9 +1674,7 @@ export class DailyTicketService {
     for (const row of rows) {
       const item = ensure(row.jenis_tiket_2);
       const count = row._count._all;
-      const status = String(row.status_update ?? '')
-        .trim()
-        .toLowerCase();
+      const status = String(row.status_update ?? '').trim().toLowerCase();
 
       item.total += count;
       if (status.length === 0 || status === 'open') item.open += count;
@@ -1844,14 +1766,13 @@ export class DailyTicketService {
       limit: safeLimit,
       priorityToday: toWibDateString(todayWibDateForDb()),
     });
-    const validasiTicketIdsPromise =
-      includeValidasi && includeValidasiTickets && validasiBaseWhere
-        ? this.fetchValidasiTicketIds(validasiBaseWhere, {
-            sort,
-            offset: validasiOffset,
-            limit: safeValidasiLimit,
-          })
-        : Promise.resolve([] as number[]);
+    const validasiTicketIdsPromise = includeValidasi && includeValidasiTickets && validasiBaseWhere
+      ? this.fetchValidasiTicketIds(validasiBaseWhere, {
+          sort,
+          offset: validasiOffset,
+          limit: safeValidasiLimit,
+        })
+      : Promise.resolve([] as number[]);
     const summaryPromise = includeSummary
       ? this.countStatuses(mainTableWhere)
       : Promise.resolve({
@@ -1866,8 +1787,6 @@ export class DailyTicketService {
     const flaggingSummaryPromise = includeSummary
       ? this.countFlaggingSummary(mainTableWhere, validasiBaseWhere)
       : Promise.resolve({
-          total: 0,
-          open: 0,
           ffgCount: 0,
           gamasCount: 0,
           p1Count: 0,
@@ -1881,10 +1800,9 @@ export class DailyTicketService {
           hvcGold: 0,
           reguler: 0,
         });
-    const validasiCountPromise =
-      includeValidasi && validasiBaseWhere
-        ? this.countValidasiTickets(validasiBaseWhere)
-        : Promise.resolve(0);
+    const validasiCountPromise = includeValidasi && validasiBaseWhere
+      ? this.countValidasiTickets(validasiBaseWhere)
+      : Promise.resolve(0);
     const statusOptionsPromise = includeOptions
       ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
       : Promise.resolve([] as string[]);
@@ -1896,7 +1814,9 @@ export class DailyTicketService {
             : null,
         )
       : Promise.resolve([] as TicketTypeOption[]);
-    const totalPromise = this.countTicketsBySql(mainTableWhere);
+    const totalPromise = this.countTicketsBySql(
+      mainTableWhere,
+    );
 
     const [
       total,
@@ -1930,21 +1850,17 @@ export class DailyTicketService {
       hydrateTicketsByIds(ticketIdList),
       includeValidasiTickets
         ? hydrateTicketsByIds(validasiTicketIds)
-        : Promise.resolve(
-            [] as Awaited<ReturnType<typeof hydrateTicketsByIds>>,
-          ),
+        : Promise.resolve([] as Awaited<ReturnType<typeof hydrateTicketsByIds>>),
     ]);
 
-    const mappedTickets = tickets
-      .filter((t): t is NonNullable<typeof t> => t != null)
-      .map((t) => {
-        const mapped = mapTicket(t);
-        const rank = rankMap.get(t.id_ticket);
-        if (rank !== undefined) {
-          (mapped as any).rank = rank;
-        }
-        return mapped;
-      });
+    const mappedTickets = tickets.filter((t): t is NonNullable<typeof t> => t != null).map((t) => {
+      const mapped = mapTicket(t);
+      const rank = rankMap.get(t.id_ticket);
+      if (rank !== undefined) {
+        (mapped as any).rank = rank;
+      }
+      return mapped;
+    });
 
     return {
       total,
@@ -2004,9 +1920,7 @@ export class DailyTicketService {
   }
 
   private static buildDailySummarySql(): string {
-    const closeStatusList = CLOSE_STATUS_VALUES.map(
-      (v) => `'${v.replace(/'/g, "''")}'`,
-    ).join(', ');
+    const closeStatusList = CLOSE_STATUS_VALUES.map(v => `'${v.replace(/'/g, "''")}'`).join(', ');
     return `
       SELECT
         COUNT(*) AS total,
@@ -2036,14 +1950,11 @@ export class DailyTicketService {
     const validasiBaseWhere = this.buildValidasiBaseWhere(where);
 
     const [mainWhereClause, mainParams] = buildSqlWhereClause(mainTableWhere);
-    const combinedSql = this.buildDailySummarySql().replace(
-      '%s',
-      mainWhereClause,
-    );
+    const combinedSql = this.buildDailySummarySql().replace('%s', mainWhereClause);
 
-    const [mainRow] = await queryRawWithOptionalIndex<
-      Array<Record<string, unknown>>
-    >(combinedSql, combinedSql, mainParams);
+    const [mainRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+      combinedSql, combinedSql, mainParams,
+    );
 
     let vRow: Record<string, unknown> = {};
     if (validasiBaseWhere) {
@@ -2057,19 +1968,16 @@ export class DailyTicketService {
         FROM ticket
         WHERE ${vSql}
       `;
-      const [vRows] = await queryRawWithOptionalIndex<
-        Array<Record<string, unknown>>
-      >(validasiSql, validasiSql, vParams);
+      const [vRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+        validasiSql, validasiSql, vParams,
+      );
       vRow = vRows ?? {};
     }
 
     return {
       total: Number(mainRow?.total ?? 0),
       open: Number(mainRow?.open ?? 0),
-      assigned:
-        Number(mainRow?.assigned ?? 0) +
-        Number(mainRow?.onProgress ?? 0) +
-        Number(mainRow?.pending ?? 0),
+      assigned: Number(mainRow?.assigned ?? 0) + Number(mainRow?.onProgress ?? 0) + Number(mainRow?.pending ?? 0),
       close: Number(mainRow?.close ?? 0),
       ffgCount: Number(mainRow?.ffg ?? 0) + Number(vRow.ffg ?? 0),
       gamasCount: Number(mainRow?.gamas ?? 0) + Number(vRow.gamas ?? 0),
@@ -2133,27 +2041,19 @@ export class DailyTicketService {
           });
 
           type BucketKeyNoAll = Exclude<KpiBucketKey, 'all'>;
-          const NON_KPI_BUCKETS: BucketKeyNoAll[] = [
-            'kpi_proactive',
-            'non_kpi_unspec',
-            'non_technical',
-            'sqm_update',
-            'obsolete',
-          ];
+          const NON_KPI_BUCKETS: BucketKeyNoAll[] = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'];
 
           const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
-          const allSelects = NON_KPI_BUCKETS.map((b) =>
-            buildBucketSummarySelect(b),
-          ).join(',\n');
+          const allSelects = NON_KPI_BUCKETS.map(b => buildBucketSummarySelect(b)).join(',\n');
           const combinedSql = `
             SELECT
               ${allSelects}
             FROM ticket
             WHERE ${mainSql}
           `;
-          const [combinedRows] = await queryRawWithOptionalIndex<
-            Array<Record<string, unknown>>
-          >(combinedSql, combinedSql, mainParams);
+          const [combinedRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            combinedSql, combinedSql, mainParams,
+          );
           const combinedRow = combinedRows ?? {};
           for (const bucket of NON_KPI_BUCKETS) {
             summary[bucket] = normalizeBucketSummaryRow(combinedRow, bucket);
@@ -2168,10 +2068,7 @@ export class DailyTicketService {
             includeClosed: filters?.includeClosed === true,
           });
           const kpiFinalWhere: Prisma.ticketWhereInput = {
-            AND: [
-              kpiMainTableWhere,
-              buildOperationalBucketWhere('kpi_customer'),
-            ],
+            AND: [kpiMainTableWhere, buildOperationalBucketWhere('kpi_customer')],
           };
           const [kpiSql, kpiParams] = buildSqlWhereClause(kpiFinalWhere);
           const kpiSelect = buildBucketSummarySelect('kpi_customer');
@@ -2181,20 +2078,19 @@ export class DailyTicketService {
             FROM ticket
             WHERE ${kpiSql}
           `;
-          const [kpiRow] = await queryRawWithOptionalIndex<
-            Array<Record<string, unknown>>
-          >(kpiQuery, kpiQuery, kpiParams);
-          summary.kpi_customer = normalizeBucketSummaryRow(
-            kpiRow ?? {},
-            'kpi_customer',
+          const [kpiRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            kpiQuery, kpiQuery, kpiParams,
           );
+          summary.kpi_customer = normalizeBucketSummaryRow(kpiRow ?? {}, 'kpi_customer');
 
           return summary;
         };
 
-        const all = await buildScopeSummary('all');
-        const b2c = await buildScopeSummary('b2c');
-        const b2b = await buildScopeSummary('b2b');
+        const [all, b2c, b2b] = await Promise.all([
+          buildScopeSummary('all'),
+          buildScopeSummary('b2c'),
+          buildScopeSummary('b2b'),
+        ]);
 
         return { all, b2c, b2b };
       },
@@ -2221,14 +2117,8 @@ export class DailyTicketService {
           { key: 'obsolete', bucket: 'obsolete' as const },
         ];
 
-        const NON_KPI_BUCKETS = [
-          'kpi_proactive',
-          'non_kpi_unspec',
-          'non_technical',
-          'sqm_update',
-          'obsolete',
-        ] as const;
-        type BucketKeyNoKpi = (typeof NON_KPI_BUCKETS)[number];
+        const NON_KPI_BUCKETS = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'] as const;
+        type BucketKeyNoKpi = typeof NON_KPI_BUCKETS[number];
 
         const buildScopeSummary = async (
           dept: string,
@@ -2241,9 +2131,7 @@ export class DailyTicketService {
             dept,
             operationalBucket: undefined,
           });
-          const mainTableWhere = this.buildMainTableWhere(baseWhere, {
-            includeClosed,
-          });
+          const mainTableWhere = this.buildMainTableWhere(baseWhere, { includeClosed });
           const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
           const statusCategorySql = buildStatusCategorySql();
           const projectedColumns = [
@@ -2261,20 +2149,18 @@ export class DailyTicketService {
           `;
           const combinedSql = `
             SELECT
-              ${NON_KPI_BUCKETS.map((bucket) =>
-                [
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__total\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`${bucket}__open\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`${bucket}__assigned\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'on_progress' THEN 1 ELSE 0 END) AS \`${bucket}__on_progress\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'pending' THEN 1 ELSE 0 END) AS \`${bucket}__pending\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_ffg\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__ffg\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_gamas\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__gamas\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p1\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p1\``,
-                  `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p_plus\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p_plus\``,
-                ].join(',\n              '),
-              ).join(',\n              ')},
+              ${NON_KPI_BUCKETS.map((bucket) => [
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__total\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`${bucket}__open\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`${bucket}__assigned\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'on_progress' THEN 1 ELSE 0 END) AS \`${bucket}__on_progress\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'pending' THEN 1 ELSE 0 END) AS \`${bucket}__pending\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND status_category = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_ffg\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__ffg\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_gamas\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__gamas\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p1\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p1\``,
+                `SUM(CASE WHEN \`${bucket}__hit\` = 1 AND \`${bucket}__is_p_plus\` = 1 THEN 1 ELSE 0 END) AS \`${bucket}__p_plus\``,
+              ].join(',\n              ')).join(',\n              ')},
               SUM(CASE WHEN \`kpi_customer__hit\` = 1 THEN 1 ELSE 0 END) AS \`kpi_customer__total\`,
               SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'open' THEN 1 ELSE 0 END) AS \`kpi_customer__open\`,
               SUM(CASE WHEN \`kpi_customer__hit\` = 1 AND status_category = 'assigned' THEN 1 ELSE 0 END) AS \`kpi_customer__assigned\`,
@@ -2289,9 +2175,9 @@ export class DailyTicketService {
               ${projectedRowsSql}
             ) scoped
           `;
-          const [combinedRows] = await queryRawWithOptionalIndex<
-            Array<Record<string, unknown>>
-          >(combinedSql, combinedSql, mainParams);
+          const [combinedRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            combinedSql, combinedSql, mainParams,
+          );
           const combinedRow = combinedRows ?? {};
           for (const bucket of NON_KPI_BUCKETS) {
             summary[bucket] = normalizeBucketSummaryRow(combinedRow, bucket);
@@ -2302,14 +2188,9 @@ export class DailyTicketService {
             dept,
             operationalBucket: ['kpi_customer'],
           });
-          const kpiMainTableWhere = this.buildMainTableWhere(kpiWhere, {
-            includeClosed,
-          });
+          const kpiMainTableWhere = this.buildMainTableWhere(kpiWhere, { includeClosed });
           const kpiFinalWhere: Prisma.ticketWhereInput = {
-            AND: [
-              kpiMainTableWhere,
-              buildOperationalBucketWhere('kpi_customer'),
-            ],
+            AND: [kpiMainTableWhere, buildOperationalBucketWhere('kpi_customer')],
           };
           const [kpiSql, kpiParams] = buildSqlWhereClause(kpiFinalWhere);
           const kpiQuery = `
@@ -2332,13 +2213,10 @@ export class DailyTicketService {
               WHERE ${kpiSql}
             ) scoped
           `;
-          const [kpiRow] = await queryRawWithOptionalIndex<
-            Array<Record<string, unknown>>
-          >(kpiQuery, kpiQuery, kpiParams);
-          summary.kpi_customer = normalizeBucketSummaryRow(
-            kpiRow ?? {},
-            'kpi_customer',
+          const [kpiRow] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            kpiQuery, kpiQuery, kpiParams,
           );
+          summary.kpi_customer = normalizeBucketSummaryRow(kpiRow ?? {}, 'kpi_customer');
 
           return summary;
         };
@@ -2353,16 +2231,11 @@ export class DailyTicketService {
             dept,
             operationalBucket: undefined,
           });
-          const mainTableWhere = this.buildMainTableWhere(baseWhere, {
-            includeClosed: true,
-          });
+          const mainTableWhere = this.buildMainTableWhere(baseWhere, { includeClosed: true });
           const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
           const statusCategorySql = buildStatusCategorySql();
           const closeSelects = bucketDefs
-            .map(
-              ({ bucket }) =>
-                `SUM(CASE WHEN (${buildKpiBucketFilterSql(bucket)}) AND ${statusCategorySql} = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``,
-            )
+            .map(({ bucket }) => `SUM(CASE WHEN (${buildKpiBucketFilterSql(bucket)}) AND ${statusCategorySql} = 'close' THEN 1 ELSE 0 END) AS \`${bucket}__close\``)
             .join(',\n              ');
           const closeQuery = `
             SELECT
@@ -2370,9 +2243,9 @@ export class DailyTicketService {
             FROM ticket
             WHERE ${mainSql}
           `;
-          const [closeRows] = await queryRawWithOptionalIndex<
-            Array<Record<string, unknown>>
-          >(closeQuery, closeQuery, mainParams);
+          const [closeRows] = await queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
+            closeQuery, closeQuery, mainParams,
+          );
           const closeRow = closeRows ?? {};
           for (const { bucket } of bucketDefs) {
             summary[bucket] = {
@@ -2392,19 +2265,14 @@ export class DailyTicketService {
           return summary;
         };
 
-        const all = await buildScopeSummary('all', false);
-        const b2c = await buildScopeSummary('b2c', false);
-        const b2b = await buildScopeSummary('b2b', false);
-        const closeMap = await buildCloseOnlySummary('all');
+        const [all, b2c, b2b, closeMap] = await Promise.all([
+          buildScopeSummary('all', false),
+          buildScopeSummary('b2c', false),
+          buildScopeSummary('b2b', false),
+          buildCloseOnlySummary('all'),
+        ]);
 
-        const toCardSummary = (
-          s: BucketSummary,
-        ): TicketManagementBucketSummary & {
-          ffgCount: number;
-          gamasCount: number;
-          p1Count: number;
-          pPlusCount: number;
-        } => ({
+        const toCardSummary = (s: BucketSummary): TicketManagementBucketSummary & { ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number } => ({
           total: s.total,
           open: s.open,
           assigned: s.assigned + s.onProgress + s.pending,
@@ -2417,15 +2285,7 @@ export class DailyTicketService {
 
         const allCard = Object.fromEntries(
           bucketDefs.map(({ bucket }) => [bucket, toCardSummary(all[bucket])]),
-        ) as Record<
-          string,
-          TicketManagementBucketSummary & {
-            ffgCount: number;
-            gamasCount: number;
-            p1Count: number;
-            pPlusCount: number;
-          }
-        >;
+        ) as Record<string, TicketManagementBucketSummary & { ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number }>;
         const b2cCard = Object.fromEntries(
           bucketDefs.map(({ bucket }) => [bucket, toCardSummary(b2c[bucket])]),
         ) as Record<string, TicketManagementBucketSummary>;
@@ -2433,51 +2293,38 @@ export class DailyTicketService {
           bucketDefs.map(({ bucket }) => [bucket, toCardSummary(b2b[bucket])]),
         ) as Record<string, TicketManagementBucketSummary>;
         const closeCard = Object.fromEntries(
-          bucketDefs.map(({ bucket }) => [
-            bucket,
-            toCardSummary(closeMap[bucket]),
-          ]),
+          bucketDefs.map(({ bucket }) => [bucket, toCardSummary(closeMap[bucket])]),
         ) as Record<string, TicketManagementBucketSummary>;
 
         const totalAll = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].total,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].total, 0,
         );
         const deptB2CTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + b2cCard[bucket].total,
-          0,
+          (sum, { bucket }) => sum + b2cCard[bucket].total, 0,
         );
         const deptB2BTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + b2bCard[bucket].total,
-          0,
+          (sum, { bucket }) => sum + b2bCard[bucket].total, 0,
         );
         const unassignedTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].open,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].open, 0,
         );
         const assignedTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].assigned,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].assigned, 0,
         );
         const closeTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + closeCard[bucket].close,
-          0,
+          (sum, { bucket }) => sum + closeCard[bucket].close, 0,
         );
         const ffgTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].ffgCount,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].ffgCount, 0,
         );
         const gamasTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].gamasCount,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].gamasCount, 0,
         );
         const p1Total = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].p1Count,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].p1Count, 0,
         );
         const pPlusTotal = bucketDefs.reduce(
-          (sum, { bucket }) => sum + allCard[bucket].pPlusCount,
-          0,
+          (sum, { bucket }) => sum + allCard[bucket].pPlusCount, 0,
         );
 
         return {
@@ -2494,26 +2341,11 @@ export class DailyTicketService {
             pPlusCount: pPlusTotal,
           },
           cards: {
-            kpiCustomer: {
-              ...allCard.kpi_customer,
-              close: closeCard.kpi_customer.close,
-            },
-            kpiProactive: {
-              ...allCard.kpi_proactive,
-              close: closeCard.kpi_proactive.close,
-            },
-            nonKpiUnspec: {
-              ...allCard.non_kpi_unspec,
-              close: closeCard.non_kpi_unspec.close,
-            },
-            nonTechnical: {
-              ...allCard.non_technical,
-              close: closeCard.non_technical.close,
-            },
-            sqmUpdate: {
-              ...allCard.sqm_update,
-              close: closeCard.sqm_update.close,
-            },
+            kpiCustomer: { ...allCard.kpi_customer, close: closeCard.kpi_customer.close },
+            kpiProactive: { ...allCard.kpi_proactive, close: closeCard.kpi_proactive.close },
+            nonKpiUnspec: { ...allCard.non_kpi_unspec, close: closeCard.non_kpi_unspec.close },
+            nonTechnical: { ...allCard.non_technical, close: closeCard.non_technical.close },
+            sqmUpdate: { ...allCard.sqm_update, close: closeCard.sqm_update.close },
             obsolete: { ...allCard.obsolete, close: closeCard.obsolete.close },
           },
         };
@@ -2571,7 +2403,10 @@ export class DailyTicketService {
     // Apply dept filter (B2B/B2C)
     const deptSegmentWhere = buildDeptSegmentWhere(p0?.dept);
     if (deptSegmentWhere) {
-      where.AND = [...(where.AND ?? []), deptSegmentWhere];
+      where.AND = [
+        ...(where.AND ?? []),
+        deptSegmentWhere,
+      ];
     }
 
     // Apply ticketType filter
@@ -2662,7 +2497,10 @@ export class DailyTicketService {
 
     const fullWhere: Record<string, any> = {
       ...baseWhere,
-      AND: [...(baseWhere.AND ?? []), { workzone: { in: workzoneNames } }],
+      AND: [
+        ...(baseWhere.AND ?? []),
+        { workzone: { in: workzoneNames } },
+      ],
     };
 
     const grouped = await prisma.ticket.groupBy({
@@ -2672,36 +2510,18 @@ export class DailyTicketService {
     });
 
     // Aggregate by workzone
-    const statsByWorkzone = new Map<
-      string,
-      {
-        total: number;
-        open: number;
-        assigned: number;
-        onProgress: number;
-        pending: number;
-        close: number;
-      }
-    >();
+    const statsByWorkzone = new Map<string, { total: number; open: number; assigned: number; onProgress: number; pending: number; close: number }>();
     for (const g of grouped) {
       const wz = g.workzone ?? '';
       if (!statsByWorkzone.has(wz)) {
-        statsByWorkzone.set(wz, {
-          total: 0,
-          open: 0,
-          assigned: 0,
-          onProgress: 0,
-          pending: 0,
-          close: 0,
-        });
+        statsByWorkzone.set(wz, { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 });
       }
       const stats = statsByWorkzone.get(wz)!;
       const count = g._count._all;
       stats.total += count;
-      const status =
-        String(g.status_update ?? '')
-          .trim()
-          .toLowerCase() || 'open';
+      const status = String(g.status_update ?? '')
+        .trim()
+        .toLowerCase() || 'open';
       if (status === 'open') stats.open += count;
       else if (status === 'assigned') stats.assigned += count;
       else if (status === 'on_progress') stats.onProgress += count;
@@ -2710,13 +2530,8 @@ export class DailyTicketService {
     }
 
     // Map to service areas
-    const results = serviceAreas.map((sa) => {
-      let total = 0,
-        open = 0,
-        assigned = 0,
-        onProgress = 0,
-        pending = 0,
-        close = 0;
+    const results = serviceAreas.map(sa => {
+      let total = 0, open = 0, assigned = 0, onProgress = 0, pending = 0, close = 0;
       const saName = (sa.nama_sa ?? '').toLowerCase();
       for (const [wz, stats] of statsByWorkzone) {
         if (wz.toLowerCase() === saName) {
@@ -2795,9 +2610,7 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ): Promise<Array<{ hour: number; count: number }>> {
-    const selectedWorkzone = await this.resolveSelectedWorkzone(
-      filters?.workzone,
-    );
+    const selectedWorkzone = await this.resolveSelectedWorkzone(filters?.workzone);
     const scopedWhere: Record<string, any> = {
       ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
     };
@@ -2807,10 +2620,9 @@ export class DailyTicketService {
       scopedWhere.AND = [...(scopedWhere.AND ?? []), deptSegmentWhere];
     }
 
-    const bucketKey =
-      filters?.operationalBucket?.length === 1
-        ? (filters.operationalBucket[0] as OperationalBucketKey)
-        : null;
+    const bucketKey = filters?.operationalBucket?.length === 1
+      ? filters.operationalBucket[0] as OperationalBucketKey
+      : null;
     if (bucketKey) {
       const bucketWhere = buildOperationalBucketWhere(bucketKey);
       if (bucketWhere) {
@@ -2828,7 +2640,7 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(scopedWhere);
 
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         HOUR(reported_date + INTERVAL 7 HOUR) AS hour,
         COUNT(*) AS count
       FROM ticket
@@ -2840,14 +2652,14 @@ export class DailyTicketService {
       GROUP BY HOUR(reported_date + INTERVAL 7 HOUR)
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ hour: number; count: bigint | number }>
-    >(sql, ...params, startWib, nextHourWib);
+    const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
+      sql,
+      ...params,
+      startWib,
+      nextHourWib,
+    );
 
-    const counts = Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      count: 0,
-    }));
+    const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
     for (const row of rows) {
       const hour = Number(row.hour);
       const count = Number(row.count ?? 0);
@@ -2871,11 +2683,9 @@ export class DailyTicketService {
     const { start, end } = getTodayWibRange();
     const currentHourWib = toZonedTime(new Date(), 'Asia/Jakarta').getHours();
 
-    const closeStatusSql = CLOSE_STATUS_VALUES.map(
-      (status) => `'${status}'`,
-    ).join(', ');
+    const closeStatusSql = CLOSE_STATUS_VALUES.map((status) => `'${status}'`).join(', ');
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         HOUR(closed_at) AS hour,
         COUNT(*) AS count
       FROM ticket
@@ -2887,14 +2697,14 @@ export class DailyTicketService {
       GROUP BY HOUR(closed_at)
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ hour: number; count: bigint | number }>
-    >(sql, ...params, start, end);
+    const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
+      sql,
+      ...params,
+      start,
+      end,
+    );
 
-    const counts = Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      count: 0,
-    }));
+    const counts = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
     for (const row of rows) {
       const utcHour = Number(row.hour);
       const count = Number(row.count ?? 0);
@@ -2919,7 +2729,7 @@ export class DailyTicketService {
     });
     const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         symptom_clean,
         COUNT(*) AS count
       FROM (
@@ -2934,13 +2744,8 @@ export class DailyTicketService {
       ORDER BY count DESC, symptom_clean ASC
       LIMIT ?
     `;
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ symptom_clean: string; count: bigint }>
-    >(sql, ...params, limit);
-    return rows.map((r) => ({
-      symptom: r.symptom_clean,
-      count: Number(r.count),
-    }));
+    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params, limit);
+    return rows.map((r) => ({ symptom: r.symptom_clean, count: Number(r.count) }));
   }
 
   static async getB2CBreakdown(
@@ -2949,95 +2754,45 @@ export class DailyTicketService {
     filters?: TicketFilters,
   ): Promise<{
     summary: {
-      total: number;
-      open: number;
-      assigned: number;
-      close: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-      ffgCount: number;
-      gamasCount: number;
-      p1Count: number;
-      pPlusCount: number;
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
     };
     reguler: {
-      total: number;
-      open: number;
-      assigned: number;
-      close: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-      ffgCount: number;
-      gamasCount: number;
-      p1Count: number;
-      pPlusCount: number;
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
     };
     hvcGold: {
-      total: number;
-      open: number;
-      assigned: number;
-      close: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-      ffgCount: number;
-      gamasCount: number;
-      p1Count: number;
-      pPlusCount: number;
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
     };
     hvcPlatinum: {
-      total: number;
-      open: number;
-      assigned: number;
-      close: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-      ffgCount: number;
-      gamasCount: number;
-      p1Count: number;
-      pPlusCount: number;
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
     };
     hvcDiamond: {
-      total: number;
-      open: number;
-      assigned: number;
-      close: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-      ffgCount: number;
-      gamasCount: number;
-      p1Count: number;
-      pPlusCount: number;
+      total: number; open: number; assigned: number; close: number;
+      customerCount: number; sqmCount: number; unspecCount: number;
+      ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number;
     };
   }> {
     const where = await this.buildDailyTicketWhere(role, userId, filters);
     const mainTableWhere = this.buildMainTableWhere(where);
     const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
     const rawBucket = filters?.operationalBucket?.[0];
-    const bucket = rawBucket
-      ? normalizeOperationalBucketKey(rawBucket)
-      : undefined;
+    const bucket = rawBucket ? normalizeOperationalBucketKey(rawBucket) : undefined;
 
     const zero = () => ({
-      total: 0,
-      open: 0,
-      assigned: 0,
-      close: 0,
-      customerCount: 0,
-      sqmCount: 0,
-      unspecCount: 0,
-      ffgCount: 0,
-      gamasCount: 0,
-      p1Count: 0,
-      pPlusCount: 0,
+      total: 0, open: 0, assigned: 0, close: 0,
+      customerCount: 0, sqmCount: 0, unspecCount: 0,
+      ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0,
     });
 
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+      SELECT
         CASE
           WHEN LOWER(customer_type) IN ('hvc_diamond','hvc diamond','diamond') THEN 'HVC_DIAMOND'
           WHEN LOWER(customer_type) IN ('hvc_platinum','hvc platinum','platinum') THEN 'HVC_PLATINUM'
@@ -3091,24 +2846,17 @@ export class DailyTicketService {
       GROUP BY cust_type
     `;
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{
-        cust_type: string;
-        total: bigint;
-        open: bigint;
-        assigned: bigint;
-        close: bigint;
-        customer_count: bigint;
-        sqm_count: bigint;
-        unspec_count: bigint;
-        ffg_count: bigint;
-        gamas_count: bigint;
-        p1_count: bigint;
-        pplus_count: bigint;
-      }>
-    >(sql, ...params);
+    console.log('[B2CBreakdown] SQL:', sql.replace(/\s+/g, ' '));
+    console.log('[B2CBreakdown] params:', JSON.stringify(params));
 
-    const mapRow = (r: (typeof rows)[number]) => ({
+    const rows = await prisma.$queryRawUnsafe<Array<{
+      cust_type: string;
+      total: bigint; open: bigint; assigned: bigint; close: bigint;
+      customer_count: bigint; sqm_count: bigint; unspec_count: bigint;
+      ffg_count: bigint; gamas_count: bigint; p1_count: bigint; pplus_count: bigint;
+    }>>(sql, ...params);
+
+    const mapRow = (r: typeof rows[number]) => ({
       total: Number(r.total),
       open: Number(r.open),
       assigned: Number(r.assigned),
@@ -3147,12 +2895,9 @@ export class DailyTicketService {
       };
     }
 
-    function applyBucketCounts(tier: {
-      total: number;
-      customerCount: number;
-      sqmCount: number;
-      unspecCount: number;
-    }): void {
+    function applyBucketCounts(
+      tier: { total: number; customerCount: number; sqmCount: number; unspecCount: number },
+    ): void {
       switch (bucket) {
         case 'kpi_customer':
           tier.customerCount = tier.total;

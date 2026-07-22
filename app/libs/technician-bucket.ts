@@ -13,20 +13,13 @@ export type TechnicianBucketSource = {
 };
 
 function trimLower(value: string | null | undefined): string {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase();
+  return String(value ?? '').trim().toLowerCase();
 }
 
-function hasJenis(
-  value: string | null | undefined,
-  needles: readonly string[],
-): boolean {
+function hasJenis(value: string | null | undefined, needles: readonly string[]): boolean {
   const text = trimLower(value).replace(/[\s_]+/g, '');
   if (!text) return false;
-  return needles.some((needle) =>
-    text.includes(needle.toLowerCase().replace(/[\s_]+/g, '')),
-  );
+  return needles.some((needle) => text.includes(needle.toLowerCase().replace(/[\s_]+/g, '')));
 }
 
 function isObsolete(source: TechnicianBucketSource): boolean {
@@ -70,10 +63,8 @@ export function classifyTechnicianBucket(
   const isUnspec = hasJenis(source.jenis_tiket_2, ['unspec', 'unspec b2b']);
 
   if (isProactive && channel === '28' && isUnspec) return 'non_kpi_unspec';
-  if (isProactive && summary.startsWith('[SQM-UPDATE]') && isSqm)
-    return 'sqm_update';
-  if (isProactive && (channel === '50' || channel === '83') && isSqm)
-    return 'kpi_proactive';
+  if (isProactive && summary.startsWith('[SQM-UPDATE]') && isSqm) return 'sqm_update';
+  if (isProactive && (channel === '50' || channel === '83') && isSqm) return 'kpi_proactive';
 
   if (isCustomer) return 'kpi_customer';
   if (isProactive) return isSqm ? 'kpi_proactive' : 'non_kpi_unspec';

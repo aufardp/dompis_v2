@@ -455,13 +455,12 @@ async function queryRawWithOptionalIndex<T>(
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  const withHint = (sql: string) => sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(30000) */ ');
   try {
-    return await prisma.$queryRawUnsafe<T>(withHint(sqlWithIndex), ...params);
+    return await prisma.$queryRawUnsafe<T>(sqlWithIndex, ...params);
   } catch (error) {
     if (!isMissingIndexError(error)) throw error;
     logger.warn('[OperationsSummary] FORCE INDEX skipped:', { detail: String((error as Error)?.message ?? error) });
-    return prisma.$queryRawUnsafe<T>(withHint(sqlWithoutIndex), ...params);
+    return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
   }
 }
 

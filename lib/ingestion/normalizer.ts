@@ -75,59 +75,14 @@ const COLUMN_MAPPING: Record<string, string> = {
   datemodified: 'date_modified',
   // QOSMIC Bridge: bridge sends PascalCase/snake_case mixed names
   // that toSnakeCase() cannot map to the correct internal field.
-  Last_Work_Log_Date: 'last_update_worklog',
-  last_updated_work_log: 'worklog_summary',
-  Last_Updated_Work_Log: 'worklog_summary',
+  Last_Work_Log_Date: 'worklog_summary',
+  last_updated_work_log: 'last_update_worklog',
+  Last_Updated_Work_Log: 'last_update_worklog',
   'Closed/Reopen_By': 'closed_reopen_by',
   C_REALM: 'realm',
   C_TSC_RESULT: 'tsc_result',
   C_SCC_RESULT: 'scc_result',
-  // ALL_CAPS fields — toSnakeCase inserts underscore before every letter
-  ROOTCAUSE: 'cause',
-  RESOLUTION: 'resolution',
-  GAUL: 'gaul',
-  CUSTOMER_TYPE: 'customer_type',
-  INCIDENT_DOMAIN: 'incident_domain',
-  TTR_END_TO_END: 'ttr_end_to_end',
-  EXTERNALSYSTEM_TICKETID: 'external_ticket_id',
-  CONTACT_EMAIL: 'contact_email',
-  // C_ prefix fields — toSnakeCase produces broken casing
-  C_GUARANTE_STATUS: 'guarantee_status',
-  C_Resolve_Date: 'resolve_date',
-  C_Booking_Date: 'booking_date',
-  C_Description_Assigment: 'description_assignment',
-  C_PRIORITY: 'reported_priority',
-  // PascalCase with underscore — toSnakeCase inserts underscore per capital mid-word
-  Customer_Name: 'customer_name',
-  Customer_Segment: 'customer_segment',
-  Customer_ID: 'customer_id',
-  Service_ID: 'service_id',
-  Service_No: 'service_no',
-  Service_Type: 'service_type',
-  Owner_Group: 'owner_group',
-  Reported_Date: 'reported_date',
-  Status_Date: 'status_date',
-  TTR_Customer: 'ttr_customer',
-  TTR_Nasional: 'ttr_nasional',
-  TTR_Regional: 'ttr_region',
-  TTR_Witel: 'ttr_witel',
-  TTR_Mitra: 'ttr_mitra',
-  TTR_Agent: 'ttr_agent',
-  Ttr_Pending: 'ttr_pending',
-  Impacted_Site: 'impacted_site',
-  // Field name mismatch — bridge name differs from target
-  Source: 'source_ticket',
-  Regional: 'region',
-  Resolved_By: 'closed_by',
-  Last_Update_Ticket: 'date_modified',
-  ASSIGN_TO: 'technician',
-  Induk_Gamas: 'ticket_id_gamas',
-  Induk_gamas: 'ticket_id_gamas',
-  Actual_Solution: 'description_actual_solution',
-  RK: 'rk_information',
-  // camelCase / no separator
-  reportedpriority: 'reported_priority',
-}
+};
 
 function toSnakeCase(str: string): string {
   // Convert camelCase or PascalCase/PascalCase_With_Underscore to snake_case.
@@ -176,15 +131,6 @@ export function normalizeExternalRow(
           : (value ?? null);
     normalized[normalizedKey] = processedValue;
     rawPayload[key] = processedValue;
-  }
-
-  // Normalize various SQM summary prefixes to consistent format
-  // so bucket classification (which checks startsWith('[SQM-UPDATE]')) works.
-  const summary = normalized.summary;
-  if (typeof summary === 'string') {
-    normalized.summary = summary
-      .replace(/\[SQM_UPDATE\]/gi, '[SQM-UPDATE]')
-      .replace(/\[SQM-UPDATE\]\s*\[SQM-UPDATE\]/gi, '[SQM-UPDATE]');
   }
 
   return {

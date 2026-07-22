@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getOrSetCache } from '@/lib/cache';
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,60 +30,56 @@ export async function GET(req: NextRequest) {
     const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
     const end = new Date(year, month, 1, 0, 0, 0, 0);
 
-    const cacheKey = `perf_tickets:${techId}:${month}:${year}`;
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        teknisi_user_id: techId,
+        status_update: { in: ['close', 'closed'] },
+        closed_at: { gte: start, lt: end },
+      },
+      take: 1000,
+      select: {
+        id_ticket: true,
+        incident: true,
+        contact_name: true,
+        service_no: true,
+        customer_type: true,
+        jenis_tiket_2: true,
+        workzone: true,
+        reported_date: true,
+        closed_at: true,
+        description_solution_dompis: true,
+        rca: true,
+        sub_rca: true,
+      },
+      orderBy: { closed_at: 'desc' },
+    });
 
-    const mapped = await getOrSetCache(cacheKey, async () => {
-      const tickets = await prisma.ticket.findMany({
-        where: {
-          teknisi_user_id: techId,
-          status_update: { in: ['close', 'closed'] },
-          closed_at: { gte: start, lt: end },
-        },
-        take: 1000,
-        select: {
-          id_ticket: true,
-          incident: true,
-          contact_name: true,
-          service_no: true,
-          customer_type: true,
-          jenis_tiket_2: true,
-          workzone: true,
-          reported_date: true,
-          closed_at: true,
-          description_solution_dompis: true,
-          rca: true,
-          sub_rca: true,
-        },
-        orderBy: { closed_at: 'desc' },
-      });
-
-      return tickets.map((t) => {
-        const reported = t.reported_date
-          ? new Date(t.reported_date)
+    const mapped = tickets.map((t) => {
+      const reported = t.reported_date
+        ? new Date(t.reported_date)
+        : null;
+      const closed = t.closed_at;
+      const resolveHours =
+        reported && closed
+          ? ((closed.getTime() - reported.getTime()) / 3600000).toFixed(1)
           : null;
-        const closed = t.closed_at;
-        const resolveHours =
-          reported && closed
-            ? ((closed.getTime() - reported.getTime()) / 3600000).toFixed(1)
-            : null;
 
-        return {
-          idTicket: t.id_ticket,
-          incident: t.incident,
-          contactName: t.contact_name,
-          serviceNo: t.service_no,
-          customerType: t.customer_type,
-          jenisTiket: t.jenis_tiket_2,
-          workzone: t.workzone,
-          reportedDate: t.reported_date,
-          closedAt: closed ? closed.toISOString() : null,
-          resolveHours,
-          rca: t.rca,
-          subRca: t.sub_rca,
-          descriptionSolutionDompis: t.description_solution_dompis,
-        };
-      });
-    }, 60);
+      return {
+        idTicket: t.id_ticket,
+        incident: t.incident,
+        contactName: t.contact_name,
+        serviceNo: t.service_no,
+        customerType: t.customer_type,
+        jenisTiket: t.jenis_tiket_2,
+        workzone: t.workzone,
+        reportedDate: t.reported_date,
+        closedAt: closed ? closed.toISOString() : null,
+        resolveHours,
+        rca: t.rca,
+        subRca: t.sub_rca,
+        descriptionSolutionDompis: t.description_solution_dompis,
+      };
+    });
 
     return NextResponse.json({
       success: true,
