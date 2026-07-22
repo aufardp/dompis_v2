@@ -6,6 +6,58 @@ Setiap perubahan ditambahkan ke bagian atas file, perubahan terbaru paling atas.
 
 ---
 
+## [Phase 4] — INSERT Stabilization & Server Duplication Fix — 22 Juli 2026
+
+### Masalah
+1. **INSERT `ticket_raw` 37–60s**: 18 indexes pada `ticket_raw` → 900 B-tree updates per batch (50 rows). Setelah seed index di-drop di Phase 2, durasi turun ke 8–21s, tapi server-worker contention membuatnya kembali ke 37–60s.
+2. **Duplikasi server**: Admin klik tombol Sync → `POST /api/sync` → server jalankan `runIngestion()` + `runProjection()`. Berebut lock dan DB connection dengan data-worker.
+3. **Cleanup `projection_log` 60s**: `DELETE ... WHERE projectedAt < ? LIMIT ?` tanpa index → full table scan.
+
+### File Diubah
+
+#### `app/api/sync/route.ts`
+
+| Perubahan | Baris | Keterangan |
+|-----------|-------|------------|
+| Guard GET | ~13-19 | Return 503 jika `DISABLE_SYNC_API=true` |
+| Guard POST | ~52-58 | Return 503 jika `DISABLE_SYNC_API=true` |
+
+#### `ecosystem.config.js`
+
+| Perubahan | Baris | Keterangan |
+|-----------|-------|------------|
+| Tambah env `DISABLE_SYNC_API: 'true'` | ~35 | Hanya di block `dompis-server` |
+
+#### `prisma/migrations/202607220001_drop_redundant_ticket_raw_indexes/migration.sql`
+
+**(File Baru)** — 7 DROP INDEX + 1 duplicate cleanup:
+
+| Index | Alasan |
+|-------|--------|
+| `ticket_raw_importedAt_idx` | Covered by `idx_ticket_raw_imported_incident` |
+| `ticket_raw_lastSeenAt_idx` | Covered by `@@index([isActive, lastSeenAt])` |
+| `ticket_raw_sourceUpdatedAt_idx` | Covered by `@@index([sourceTable, sourceUpdatedAt])` |
+| `idx_ticket_raw_active_source_incident` | Covered by `idx_ticket_raw_active_source_updated_incident` |
+| `ticket_raw_sourceTable_lastSeenAt_idx` | Covered by `idx_ticket_raw_status_refresh_nulls` |
+| `idx_ticket_raw_projection_cursor` | Covered by `idx_ticket_raw_active_cursor` |
+| `ticket_raw_sourceTable_syncBatchId_idx` | Covered by `idx_ticket_raw_projection_batch_cursor` |
+| `ticket_raw_projection_cursor_idx` | **Duplicate** of `idx_ticket_raw_active_cursor` (⚠ not included, verify existence) |
+
+#### `prisma/migrations/202607220002_add_projection_log_projected_at_index/migration.sql`
+
+**(File Baru)** — ADD INDEX:
+
+| Perubahan | Keterangan |
+|-----------|------------|
+| `ALTER TABLE ticket_projection_log ADD INDEX idx_ticket_projection_log_projected_at (projectedAt)` | Schema.prisma sudah declare tapi migration tidak pernah create |
+
+### Dampak
+- **Index `ticket_raw`**: 18 → 10 (7 di-drop, 1 duplicate diverifikasi)
+- **INSERT `ticket_raw`**: 37–60s → estimasi 10–25s/batch
+- **Cleanup `projection_log`**: 60s timeout → <10ms
+- **Duplikasi ingestion**: Eliminasi — server return 503, worker tetap jalan normal
+- **Tombol Sync di Admin**: Tidak lagi jalan di server, data-worker otomatis handle
+
 ## [Phase 3b] — Status Refresh Fix: Enable Terminal Tickets Refresh — 22 Juli 2026
 
 ### Masalah

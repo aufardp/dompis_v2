@@ -11,6 +11,13 @@ import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(req: NextRequest) {
+  if (process.env.DISABLE_SYNC_API === 'true') {
+    return NextResponse.json(
+      { success: false, message: 'Sync API disabled on this server process. Data worker handles sync automatically.' },
+      { status: 503 },
+    );
+  }
+
   try {
     const secret = req.headers.get('x-cron-secret');
     const envSecret = process.env.CRON_SECRET;
@@ -50,6 +57,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.DISABLE_SYNC_API === 'true') {
+    return NextResponse.json(
+      { success: false, message: 'Sync API disabled on this server process. Data worker handles sync automatically.' },
+      { status: 503 },
+    );
+  }
+
   try {
     await protectApi(['admin', 'superadmin', 'helpdesk']);
 
