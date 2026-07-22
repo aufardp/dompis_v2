@@ -6,6 +6,25 @@ import {
   resolveWorkzoneName,
 } from '../../helpers/ticket.helpers';
 import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
+import { createHash } from 'crypto';
+
+const queryCache = new Map<string, { data: unknown; expiry: number }>();
+
+function withQueryCache<T>(sql: string, params: unknown[], fn: () => Promise<T>, ttlMs = 3000): Promise<T> {
+  const key = createHash('md5').update(sql + JSON.stringify(params)).digest('hex');
+  const entry = queryCache.get(key);
+  if (entry && entry.expiry > Date.now()) return Promise.resolve(entry.data as T);
+  return fn().then((result) => {
+    queryCache.set(key, { data: result, expiry: Date.now() + ttlMs });
+    if (queryCache.size > 200) {
+      const now = Date.now();
+      for (const [k, v] of queryCache) {
+        if (v.expiry < now) queryCache.delete(k);
+      }
+    }
+    return result;
+  });
+}
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
@@ -879,12 +898,16 @@ async function hydrateTicketsByIds(ids: number[]) {
 }
 
 async function queryRawWithOptionalIndex<T>(
-  _sqlWithIndex: string,
+  sqlWithIndex: string,
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
-  const query = sqlWithoutIndex.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(15000) */ ');
-  return prisma.$queryRawUnsafe<T>(query, ...params);
+  const withHint = (sql: string) => sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(15000) */ ');
+  try {
+    return await prisma.$queryRawUnsafe<T>(withHint(sqlWithIndex), ...params);
+  } catch {
+    return prisma.$queryRawUnsafe<T>(withHint(sqlWithoutIndex), ...params);
+  }
 }
 
 const SORT_FIELD_MAP: Record<string, string> = {
@@ -1044,8 +1067,9 @@ export class DailyTicketService {
       ...(where.AND ?? []),
       {
         OR: [
-          { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-          { AND: [{ status: { in: [...CLOSE_STATUS_VALUES] } }, { closed_at: { gte: todayStart } }] },
+          { AND: [{ sync_date: today }, { status: { notIn: [...CLOSE_STATUS_VALUES] } }] },
+          { AND: [{ sync_date: today }, { status: { in: [...CLOSE_STATUS_VALUES] } }, { closed_at: { gte: todayStart } }] },
+          { AND: [{ sync_date: today }, { status_update: 'close' }, { status: { in: [...CLOSE_STATUS_VALUES] } }] },
           { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { notIn: [...CLOSE_STATUS_VALUES] } }] },
         ],
       },

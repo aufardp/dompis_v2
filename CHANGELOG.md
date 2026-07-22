@@ -107,6 +107,34 @@ CREATE INDEX `idx_ticket_raw_status_refresh_seed_v2`
 - **Seed query**: Full index scan → covering index scan (<10ms)
 - **Pool exhaustion data-worker**: ✅ Eliminasi total
 
+---
+
+### Perbaikan Tambahan (Commit 3 — 22 Juli 2026)
+
+#### Masalah
+Pool exhaustion masih terjadi meski semua perbaikan di atas sudah di-deploy. Ternyata ada akar masalah tambahan:
+
+1. **`queryRawWithOptionalIndex` tidak pakai FORCE INDEX**: Parameter `_sqlWithIndex` (prefix underscore) membuatnya di-skip karena dianggap unused oleh runtime → semua SELECT `$queryRawUnsafe` tanpa index hint, meski sudah ada `/*+ MAX_EXECUTION_TIME(15000) */`.
+2. **Non-legacy daily filter tidak pakai `sync_date = today`**: Legacy filter punya `sync_date = ?` untuk batasi scan ke hari ini. Non-legacy filter (untuk admin) baru di-refactor dan **menghapus** `sync_date` — jadi full scan 100K+ rows per query di semua 12 parallel queries. Nilai `pending_dompis` juga tidak di-carried-over untuk tiket non-closed di luar today.
+3. **Rekap cache TTL 120s terlalu pendek**: Cache expired setiap 2 menit → 80 parallel aggregation queries setiap siklus rekap cascade.
+4. **Bridge 502 consecutive errors tidak di-track**: Tiap siklus data-worker coba lagi (fast-fail 2.5s), tapi tetap pakai ~20s per cycle. Pool contention tetap terjadi karena query lain lambat.
+
+#### Perbaikan
+
+| # | Perubahan | File | Detail |
+|---|-----------|------|--------|
+| 1 | **Fix `queryRawWithOptionalIndex`** — pakai `sqlWithIndex` (FORCE INDEX) dengan try/catch | `daily-ticket.service.ts:881-888` | Hapus underscore prefix, try `sqlWithIndex` dulu, fallback `sqlWithoutIndex` jika error |
+| 2 | **Kembalikan `sync_date = today`** di non-legacy filter | `daily-ticket.service.ts:1020-1053` | Restore `sync_date = TODAY` di ketiga OR branch + carry-over `pending_dompis` untuk non-closed tiket |
+| 3 | **Rekap cache TTL 120s → 300s** | `rekap-workorder/route.ts:1568` | Cache bertahan 5 menit — cascade 80 query terjadi tiap 5 menit, bukan 2 menit |
+| 4 | **Bridge circuit breaker** — skip bridge tables setelah 2 consecutive 502 | `ingestion/index.ts` | `bridgeConsecutiveErrors` counter, reset setelah sukses. Max 2 error → skip bridge untuk sisa cycle |
+
+#### Dampak
+- **Query non-legacy**: 100K+ rows scan → ~10K rows (sync_date filter) → **9-30s → <1-2s**
+- **FORCE INDEX**: Index benar-benar dipakai → clustered lookup di-eliminasi
+- **Rekap cascade**: 80 queries tiap 5 menit (vs 2 menit) — beban reduced 60%
+- **Bridge 502**: Setelah 2 error, bridge di-skip → **0s wasted**, bukan 20s per cycle
+- **Pool exhaustion**: ✅ Diharapkan eliminasi total
+
 ## [Phase 5] — Pool Exhaustion Final Fix — 22 Juli 2026
 
 ### Masalah

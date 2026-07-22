@@ -34,7 +34,7 @@ import { logger } from '@/lib/observability/logger';
 import { isRedisReady, redis } from '@/lib/redis';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
-import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
+import { isQosmicBridgeConfigured, QosmicBridgeError } from '@/lib/external-db/qosmic-bridge/client';
 import { broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
 import { runBridgeEnrichment } from './bridge-enrichment';
 import {
@@ -65,6 +65,10 @@ const MYSQL_PLACEHOLDER_SAFETY_MARGIN = 5_000;
 // Adaptive backoff: turunkan chunk size otomatis saat timeout
 let adaptiveWriteChunkSize = DEFAULT_WRITE_CHUNK_SIZE;
 const MIN_WRITE_CHUNK_SIZE = 10;
+
+// Bridge circuit breaker: skip bridge tables jika 502 beruntun
+let bridgeConsecutiveErrors = 0;
+const MAX_BRIDGE_ERRORS = 2;
 
 const TRANSIENT_ERROR_PATTERNS = [
   'deadlock',
@@ -1102,9 +1106,14 @@ async function processTable(
 ): Promise<ChunkResult> {
   const startedAt = nowWib();
   const startMs = Date.now();
+  const bridgeDown = bridgeConsecutiveErrors >= MAX_BRIDGE_ERRORS;
   const isBridgeTable =
+    !bridgeDown &&
     isQosmicBridgeConfigured() &&
     (tableName === 'nossa' || tableName === 'nossa_closed');
+  if (bridgeDown && (tableName === 'nossa' || tableName === 'nossa_closed')) {
+    logger.warn('[Ingestion] Bridge circuit breaker OPEN, skipping bridge table:', { tableName, consecutiveErrors: bridgeConsecutiveErrors });
+  }
 
   const cursor: ExternalCursorDefinition = isBridgeTable
     ? {
@@ -1291,6 +1300,7 @@ async function processTable(
           totalRows,
         });
       }
+      bridgeConsecutiveErrors = 0;
     } else {
       // ====== EXISTING MYSQL PATH ======
       const openOnlyFilter = tableName === 'piloting_tickets'
@@ -1468,6 +1478,10 @@ async function processTable(
     const message = String(error);
     result.failed++;
     result.errors.push({ incident: 'table', error: message });
+    if (error instanceof QosmicBridgeError) {
+      bridgeConsecutiveErrors++;
+      logger.warn('[Ingestion] Bridge circuit breaker error:', { count: bridgeConsecutiveErrors, tableName, status: error.status });
+    }
     const failureStatus = message.includes('Ingestion aborted') ? 'aborted' : 'failed';
     await prisma.ingestion_checkpoint.upsert({
       where: { tableName },

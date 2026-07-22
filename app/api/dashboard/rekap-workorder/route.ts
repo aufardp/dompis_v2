@@ -1727,7 +1727,7 @@ export async function GET(request: NextRequest) {
             : undefined,
         );
       },
-      120,
+      300,
     );
 
     return NextResponse.json(data);
