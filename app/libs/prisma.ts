@@ -18,7 +18,7 @@ const prismaLogConfig: any =
       : ['error'];
 
 const dbUrl = process.env.DATABASE_URL
-  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=30&connect_timeout=15`
+  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=10&connect_timeout=15`
   : undefined;
 
 export const prisma =
