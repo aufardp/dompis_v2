@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:server": "tsx server.ts",
-    "build": "npm run prisma:generate && cross-env NODE_OPTIONS=--max-old-space-size=4096 SKIP_REDIS_CONNECT=true next build && npm run build:workers && bash scripts/postbuild.sh",
+    "build": "npm run prisma:generate && (cross-env NODE_OPTIONS=--max-old-space-size=16384 SKIP_REDIS_CONNECT=true next build & npm run build:workers & wait) && bash scripts/postbuild.sh",
     "prisma:generate": "prisma generate",
     "build:workers": "tsc -p tsconfig.workers.json && mkdir -p dist-workers && cp worker-runtime/register-paths.cjs dist-workers/register-paths.cjs",
     "start": "next start -p 3000",
