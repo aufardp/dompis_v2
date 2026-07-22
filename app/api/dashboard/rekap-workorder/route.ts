@@ -1014,7 +1014,7 @@ async function getFilteredRekapTickets(
       const bucketWhere = buildRekapBucketFilterSql(bucket);
       const fullSql = `
     WITH ranked AS (
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         a.nama_area                     AS area,
         sa.nama_sa                      AS sa_name,
         t.workzone,
@@ -1104,7 +1104,7 @@ async function getCustomerSqmOverlayTickets(
 
       const fullSql = `
     WITH ranked AS (
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         a.nama_area                     AS area,
         sa.nama_sa                      AS sa_name,
         t.workzone,
@@ -1200,9 +1200,9 @@ async function getLegacyCustomerBucketRows(
 
   const fullSql = `
     WITH ranked AS (
-      SELECT
-        a.nama_area AS area,
-        sa.nama_sa AS sa_name,
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        a.nama_area                     AS area,
+        sa.nama_sa                      AS sa_name,
         t.workzone,
         t.status,
         LOWER(COALESCE(t.status_update, 'open')) AS status_update,
@@ -1248,7 +1248,7 @@ async function getLegacyCustomerRekapTickets(
 
   const fullSql = `
     WITH ranked AS (
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         a.nama_area                     AS area,
         sa.nama_sa                      AS sa_name,
         t.workzone,

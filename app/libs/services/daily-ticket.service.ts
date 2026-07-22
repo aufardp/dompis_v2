@@ -748,71 +748,6 @@ function parseCountValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function summarizeBucketRows(
-  rows: Array<{
-    status: string | null;
-    status_update: string | null;
-    guarantee_status: string | null;
-    ticket_id_gamas: string | null;
-    flagging_manja: string | null;
-    booking_date: string | null;
-  }>,
-): BucketSummary {
-  const summary: BucketSummary = {
-    total: rows.length,
-    open: 0,
-    assigned: 0,
-    onProgress: 0,
-    pending: 0,
-    close: 0,
-    ffgCount: 0,
-    gamasCount: 0,
-    p1Count: 0,
-    pPlusCount: 0,
-  };
-
-  for (const row of rows) {
-    const status = String(row.status ?? '').trim().toUpperCase();
-    const statusUpdate = String(row.status_update ?? '').trim().toLowerCase();
-
-    if (CLOSE_STATUS_VALUES.includes(status)) {
-      summary.close += 1;
-    } else if (statusUpdate === 'assigned') {
-      summary.assigned += 1;
-    } else if (statusUpdate === 'on_progress') {
-      summary.onProgress += 1;
-    } else if (statusUpdate === 'pending') {
-      summary.pending += 1;
-    } else {
-      summary.open += 1;
-    }
-
-    if (String(row.guarantee_status ?? '').trim().toLowerCase() === 'guarantee') {
-      summary.ffgCount += 1;
-    }
-
-    const gamas = String(row.ticket_id_gamas ?? '').trim().toLowerCase();
-    if (gamas && !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(gamas)) {
-      summary.gamasCount += 1;
-    }
-
-    const effectiveFlag = resolveEffectiveFlagging(
-      String(row.flagging_manja ?? '').trim().toUpperCase(),
-      row.booking_date,
-    );
-
-    if (effectiveFlag === 'P1') {
-      summary.p1Count += 1;
-    }
-
-    if (effectiveFlag === 'P+') {
-      summary.pPlusCount += 1;
-    }
-  }
-
-  return summary;
-}
-
 function buildStatusCategorySql(tbl = ''): string {
   const t = tbl ? `${tbl}.` : '';
   const closeStatusesSql = CLOSE_STATUS_VALUES.map((status) =>
@@ -1311,8 +1246,9 @@ export class DailyTicketService {
           [],
         ];
     const sql = `
-      SELECT id_ticket,
-             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        id_ticket,
+        ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
@@ -1338,7 +1274,8 @@ export class DailyTicketService {
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const sql = `
-      SELECT COUNT(*) AS total
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
@@ -1422,7 +1359,8 @@ export class DailyTicketService {
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
     const sql = `
-      SELECT COUNT(*) AS total
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
@@ -1446,60 +1384,103 @@ export class DailyTicketService {
     validasiBaseWhere?: Prisma.ticketWhereInput | null,
   ): Promise<FlaggingSummary> {
     const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
-    const mainWithIndex = `
-      SELECT
-        id_ticket,
-        status,
-        status_update,
-        guarantee_status,
-        ticket_id_gamas,
-        flagging_manja,
-        booking_date
-      FROM ticket
-      WHERE ${mainSql}
-    `;
-    const mainWithoutIndex = `
-      SELECT
-        id_ticket,
-        status,
-        status_update,
-        guarantee_status,
-        ticket_id_gamas,
-        flagging_manja,
-        booking_date
-      FROM ticket
-      WHERE ${mainSql}
-    `;
 
-    const [mainRows, validasiRows] = await Promise.all([
-      queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-        mainWithIndex,
-        mainWithoutIndex,
-        mainParams,
-      ),
-      validasiBaseWhere
-        ? this.countValidasiFlaggingSummary(validasiBaseWhere)
-        : Promise.resolve([] as Array<Record<string, unknown>>),
-    ]);
+    let validasiSql = '';
+    let validasiParams: unknown[] = [];
+    if (validasiBaseWhere) {
+      [validasiSql, validasiParams] = buildSqlWhereClause(validasiBaseWhere);
+    }
+    const allParams: unknown[] = validasiBaseWhere
+      ? [...mainParams, ...validasiParams]
+      : [...mainParams];
 
-    const seen = new Set<number>();
-    const allRows: Array<Record<string, unknown>> = [];
-    for (const row of [...mainRows, ...validasiRows]) {
-      const id = Number(row.id_ticket);
-      if (!seen.has(id)) {
-        seen.add(id);
-        allRows.push(row);
-      }
+    const closeStatusesSql = CLOSE_STATUS_VALUES.map(
+      (s) => `'${s.replace(/'/g, "''")}'`,
+    ).join(', ');
+    const statusCategorySql = `CASE
+      WHEN UPPER(TRIM(COALESCE(status, ''))) IN (${closeStatusesSql}) THEN 'close'
+      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'assigned' THEN 'assigned'
+      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'on_progress' THEN 'on_progress'
+      WHEN LOWER(TRIM(COALESCE(status_update, ''))) = 'pending' THEN 'pending'
+      ELSE 'open'
+    END`;
+    const guaranteeCondition = `LOWER(TRIM(COALESCE(guarantee_status, ''))) = 'guarantee'`;
+    const gamasCondition = `ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na')`;
+    const p1pPlusFilter = `(COALESCE(flagging_manja, '') != '' OR COALESCE(booking_date, '') != '')`;
+
+    const mainSubquery = `SELECT 1 AS src, id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date FROM ticket WHERE ${mainSql}`;
+    const p1MainSubquery = `SELECT 1 AS src, id_ticket, flagging_manja, booking_date FROM ticket WHERE ${mainSql} AND ${p1pPlusFilter}`;
+
+    let validasiSubquery = '';
+    let p1ValidasiSubquery = '';
+    if (validasiBaseWhere) {
+      validasiSubquery = ` UNION ALL SELECT 2 AS src, t.id_ticket, t.status, t.status_update, t.guarantee_status, t.ticket_id_gamas, t.flagging_manja, t.booking_date FROM ticket t WHERE ${validasiSql}`;
+      p1ValidasiSubquery = ` UNION ALL SELECT 2 AS src, t.id_ticket, t.flagging_manja, t.booking_date FROM ticket t WHERE ${validasiSql} AND (COALESCE(t.flagging_manja, '') != '' OR COALESCE(t.booking_date, '') != '')`;
     }
 
-    return summarizeBucketRows(allRows as Array<{
-      status: string | null;
-      status_update: string | null;
-      guarantee_status: string | null;
-      ticket_id_gamas: string | null;
-      flagging_manja: string | null;
-      booking_date: string | null;
-    }>);
+    const aggSql = `
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN sc = 'close' THEN 1 ELSE 0 END), 0) AS close,
+        COALESCE(SUM(CASE WHEN sc = 'assigned' THEN 1 ELSE 0 END), 0) AS assigned,
+        COALESCE(SUM(CASE WHEN sc = 'on_progress' THEN 1 ELSE 0 END), 0) AS onProgress,
+        COALESCE(SUM(CASE WHEN sc = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+        COALESCE(SUM(CASE WHEN sc = 'open' THEN 1 ELSE 0 END), 0) AS open,
+        COALESCE(SUM(CASE WHEN ${guaranteeCondition} THEN 1 ELSE 0 END), 0) AS ffgCount,
+        COALESCE(SUM(CASE WHEN ${gamasCondition} THEN 1 ELSE 0 END), 0) AS gamasCount
+      FROM (
+        SELECT ${statusCategorySql} AS sc, guarantee_status, ticket_id_gamas
+        FROM (
+          SELECT status, status_update, guarantee_status, ticket_id_gamas,
+                 ROW_NUMBER() OVER (PARTITION BY id_ticket ORDER BY src) AS rn
+          FROM (${mainSubquery}${validasiSubquery}) c
+        ) r WHERE rn = 1
+      ) a
+    `;
+
+    const p1Sql = `
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        flagging_manja, booking_date
+      FROM (
+        SELECT flagging_manja, booking_date,
+               ROW_NUMBER() OVER (PARTITION BY id_ticket ORDER BY src) AS rn
+        FROM (${p1MainSubquery}${p1ValidasiSubquery}) c
+      ) r WHERE rn = 1
+    `;
+
+    const [aggRows, p1pPlusRows] = await Promise.all([
+      prisma.$queryRawUnsafe<Array<Record<string, bigint>>>(aggSql, ...allParams),
+      prisma.$queryRawUnsafe<Array<{ flagging_manja: string | null; booking_date: string | null }>>(
+        p1Sql, ...allParams
+      ),
+    ]);
+
+    const row = aggRows[0];
+    let p1Count = 0;
+    let pPlusCount = 0;
+
+    for (const r of p1pPlusRows) {
+      const eff = resolveEffectiveFlagging(
+        String(r.flagging_manja ?? '').trim().toUpperCase(),
+        r.booking_date,
+      );
+      if (eff === 'P1') p1Count++;
+      if (eff === 'P+') pPlusCount++;
+    }
+
+    const result: FlaggingSummary & Record<string, number> = {
+      ffgCount: Number(row.ffgCount),
+      gamasCount: Number(row.gamasCount),
+      p1Count,
+      pPlusCount,
+    };
+    result.total = Number(row.total);
+    result.close = Number(row.close);
+    result.assigned = Number(row.assigned);
+    result.onProgress = Number(row.onProgress);
+    result.pending = Number(row.pending);
+    result.open = Number(row.open);
+    return result;
   }
 
   private static async countCustomerTypes(
@@ -1507,7 +1488,7 @@ export class DailyTicketService {
   ): Promise<CustomerTypeSummary> {
     const [sql, params] = buildSqlWhereClause(mainTableWhere);
     const query = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type,
         COUNT(*) AS cnt
       FROM ticket
@@ -1537,49 +1518,14 @@ export class DailyTicketService {
     return { hvcDiamond, hvcPlatinum, hvcGold, reguler };
   }
 
-  private static async countValidasiFlaggingSummary(
-    validasiBaseWhere: Prisma.ticketWhereInput,
-  ): Promise<Array<Record<string, unknown>>> {
-    const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
-    const sqlWithIndex = `
-      SELECT
-        t.id_ticket,
-        t.status,
-        t.status_update,
-        t.guarantee_status,
-        t.ticket_id_gamas,
-        t.flagging_manja,
-        t.booking_date
-      FROM ticket t
-      WHERE ${sql}
-    `;
-    const sqlWithoutIndex = `
-      SELECT
-        t.id_ticket,
-        t.status,
-        t.status_update,
-        t.guarantee_status,
-        t.ticket_id_gamas,
-        t.flagging_manja,
-        t.booking_date
-      FROM ticket t
-      WHERE ${sql}
-    `;
-
-    return queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-      sqlWithIndex,
-      sqlWithoutIndex,
-      params,
-    );
-  }
-
   private static async fetchValidasiTicketIds(
     validasiBaseWhere: Prisma.ticketWhereInput,
     options: { sort: 'asc' | 'desc'; offset: number; limit: number },
   ): Promise<number[]> {
     const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
     const sql = `
-      SELECT id_ticket, reported_date
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        id_ticket, reported_date
       FROM ticket
       WHERE ${whereClause}
       ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
@@ -1606,7 +1552,8 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(where);
 
     const sql = `
-      SELECT status, status_update, COUNT(*) AS count
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
+        status, status_update, COUNT(*) AS count
       FROM ticket
       WHERE ${whereClause}
       GROUP BY status, status_update
@@ -1813,6 +1760,8 @@ export class DailyTicketService {
     const flaggingSummaryPromise = includeSummary
       ? this.countFlaggingSummary(mainTableWhere, validasiBaseWhere)
       : Promise.resolve({
+          total: 0,
+          open: 0,
           ffgCount: 0,
           gamasCount: 0,
           p1Count: 0,
@@ -2662,7 +2611,7 @@ export class DailyTicketService {
     const [whereClause, params] = buildSqlWhereClause(scopedWhere);
 
     const sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         HOUR(reported_date + INTERVAL 7 HOUR) AS hour,
         COUNT(*) AS count
       FROM ticket
@@ -2707,7 +2656,7 @@ export class DailyTicketService {
 
     const closeStatusSql = CLOSE_STATUS_VALUES.map((status) => `'${status}'`).join(', ');
     const sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         HOUR(closed_at) AS hour,
         COUNT(*) AS count
       FROM ticket
@@ -2751,7 +2700,7 @@ export class DailyTicketService {
     });
     const [sqlWhere, params] = buildSqlWhereClause(mainTableWhere);
     const sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         symptom_clean,
         COUNT(*) AS count
       FROM (
@@ -2814,7 +2763,7 @@ export class DailyTicketService {
     });
 
     const sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         CASE
           WHEN LOWER(customer_type) IN ('hvc_diamond','hvc diamond','diamond') THEN 'HVC_DIAMOND'
           WHEN LOWER(customer_type) IN ('hvc_platinum','hvc platinum','platinum') THEN 'HVC_PLATINUM'
@@ -2867,9 +2816,6 @@ export class DailyTicketService {
         AND customer_segment IN ('DCS', 'PL-TSEL')
       GROUP BY cust_type
     `;
-
-    console.log('[B2CBreakdown] SQL:', sql.replace(/\s+/g, ' '));
-    console.log('[B2CBreakdown] params:', JSON.stringify(params));
 
     const rows = await prisma.$queryRawUnsafe<Array<{
       cust_type: string;

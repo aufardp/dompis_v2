@@ -879,7 +879,7 @@ export class TicketService {
     if (!workzoneFilter.skip) {
       try {
         gaulRows = await prisma.$queryRaw`
-          SELECT
+          SELECT /*+ MAX_EXECUTION_TIME(15000) */
             t1.service_no,
             COUNT(DISTINCT t1.incident) AS occurrences,
             t1.workzone,
@@ -922,7 +922,7 @@ export class TicketService {
     if (!workzoneFilter.skip) {
       try {
         lapulRows = await prisma.$queryRaw`
-          SELECT
+          SELECT /*+ MAX_EXECUTION_TIME(15000) */
             tr.incident,
             COUNT(*) AS occurrences,
             t.workzone,
@@ -1606,7 +1606,7 @@ export class TicketService {
     const [whereClause, params] = buildSqlWhereClause(slaExpiredWhere);
 
     const sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */
         t.id_ticket, t.incident, t.customer_type, t.reported_date,
         t.status_update, t.teknisi_user_id, t.workzone, t.contact_name, t.service_no,
         u.nama AS technician_name

@@ -35,7 +35,7 @@ async function warmTicketManagementOverview(role: string, userId: number): Promi
 async function warmBufferPool(): Promise<void> {
   const start = Date.now();
   const result = await prisma.$queryRaw<Array<{ total: bigint }>>`
-    SELECT COUNT(*) AS total FROM ticket
+    SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS total FROM ticket
   `;
   const ms = Date.now() - start;
   logger.info('[Prewarm] Buffer pool warm (count query):', { ms, total: Number(result[0]?.total ?? 0) });

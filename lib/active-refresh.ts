@@ -109,7 +109,7 @@ async function estimateBacklog(today: Date): Promise<number | null> {
 
   try {
     const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*) AS count
+      SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS count
       FROM ticket t
       WHERE (
           t.sync_date IS NULL
@@ -174,7 +174,7 @@ async function fetchNotSyncedToday(
   if (limit <= 0) return [];
 
   return prisma.$queryRaw<Array<{ id_ticket: number }>>`
-    SELECT t.id_ticket
+    SELECT /*+ MAX_EXECUTION_TIME(15000) */ t.id_ticket
     FROM ticket t
     WHERE (t.sync_date IS NULL OR t.sync_date < ${today})
       ${lastTicketId === undefined ? Prisma.empty : Prisma.sql`AND t.id_ticket < ${lastTicketId}`}
@@ -190,7 +190,7 @@ async function fetchActiveOpen(
   if (limit <= 0) return [];
 
   return prisma.$queryRaw<Array<{ id_ticket: number; synced_at: Date | null }>>`
-    SELECT t.id_ticket, t.synced_at
+    SELECT /*+ MAX_EXECUTION_TIME(15000) */ t.id_ticket, t.synced_at
     FROM ticket t
     WHERE t.status_update IN ('open', 'assigned', 'on_progress', 'pending',
                               'OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
@@ -212,7 +212,7 @@ export async function resetStaleAssignedTickets(
   if (limit <= 0) return 0;
 
   const rows = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
-    SELECT t.id_ticket
+    SELECT /*+ MAX_EXECUTION_TIME(15000) */ t.id_ticket
     FROM ticket t
     INNER JOIN ticket_tracking tt
       ON tt.ticket_id = t.id_ticket
@@ -278,7 +278,7 @@ async function filterRawActiveTicketIds(ids: number[]): Promise<number[]> {
   if (ids.length === 0) return [];
 
   const rows = await prisma.$queryRaw<Array<{ id_ticket: number }>>`
-    SELECT t.id_ticket
+    SELECT /*+ MAX_EXECUTION_TIME(15000) */ t.id_ticket
     FROM ticket t
     INNER JOIN ticket_raw tr ON tr.incident = t.incident
     WHERE t.id_ticket IN (${Prisma.join(ids)})

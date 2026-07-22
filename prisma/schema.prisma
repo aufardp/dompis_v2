@@ -345,6 +345,7 @@ model ticket {
   @@index([closed_at], map: "idx_ticket_closed_at")
   @@index([workzone, status, status_update, closed_at, reported_date], map: "idx_ticket_dashboard_main")
   @@index([teknisi_user_id, status, status_update, closed_at, reported_date], map: "idx_ticket_teknisi_dashboard")
+  @@index([teknisi_user_id, status_update, reported_date, closed_at], map: "idx_ticket_teknisi_status_update")
   @@index([needs_validation], map: "idx_ticket_needs_validation")
   @@index([sync_date, workzone, status, status_update, closed_at, reported_date], map: "idx_ticket_daily_board")
   @@index([source_ticket, classification_path, status], map: "idx_ticket_bucket")
@@ -753,6 +754,7 @@ model ticket_tracking {
   @@index([assigned_to])
   @@index([usersId_user], map: "ticket_tracking_usersId_user_fkey")
   @@index([assigned_to, closed_at], map: "idx_ticket_tracking_assigned_closed")
+  @@index([ticket_id, assigned_at, is_active], map: "idx_tah_ticket_assigned_active")
 }
 
 model user_sa {
