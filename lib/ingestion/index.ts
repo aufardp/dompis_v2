@@ -665,8 +665,9 @@ async function bulkUpsertTicketRaw(
         insertColumns.length,
     ),
   );
-  const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
   const isBridge = sourceTable === 'nossa' || sourceTable === 'nossa_closed';
+  const maxBatch = isBridge ? 100 : DEFAULT_BATCH_SIZE;
+  const sqlBatchSize = Math.min(maxBatch, maxRowsByPlaceholderLimit);
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
     .filter((column) => {
@@ -1245,14 +1246,14 @@ async function processTable(
         const normalizedRows = rawRows.map((row) =>
           normalizeExternalRow(row as unknown as ExternalRow, tableName),
         );
-        for (let offset = 0; offset < rawRows.length; offset += DEFAULT_WRITE_CHUNK_SIZE) {
+        for (let offset = 0; offset < rawRows.length; offset += adaptiveWriteChunkSize) {
           const rawWindow = rawRows.slice(
             offset,
-            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, rawRows.length),
+            Math.min(offset + adaptiveWriteChunkSize, rawRows.length),
           ) as Record<string, unknown>[];
           const normalizedWindow = normalizedRows.slice(
             offset,
-            Math.min(offset + DEFAULT_WRITE_CHUNK_SIZE, normalizedRows.length),
+            Math.min(offset + adaptiveWriteChunkSize, normalizedRows.length),
           );
           const chunkResult = await withRetry(
             () =>
@@ -1280,6 +1281,10 @@ async function processTable(
               },
               onRetry: () => {
                 result.retried++;
+                adaptiveWriteChunkSize = Math.max(
+                  MIN_WRITE_CHUNK_SIZE,
+                  Math.floor(adaptiveWriteChunkSize / 2),
+                );
               },
             },
           );
