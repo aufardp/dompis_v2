@@ -11,7 +11,7 @@ import { prisma } from '@/app/libs/prisma';
 import { getOrSetCache } from '@/lib/cache';
 
 const WORKER_NAMES = ['ingestion-worker', 'projection-worker', 'active-refresh-worker', 'status-refresh-worker', 'ops-worker'] as const;
-const CACHE_TTL_SECONDS = 5;
+const CACHE_TTL_SECONDS = 30;
 const CACHE_KEY = 'internal_workers_health:v1';
 
 function getExternalPoolStats(): { total: number; active: number; idle: number; queue: number } | null {

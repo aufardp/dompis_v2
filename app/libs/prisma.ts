@@ -56,6 +56,7 @@ export async function connectDB() {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       await prisma.$connect();
+      await prisma.$executeRawUnsafe('SET SESSION MAX_EXECUTION_TIME = 5000').catch(() => {});
       logger.info('✅ Database connected');
       return;
     } catch (error) {

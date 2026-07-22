@@ -905,7 +905,8 @@ async function queryRawWithOptionalIndex<T>(
   const withHint = (sql: string) => sql.replace(/^SELECT\s/i, 'SELECT /*+ MAX_EXECUTION_TIME(15000) */ ');
   try {
     return await prisma.$queryRawUnsafe<T>(withHint(sqlWithIndex), ...params);
-  } catch {
+  } catch (error) {
+    if (!isMissingIndexError(error)) throw error;
     return prisma.$queryRawUnsafe<T>(withHint(sqlWithoutIndex), ...params);
   }
 }
@@ -2111,11 +2112,9 @@ export class DailyTicketService {
           return summary;
         };
 
-        const [all, b2c, b2b] = await Promise.all([
-          buildScopeSummary('all'),
-          buildScopeSummary('b2c'),
-          buildScopeSummary('b2b'),
-        ]);
+        const all = await buildScopeSummary('all');
+        const b2c = await buildScopeSummary('b2c');
+        const b2b = await buildScopeSummary('b2b');
 
         return { all, b2c, b2b };
       },
@@ -2290,12 +2289,10 @@ export class DailyTicketService {
           return summary;
         };
 
-        const [all, b2c, b2b, closeMap] = await Promise.all([
-          buildScopeSummary('all', false),
-          buildScopeSummary('b2c', false),
-          buildScopeSummary('b2b', false),
-          buildCloseOnlySummary('all'),
-        ]);
+        const all = await buildScopeSummary('all', false);
+        const b2c = await buildScopeSummary('b2c', false);
+        const b2b = await buildScopeSummary('b2b', false);
+        const closeMap = await buildCloseOnlySummary('all');
 
         const toCardSummary = (s: BucketSummary): TicketManagementBucketSummary & { ffgCount: number; gamasCount: number; p1Count: number; pPlusCount: number } => ({
           total: s.total,
