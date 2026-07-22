@@ -6,7 +6,63 @@ Setiap perubahan ditambahkan ke bagian atas file, perubahan terbaru paling atas.
 
 ---
 
-## [Phase 6] — Data-Worker Stabilization — 22 Juli 2026
+## [Phase 7] — Covering Index Fix + max_execution_time 5s — 22 Juli 2026
+
+### Masalah
+Pool exhaustion masih terjadi bahkan dengan 1 workzone (9-28s per query):
+1. **`idx_ticket_bucket_v2` tidak covering**: Index `(workzone, source_ticket, status, status_update, classification_path)` — missing `closed_at` dan `pending_dompis`. Daily filter `(status IN (...) AND closed_at >= ?) OR pending_dompis IS NOT NULL` butuh clustered lookup per row → 9-30s.
+2. **Data bertambah**: Bridge + projection tambah row ke `ticket` → query makin lambat.
+3. **`max_execution_time = 30000` terlalu longgar**: Query pegang koneksi 30s sebelum di-kill.
+
+### Perbaikan
+
+| # | Perubahan | Detail |
+|---|-----------|--------|
+| 1 | **Rollback middleware** `prisma.$use` | Berbahaya: `$executeRawUnsafe` di middleware minta koneksi ke-2 dari pool yang sama → deadlock saat pool penuh. Diganti dengan GLOBAL setting saja. |
+| 2 | **Expand index** — tambah `closed_at`, `pending_dompis` | `(workzone, source_ticket, status, status_update, classification_path, closed_at, pending_dompis)` → covering untuk daily filter WHERE clause |
+| 3 | **`SET GLOBAL max_execution_time = 5000`** | Query di-kill 6× lebih cepat |
+| 4 | **Pool 30→40**, pool_timeout 30→10 | Buffer ekstra |
+
+### File Diubah
+
+#### `scripts/manual-20260722-phase7.sql`
+
+**(File Baru)** — SQL untuk phpMyAdmin:
+```sql
+SET GLOBAL max_execution_time = 5000;
+DROP INDEX idx_ticket_bucket_v2 ON ticket;
+ALTER TABLE ticket ADD INDEX idx_ticket_bucket_v2
+  (workzone, source_ticket, status, status_update, classification_path, closed_at, pending_dompis);
+```
+
+#### `prisma/migrations/202607220005_expand_ticket_bucket_v2/migration.sql`
+
+**(File Baru)** — Migration SQL yang sama (untuk Prisma migrate deploy).
+
+#### `prisma/schema.prisma` (line 351)
+
+| Sebelum | Sesudah |
+|---------|---------|
+| `@@index([workzone, source_ticket, status, status_update, classification_path], ...)` | `@@index([workzone, source_ticket, status, status_update, classification_path, closed_at, pending_dompis], ...)` |
+
+#### `ecosystem.config.js`
+
+| Perubahan | Sebelum | Sesudah |
+|-----------|---------|---------|
+| PRISMA_CONNECTION_LIMIT (server) | 30 | 40 |
+| PRISMA_POOL_TIMEOUT (server) | 30 | 10 |
+
+#### `app/libs/prisma.ts`
+
+| Perubahan | Keterangan |
+|-----------|------------|
+| Hapus `prisma.$use` middleware | Rollback — middleware berbahaya (double connection) |
+
+### Dampak
+- **Covering index**: Daily filter `closed_at >= ?` dan `pending_dompis IS NOT NULL` dibaca dari index leaf → **tanpa clustered lookup** → query turun dari 9-28s ke **<5s**
+- **Query kill time**: 30s → **5s** — koneksi balik 6× lebih cepat
+- **Pool size**: 30 → **40** — +33% buffer
+- **Pool exhaustion**: ✅ Diharapkan eliminasi total
 
 ### Masalah
 Data-worker mengalami 3 kegagalan beruntun:

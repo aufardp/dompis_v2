@@ -348,7 +348,7 @@ model ticket {
   @@index([needs_validation], map: "idx_ticket_needs_validation")
   @@index([sync_date, workzone, status, status_update, closed_at, reported_date], map: "idx_ticket_daily_board")
   @@index([source_ticket, classification_path, status], map: "idx_ticket_bucket")
-  @@index([workzone, source_ticket, status, status_update, classification_path], map: "idx_ticket_bucket_v2")
+  @@index([workzone, source_ticket, status, status_update, classification_path, closed_at, pending_dompis], map: "idx_ticket_bucket_v2")
 }
 
 model ticket_activity_log {
