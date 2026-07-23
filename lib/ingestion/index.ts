@@ -1217,6 +1217,7 @@ async function processTable(
       });
     } else {
       // ====== EXISTING MYSQL PATH ======
+      const checkpointModifiedAt = activeCursor.lastModifiedAt;
       const openOnlyFilter = tableName === 'piloting_tickets'
         ? "`status_validasi` = 'OPEN'"
         : undefined;
@@ -1344,7 +1345,7 @@ async function processTable(
           idColumn: cursor.idColumn,
           modifiedColumn: cursor.modifiedColumn,
           lastCursorId: null,
-          lastModifiedAt: activeCursor.lastModifiedAt,
+          lastModifiedAt: checkpointModifiedAt,
           columns: cursor.columns.map((c) => c.name),
           extraWhere: "`status_validasi` = 'CLOSE'",
         });
