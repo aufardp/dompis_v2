@@ -1422,6 +1422,29 @@ export async function runProjection(
       }
     }
 
+    let validationCleanup = 0;
+    try {
+      const cleaned = await prisma.ticket.updateMany({
+        where: {
+          needs_validation: true,
+          status: { in: CLOSE_STATUS_VALUES },
+        },
+        data: {
+          needs_validation: false,
+          validation_reason: null,
+          validation_flagged_at: null,
+        },
+      });
+      validationCleanup = cleaned.count;
+      if (cleaned.count > 0) {
+        logger.info('[Projection] Cleaned stuck validation flags', {
+          count: cleaned.count,
+        });
+      }
+    } catch (error) {
+      logger.warn('[Projection] Validation cleanup failed', { error: String(error) });
+    }
+
     const projectionHealthy = reconciliation
       ? reconciliation.neverProjectedRaw === 0
         ? autoRepairError === null

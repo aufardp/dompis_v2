@@ -644,6 +644,7 @@ async function updateChangedRows(
         const values = chunk.map((row) =>
           Prisma.sql`(
             ${row.incident},
+            ${row.sourceTable},
             ${row.normalizedStatus},
             ${row.statusDate},
             ${row.dateModified},
@@ -664,6 +665,7 @@ async function updateChangedRows(
           INSERT INTO ticket_raw
             (
               incident,
+              sourceTable,
               status,
               status_date,
               date_modified,
@@ -679,6 +681,7 @@ async function updateChangedRows(
             )
           VALUES ${Prisma.join(values)}
           ON DUPLICATE KEY UPDATE
+            sourceTable = VALUES(sourceTable),
             status = VALUES(status),
             status_date = VALUES(status_date),
             date_modified = VALUES(date_modified),

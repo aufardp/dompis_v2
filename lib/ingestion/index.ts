@@ -1188,13 +1188,32 @@ async function processTable(
 
   try {
     if (isBridgeTable) {
-      // Bridge ingestion skipped — piloting_tickets is primary source with 82 columns.
-      // Status refresh still uses bridge API for real-time per-ticket updates (13 columns).
-      logger.info('[Ingestion] Bridge ingestion skipped for table (piloting_tickets is primary)', {
-        component: 'ingestion',
-        tableName,
-        batchId,
-        mode,
+      logger.info('[Ingestion] Bridge ingestion starting', {
+        component: 'ingestion', tableName, batchId, mode,
+      });
+
+      const iterator = tableName === 'nossa'
+        ? iterateNossaOpen()
+        : iterateNossaClosedIncremental(7);
+
+      for await (const rows of iterator) {
+        assertNotAborted(signal);
+        await processRawRows(
+          rows as Record<string, unknown>[],
+          tableName,
+          batchId,
+          cursor,
+          result,
+          signal,
+        );
+      }
+
+      activeCursor = { lastCursorId: null, lastModifiedAt: nowWib() };
+      hasMore = false;
+
+      logger.info('[Ingestion] Bridge ingestion complete', {
+        component: 'ingestion', tableName, batchId, mode,
+        processed: result.processed,
       });
     } else {
       // ====== EXISTING MYSQL PATH ======

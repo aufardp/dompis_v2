@@ -109,18 +109,31 @@ export async function fetchExternalRowsViaBridge(
   }
 
   const resource = toResource(sourceTable);
+  const otherResource = resource === 'nossa' ? 'nossa_closed' : 'nossa';
+
+  const fetchWithFallback = async (incident: string): Promise<{ row: Record<string, unknown> | null; sourceTable: string }> => {
+    const row = await enqueueBridgeCall(
+      () => fetchByIncident<Record<string, unknown>>(resource, incident),
+      'background',
+    );
+    if (row) return { row, sourceTable: resource };
+
+    const fallbackRow = await enqueueBridgeCall(
+      () => fetchByIncident<Record<string, unknown>>(otherResource, incident),
+      'background',
+    );
+    if (fallbackRow) return { row: fallbackRow, sourceTable: otherResource };
+
+    return { row: null, sourceTable: resource };
+  };
 
   const results = await Promise.allSettled(
-    incidents.map((incident) =>
-      enqueueBridgeCall(
-        () => fetchByIncident<Record<string, unknown>>(resource, incident),
-        'background',
-      ),
-    ),
+    incidents.map((incident) => fetchWithFallback(incident)),
   );
 
   let notFound = 0;
   let failed = 0;
+  let fallbackUsed = 0;
 
   results.forEach((result, index) => {
     const incident = incidents[index];
@@ -141,15 +154,17 @@ export async function fetchExternalRowsViaBridge(
       return;
     }
 
-    const rawRow = result.value;
+    const { row: rawRow, sourceTable: foundIn } = result.value;
     if (!rawRow) {
       notFound++;
       return;
     }
 
+    if (foundIn !== resource) fallbackUsed++;
+
     const normalized = normalizeExternalRow(
       rawRow as unknown as ExternalRow,
-      sourceTable,
+      foundIn,
     ) as NormalizedExternalRow;
 
     const normalizedIncident = trimTo(normalized.incident, 50);
@@ -157,7 +172,7 @@ export async function fetchExternalRowsViaBridge(
 
     mapped.set(normalizedIncident, {
       incident: normalizedIncident,
-      sourceTable,
+      sourceTable: foundIn,
       normalizedStatus: normalizeStatus(
         trimTo(normalized.status, 50) ?? undefined,
       ),
@@ -175,6 +190,7 @@ export async function fetchExternalRowsViaBridge(
     found: mapped.size,
     notFound,
     failed,
+    fallbackUsed,
   });
 
   return mapped;
