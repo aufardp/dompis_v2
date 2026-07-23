@@ -1276,7 +1276,7 @@ export class DailyTicketService {
         limit: number;
         priorityToday?: string | null;
       },
-  ): Promise<Array<{ id_ticket: number; rank_global: number; total: number }>> {
+  ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
       ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
@@ -1286,15 +1286,14 @@ export class DailyTicketService {
         ];
     const sql = `
       SELECT id_ticket,
-             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global,
-             COUNT(*) OVER() AS total
+             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
       FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
     `;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number; total: bigint | number }>>(
+    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
       sql,
       ...params,
       ...orderParams,
@@ -1305,7 +1304,6 @@ export class DailyTicketService {
     return rows.map((row) => ({
       id_ticket: row.id_ticket,
       rank_global: Number(row.rank_global),
-      total: Number(row.total),
     }));
   }
 
@@ -1800,8 +1798,14 @@ export class DailyTicketService {
             : null,
         )
       : Promise.resolve([] as TicketTypeOption[]);
+    const totalPromise = getOrSetCache(
+      `${cacheKeyBase}:total`,
+      () => this.countTicketsBySql(mainTableWhere),
+      DASHBOARD_CACHE_TTL,
+    );
 
     const [
+      total,
       summary,
       flaggingSummary,
       customerTypeSummary,
@@ -1811,6 +1815,7 @@ export class DailyTicketService {
       statusOptions,
       ticketTypeOptions,
     ] = await Promise.all([
+      totalPromise,
       summaryPromise,
       flaggingSummaryPromise,
       customerTypePromise,
@@ -1821,7 +1826,6 @@ export class DailyTicketService {
       ticketTypeOptionsPromise,
     ]);
 
-    const total = ticketIds.length > 0 ? ticketIds[0].total : 0;
     const rankMap = new Map<number, number>();
     const ticketIdList = ticketIds.map((r) => {
       rankMap.set(r.id_ticket, r.rank_global);
