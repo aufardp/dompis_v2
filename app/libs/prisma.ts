@@ -6,6 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const connectionLimit = parseInt(process.env.PRISMA_CONNECTION_LIMIT || '20', 10);
+const poolTimeoutSeconds = parseInt(process.env.PRISMA_POOL_TIMEOUT || '30', 10);
 const slowQueryThresholdMs = Number(process.env.PRISMA_SLOW_QUERY_MS || '0');
 const enableSlowQueryLogging =
   Number.isFinite(slowQueryThresholdMs) && slowQueryThresholdMs > 0;
@@ -18,7 +19,7 @@ const prismaLogConfig: any =
       : ['error'];
 
 const dbUrl = process.env.DATABASE_URL
-  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=60&connect_timeout=15`
+  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=${poolTimeoutSeconds}&connect_timeout=15`
   : undefined;
 
 export const prisma =

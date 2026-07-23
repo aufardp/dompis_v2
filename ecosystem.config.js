@@ -16,7 +16,7 @@ module.exports = {
         PORT: '9005',
         NEXT_TELEMETRY_DISABLED: '1',
         REDIS_PORT: '6379',
-        PRISMA_CONNECTION_LIMIT: '20',
+        PRISMA_CONNECTION_LIMIT: '30',
         PRISMA_POOL_TIMEOUT: '30',
          TICKETS_CACHE_TTL: '10',
         DASHBOARD_CACHE_TTL: '15',

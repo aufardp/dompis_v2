@@ -1276,7 +1276,7 @@ export class DailyTicketService {
         limit: number;
         priorityToday?: string | null;
       },
-  ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
+  ): Promise<Array<{ id_ticket: number; rank_global: number; total: number }>> {
     const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
       ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
@@ -1286,14 +1286,15 @@ export class DailyTicketService {
         ];
     const sql = `
       SELECT id_ticket,
-             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global,
+             COUNT(*) OVER() AS total
       FROM ticket
       WHERE ${whereClause}
       ORDER BY ${orderByClause}
       LIMIT ?, ?
     `;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
+    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number; total: bigint | number }>>(
       sql,
       ...params,
       ...orderParams,
@@ -1304,6 +1305,7 @@ export class DailyTicketService {
     return rows.map((row) => ({
       id_ticket: row.id_ticket,
       rank_global: Number(row.rank_global),
+      total: Number(row.total),
     }));
   }
 
@@ -1773,35 +1775,19 @@ export class DailyTicketService {
           limit: safeValidasiLimit,
         })
       : Promise.resolve([] as number[]);
+    const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
+
     const summaryPromise = includeSummary
-      ? this.countStatuses(mainTableWhere)
-      : Promise.resolve({
-          total: 0,
-          open: 0,
-          assigned: 0,
-          onProgress: 0,
-          pending: 0,
-          close: 0,
-          unassigned: 0,
-        });
+      ? getOrSetCache(`${cacheKeyBase}:statuses`, () => this.countStatuses(mainTableWhere), DASHBOARD_CACHE_TTL)
+      : Promise.resolve({ total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 });
     const flaggingSummaryPromise = includeSummary
-      ? this.countFlaggingSummary(mainTableWhere, validasiBaseWhere)
-      : Promise.resolve({
-          ffgCount: 0,
-          gamasCount: 0,
-          p1Count: 0,
-          pPlusCount: 0,
-        });
+      ? getOrSetCache(`${cacheKeyBase}:flagging`, () => this.countFlaggingSummary(mainTableWhere, validasiBaseWhere), DASHBOARD_CACHE_TTL)
+      : Promise.resolve({ ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 });
     const customerTypePromise = includeSummary
-      ? this.countCustomerTypes(mainTableWhere)
-      : Promise.resolve({
-          hvcDiamond: 0,
-          hvcPlatinum: 0,
-          hvcGold: 0,
-          reguler: 0,
-        });
+      ? getOrSetCache(`${cacheKeyBase}:customer_types`, () => this.countCustomerTypes(mainTableWhere), DASHBOARD_CACHE_TTL)
+      : Promise.resolve({ hvcDiamond: 0, hvcPlatinum: 0, hvcGold: 0, reguler: 0 });
     const validasiCountPromise = includeValidasi && validasiBaseWhere
-      ? this.countValidasiTickets(validasiBaseWhere)
+      ? getOrSetCache(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0);
     const statusOptionsPromise = includeOptions
       ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
@@ -1814,12 +1800,8 @@ export class DailyTicketService {
             : null,
         )
       : Promise.resolve([] as TicketTypeOption[]);
-    const totalPromise = this.countTicketsBySql(
-      mainTableWhere,
-    );
 
     const [
-      total,
       summary,
       flaggingSummary,
       customerTypeSummary,
@@ -1829,7 +1811,6 @@ export class DailyTicketService {
       statusOptions,
       ticketTypeOptions,
     ] = await Promise.all([
-      totalPromise,
       summaryPromise,
       flaggingSummaryPromise,
       customerTypePromise,
@@ -1840,6 +1821,7 @@ export class DailyTicketService {
       ticketTypeOptionsPromise,
     ]);
 
+    const total = ticketIds.length > 0 ? ticketIds[0].total : 0;
     const rankMap = new Map<number, number>();
     const ticketIdList = ticketIds.map((r) => {
       rankMap.set(r.id_ticket, r.rank_global);
