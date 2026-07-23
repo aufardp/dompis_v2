@@ -75,9 +75,9 @@ const COLUMN_MAPPING: Record<string, string> = {
   datemodified: 'date_modified',
   // QOSMIC Bridge: bridge sends PascalCase/snake_case mixed names
   // that toSnakeCase() cannot map to the correct internal field.
-  Last_Work_Log_Date: 'worklog_summary',
-  last_updated_work_log: 'last_update_worklog',
-  Last_Updated_Work_Log: 'last_update_worklog',
+  Last_Work_Log_Date: 'last_update_worklog',
+  last_updated_work_log: 'worklog_summary',
+  Last_Updated_Work_Log: 'worklog_summary',
   'Closed/Reopen_By': 'closed_reopen_by',
   C_REALM: 'realm',
   C_TSC_RESULT: 'tsc_result',
