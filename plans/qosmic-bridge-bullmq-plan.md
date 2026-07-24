@@ -228,7 +228,8 @@ Job gagal 3× otomatis pindah ke `bridge:interactive:failed`, `bridge:ingestion:
 |----------|---------|------|
 | `ingest:nossa` / `ingest:nossa_closed` | `` `ingest:${tableName}` `` | Hanya 1 job per tabel. Job baru ditolak selama yang lama masih antri/active |
 | `refresh:ticket` | `'refresh:${sourceTable}:${incident}'` | Cegah duplikat antar siklus refresh untuk incident yang sama |
-| `backfill:window` | `'backfill:${from}:${to}'` | Cegah re-run script push window yang sama dua kali |
+| `backfill:window` (manual one-off) | `'backfill:${from}:${to}'` | Cegah re-run script push window yang sama dua kali |
+| `backfill:window` (weekly safety) | `` `backfill:weekly:${weekMarker}:${from}:${to}` `` | Unik per eksekusi mingguan — window tumpang tindih tetap di-eksekusi ulang |
 | `search:incident` | (otomatis UUID) | Tidak perlu dedup — search adalah operasi idempoten, tidak ada risiko duplikat berbahaya |
 
 BullMQ otomatis tolak `add()` jika `jobId` yang sama masih dalam status waiting / active / delayed.
@@ -353,6 +354,36 @@ Worker C handler:
     → processRawRows → upsert (per-incident lock + staleness guard)
 ```
 
+### Weekly Safety Backfill (ops-worker, jadwal cron)
+
+Job mingguan untuk memanfaatkan budget 6/min yang menganggur sebagai jaring pengaman. Rolling 30 hari, geser tiap minggu. Aman diulang karena staleness guard mencegah data baru tertimpa.
+
+```
+BRIDGE_JOB_WEEKLY_SAFETY_BACKFILL_ENABLED=false  # Aktifkan di Phase 4
+BRIDGE_WEEKLY_BACKFILL_WINDOW_DAYS=30            # Rolling window ke belakang
+BRIDGE_WEEKLY_BACKFILL_CRON='0 3 * * 0'          # Minggu 03:00 WIB
+```
+
+```typescript
+// ops-worker, cron schedule
+if (BRIDGE_JOB_WEEKLY_SAFETY_BACKFILL_ENABLED === 'true') {
+  const weekMarker = format(new Date(), 'yyyy-ww');
+  const since = subDays(new Date(), Number(BRIDGE_WEEKLY_BACKFILL_WINDOW_DAYS));
+  const windows = splitIntoInitialWindows(since, new Date(), 7);
+  for (const w of windows) {
+    await backfillQueue.add('backfill:window', w, {
+      jobId: `backfill:weekly:${weekMarker}:${w.from}:${w.to}`,  // unik per minggu
+    });
+  }
+}
+```
+
+#### Batasan yang disadari
+
+- Rolling 30 hari — **tidak menutup outage >30 hari**. Backfill manual dengan window lebih lebar tetap wajib setelah downtime panjang (migrasi server, dsb).
+- Bukan pengganti one-off backfill pertama kali — backfill awal tetap manual via `npm run bridge:backfill`.
+- Staleness guard menjamin aman diulang — data yang sudah terisi lebih baru dari scan ini tidak akan tertimpa.
+
 ## Redis Infra (aaPanel, via `redis-cli CONFIG SET`)
 
 ### Konfigurasi Final
@@ -433,6 +464,9 @@ Tambah entry baru di `ecosystem.config.js`:
     BRIDGE_JOB_REFRESH_ENABLED: 'false',
     BRIDGE_JOB_INGESTION_ENABLED: 'false',
     BRIDGE_JOB_BACKFILL_ENABLED: 'false',
+    // Weekly safety backfill (ops-worker, cron)
+    BRIDGE_JOB_WEEKLY_SAFETY_BACKFILL_ENABLED: 'false',
+    BRIDGE_WEEKLY_BACKFILL_WINDOW_DAYS: '30',
     // BullMQ
     BULLMQ_CONCURRENCY: '3',
     // Circuit breaker
