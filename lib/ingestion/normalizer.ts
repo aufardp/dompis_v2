@@ -82,6 +82,26 @@ const COLUMN_MAPPING: Record<string, string> = {
   C_REALM: 'realm',
   C_TSC_RESULT: 'tsc_result',
   C_SCC_RESULT: 'scc_result',
+  // Additional bridge API column mappings
+  Source: 'source_ticket',
+  RK: 'rk_information',
+  Induk_Gamas: 'ticket_id_gamas',
+  Induk_gamas: 'ticket_id_gamas',
+  Last_Update_Ticket: 'date_modified',
+  Resolved_By: 'closed_by',
+  Regional: 'region',
+  Actual_Solution: 'description_actual_solution',
+  Classificationid: 'classification_path',
+  ASSIGN_TO: 'technician',
+  EXTERNALSYSTEM_TICKETID: 'external_ticket_id',
+  ROOTCAUSE: 'cause',
+  C_RESOLVE_DATE: 'resolve_date',
+  C_DESCRIPTION_ASSIGMENT: 'description_assignment',
+  C_GUARANTE_STATUS: 'guarantee_status',
+  SERVICE_IMPACT_GAMAS: 'related_to_gamas',
+  C_BOOKING_DATE: 'booking_date',
+  C_PRIORITY: 'urgency',
+  C_SOLUTION_DESCRIPTION: 'solution',
 };
 
 function toSnakeCase(str: string): string {

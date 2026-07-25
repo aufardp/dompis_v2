@@ -1,12 +1,8 @@
 import 'dotenv/config';
-import { prisma } from '@/app/libs/prisma';
 import { waitForRedisReady } from '@/lib/workers/task-runner';
 import { logger } from '@/lib/observability/logger';
-import { iterateNossaClosedBackfill } from '@/lib/external-db/qosmic-bridge/nossa';
 import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
-import { processRawRows, ChunkResult } from '@/lib/ingestion';
-import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
-import { nowWib } from '@/lib/timezone';
+import { splitIntoInitialWindows } from '@/lib/external-db/qosmic-bridge/window-planner';
 
 function parseArg(key: string, fallback: string): string {
   const idx = process.argv.indexOf(`--${key}`);
@@ -45,128 +41,44 @@ async function main() {
     process.exit(1);
   }
 
+  if (process.env.BRIDGE_JOB_BACKFILL_ENABLED !== 'true') {
+    console.error('BRIDGE_JOB_BACKFILL_ENABLED is not true. Set it to true in ecosystem.config.js before running backfill.');
+    process.exit(1);
+  }
+
   await waitForRedisReady(5_000);
 
-  const batchId = `bridge-backfill-${Date.now()}`;
-  const cursor: ExternalCursorDefinition = {
-    idColumn: null,
-    modifiedColumn: null,
-    createdAtColumn: null,
-    strategy: 'snapshot',
-    columns: [],
-  };
-  const result: ChunkResult = {
-    processed: 0,
-    inserted: 0,
-    updated: 0,
-    skipped: 0,
-    failed: 0,
-    quarantined: 0,
-    retried: 0,
-    errors: [],
-  };
+  const { backfillQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+  const windows = splitIntoInitialWindows(fromDate, toDate, maxWindowDays);
 
   const startTime = Date.now();
-  let totalWindows = 0;
-  let aborted = false;
-  const abortController = new AbortController();
+  let pushed = 0;
 
-  const onSignal = () => {
-    if (aborted) return;
-    aborted = true;
-    console.log('\n⚠️  Backfill interrupted — shutting down gracefully...');
-    abortController.abort();
-  };
+  console.log(`\n📋  Backfill Plan`);
+  console.log(`    From: ${fromDate} → To: ${toDate}`);
+  console.log(`    Windows: ${windows.length} (max ${maxWindowDays} days each)`);
+  console.log(`    Budget: 6 req/min (via bridge:backfill queue)`);
+  console.log();
 
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
-
-  logger.info('[BridgeBackfill] Starting', { fromDate, toDate, maxWindowDays, batchId });
-
-  try {
-    for await (const { window: dateWindow, rows } of iterateNossaClosedBackfill(
-      fromDate,
-      toDate,
-      {},
-      maxWindowDays,
-    )) {
-      if (aborted) break;
-      if (rows.length === 0) {
-        logger.info('[BridgeBackfill] Empty window, skipping', { window: dateWindow });
-        continue;
-      }
-
-      const windowStart = Date.now();
-      await processRawRows(
-        rows as unknown as Record<string, unknown>[],
-        'nossa_closed',
-        batchId,
-        cursor,
-        result,
-        abortController.signal,
-      );
-      totalWindows++;
-
-      const windowDuration = Date.now() - windowStart;
-      const elapsed = Date.now() - startTime;
-      const rate = elapsed > 0 ? Math.round(((result.processed || 0) / elapsed) * 1000 * 100) / 100 : 0;
-
-      logger.info('[BridgeBackfill] Window completed', {
-        window: dateWindow,
-        rows: rows.length,
-        windowDurationMs: windowDuration,
-        totalProcessed: result.processed,
-        inserted: result.inserted,
-        updated: result.updated,
-        skipped: result.skipped,
-        failed: result.failed,
-        quarantined: result.quarantined,
-        retried: result.retried,
-        windowsCompleted: totalWindows,
-        rateRowsPerSec: rate,
-      });
-
-      console.log(
-        `  [${dateWindow.dateFrom} → ${dateWindow.dateTo}] ` +
-        `${rows.length} rows in ${fmtDuration(windowDuration)} ` +
-        `│ total ${result.processed} processed ` +
-        `(${result.inserted} ins / ${result.updated} upd / ${result.skipped} skp / ${result.failed} fail)` +
-        ` │ ${rate} rows/s`,
-      );
-    }
-  } finally {
-    process.off('SIGINT', onSignal);
-    process.off('SIGTERM', onSignal);
+  for (const w of windows) {
+    const jobId = `backfill-${w.dateFrom}-${w.dateTo}-${Date.now()}`;
+    await backfillQueue.add(
+      'backfill:window',
+      { from: w.dateFrom, to: w.dateTo },
+      { jobId },
+    );
+    pushed++;
+    console.log(`  [${pushed}/${windows.length}] Pushed: ${w.dateFrom} → ${w.dateTo}`);
   }
 
   const elapsed = Date.now() - startTime;
-  const rate = elapsed > 0 ? Math.round(((result.processed || 0) / elapsed) * 1000 * 100) / 100 : 0;
-
-  if (aborted) {
-    console.log(`\n⚠️  Backfill ABORTED after ${fmtDuration(elapsed)}`);
-  } else {
-    console.log(`\n✅  Backfill COMPLETE in ${fmtDuration(elapsed)}`);
-  }
-
-  console.log(`    Windows: ${totalWindows}`);
-  console.log(`    Processed: ${result.processed}`);
-  console.log(`    Inserted: ${result.inserted}`);
-  console.log(`    Updated: ${result.updated}`);
-  console.log(`    Skipped: ${result.skipped}`);
-  console.log(`    Failed: ${result.failed}`);
-  console.log(`    Quarantined: ${result.quarantined}`);
-  console.log(`    Rate: ${rate} rows/s`);
-
-  if (result.errors.length > 0) {
-    console.log(`\n⚠️  ${result.errors.length} error(s) occurred (check logs for details)`);
-  }
+  console.log(`\n✅  All ${pushed} windows pushed to queue in ${fmtDuration(elapsed)}`);
+  console.log(`    Bridge worker will process them at 6 req/min budget.`);
+  console.log(`    Monitor: pm2 logs dompis-bridge-worker`);
 }
 
 main()
   .catch((error) => {
-    console.error('Backfill failed:', error);
+    console.error('Backfill scheduling failed:', error);
     process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });

@@ -312,6 +312,18 @@ async function runDlqRetry(): Promise<void> {
   }
 }
 
+async function monitorBridgeDLQ(): Promise<void> {
+  const { getDLQCounts } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+  try {
+    const counts = await getDLQCounts();
+    if (counts.total > 0) {
+      logger.warn('[BridgeDLQMonitor] Bridge jobs in DLQ', { counts });
+    }
+  } catch {
+    // bridge queue not configured yet — skip silently
+  }
+}
+
 async function logWorkerHealth(): Promise<void> {
   const lockKeys = ['sync', 'push', 'tech_events', 'auto_assign'] as const;
   const lockStatuses = await Promise.all(lockKeys.map((k) => getLockStatus(k)));
@@ -491,9 +503,10 @@ async function startWorker() {
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void logWorkerHealth())),
     cron.schedule('0 6 * * *', () => runWithCorrelationContext('ops-worker', () => void runReconciliation())),
     cron.schedule('5 0 * * *', () => runWithCorrelationContext('ops-worker', () => void resetAllStaleAssignedTickets())),
+    cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void monitorBridgeDLQ())),
   ];
 
-  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05)', { component: 'worker' });
+  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m)', { component: 'worker' });
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },

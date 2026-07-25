@@ -637,7 +637,7 @@ async function bulkUpsertTicketRaw(
     .filter((column) => column !== 'incident')
     .map(
       (column) =>
-        Prisma.sql`${sqlIdentifier(column)} = VALUES(${sqlIdentifier(column)})`,
+        Prisma.sql`${sqlIdentifier(column)} = IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})`,
     );
 
   if (assignments.length === 0) {
@@ -1188,33 +1188,24 @@ async function processTable(
 
   try {
     if (isBridgeTable) {
-      logger.info('[Ingestion] Bridge ingestion starting', {
-        component: 'ingestion', tableName, batchId, mode,
-      });
-
-      const iterator = tableName === 'nossa'
-        ? iterateNossaOpen()
-        : iterateNossaClosedIncremental(7);
-
-      for await (const rows of iterator) {
-        assertNotAborted(signal);
-        await processRawRows(
-          rows as Record<string, unknown>[],
-          tableName,
-          batchId,
-          cursor,
-          result,
-          signal,
+      if (process.env.BRIDGE_JOB_INGESTION_ENABLED !== 'true') {
+        logger.info('[Ingestion] Bridge ingestion disabled via flag', {
+          component: 'ingestion', tableName, batchId, mode,
+        });
+      } else {
+        logger.info('[Ingestion] Pushing bridge ingestion job', {
+          component: 'ingestion', tableName, batchId, mode,
+        });
+        const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+        await ingestionQueue.add(
+          tableName === 'nossa' ? 'ingest:nossa' : 'ingest:nossa_closed',
+          { table: tableName, correlationId: batchId },
+          { jobId: `ingest:${tableName}` },
         );
       }
 
       activeCursor = { lastCursorId: null, lastModifiedAt: nowWib() };
       hasMore = false;
-
-      logger.info('[Ingestion] Bridge ingestion complete', {
-        component: 'ingestion', tableName, batchId, mode,
-        processed: result.processed,
-      });
     } else {
       // ====== EXISTING MYSQL PATH ======
       const checkpointModifiedAt = activeCursor.lastModifiedAt;

@@ -1024,6 +1024,26 @@ export async function runStatusRefresh(
       processedTables.add(sourceTable);
       const BRIDGE_TABLES = new Set(['nossa', 'nossa_closed']);
       const useBridge = BRIDGE_TABLES.has(sourceTable) && isQosmicBridgeConfigured();
+
+      if (useBridge && process.env.BRIDGE_JOB_REFRESH_ENABLED === 'true') {
+        logger.info('[StatusRefresh] Pushing bridge refresh jobs', {
+          table: sourceTable, count: tableCandidates.length,
+        });
+        const { interactiveQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+        await interactiveQueue.addBulk(
+          tableCandidates.map((row) => ({
+            name: 'refresh:ticket',
+            data: { incident: row.incident, sourceTable, correlationId: `${batchId}-${row.incident}` },
+            opts: {
+              priority: 5,
+              jobId: `refresh:${sourceTable}:${row.incident}`,
+            },
+          })),
+        );
+        result.fetched += tableCandidates.length;
+        continue; // skip inline fetch + upsert
+      }
+
       const externalRows = useBridge
         ? await fetchExternalRowsViaBridge(
             sourceTable,

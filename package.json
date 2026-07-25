@@ -16,6 +16,7 @@
     "worker:projection": "NODE_ENV=production node -r ./dist-workers/register-paths.cjs dist-workers/worker-projection.js",
     "worker:active-refresh": "NODE_ENV=production node -r ./dist-workers/register-paths.cjs dist-workers/worker-active-refresh.js",
     "worker:status-refresh": "NODE_ENV=production node -r ./dist-workers/register-paths.cjs dist-workers/worker-status-refresh.js",
+    "worker:bridge": "NODE_ENV=production node -r ./dist-workers/register-paths.cjs dist-workers/worker-bridge.js",
     "ingestion:initial": "tsx scripts/ingestion-initial.ts",
     "ingestion:incremental": "tsx scripts/ingestion-incremental.ts",
     "ingestion:recovery": "tsx scripts/ingestion-recovery.ts",
@@ -41,6 +42,7 @@
     "audit:operational-buckets": "tsx scripts/audit-operational-buckets.ts",
     "test:phase10": "npm run test:phase1 && npm run test:phase3 && npm run test:phase4 && npm run test:phase7 && npm run test:phase8 && npm run test:phase9",
     "bridge:backfill": "tsx scripts/qosmic-bridge-backfill.ts",
+    "bridge:ingest": "tsx scripts/qosmic-bridge-ingest.ts",
     "backup:db": "tsx scripts/backup-db.ts",
     "lint": "eslint ."
   },
@@ -52,6 +54,7 @@
     "@types/papaparse": "^5.5.2",
     "@yudiel/react-qr-scanner": "^2.6.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.81.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",

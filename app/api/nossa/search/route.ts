@@ -34,9 +34,30 @@ export async function GET(req: Request) {
       );
     }
 
-    const row = await prisma.ticket_raw.findFirst({
+    let row = await prisma.ticket_raw.findFirst({
       where: { incident },
     });
+
+    if (!row && process.env.BRIDGE_JOB_SEARCH_ENABLED === 'true') {
+      const { interactiveQueue, queueEvents } = await import(
+        '@/lib/external-db/qosmic-bridge/bridge-queue'
+      );
+
+      const job = await interactiveQueue.add(
+        'search:incident',
+        { incident, correlationId: `search-${incident}-${Date.now()}` },
+        { priority: 1 },
+      );
+
+      try {
+        const result = await job.waitUntilFinished(queueEvents, 5000);
+        if (result?.found) {
+          row = await prisma.ticket_raw.findFirst({ where: { incident } });
+        }
+      } catch {
+        // Timeout — fall through to "not found" response
+      }
+    }
 
     if (!row) {
       return NextResponse.json({
@@ -45,6 +66,9 @@ export async function GET(req: Request) {
         resource: null,
         found: false,
         incident,
+        message: row === null && process.env.BRIDGE_JOB_SEARCH_ENABLED === 'true'
+          ? 'Ticket tidak ditemukan di database — pencarian via bridge gagal atau timeout'
+          : undefined,
       });
     }
 
