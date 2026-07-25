@@ -72,7 +72,7 @@ async function main() {
       const results = await batchClassifyJenisFromVlookup(inputs);
 
       // Batch lookup current values — eliminates N+1
-      const incidents = rawTickets.map((t) => t.incident).filter(Boolean);
+      const incidents = rawTickets.map((t) => t.incident).filter((s): s is string => s !== null);
       const existing: { incident: string; jenis_tiket_1: string | null; jenis_tiket_2: string | null }[] = incidents.length > 0
         ? await prisma.ticket.findMany({
             where: { incident: { in: incidents } },
