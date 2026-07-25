@@ -23,6 +23,7 @@
     "ingestion:force-resync": "tsx scripts/ingestion-force-resync.ts",
     "ingestion:reconcile": "tsx scripts/ingestion-reconcile.ts",
     "backfill:jenis-tiket": "tsx scripts/backfill-jenis-tiket.ts",
+    "backfill:jenis-vlookup": "tsx scripts/backfill-jenis-vlookup.ts",
     "backfill:validasi": "tsx scripts/backfill-validation-flags.ts",
     "test:ingestion": "tsx scripts/test-ingestion.ts",
     "projection:initial": "tsx scripts/projection-initial.ts",
