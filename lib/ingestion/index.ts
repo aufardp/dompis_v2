@@ -633,12 +633,37 @@ async function bulkUpsertTicketRaw(
     ),
   );
   const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
+
+  // DATA columns from bridge (nossa/nossa_closed): only fill NULL gaps
+  // DATA columns from other sources (piloting, import_tiket): update normal
+  // META columns (timestamps, version, etc.): update normal
+  const dataOnly = new Set<string>(FIELDS_TO_MAP.filter(f => f !== 'incident'));
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
-    .map(
-      (column) =>
-        Prisma.sql`${sqlIdentifier(column)} = IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})`,
-    );
+    .map((column) => {
+      if (dataOnly.has(column)) {
+        return Prisma.sql`${sqlIdentifier(column)} = IF(
+          sourceTable IN ('nossa','nossa_closed')
+          AND VALUES(${sqlIdentifier(column)}) IS NOT NULL
+          AND ${sqlIdentifier(column)} IS NULL,
+          VALUES(${sqlIdentifier(column)}),
+          IF(
+            sourceTable IN ('nossa','nossa_closed'),
+            ${sqlIdentifier(column)},
+            IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})
+          )
+        )`;
+      }
+      if (column === 'sourceTable') {
+        return Prisma.sql`sourceTable = IF(
+          sourceTable IN ('nossa','nossa_closed')
+          AND VALUES(sourceTable) NOT IN ('nossa','nossa_closed'),
+          sourceTable,
+          VALUES(sourceTable)
+        )`;
+      }
+      return Prisma.sql`${sqlIdentifier(column)} = IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})`;
+    });
 
   if (assignments.length === 0) {
     throw new Error('bulkUpsertTicketRaw requires at least one update column');
