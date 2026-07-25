@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       );
 
       const job = await interactiveQueue.add(
-        'search:incident',
+        'search-incident',
         { incident, correlationId: `search-${incident}-${Date.now()}` },
         { priority: 1 },
       );

@@ -403,10 +403,10 @@ const workerInteractive = new Worker(
     }
 
     switch (job.name) {
-      case 'search:incident':
+      case 'search-incident':
         if (!BRIDGE_JOB_SEARCH_ENABLED) return { skipped: true, reason: 'disabled' };
         return handleSearchIncident(job);
-      case 'refresh:ticket':
+      case 'refresh-ticket':
         if (!BRIDGE_JOB_REFRESH_ENABLED) return { skipped: true, reason: 'disabled' };
         return handleRefreshTicket(job);
       default:
@@ -427,8 +427,8 @@ const workerIngestion = new Worker(
     if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
 
     switch (job.name) {
-      case 'ingest:nossa':
-      case 'ingest:nossa_closed':
+      case 'ingest-nossa':
+      case 'ingest-nossa_closed':
         return handleIngestNossa(job);
       default:
         return { skipped: true, reason: 'unknown_job' };

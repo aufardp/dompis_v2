@@ -1223,9 +1223,9 @@ async function processTable(
         });
         const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
         await ingestionQueue.add(
-          tableName === 'nossa' ? 'ingest:nossa' : 'ingest:nossa_closed',
+          tableName === 'nossa' ? 'ingest-nossa' : 'ingest-nossa_closed',
           { table: tableName, correlationId: batchId },
-          { jobId: `ingest:${tableName}` },
+          { jobId: `ingest-${tableName}` },
         );
       }
 

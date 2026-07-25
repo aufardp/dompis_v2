@@ -13,7 +13,7 @@ async function main() {
   await waitForRedisReady(5_000);
 
   const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
-  const jobName = tableArg === 'nossa' ? 'ingest:nossa' : 'ingest:nossa_closed';
+  const jobName = tableArg === 'nossa' ? 'ingest-nossa' : 'ingest-nossa_closed';
   const jobId = `ingest-${tableArg}-manual-${Date.now()}`;
 
   await ingestionQueue.add(jobName, { table: tableArg, correlationId: jobId }, { jobId });

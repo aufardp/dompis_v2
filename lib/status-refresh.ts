@@ -1032,11 +1032,11 @@ export async function runStatusRefresh(
         const { interactiveQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
         await interactiveQueue.addBulk(
           tableCandidates.map((row) => ({
-            name: 'refresh:ticket',
+            name: 'refresh-ticket',
             data: { incident: row.incident, sourceTable, correlationId: `${batchId}-${row.incident}` },
             opts: {
               priority: 5,
-              jobId: `refresh:${sourceTable}:${row.incident}`,
+              jobId: `refresh-${sourceTable}-${row.incident}`,
             },
           })),
         );
