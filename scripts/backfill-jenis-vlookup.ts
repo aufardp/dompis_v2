@@ -1,7 +1,7 @@
 /**
  * Script untuk backfill jenis_tiket_1 dan jenis_tiket_2 pada semua ticket yang ada
  *
- * Menggunakan classifier baru berbasis source_vlookup.
+ * Menggunakan classifier baru berbasis source_vlookup (lib/classify-jenis-vlookup.ts).
  * Membaca data dari ticket_raw (sumber data lengkap) dan mengupdate tiket.
  *
  * Usage: npx tsx scripts/backfill-jenis-vlookup.ts
@@ -28,19 +28,19 @@ async function main() {
     let updated = 0;
     let skipped = 0;
     let errors = 0;
-    let skip = 0;
+    let cursorId: string | undefined;
 
     while (true) {
-      // Read from ticket_raw which has complete data
       const rawTickets = await prisma.ticket_raw.findMany({
         where: { isActive: true },
-      select: {
-        incident: true,
-        channel: true,
-        classification_flag: true,
-        classification_path: true,
-        customer_type: true,
-        customer_segment: true,
+        select: {
+          id_ticket: true,
+          incident: true,
+          channel: true,
+          classification_flag: true,
+          classification_path: true,
+          customer_type: true,
+          customer_segment: true,
           service_type: true,
           service_no: true,
           source_ticket: true,
@@ -49,8 +49,8 @@ async function main() {
           symptom: true,
         },
         take: batchSize,
-        skip,
-        orderBy: { importedAt: 'asc' },
+        ...(cursorId ? { cursor: { id_ticket: cursorId }, skip: 1 } : {}),
+        orderBy: [{ importedAt: 'asc' }, { id_ticket: 'asc' }],
       });
 
       if (rawTickets.length === 0) break;
@@ -71,6 +71,16 @@ async function main() {
 
       const results = await batchClassifyJenisFromVlookup(inputs);
 
+      // Batch lookup current values — eliminates N+1
+      const incidents = rawTickets.map((t) => t.incident).filter(Boolean);
+      const existing: { incident: string; jenis_tiket_1: string | null; jenis_tiket_2: string | null }[] = incidents.length > 0
+        ? await prisma.ticket.findMany({
+            where: { incident: { in: incidents } },
+            select: { incident: true, jenis_tiket_1: true, jenis_tiket_2: true },
+          })
+        : [];
+      const currentMap = new Map(existing.map((t) => [t.incident, t]));
+
       const updates: Prisma.PrismaPromise<{ count: number }>[] = [];
 
       for (let i = 0; i < rawTickets.length; i++) {
@@ -79,13 +89,9 @@ async function main() {
 
         if (!rawTicket.incident) continue;
 
-        const current = await prisma.ticket.findUnique({
-          where: { incident: rawTicket.incident },
-          select: { jenis_tiket_1: true, jenis_tiket_2: true },
-        });
-
         const nextJenis1 = result.jenis_tiket_1 ?? null;
         const nextJenis2 = result.jenis_tiket_2 ?? null;
+        const current = currentMap.get(rawTicket.incident);
         const currentJenis1 = current?.jenis_tiket_1 ?? null;
         const currentJenis2 = current?.jenis_tiket_2 ?? null;
 
@@ -107,22 +113,21 @@ async function main() {
 
       if (updates.length > 0) {
         const updateResults = await prisma.$transaction(updates);
-        const actualUpdated = updateResults.reduce((sum, r) => sum + r.count, 0);
-        updated += actualUpdated;
+        updated += updateResults.reduce((sum, r) => sum + r.count, 0);
       }
 
       processed += rawTickets.length;
-      skip += batchSize;
+      cursorId = rawTickets[rawTickets.length - 1]!.id_ticket;
 
       if (processed % 5000 === 0 || rawTickets.length < batchSize) {
-        console.log(`[Backfill] Progress: ${processed} processed, ${updated} updated, ${skipped} skipped (null classification), ${errors} errors`);
+        console.log(`[Backfill] Progress: ${processed} processed, ${updated} updated, ${skipped} skipped, ${errors} errors`);
       }
     }
 
     console.log('\n=== BACKFILL RESULT ===');
     console.log(`Processed: ${processed}`);
     console.log(`Updated: ${updated}`);
-    console.log(`Skipped (null classification): ${skipped}`);
+    console.log(`Skipped (already correct): ${skipped}`);
     console.log(`Errors: ${errors}`);
     console.log('========================\n');
   } catch (error) {
