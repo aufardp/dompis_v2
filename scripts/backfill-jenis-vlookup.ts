@@ -50,7 +50,7 @@ async function main() {
         },
         take: batchSize,
         ...(cursorId ? { cursor: { id_ticket: cursorId }, skip: 1 } : {}),
-        orderBy: [{ importedAt: 'asc' }, { id_ticket: 'asc' }],
+        orderBy: { id_ticket: 'asc' },
       });
 
       if (rawTickets.length === 0) break;
