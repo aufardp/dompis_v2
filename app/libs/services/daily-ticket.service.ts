@@ -1325,7 +1325,6 @@ export class DailyTicketService {
   private static buildValidasiCondition(): Prisma.ticketWhereInput {
     if (process.env.VALIDASI_FLAG_ENABLED === 'true') {
       return {
-        status: { notIn: [...CLOSE_STATUS_VALUES] },
         needs_validation: true,
       };
     }
