@@ -127,13 +127,35 @@ export async function recomputeTodaySnapshot(): Promise<number> {
   return rows.length;
 }
 
-export async function recomputeSnapshotForDateRange(from: string, to: string): Promise<number> {
-  const rows = await prisma.$queryRawUnsafe<RowForInsert[]>(
-    `SELECT ${AGG_SELECT} FROM ticket WHERE reported_date >= ? AND reported_date < ? GROUP BY agg_date, workzone`,
-    from,
-    to,
-  );
+function* monthChunks(from: string, to: string): Generator<{ start: string; end: string }> {
+  let current = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
 
-  await upsertRows(rows);
-  return rows.length;
+  while (current < end) {
+    const next = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    const chunkEnd = next < end ? next : end;
+    yield {
+      start: dateStr(current),
+      end: dateStr(chunkEnd),
+    };
+    current = next;
+  }
+}
+
+export async function recomputeSnapshotForDateRange(from: string, to: string): Promise<number> {
+  await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 120000').catch(() => {});
+  let total = 0;
+
+  for (const chunk of monthChunks(from, to)) {
+    const rows = await prisma.$queryRawUnsafe<RowForInsert[]>(
+      `SELECT ${AGG_SELECT} FROM ticket WHERE reported_date >= ? AND reported_date < ? GROUP BY agg_date, workzone`,
+      chunk.start,
+      chunk.end,
+    );
+    await upsertRows(rows);
+    total += rows.length;
+    console.log(`  ${chunk.start}..${chunk.end}: ${rows.length} rows`);
+  }
+
+  return total;
 }
