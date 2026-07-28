@@ -503,7 +503,7 @@ model ticket_raw {
   @@index([isActive, lastSeenAt])
   @@index([sourceTable, sourceUpdatedAt])
   @@index([isActive, sourceTable, sourceUpdatedAt, incident], map: "idx_ticket_raw_active_source_updated_incident")
-  @@index([isActive, sourceTable, sourceUpdatedAt(sort: Desc), id_ticket, incident, status, sourceHash], map: "idx_ticket_raw_status_refresh_seed")
+  @@index([isActive, sourceUpdatedAt(sort: Desc), id_ticket, sourceTable, incident, status, sourceHash], map: "idx_ticket_raw_status_refresh_seed")
   @@index([isActive, sourceTable, sourceUpdatedAt, lastSeenAt(sort: Desc), importedAt(sort: Desc), id_ticket], map: "idx_ticket_raw_status_refresh_nulls")
   @@index([importedAt, incident], map: "idx_ticket_raw_imported_incident")
   @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
