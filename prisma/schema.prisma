@@ -325,8 +325,6 @@ model ticket {
   @@index([customer_type], map: "idx_customer_type")
   @@index([jenis_tiket_1], map: "idx_jenis_tiket_1")
   @@index([jenis_tiket_2], map: "idx_jenis_tiket_2")
-  @@index([status_update], map: "idx_status_update")
-  @@index([sync_date], map: "idx_sync_date")
   @@index([status_update, status, reported_date], map: "idx_ticket_validasi_status_reported")
   @@index([flagging_manja], map: "idx_ticket_flagging")
   @@index([service_no], map: "idx_ticket_search_service_no")
@@ -334,18 +332,13 @@ model ticket {
   @@index([contact_name], map: "idx_ticket_search_contact_name")
   @@index([customer_name], map: "idx_ticket_search_customer_name")
   @@index([ticket_id_gamas], map: "idx_ticket_search_gamas")
-  @@index([reported_date], map: "idx_ticket_reported")
-  @@index([workzone], map: "idx_ticket_workzone")
   @@index([worklog_summary, status, reported_date], map: "idx_ticket_validasi_worklog_reported")
-  @@index([status], map: "idx_ticket_status")
   @@index([workzone, status_update], map: "idx_ticket_sync_workzone_statusupdate")
   @@index([synced_at, id_ticket], map: "idx_ticket_active_refresh_synced")
   @@index([customer_segment], map: "idx_ticket_customer_segment")
   @@index([source_ticket], map: "idx_ticket_source_ticket")
-  @@index([closed_at], map: "idx_ticket_closed_at")
   @@index([workzone, status, status_update, closed_at, classification_path, source_ticket, reported_date], map: "idx_ticket_dashboard_main")
   @@index([teknisi_user_id, status, status_update, closed_at, reported_date], map: "idx_ticket_teknisi_dashboard")
-  @@index([needs_validation], map: "idx_ticket_needs_validation")
   @@index([needs_validation, status, workzone, reported_date], map: "idx_ticket_validasi_dashboard")
 }
 
@@ -508,7 +501,6 @@ model ticket_raw {
   @@index([importedAt, incident], map: "idx_ticket_raw_imported_incident")
   @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
   @@index([isActive, importedAt, id_ticket], map: "idx_ticket_raw_active_cursor")
-  @@index([isActive, status, synced_at], map: "idx_ticket_raw_status_refresh")
   @@index([incident, sourceHash, status, syncVersion, sourceUpdatedAt], map: "idx_ticket_raw_lookup")
 }
 

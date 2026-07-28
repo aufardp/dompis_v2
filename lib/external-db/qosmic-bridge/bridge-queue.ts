@@ -12,11 +12,21 @@ import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
 
 // ── Constants ───────────────────────────────────────────────────────
+const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS ?? 10000);
+
 const CONNECTION = {
   host: process.env.REDIS_HOST ?? 'localhost',
   port: Number(process.env.REDIS_PORT ?? 6379),
-  maxRetriesPerRequest: null, // BullMQ handles retries
-  enableOfflineQueue: false,
+  maxRetriesPerRequest: null,
+  enableOfflineQueue: true,
+  connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+  retryStrategy: (times: number) => {
+    if (times > 10) {
+      return null; // stop retrying after 10 attempts
+    }
+    return Math.min(times * 500, 5000); // 500ms, 1s, 1.5s ... up to 5s
+  },
+  keepAlive: 10000,
 };
 
 const CONCURRENCY = Number(process.env.BULLMQ_CONCURRENCY ?? 3);
