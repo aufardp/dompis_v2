@@ -1712,6 +1712,7 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
+    await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 30000').catch(() => {});
     const { page = 1, limit = 10, sort = 'desc', sortField } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
     const includeValidasiTickets = filters?.includeValidasiTickets !== false;
