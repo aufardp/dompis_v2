@@ -374,17 +374,17 @@ async function fetchHotCandidates(
       FROM ticket_raw tr
       LEFT JOIN status_refresh_ticket_state s
         ON s.incident = tr.incident
+      LEFT JOIN ticket_raw_finalized f
+        ON f.incident = tr.incident
       WHERE ${sourceTableFilter}
         AND tr.isActive = TRUE
         AND tr.sourceUpdatedAt IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM ticket_raw_finalized f WHERE f.incident = tr.incident
-        )
+        AND f.incident IS NULL
         AND tr.sourceUpdatedAt >= ${hotWindowStart}
         AND (
           s.incident IS NULL
           OR s.lastCheckedAt < tr.sourceUpdatedAt
-          OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
+          OR s.lastSourceHash IS DISTINCT FROM tr.sourceHash
         )
         AND (
           tr.status IS NULL
@@ -423,13 +423,12 @@ async function fetchSafetyCandidates(
         tr.sourceHash
       FROM status_refresh_ticket_state s
       INNER JOIN ticket_raw tr ON tr.incident = s.incident
+      LEFT JOIN ticket_raw_finalized f ON f.incident = tr.incident
       WHERE ${stateTableFilter}
         AND ${sourceTableFilter}
         AND tr.sourceTable IS NOT NULL
         AND tr.isActive = TRUE
-        AND NOT EXISTS (
-          SELECT 1 FROM ticket_raw_finalized f WHERE f.incident = tr.incident
-        )
+        AND f.incident IS NULL
         AND s.lastCheckedAt < ${recheckBefore}
         AND (
           tr.sourceUpdatedAt IS NULL
@@ -441,7 +440,7 @@ async function fetchSafetyCandidates(
         )
         AND (
           s.lastCheckedAt < tr.sourceUpdatedAt
-          OR COALESCE(s.lastSourceHash, '') <> COALESCE(tr.sourceHash, '')
+          OR s.lastSourceHash IS DISTINCT FROM tr.sourceHash
           OR tr.sourceUpdatedAt IS NULL
         )
       ORDER BY s.lastCheckedAt ASC, tr.id_ticket ASC

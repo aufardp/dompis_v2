@@ -109,22 +109,28 @@ async function estimateBacklog(today: Date): Promise<number | null> {
 
   try {
     const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*) AS count
-      FROM ticket t
-      WHERE (
-          t.sync_date IS NULL
-          OR t.sync_date <> ${today}
-        )
-        AND (
-          t.status IS NULL
-          OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)})
-          OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending')
-          OR t.status_update IN ('OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
-          OR (
-            t.pending_dompis IS NOT NULL
-            AND t.pending_dompis <> ''
+      SELECT COALESCE(SUM(cnt), 0) AS count
+      FROM (
+        SELECT COUNT(*) AS cnt
+        FROM ticket t
+        WHERE t.sync_date IS NULL
+          AND (
+            t.status IS NULL
+            OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)})
+            OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending', 'OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
+            OR (t.pending_dompis IS NOT NULL AND t.pending_dompis <> '')
           )
-        )
+        UNION ALL
+        SELECT COUNT(*) AS cnt
+        FROM ticket t
+        WHERE t.sync_date < ${today}
+          AND (
+            t.status IS NULL
+            OR t.status NOT IN (${Prisma.join(REFRESH_CLOSE_STATUS)})
+            OR t.status_update IN ('open', 'assigned', 'on_progress', 'pending', 'OPEN', 'ASSIGNED', 'ON_PROGRESS', 'PENDING')
+            OR (t.pending_dompis IS NOT NULL AND t.pending_dompis <> '')
+          )
+      ) AS active_backlog
     `;
     const count = Number(rows[0]?.count ?? 0);
 

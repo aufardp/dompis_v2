@@ -724,6 +724,55 @@ export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string
   return [conditions.length > 0 ? conditions.join(' AND ') : '1=1', params];
 }
 
+/**
+ * Detects the daily-ticket OR pattern (status NOT IN closed OR status IN closed AND closed_at >= today)
+ * and splits it into separate WHERE clauses for UNION ALL optimization.
+ *
+ * Each UNION branch can do an independent range scan on idx_ticket_dashboard_main,
+ * avoiding MySQL index-merge which requires duplicate elimination and scans 37K+ rows.
+ */
+function splitDailyFilterUnion(
+  where: Prisma.ticketWhereInput,
+): { branchSqls: string[]; params: any[][] } | null {
+  if (!where.AND || !Array.isArray(where.AND)) return null;
+
+  const andArray = where.AND as any[];
+  const dailyIdx = andArray.findIndex((clause: any) => {
+    if (!clause?.OR || !Array.isArray(clause.OR)) return false;
+    if (clause.OR.length < 2 || clause.OR.length > 3) return false;
+    const second = clause.OR[1];
+    if (!second?.AND) return false;
+    const andArr = Array.isArray(second.AND) ? second.AND : [second.AND];
+    return andArr.some((c: any) => c?.closed_at?.gte !== undefined);
+  });
+
+  if (dailyIdx === -1) return null;
+
+  const dailyFilter = andArray[dailyIdx] as { OR: any[] };
+  const branches = dailyFilter.OR;
+  if (branches.length !== 2) return null;
+
+  const baseConditions = andArray.filter((_: any, i: number) => i !== dailyIdx);
+
+  const topLevelKeys = Object.keys(where).filter((k) => k !== 'AND');
+
+  const branchSqls: string[] = [];
+  const branchParams: any[][] = [];
+
+  for (const branch of branches) {
+    const branchWhere: Record<string, any> = {};
+    for (const key of topLevelKeys) {
+      branchWhere[key] = (where as any)[key];
+    }
+    branchWhere.AND = [...baseConditions, branch];
+    const [sql, params] = buildSqlWhereClause(branchWhere as Prisma.ticketWhereInput);
+    branchSqls.push(sql);
+    branchParams.push(params);
+  }
+
+  return { branchSqls, params: branchParams };
+}
+
 function parseCountValue(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1045,7 +1094,6 @@ export class DailyTicketService {
         OR: [
           { status: { notIn: [...CLOSE_STATUS_VALUES] } },
           { AND: [{ status: { in: [...CLOSE_STATUS_VALUES] } }, { closed_at: { gte: todayStart } }] },
-          { AND: [{ pending_dompis: { not: null } }, { pending_dompis: { not: '' } }, { status: { notIn: [...CLOSE_STATUS_VALUES] } }] },
         ],
       },
     ];
@@ -1277,13 +1325,43 @@ export class DailyTicketService {
         priorityToday?: string | null;
       },
   ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
-    const [whereClause, params] = buildSqlWhereClause(where);
     const [orderByClause, orderParams] = options.priorityToday
       ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
       : [
           `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
           [],
         ];
+
+    const union = splitDailyFilterUnion(where);
+
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      const sql = `
+        SELECT id_ticket,
+               ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+        FROM (
+          SELECT id_ticket, reported_date FROM ticket WHERE ${s1}
+          UNION ALL
+          SELECT id_ticket, reported_date FROM ticket WHERE ${s2}
+        ) AS daily_union
+        ORDER BY ${orderByClause}
+        LIMIT ?, ?
+      `;
+      const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
+        sql,
+        ...p1, ...p2,
+        ...orderParams,
+        options.offset,
+        options.limit,
+      );
+      return rows.map((row) => ({
+        id_ticket: row.id_ticket,
+        rank_global: Number(row.rank_global),
+      }));
+    }
+
+    const [whereClause, params] = buildSqlWhereClause(where);
     const sql = `
       SELECT id_ticket,
              ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
@@ -1310,6 +1388,25 @@ export class DailyTicketService {
   private static async countTicketsBySql(
     where: Prisma.ticketWhereInput,
   ): Promise<number> {
+    const union = splitDailyFilterUnion(where);
+
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      const sql = `
+        SELECT COALESCE(SUM(cnt), 0) AS total
+        FROM (
+          SELECT COUNT(*) AS cnt FROM ticket WHERE ${s1}
+          UNION ALL
+          SELECT COUNT(*) AS cnt FROM ticket WHERE ${s2}
+        ) AS daily_count
+      `;
+      const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(
+        sql, ...p1, ...p2,
+      );
+      return Number(rows[0]?.total ?? 0);
+    }
+
     const [whereClause, params] = buildSqlWhereClause(where);
     const sql = `
       SELECT COUNT(*) AS total
@@ -1712,7 +1809,7 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
-    await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 30000').catch(() => {});
+    await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 60000').catch(() => {});
     const { page = 1, limit = 10, sort = 'desc', sortField } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
     const includeValidasiTickets = filters?.includeValidasiTickets !== false;

@@ -502,6 +502,7 @@ model ticket_raw {
   @@index([syncBatchId, importedAt, id_ticket], map: "idx_ticket_raw_projection_batch_cursor")
   @@index([isActive, importedAt, id_ticket], map: "idx_ticket_raw_active_cursor")
   @@index([incident, sourceHash, status, syncVersion, sourceUpdatedAt], map: "idx_ticket_raw_lookup")
+  @@index([incident, isActive, sourceTable, status, sourceUpdatedAt, sourceHash], map: "idx_ticket_raw_refresh_join")
 }
 
 model ticket_raw_finalized {

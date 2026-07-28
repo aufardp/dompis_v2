@@ -1225,7 +1225,6 @@ async function processTable(
         await ingestionQueue.add(
           tableName === 'nossa' ? 'ingest-nossa' : 'ingest-nossa_closed',
           { table: tableName, correlationId: batchId },
-          { jobId: `ingest-${tableName}` },
         );
       }
 
