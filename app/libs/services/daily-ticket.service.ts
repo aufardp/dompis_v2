@@ -1341,9 +1341,9 @@ export class DailyTicketService {
         SELECT id_ticket,
                ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
         FROM (
-          SELECT id_ticket, reported_date FROM ticket WHERE ${s1}
+          SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s1}
           UNION ALL
-          SELECT id_ticket, reported_date FROM ticket WHERE ${s2}
+          SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s2}
         ) AS daily_union
         ORDER BY ${orderByClause}
         LIMIT ?, ?
@@ -1515,31 +1515,32 @@ export class DailyTicketService {
     mainTableWhere: Prisma.ticketWhereInput,
     validasiBaseWhere?: Prisma.ticketWhereInput | null,
   ): Promise<FlaggingSummary> {
-    const [mainSql, mainParams] = buildSqlWhereClause(mainTableWhere);
-    const mainWithIndex = `
-      SELECT
-        id_ticket,
-        status,
-        status_update,
-        guarantee_status,
-        ticket_id_gamas,
-        flagging_manja,
-        booking_date
-      FROM ticket
-      WHERE ${mainSql}
-    `;
-    const mainWithoutIndex = `
-      SELECT
-        id_ticket,
-        status,
-        status_update,
-        guarantee_status,
-        ticket_id_gamas,
-        flagging_manja,
-        booking_date
-      FROM ticket
-      WHERE ${mainSql}
-    `;
+    const union = splitDailyFilterUnion(mainTableWhere);
+
+    let mainSql: string;
+    let mainParams: any[];
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      mainSql = `
+        SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        FROM ticket WHERE ${s1}
+        UNION ALL
+        SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        FROM ticket WHERE ${s2}
+      `;
+      mainParams = [...p1, ...p2];
+    } else {
+      const [wc, ps] = buildSqlWhereClause(mainTableWhere);
+      mainSql = `
+        SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        FROM ticket WHERE ${wc}
+      `;
+      mainParams = ps;
+    }
+
+    const mainWithIndex = mainSql;
+    const mainWithoutIndex = mainSql;
 
     const [mainRows, validasiRows] = await Promise.all([
       queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
@@ -1575,16 +1576,35 @@ export class DailyTicketService {
   private static async countCustomerTypes(
     mainTableWhere: Prisma.ticketWhereInput,
   ): Promise<CustomerTypeSummary> {
-    const [sql, params] = buildSqlWhereClause(mainTableWhere);
-    const query = `
-      SELECT
-        COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type,
-        COUNT(*) AS cnt
-      FROM ticket
-      WHERE ${sql}
-      GROUP BY raw_type
-    `;
-    const rows = await prisma.$queryRawUnsafe<Array<{ raw_type: string; cnt: bigint }>>(query, ...params);
+    const union = splitDailyFilterUnion(mainTableWhere);
+
+    let query: string;
+    let queryParams: any[];
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      query = `
+        SELECT COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type, SUM(cnt) AS cnt
+        FROM (
+          SELECT customer_type, COUNT(*) AS cnt FROM ticket WHERE ${s1} GROUP BY customer_type
+          UNION ALL
+          SELECT customer_type, COUNT(*) AS cnt FROM ticket WHERE ${s2} GROUP BY customer_type
+        ) AS daily_types
+        GROUP BY raw_type
+      `;
+      queryParams = [...p1, ...p2];
+    } else {
+      const [wc, ps] = buildSqlWhereClause(mainTableWhere);
+      query = `
+        SELECT COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type, COUNT(*) AS cnt
+        FROM ticket
+        WHERE ${wc}
+        GROUP BY raw_type
+      `;
+      queryParams = ps;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ raw_type: string; cnt: bigint }>>(query, ...queryParams);
 
     let hvcDiamond = 0;
     let hvcPlatinum = 0;
@@ -1673,14 +1693,33 @@ export class DailyTicketService {
    */
 
   static async countStatuses(where: Record<string, any>) {
-    const [whereClause, params] = buildSqlWhereClause(where);
+    const union = splitDailyFilterUnion(where);
 
-    const sql = `
-      SELECT status, status_update, COUNT(*) AS count
-      FROM ticket
-      WHERE ${whereClause}
-      GROUP BY status, status_update
-    `;
+    let sql: string;
+    let params: any[];
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      sql = `
+        SELECT status, status_update, SUM(cnt) AS count
+        FROM (
+          SELECT status, status_update, COUNT(*) AS cnt FROM ticket WHERE ${s1} GROUP BY status, status_update
+          UNION ALL
+          SELECT status, status_update, COUNT(*) AS cnt FROM ticket WHERE ${s2} GROUP BY status, status_update
+        ) AS daily_statuses
+        GROUP BY status, status_update
+      `;
+      params = [...p1, ...p2];
+    } else {
+      const [wc, ps] = buildSqlWhereClause(where);
+      sql = `
+        SELECT status, status_update, COUNT(*) AS count
+        FROM ticket
+        WHERE ${wc}
+        GROUP BY status, status_update
+      `;
+      params = ps;
+    }
 
     const rows = await prisma.$queryRawUnsafe<
       Array<{ status: string | null; status_update: string | null; count: bigint | number }>

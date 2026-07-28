@@ -384,7 +384,7 @@ async function fetchHotCandidates(
         AND (
           s.incident IS NULL
           OR s.lastCheckedAt < tr.sourceUpdatedAt
-          OR s.lastSourceHash IS DISTINCT FROM tr.sourceHash
+          OR NOT (s.lastSourceHash <=> tr.sourceHash)
         )
         AND (
           tr.status IS NULL
@@ -440,7 +440,7 @@ async function fetchSafetyCandidates(
         )
         AND (
           s.lastCheckedAt < tr.sourceUpdatedAt
-          OR s.lastSourceHash IS DISTINCT FROM tr.sourceHash
+          OR NOT (s.lastSourceHash <=> tr.sourceHash)
           OR tr.sourceUpdatedAt IS NULL
         )
       ORDER BY s.lastCheckedAt ASC, tr.id_ticket ASC

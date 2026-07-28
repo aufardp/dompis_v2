@@ -188,9 +188,9 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
   // Overflow: buang buffer (JANGAN di-yield, mencegah duplikat), bisect, retry.
   const halves = bisectWindow(window);
   if (!halves) {
-    logger.error(
-      '[QosmicBridge] Window 1 hari nossa_closed masih > 5.000 baris — di luar kapasitas bridge ini. Perlu filter tambahan (status) atau penanganan manual.',
-      { window },
+    logger.warn(
+      '[QosmicBridge] Window 1 hari nossa_closed masih > 5.000 baris — data partial (offset 5000). Yield buffer yg ada, kemungkinan ada baris terlewat.',
+      { window, bufferedPages: buffer.length },
     );
     // Fallback terakhir: tetap yield buffer yang sudah terlanjur diambil,
     // supaya minimal sebagian data masuk, sambil log keras di atas.
