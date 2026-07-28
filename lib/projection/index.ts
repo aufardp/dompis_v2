@@ -117,19 +117,21 @@ export function resolveProjectionStatusUpdate(
 ): StatusUpdateResolution | null {
   const current = (currentStatusUpdate ?? '').trim().toLowerCase();
   const external = (externalStatus ?? '').trim().toLowerCase();
+
+  const isExternalClosed = external === 'close' || external === 'closed'
+    || CLOSE_STATUS_VALUES.some(s => s.toLowerCase() === external);
+
+  if (isExternalClosed) {
+    return { statusUpdate: 'close', closedAt: nowWib(), protected: false };
+  }
+
   const isExternalOpenLike = isOpenExternalStatus(external);
 
   if (current && PROTECTED_STATES.has(current)) {
     return { protected: true };
   }
 
-  const isExternalClosed = external === 'close' || external === 'closed'
-    || CLOSE_STATUS_VALUES.some(s => s.toLowerCase() === external);
   const isUnassigned = !teknisiUserId;
-
-  if (isExternalClosed && isUnassigned) {
-    return { statusUpdate: 'close', closedAt: nowWib(), protected: false };
-  }
 
   if (isUnassigned && !isTicketClosed(current)) {
     const normalized = normalizeStatusUpdate(current);
