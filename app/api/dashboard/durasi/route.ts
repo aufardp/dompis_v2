@@ -3,6 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { getOrSetCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { nowWib, toWibDateString } from '@/lib/timezone';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
@@ -378,6 +379,13 @@ async function getFilteredTickets(
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'durasi',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const decoded = await protectApi(['superadmin', 'admin', 'helpdesk']);
     const isSuperAdmin = decoded.role === 'superadmin';
 

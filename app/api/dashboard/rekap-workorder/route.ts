@@ -4,6 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWibDateString, getTodayWibRange } from '@/lib/timezone';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
@@ -1472,6 +1473,13 @@ async function getDailyBucketSummaryMatrix(
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'rekap-workorder',
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const decoded = await protectApi(['superadmin', 'admin', 'helpdesk']);
     const isSuperAdmin = decoded.role === 'superadmin';
     const requestedWorkzone = String(

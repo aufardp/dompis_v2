@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrSetCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
@@ -111,6 +112,13 @@ async function fetchAllTickets(
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'durasi-detail',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const decoded = await protectApi(['superadmin', 'admin', 'helpdesk']);
     const isSuperAdmin = decoded.role === 'superadmin';
     const visibleWorkzones = isSuperAdmin ? null : new Set(await getWorkzonesForUser(decoded.id_user));

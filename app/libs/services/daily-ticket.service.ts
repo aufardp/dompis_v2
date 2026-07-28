@@ -843,7 +843,7 @@ function summarizeBucketRows(
   return summary;
 }
 
-function buildStatusCategorySql(tbl = ''): string {
+export function buildStatusCategorySql(tbl = ''): string {
   const t = tbl ? `${tbl}.` : '';
   const closeStatusesSql = CLOSE_STATUS_VALUES.map((status) =>
     `'${status.replace(/'/g, "''")}'`,
@@ -1385,40 +1385,6 @@ export class DailyTicketService {
     }));
   }
 
-  private static async countTicketsBySql(
-    where: Prisma.ticketWhereInput,
-  ): Promise<number> {
-    const union = splitDailyFilterUnion(where);
-
-    if (union) {
-      const [s1, s2] = union.branchSqls;
-      const [p1, p2] = union.params;
-      const sql = `
-        SELECT COALESCE(SUM(cnt), 0) AS total
-        FROM (
-          SELECT COUNT(*) AS cnt FROM ticket WHERE ${s1}
-          UNION ALL
-          SELECT COUNT(*) AS cnt FROM ticket WHERE ${s2}
-        ) AS daily_count
-      `;
-      const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(
-        sql, ...p1, ...p2,
-      );
-      return Number(rows[0]?.total ?? 0);
-    }
-
-    const [whereClause, params] = buildSqlWhereClause(where);
-    const sql = `
-      SELECT COUNT(*) AS total
-      FROM ticket
-      WHERE ${whereClause}
-    `;
-
-    const rows = await prisma.$queryRawUnsafe<Array<{ total: bigint | number }>>(sql, ...params);
-
-    return Number(rows[0]?.total ?? 0);
-  }
-
   private static buildValidasiCondition(): Prisma.ticketWhereInput {
     if (process.env.VALIDASI_FLAG_ENABLED === 'true') {
       return {
@@ -1573,60 +1539,6 @@ export class DailyTicketService {
     }>);
   }
 
-  private static async countCustomerTypes(
-    mainTableWhere: Prisma.ticketWhereInput,
-  ): Promise<CustomerTypeSummary> {
-    const union = splitDailyFilterUnion(mainTableWhere);
-
-    let query: string;
-    let queryParams: any[];
-    if (union) {
-      const [s1, s2] = union.branchSqls;
-      const [p1, p2] = union.params;
-      query = `
-        SELECT COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type, SUM(cnt) AS cnt
-        FROM (
-          SELECT customer_type, COUNT(*) AS cnt FROM ticket WHERE ${s1} GROUP BY customer_type
-          UNION ALL
-          SELECT customer_type, COUNT(*) AS cnt FROM ticket WHERE ${s2} GROUP BY customer_type
-        ) AS daily_types
-        GROUP BY raw_type
-      `;
-      queryParams = [...p1, ...p2];
-    } else {
-      const [wc, ps] = buildSqlWhereClause(mainTableWhere);
-      query = `
-        SELECT COALESCE(NULLIF(TRIM(customer_type), ''), '__NULL__') AS raw_type, COUNT(*) AS cnt
-        FROM ticket
-        WHERE ${wc}
-        GROUP BY raw_type
-      `;
-      queryParams = ps;
-    }
-
-    const rows = await prisma.$queryRawUnsafe<Array<{ raw_type: string; cnt: bigint }>>(query, ...queryParams);
-
-    let hvcDiamond = 0;
-    let hvcPlatinum = 0;
-    let hvcGold = 0;
-    let reguler = 0;
-
-    for (const row of rows) {
-      const raw = row.raw_type.trim().toLowerCase();
-      if (['hvc_diamond', 'hvc diamond', 'diamond'].includes(raw)) {
-        hvcDiamond += Number(row.cnt);
-      } else if (['hvc_platinum', 'hvc platinum', 'platinum'].includes(raw)) {
-        hvcPlatinum += Number(row.cnt);
-      } else if (['hvc_gold', 'hvc gold', 'gold'].includes(raw)) {
-        hvcGold += Number(row.cnt);
-      } else if (['reguler', 'regular'].includes(raw)) {
-        reguler += Number(row.cnt);
-      }
-    }
-
-    return { hvcDiamond, hvcPlatinum, hvcGold, reguler };
-  }
-
   private static async countValidasiFlaggingSummary(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<Array<Record<string, unknown>>> {
@@ -1684,6 +1596,160 @@ export class DailyTicketService {
     );
 
     return rows.map((row) => row.id_ticket);
+  }
+
+  private static async countStatusesAndCustomerTypes(
+    where: Record<string, any>,
+  ): Promise<{ summary: Record<string, number>; customerTypeSummary: CustomerTypeSummary }> {
+    const union = splitDailyFilterUnion(where);
+    const statusCat = buildStatusCategorySql();
+
+    let sql: string;
+    let params: any[];
+    if (union) {
+      const [s1, s2] = union.branchSqls;
+      const [p1, p2] = union.params;
+      const aggSelect = `
+        COUNT(*) AS total,
+        SUM(CASE WHEN ${statusCat} = 'open' THEN 1 ELSE 0 END) AS \`open\`,
+        SUM(CASE WHEN ${statusCat} = 'assigned' THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN ${statusCat} = 'on_progress' THEN 1 ELSE 0 END) AS on_progress,
+        SUM(CASE WHEN ${statusCat} = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN ${statusCat} = 'close' THEN 1 ELSE 0 END) AS \`close\`,
+        SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_diamond', 'hvc diamond', 'diamond') THEN 1 ELSE 0 END) AS hvc_diamond,
+        SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_platinum', 'hvc platinum', 'platinum') THEN 1 ELSE 0 END) AS hvc_platinum,
+        SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_gold', 'hvc gold', 'gold') THEN 1 ELSE 0 END) AS hvc_gold,
+        SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('reguler', 'regular') THEN 1 ELSE 0 END) AS reguler
+      `;
+      sql = `
+        SELECT
+          SUM(total) AS total,
+          SUM(\`open\`) AS \`open\`,
+          SUM(assigned) AS assigned,
+          SUM(on_progress) AS on_progress,
+          SUM(pending) AS pending,
+          SUM(\`close\`) AS \`close\`,
+          SUM(hvc_diamond) AS hvc_diamond,
+          SUM(hvc_platinum) AS hvc_platinum,
+          SUM(hvc_gold) AS hvc_gold,
+          SUM(reguler) AS reguler
+        FROM (
+          SELECT ${aggSelect}
+          FROM ticket WHERE ${s1}
+          UNION ALL
+          SELECT ${aggSelect}
+          FROM ticket WHERE ${s2}
+        ) AS combined
+      `;
+      params = [...p1, ...p2];
+    } else {
+      const [wc, ps] = buildSqlWhereClause(where);
+      sql = `
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN ${statusCat} = 'open' THEN 1 ELSE 0 END) AS \`open\`,
+          SUM(CASE WHEN ${statusCat} = 'assigned' THEN 1 ELSE 0 END) AS assigned,
+          SUM(CASE WHEN ${statusCat} = 'on_progress' THEN 1 ELSE 0 END) AS on_progress,
+          SUM(CASE WHEN ${statusCat} = 'pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN ${statusCat} = 'close' THEN 1 ELSE 0 END) AS \`close\`,
+          SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_diamond', 'hvc diamond', 'diamond') THEN 1 ELSE 0 END) AS hvc_diamond,
+          SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_platinum', 'hvc platinum', 'platinum') THEN 1 ELSE 0 END) AS hvc_platinum,
+          SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_gold', 'hvc gold', 'gold') THEN 1 ELSE 0 END) AS hvc_gold,
+          SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('reguler', 'regular') THEN 1 ELSE 0 END) AS reguler
+        FROM ticket
+        WHERE ${wc}
+      `;
+      params = ps;
+    }
+
+    const [row] = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(sql, ...params);
+
+    const summary: Record<string, number> = {
+      total: Number(row?.total ?? 0),
+      open: Number(row?.open ?? 0),
+      assigned: Number(row?.assigned ?? 0),
+      onProgress: Number(row?.on_progress ?? 0),
+      pending: Number(row?.pending ?? 0),
+      close: Number(row?.close ?? 0),
+      unassigned: Number(row?.open ?? 0),
+    };
+
+    const customerTypeSummary: CustomerTypeSummary = {
+      hvcDiamond: Number(row?.hvc_diamond ?? 0),
+      hvcPlatinum: Number(row?.hvc_platinum ?? 0),
+      hvcGold: Number(row?.hvc_gold ?? 0),
+      reguler: Number(row?.reguler ?? 0),
+    };
+
+    return { summary, customerTypeSummary };
+  }
+
+  private static extractWorkzonesFromWhere(where: Record<string, any>): string[] | null {
+    if (where.workzone && typeof where.workzone === 'string') return [where.workzone];
+    if (where.workzone?.in && Array.isArray(where.workzone.in)) {
+      return where.workzone.in.filter((w: unknown): w is string => typeof w === 'string');
+    }
+    if (where.AND && Array.isArray(where.AND)) {
+      for (const branch of where.AND) {
+        if (typeof branch === 'object' && branch !== null) {
+          const result = this.extractWorkzonesFromWhere(branch);
+          if (result) return result;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static async trySnapshotForSummary(
+    mainTableWhere: Record<string, any>,
+  ): Promise<{
+    summary: Record<string, number>;
+    customerTypeSummary: CustomerTypeSummary;
+    flaggingSummary: FlaggingSummary;
+  } | null> {
+    try {
+      const workzones = this.extractWorkzonesFromWhere(mainTableWhere);
+      if (!workzones || workzones.length === 0) return null;
+
+      const todayStr = toWibDateString(new Date());
+      if (!todayStr) return null;
+      const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+
+      const rows = await prisma.dashboardSummarySnapshot.findMany({
+        where: {
+          aggDate: todayStart,
+          workzone: { in: workzones },
+        },
+      });
+
+      if (rows.length === 0) return null;
+
+      const summary = { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 };
+      const customerTypeSummary: CustomerTypeSummary = { hvcDiamond: 0, hvcPlatinum: 0, hvcGold: 0, reguler: 0 };
+      const flaggingSummary: FlaggingSummary = { ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 };
+
+      for (const row of rows) {
+        summary.total += row.total;
+        summary.open += row.open;
+        summary.assigned += row.assigned;
+        summary.onProgress += row.onProgress;
+        summary.pending += row.pending;
+        summary.close += row.close;
+        customerTypeSummary.hvcDiamond += row.hvcDiamond;
+        customerTypeSummary.hvcPlatinum += row.hvcPlatinum;
+        customerTypeSummary.hvcGold += row.hvcGold;
+        customerTypeSummary.reguler += row.reguler;
+        flaggingSummary.ffgCount += row.ffgCount;
+        flaggingSummary.gamasCount += row.gamasCount;
+        flaggingSummary.p1Count += row.p1Count;
+        flaggingSummary.pPlusCount += row.pPlusCount;
+      }
+      summary.unassigned = summary.open;
+
+      return { summary, customerTypeSummary, flaggingSummary };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -1911,15 +1977,6 @@ export class DailyTicketService {
       : Promise.resolve([] as number[]);
     const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
-    const summaryPromise = includeSummary
-      ? getOrSetCache(`${cacheKeyBase}:statuses`, () => this.countStatuses(mainTableWhere), DASHBOARD_CACHE_TTL)
-      : Promise.resolve({ total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 });
-    const flaggingSummaryPromise = includeSummary
-      ? getOrSetCache(`${cacheKeyBase}:flagging`, () => this.countFlaggingSummary(mainTableWhere, validasiBaseWhere), DASHBOARD_CACHE_TTL)
-      : Promise.resolve({ ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 });
-    const customerTypePromise = includeSummary
-      ? getOrSetCache(`${cacheKeyBase}:customer_types`, () => this.countCustomerTypes(mainTableWhere), DASHBOARD_CACHE_TTL)
-      : Promise.resolve({ hvcDiamond: 0, hvcPlatinum: 0, hvcGold: 0, reguler: 0 });
     const validasiCountPromise = includeValidasi && validasiBaseWhere
       ? getOrSetCache(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0);
@@ -1934,25 +1991,38 @@ export class DailyTicketService {
             : null,
         )
       : Promise.resolve([] as TicketTypeOption[]);
-    const totalPromise = getOrSetCache(
-      `${cacheKeyBase}:total`,
-      () => this.countTicketsBySql(mainTableWhere),
-      DASHBOARD_CACHE_TTL,
-    );
 
-    // Gelombang 1 — pagination + total (priority tinggi, user lihat data dulu)
-    const [ticketIds, total] = await Promise.all([
+    // Gelombang 1 — pagination (priority tinggi, user lihat data dulu)
+    const [ticketIds] = await Promise.all([
       ticketIdsPromise,
-      totalPromise,
     ]);
 
     // Gelombang 2 — summary metrics
-    const [summary, flaggingSummary, customerTypeSummary, validasiCount] = await Promise.all([
-      summaryPromise,
-      flaggingSummaryPromise,
-      customerTypePromise,
-      validasiCountPromise,
-    ]);
+    let summary: any;
+    let customerTypeSummary: CustomerTypeSummary;
+    let flaggingSummary: FlaggingSummary;
+    let validasiCount: number;
+
+    if (includeSummary) {
+      const snapshotData = await this.trySnapshotForSummary(mainTableWhere);
+      if (snapshotData) {
+        ({ summary, customerTypeSummary, flaggingSummary } = snapshotData);
+        validasiCount = 0;
+      } else {
+        const result = await this.countStatusesAndCustomerTypes(mainTableWhere);
+        summary = result.summary;
+        customerTypeSummary = result.customerTypeSummary;
+        [flaggingSummary, validasiCount] = await Promise.all([
+          this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
+          validasiCountPromise,
+        ]);
+      }
+    } else {
+      summary = { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 };
+      customerTypeSummary = { hvcDiamond: 0, hvcPlatinum: 0, hvcGold: 0, reguler: 0 };
+      flaggingSummary = { ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 };
+      validasiCount = 0;
+    }
 
     // Gelombang 3 — optional filters
     const [validasiTicketIds, statusOptions, ticketTypeOptions] = await Promise.all([
@@ -1984,7 +2054,7 @@ export class DailyTicketService {
     });
 
     return {
-      total,
+      total: summary.total,
       summary: {
         total: summary.total,
         open: summary.open,
@@ -1998,7 +2068,7 @@ export class DailyTicketService {
       customerTypeSummary,
       page: safePage,
       limit: safeLimit,
-      totalPages: Math.ceil(total / safeLimit),
+      totalPages: Math.ceil(summary.total / safeLimit),
       statusOptions,
       ticketTypeOptions,
       data: mappedTickets,

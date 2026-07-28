@@ -2,7 +2,7 @@
 
 import prisma from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
-import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
+import { getOrSetCache } from '@/lib/cache';
 
 // ── ActivityType enum (defined locally since Prisma types aren't generated) ──
 export enum ActivityType {
@@ -28,7 +28,7 @@ export async function getWorkzonesForUser(userId: number): Promise<string[]> {
         .map((us) => us.service_area?.nama_sa)
         .filter((name): name is string => name !== null && name !== undefined);
     },
-    DASHBOARD_CACHE_TTL,
+    3600,
   );
 }
 
@@ -41,7 +41,7 @@ export async function resolveWorkzoneName(
       const sa = await prisma.service_area.findUnique({ where: { id_sa: saId } });
       return sa?.nama_sa ?? null;
     },
-    DASHBOARD_CACHE_TTL,
+    3600,
   );
 }
 

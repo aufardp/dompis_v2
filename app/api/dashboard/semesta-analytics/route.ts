@@ -3,6 +3,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getCache, setCache } from '@/lib/cache';
+import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,13 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   try {
+    const rateLimited = await enforceApiRateLimit(request, {
+      namespace: 'semesta-analytics',
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (rateLimited) return rateLimited;
+
     const user = await protectApi([
       'admin',
       'teknisi',
