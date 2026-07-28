@@ -1940,23 +1940,22 @@ export class DailyTicketService {
       DASHBOARD_CACHE_TTL,
     );
 
-    const [
-      total,
-      summary,
-      flaggingSummary,
-      customerTypeSummary,
-      validasiCount,
-      ticketIds,
-      validasiTicketIds,
-      statusOptions,
-      ticketTypeOptions,
-    ] = await Promise.all([
+    // Gelombang 1 — pagination + total (priority tinggi, user lihat data dulu)
+    const [ticketIds, total] = await Promise.all([
+      ticketIdsPromise,
       totalPromise,
+    ]);
+
+    // Gelombang 2 — summary metrics
+    const [summary, flaggingSummary, customerTypeSummary, validasiCount] = await Promise.all([
       summaryPromise,
       flaggingSummaryPromise,
       customerTypePromise,
       validasiCountPromise,
-      ticketIdsPromise,
+    ]);
+
+    // Gelombang 3 — optional filters
+    const [validasiTicketIds, statusOptions, ticketTypeOptions] = await Promise.all([
       validasiTicketIdsPromise,
       statusOptionsPromise,
       ticketTypeOptionsPromise,
