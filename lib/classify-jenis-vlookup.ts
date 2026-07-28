@@ -288,6 +288,9 @@ function classifyB2C(input: JenisVlookupInput): JenisVlookupResult {
           jenis2 = vlookup.jenisTiket2Val;
         }
       }
+      if (!jenis2) {
+        jenis2 = 'REG';
+      }
     }
   }
 
