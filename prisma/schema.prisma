@@ -340,6 +340,7 @@ model ticket {
   @@index([workzone, status, status_update, closed_at, classification_path, source_ticket, reported_date], map: "idx_ticket_dashboard_main")
   @@index([teknisi_user_id, status, status_update, closed_at, reported_date], map: "idx_ticket_teknisi_dashboard")
   @@index([needs_validation, status, workzone, reported_date], map: "idx_ticket_validasi_dashboard")
+  @@index([workzone, classification_path, status, status_update], map: "idx_ticket_wz_cp_st_stu")
 }
 
 model ticket_activity_log {
