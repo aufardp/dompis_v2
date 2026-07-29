@@ -123,7 +123,8 @@ export async function recomputeTodaySnapshot(): Promise<number> {
     yesterday,
   );
 
-  await upsertRows(rows);
+  const validRows = rows.filter((r): r is RowForInsert => r.agg_date !== null);
+  await upsertRows(validRows);
   return rows.length;
 }
 
@@ -153,7 +154,8 @@ export async function recomputeSnapshotForDateRange(from: string, to: string): P
       chunk.start,
       chunk.end,
     );
-    await upsertRows(rows);
+    const validRows = rows.filter((r): r is RowForInsert => r.agg_date !== null);
+    await upsertRows(validRows);
     total += rows.length;
     console.log(`  ${chunk.start}..${chunk.end}: ${rows.length} rows`);
   }
