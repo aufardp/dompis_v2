@@ -2004,7 +2004,8 @@ export class DailyTicketService {
     let validasiCount: number;
 
     if (includeSummary) {
-      const snapshotData = await this.trySnapshotForSummary(mainTableWhere);
+      const hasBucketFilter = !!filters?.operationalBucket;
+      const snapshotData = hasBucketFilter ? null : await this.trySnapshotForSummary(mainTableWhere);
       if (snapshotData) {
         ({ summary, customerTypeSummary, flaggingSummary } = snapshotData);
         validasiCount = 0;
