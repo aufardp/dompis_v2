@@ -46,30 +46,6 @@ type SnapshotRow = {
   reguler: number;
 };
 
-const UPSERT_SQL = `
-  INSERT INTO dashboard_summary_snapshot
-    (agg_date, workzone, total, open, assigned, on_progress, pending, close,
-     ffg_count, gamas_count, p1_count, p_plus_count,
-     hvc_diamond, hvc_platinum, hvc_gold, reguler, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
-  ON DUPLICATE KEY UPDATE
-    total = VALUES(total),
-    open = VALUES(open),
-    assigned = VALUES(assigned),
-    on_progress = VALUES(on_progress),
-    pending = VALUES(pending),
-    close = VALUES(close),
-    ffg_count = VALUES(ffg_count),
-    gamas_count = VALUES(gamas_count),
-    p1_count = VALUES(p1_count),
-    p_plus_count = VALUES(p_plus_count),
-    hvc_diamond = VALUES(hvc_diamond),
-    hvc_platinum = VALUES(hvc_platinum),
-    hvc_gold = VALUES(hvc_gold),
-    reguler = VALUES(reguler),
-    updated_at = NOW(3)
-`;
-
 type RowForInsert = {
   agg_date: string;
   workzone: string;
@@ -89,28 +65,44 @@ type RowForInsert = {
   reguler: number;
 };
 
+const ROW_PLACEHOLDER = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))`;
+
+function flattenRow(r: RowForInsert): unknown[] {
+  return [
+    r.agg_date, r.workzone,
+    r.total, r.open, r.assigned, r.on_progress, r.pending, r.close,
+    r.ffg_count, r.gamas_count, r.p1_count, r.p_plus_count,
+    r.hvc_diamond, r.hvc_platinum, r.hvc_gold, r.reguler,
+  ];
+}
+
 async function upsertRows(rows: RowForInsert[]): Promise<void> {
-  for (const row of rows) {
-    await prisma.$executeRawUnsafe(
-      UPSERT_SQL,
-      row.agg_date,
-      row.workzone,
-      row.total,
-      row.open,
-      row.assigned,
-      row.on_progress,
-      row.pending,
-      row.close,
-      row.ffg_count,
-      row.gamas_count,
-      row.p1_count,
-      row.p_plus_count,
-      row.hvc_diamond,
-      row.hvc_platinum,
-      row.hvc_gold,
-      row.reguler,
-    );
-  }
+  if (rows.length === 0) return;
+
+  const placeholders = rows.map(() => ROW_PLACEHOLDER).join(', ');
+  const sql = `INSERT INTO dashboard_summary_snapshot
+    (agg_date, workzone, total, open, assigned, on_progress, pending, close,
+     ffg_count, gamas_count, p1_count, p_plus_count,
+     hvc_diamond, hvc_platinum, hvc_gold, reguler, updated_at)
+  VALUES ${placeholders}
+  ON DUPLICATE KEY UPDATE
+    total = VALUES(total),
+    open = VALUES(open),
+    assigned = VALUES(assigned),
+    on_progress = VALUES(on_progress),
+    pending = VALUES(pending),
+    close = VALUES(close),
+    ffg_count = VALUES(ffg_count),
+    gamas_count = VALUES(gamas_count),
+    p1_count = VALUES(p1_count),
+    p_plus_count = VALUES(p_plus_count),
+    hvc_diamond = VALUES(hvc_diamond),
+    hvc_platinum = VALUES(hvc_platinum),
+    hvc_gold = VALUES(hvc_gold),
+    reguler = VALUES(reguler),
+    updated_at = NOW(3)`;
+
+  await prisma.$executeRawUnsafe(sql, ...rows.flatMap(flattenRow));
 }
 
 export async function recomputeTodaySnapshot(): Promise<number> {
