@@ -419,6 +419,9 @@ const B2CPanel = memo(function B2CPanel({
                 statusUpdate: b2cHasilVisitFilter,
                 ticketStatus: b2cTicketStatusFilter,
                 flagging: b2cFlaggingFilter,
+                workzone: workzoneFilter || undefined,
+                search: searchQuery || undefined,
+                ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
               }}
               pagination={{
                 currentPage: b2cPageData.pagination.currentPage,
@@ -459,6 +462,9 @@ const B2CPanel = memo(function B2CPanel({
                 statusUpdate: b2cHasilVisitFilter,
                 ticketStatus: CLOSE_STATUS_VALUES,
                 flagging: b2cFlaggingFilter,
+                workzone: workzoneFilter || undefined,
+                search: searchQuery || undefined,
+                ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
               }}
               pagination={{
                 currentPage: b2cClosePageData.pagination.currentPage,

@@ -107,6 +107,11 @@ export interface AdminTicketTableProps {
     flagging?: string[];
     excludeSymptom?: string;
     gamasOnly?: boolean;
+    workzone?: string;
+    search?: string;
+    ctype?: string;
+    startDate?: string;
+    endDate?: string;
   };
   // Controlled sort (server-side)
   sortField?: SortField;
@@ -385,6 +390,11 @@ export default function TicketTable({
         params.append('flagging', f);
       }
       if (downloadFilters.gamasOnly) params.set('gamasOnly', 'true');
+      if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.search) params.set('search', downloadFilters.search);
+      if (downloadFilters.ctype) params.set('ctype', downloadFilters.ctype);
+      if (downloadFilters.startDate) params.set('startDate', downloadFilters.startDate);
+      if (downloadFilters.endDate) params.set('endDate', downloadFilters.endDate);
 
       const res = await fetchWithAuth(
         `/api/tickets/daily/export?${params.toString()}`,

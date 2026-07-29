@@ -1221,6 +1221,15 @@ export default function TicketManagementBucketPage({
                       operationalBucket,
                       regulerOnly,
                       anomalyBucket,
+                      workzone: workzoneFilter || undefined,
+                      search: effectiveSearchQuery || undefined,
+                      ticketType: ticketTypeFilter,
+                      statusUpdate: statusUpdateFilter,
+                      ticketStatus: ticketStatusFilter,
+                      flagging: flaggingFilter,
+                      startDate: startDateStr,
+                      endDate: endDateStr,
+                      excludeSymptom: extraWorkboard?.symptom,
                     }}
                     sortField={unspecSortField as any}
                     sortOrder={unspecSortOrder}
@@ -1259,6 +1268,10 @@ export default function TicketManagementBucketPage({
                     operationalBucket,
                     regulerOnly,
                     anomalyBucket,
+                    workzone: workzoneFilter || undefined,
+                    search: effectiveSearchQuery || undefined,
+                    startDate: startDateStr,
+                    endDate: endDateStr,
                     excludeSymptom: extraWorkboard?.symptom,
                   }}
                   sortField={semuaSortField as any}
@@ -1304,10 +1317,18 @@ export default function TicketManagementBucketPage({
                   operationalBucket,
                   regulerOnly,
                   anomalyBucket,
+                  workzone: workzoneFilter || undefined,
+                  search: effectiveSearchQuery || undefined,
+                  ticketType: ticketTypeFilter,
+                  statusUpdate: statusUpdateFilter,
+                  ticketStatus: ticketStatusFilter,
+                  flagging: flaggingFilter,
+                  startDate: startDateStr,
+                  endDate: endDateStr,
+                  excludeSymptom: extraWorkboard?.symptom,
                 }}
                 sortField={unspecSortField as any}
                 sortOrder={unspecSortOrder}
-                onSort={handleUnspecSort}
               />
             </div>
           )}
@@ -1370,6 +1391,10 @@ export default function TicketManagementBucketPage({
                       operationalBucket,
                       regulerOnly,
                       anomalyBucket,
+                      workzone: workzoneFilter || undefined,
+                      search: effectiveSearchQuery || undefined,
+                      startDate: startDateStr,
+                      endDate: endDateStr,
                       excludeSymptom: extraWorkboard?.symptom,
                     }}
                     sortField={b2cSortField as any}
@@ -1453,6 +1478,10 @@ export default function TicketManagementBucketPage({
                       operationalBucket,
                       regulerOnly,
                       anomalyBucket,
+                      workzone: workzoneFilter || undefined,
+                      search: effectiveSearchQuery || undefined,
+                      startDate: startDateStr,
+                      endDate: endDateStr,
                       excludeSymptom: extraWorkboard?.symptom,
                     }}
                     sortField={b2bSortField as any}
@@ -1581,6 +1610,10 @@ export default function TicketManagementBucketPage({
                   operationalBucket,
                   regulerOnly,
                   anomalyBucket,
+                  workzone: workzoneFilter || undefined,
+                  search: effectiveSearchQuery || undefined,
+                  startDate: startDateStr,
+                  endDate: endDateStr,
                   excludeSymptom: extraWorkboard?.symptom,
                   ticketStatus: CLOSE_STATUS_VALUES,
                 }}
@@ -1622,6 +1655,10 @@ export default function TicketManagementBucketPage({
                   operationalBucket,
                   regulerOnly,
                   anomalyBucket,
+                  workzone: workzoneFilter || undefined,
+                  search: effectiveSearchQuery || undefined,
+                  startDate: startDateStr,
+                  endDate: endDateStr,
                   gamasOnly: true,
                 }}
                 sortField={gamasSortField as any}

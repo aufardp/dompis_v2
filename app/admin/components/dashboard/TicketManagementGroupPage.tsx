@@ -267,6 +267,8 @@ export default function TicketManagementGroupPage({
                 downloadFilters={{
                   dept: 'b2b',
                   ticketGroup: [groupKey],
+                  workzone: workzoneFilter || undefined,
+                  search: searchQuery || undefined,
                 }}
                 pagination={{
                   currentPage: pageData.pagination.currentPage,
@@ -308,6 +310,8 @@ export default function TicketManagementGroupPage({
                   dept: 'b2b',
                   ticketGroup: [groupKey],
                   ticketStatus: CLOSE_STATUS_VALUES,
+                  workzone: workzoneFilter || undefined,
+                  search: searchQuery || undefined,
                 }}
               />
             }

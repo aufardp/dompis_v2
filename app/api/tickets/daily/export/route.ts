@@ -514,6 +514,8 @@ export async function GET(request: Request) {
             regulerOnly: regulerOnlyRaw === 'true',
             ticketStatus: ticketStatusRaw,
             statusUpdate: statusUpdateRaw,
+            ticketType: ticketTypeRaw,
+            flagging: flaggingRaw,
             gamasOnly,
           },
         );
@@ -549,6 +551,8 @@ export async function GET(request: Request) {
                   regulerOnly: regulerOnlyRaw === 'true',
                   ticketStatus: ticketStatusRaw,
                   statusUpdate: statusUpdateRaw,
+                  ticketType: ticketTypeRaw,
+                  flagging: flaggingRaw,
                   gamasOnly,
                 },
               ),
@@ -593,12 +597,14 @@ export async function GET(request: Request) {
           anomalyBucket: anomalyBucketRaw,
           regulerOnly: regulerOnlyRaw === 'true',
           ticketStatus: ticketStatusRaw,
-          statusUpdate: statusUpdateRaw,
-          gamasOnly,
-        },
-      );
+        statusUpdate: statusUpdateRaw,
+        ticketType: ticketTypeRaw,
+        flagging: flaggingRaw,
+        gamasOnly,
+      },
+    );
 
-      allTickets.push(...(firstRes.data ?? []));
+    allTickets.push(...(firstRes.data ?? []));
 
       const totalPages = firstRes.totalPages ?? 1;
       if (totalPages > 1) {
@@ -627,6 +633,8 @@ export async function GET(request: Request) {
                 regulerOnly: regulerOnlyRaw === 'true',
                 ticketStatus: ticketStatusRaw,
                 statusUpdate: statusUpdateRaw,
+                ticketType: ticketTypeRaw,
+                flagging: flaggingRaw,
                 gamasOnly,
               },
             ),
