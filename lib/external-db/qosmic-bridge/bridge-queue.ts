@@ -403,71 +403,10 @@ async function upsertTicketRaw(
   `;
 }
 
-// ── Worker A: FAST — interactive + refresh ───────────────────────────
-const workerInteractive = new Worker(
-  'bridge-interactive',
-  async (job) => {
-    if (!shouldRunWithCircuitBreaker(circuitState, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
-      logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
-      return { skipped: true, reason: 'circuit_open' };
-    }
-
-    switch (job.name) {
-      case 'search-incident':
-        if (!BRIDGE_JOB_SEARCH_ENABLED) return { skipped: true, reason: 'disabled' };
-        return handleSearchIncident(job);
-      case 'refresh-ticket':
-        if (!BRIDGE_JOB_REFRESH_ENABLED) return { skipped: true, reason: 'disabled' };
-        return handleRefreshTicket(job);
-      default:
-        logger.warn('[Bridge] Unknown job name', { jobId: job.id, name: job.name });
-        return { skipped: true, reason: 'unknown_job' };
-    }
-  },
-  {
-    connection: CONNECTION,
-    concurrency: 2,
-  },
-);
-
-// ── Worker B: SLOW — ingestion ───────────────────────────────────────
-const workerIngestion = new Worker(
-  'bridge-ingestion',
-  async (job) => {
-    if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
-
-    switch (job.name) {
-      case 'ingest-nossa':
-      case 'ingest-nossa_closed':
-        return handleIngestNossa(job);
-      default:
-        return { skipped: true, reason: 'unknown_job' };
-    }
-  },
-  {
-    connection: CONNECTION,
-    concurrency: 1,
-  },
-);
-
-// ── Worker C: SLOW — backfill ────────────────────────────────────────
-const workerBackfill = new Worker(
-  'bridge-backfill',
-  async (job) => {
-    if (!BRIDGE_JOB_BACKFILL_ENABLED) return { skipped: true, reason: 'disabled' };
-
-    switch (job.name) {
-      case 'backfill:window':
-        return handleBackfillWindow(job);
-      default:
-        return { skipped: true, reason: 'unknown_job' };
-    }
-  },
-  {
-    connection: CONNECTION,
-    concurrency: 1,
-  },
-);
+// ── Worker refs (null until startBridgeWorkers) ─────────────────────────
+let workerInteractive: Worker | null = null;
+let workerIngestion: Worker | null = null;
+let workerBackfill: Worker | null = null;
 
 // ── Error / Completion Hooks ─────────────────────────────────────────
 
@@ -492,9 +431,11 @@ function setupWorkerHooks(worker: Worker): void {
   });
 }
 
-setupWorkerHooks(workerInteractive);
-setupWorkerHooks(workerIngestion);
-setupWorkerHooks(workerBackfill);
+function createWorker(name: string, handler: (job: any) => Promise<any>, concurrency: number): Worker {
+  const w = new Worker(name, handler, { connection: CONNECTION, concurrency });
+  setupWorkerHooks(w);
+  return w;
+}
 
 // ── Start / Stop ─────────────────────────────────────────────────────
 
@@ -504,6 +445,60 @@ export async function startBridgeWorkers(): Promise<void> {
     ingestion: { concurrency: 1, enabled: BRIDGE_JOB_INGESTION_ENABLED },
     backfill: { concurrency: 1, enabled: BRIDGE_JOB_BACKFILL_ENABLED },
   });
+
+  workerInteractive = createWorker(
+    'bridge-interactive',
+    async (job) => {
+      if (!shouldRunWithCircuitBreaker(circuitState, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
+        logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
+        return { skipped: true, reason: 'circuit_open' };
+      }
+
+      switch (job.name) {
+        case 'search-incident':
+          if (!BRIDGE_JOB_SEARCH_ENABLED) return { skipped: true, reason: 'disabled' };
+          return handleSearchIncident(job);
+        case 'refresh-ticket':
+          if (!BRIDGE_JOB_REFRESH_ENABLED) return { skipped: true, reason: 'disabled' };
+          return handleRefreshTicket(job);
+        default:
+          logger.warn('[Bridge] Unknown job name', { jobId: job.id, name: job.name });
+          return { skipped: true, reason: 'unknown_job' };
+      }
+    },
+    2,
+  );
+
+  workerIngestion = createWorker(
+    'bridge-ingestion',
+    async (job) => {
+      if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
+
+      switch (job.name) {
+        case 'ingest-nossa':
+        case 'ingest-nossa_closed':
+          return handleIngestNossa(job);
+        default:
+          return { skipped: true, reason: 'unknown_job' };
+      }
+    },
+    1,
+  );
+
+  workerBackfill = createWorker(
+    'bridge-backfill',
+    async (job) => {
+      if (!BRIDGE_JOB_BACKFILL_ENABLED) return { skipped: true, reason: 'disabled' };
+
+      switch (job.name) {
+        case 'backfill:window':
+          return handleBackfillWindow(job);
+        default:
+          return { skipped: true, reason: 'unknown_job' };
+      }
+    },
+    1,
+  );
 
   await Promise.all([
     workerInteractive.waitUntilReady(),
@@ -517,9 +512,9 @@ export async function startBridgeWorkers(): Promise<void> {
 export async function stopBridgeWorkers(): Promise<void> {
   logger.info('[Bridge] Stopping workers...');
   await Promise.all([
-    workerInteractive.close(),
-    workerIngestion.close(),
-    workerBackfill.close(),
+    workerInteractive?.close(),
+    workerIngestion?.close(),
+    workerBackfill?.close(),
     queueEvents.close(),
   ]);
   logger.info('[Bridge] All workers stopped');
