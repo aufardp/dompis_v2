@@ -9,6 +9,10 @@
 // (bukan menaikkan offset) — sesuai instruksi eksplisit di dokumentasi bridge:
 // "Persempit filter alih-alih menaikkan offset terus".
 //
+// API mendukung format `YYYY-MM-DD HH:mm:ss` untuk date_from/date_to (level
+// detik), sehingga window 1 hari yang masih overflow bisa dipecah lebih kecil
+// (12 jam → 6 jam → 3 jam → 1 jam).
+//
 // Strategi: date-window splitting rekursif berbasis actual row count (probe
 // dengan limit kecil dulu), bukan asumsi distribusi tiket rata.
 
@@ -17,26 +21,38 @@ import { logger } from '@/lib/observability/logger';
 export const NOSSA_CLOSED_MAX_WINDOW_DAYS = 7; // default aman; hard cap API = 31 hari
 export const NOSSA_CLOSED_MAX_OFFSET = 5_000;
 export const NOSSA_CLOSED_PAGE_SIZE = 1_000; // limit maks per hit
+export const NOSSA_CLOSED_MIN_WINDOW_HOURS = 1; // window minimal 1 jam
 
 export interface DateWindow {
-  dateFrom: string; // 'YYYY-MM-DD'
-  dateTo: string; // exclusive, 'YYYY-MM-DD'
+  dateFrom: string; // 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
+  dateTo: string; // exclusive, 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
 }
 
-function toDateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10);
+function normalizeToDateTime(dateStr: string): string {
+  if (dateStr.includes(' ')) return dateStr;
+  return dateStr + ' 00:00:00';
 }
 
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(`${dateStr}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return toDateOnly(d);
+function toDateTimeStr(d: Date): string {
+  const iso = d.toISOString();
+  return iso.slice(0, 10) + ' ' + iso.slice(11, 19);
 }
 
-function diffDays(fromStr: string, toStr: string): number {
-  const from = new Date(`${fromStr}T00:00:00.000Z`).getTime();
-  const to = new Date(`${toStr}T00:00:00.000Z`).getTime();
-  return Math.round((to - from) / 86_400_000);
+function parseDateTime(dateTimeStr: string): Date {
+  const normalized = normalizeToDateTime(dateTimeStr);
+  return new Date(normalized + 'Z');
+}
+
+function addHours(dateTimeStr: string, hours: number): string {
+  const d = parseDateTime(dateTimeStr);
+  d.setUTCHours(d.getUTCHours() + hours);
+  return toDateTimeStr(d);
+}
+
+function diffHours(fromStr: string, toStr: string): number {
+  const from = parseDateTime(fromStr).getTime();
+  const to = parseDateTime(toStr).getTime();
+  return Math.round((to - from) / 3_600_000);
 }
 
 /**
@@ -51,13 +67,14 @@ export function splitIntoInitialWindows(
   dateTo: string,
   maxWindowDays: number = NOSSA_CLOSED_MAX_WINDOW_DAYS,
 ): DateWindow[] {
+  const from = normalizeToDateTime(dateFrom);
+  const to = normalizeToDateTime(dateTo);
   const windows: DateWindow[] = [];
-  let cursor = dateFrom;
-  while (diffDays(cursor, dateTo) > 0) {
-    const end = addDays(
-      cursor,
-      Math.min(maxWindowDays, diffDays(cursor, dateTo)),
-    );
+  let cursor = from;
+  while (diffHours(cursor, to) > 0) {
+    const totalHours = diffHours(cursor, to);
+    const windowHours = Math.min(maxWindowDays * 24, totalHours);
+    const end = addHours(cursor, windowHours);
     windows.push({ dateFrom: cursor, dateTo: end });
     cursor = end;
   }
@@ -66,22 +83,24 @@ export function splitIntoInitialWindows(
 
 /**
  * Membagi dua sebuah window (dipakai saat probe count menunjukkan window
- * masih > kapasitas offset). Window 1 hari tidak bisa dipecah lagi — di
- * titik itu, harus fallback ke query per-incident atau eskalasi manual,
- * karena bridge tidak menyediakan filter lain yang lebih presisi dari tanggal.
+ * masih > kapasitas offset). Window minimal 1 jam — di bawah itu, fallback
+ * ke data partial dengan log peringatan.
+ *
+ * API mendukung format `YYYY-MM-DD HH:mm:ss` untuk date_from/date_to, sehingga
+ * window 1 hari bisa dipecah menjadi 12 jam, 6 jam, 3 jam, dst.
  */
 export function bisectWindow(
   window: DateWindow,
 ): [DateWindow, DateWindow] | null {
-  const totalDays = diffDays(window.dateFrom, window.dateTo);
-  if (totalDays <= 1) {
-    logger.warn('[QosmicBridge] Window sudah 1 hari, tidak bisa dipecah lagi', {
+  const totalHours = diffHours(window.dateFrom, window.dateTo);
+  if (totalHours <= NOSSA_CLOSED_MIN_WINDOW_HOURS) {
+    logger.warn('[QosmicBridge] Window sudah 1 jam, tidak bisa dipecah lagi', {
       window,
     });
     return null;
   }
-  const midDays = Math.floor(totalDays / 2) || 1;
-  const mid = addDays(window.dateFrom, midDays);
+  const midHours = Math.floor(totalHours / 2) || 1;
+  const mid = addHours(window.dateFrom, midHours);
   return [
     { dateFrom: window.dateFrom, dateTo: mid },
     { dateFrom: mid, dateTo: window.dateTo },

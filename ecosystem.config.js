@@ -189,7 +189,7 @@ module.exports = {
         QOSMIC_BRIDGE_ENABLED: 'true',
         QOSMIC_BRIDGE_BASE_URL: 'https://qosmic.solusee.id/api/metabase-bridge',
         QOSMIC_BRIDGE_TOKEN: 'mbb_99d24c46d664c3d2d6f463c6ab5698eefced0328',
-        QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN: '14',
+        QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN: '20',
         QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN: '6',
         QOSMIC_BRIDGE_TIMEOUT_MS: '15000',
         QOSMIC_BRIDGE_RETRY_MAX: '4',
