@@ -386,7 +386,6 @@ export default function Sidebar({
     }
   }, [isTicketManagementOpen]);
 
-  const roleLabel = roleName ? roleName.replaceAll('_', ' ') : 'loading role';
   return (
     <aside
       className={clsx(
@@ -548,7 +547,7 @@ export default function Sidebar({
           </div>
           <div className='min-w-0 flex-1'>
             <p className='truncate text-xs font-semibold text-slate-900 uppercase dark:text-white'>
-              {roleLabel}
+              {user?.nama || 'User'}
             </p>
             <p className='truncate text-xs text-slate-600 dark:text-slate-300'>
               {selectedWorkzoneLabel}

@@ -1,4 +1,5 @@
 import { ensureRedisReady, redis } from '@/lib/redis';
+import { prisma } from '@/app/libs/prisma';
 
 export type OnlineUserRecord = {
   id: string;
@@ -6,6 +7,7 @@ export type OnlineUserRecord = {
   path: string;
   userAgent: string;
   lastSeenAt: string;
+  nama?: string | null;
 };
 
 const ONLINE_USERS_HASH = 'monitoring:online:users';
@@ -83,15 +85,33 @@ export async function getOnlineUsers(): Promise<{
     .filter((value): value is OnlineUserRecord => Boolean(value))
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
 
+  const numericIds = users
+    .map((user) => Number(user.id))
+    .filter((id) => Number.isInteger(id));
+  const nameMap: Record<string, string> = {};
+  if (numericIds.length > 0) {
+    const rows = await prisma.users.findMany({
+      where: { id_user: { in: numericIds } },
+      select: { id_user: true, nama: true },
+    });
+    for (const row of rows) {
+      nameMap[String(row.id_user)] = row.nama ?? '';
+    }
+  }
+  const enriched = users.map((user) => ({
+    ...user,
+    nama: nameMap[String(user.id)] ?? null,
+  }));
+
   const byRole: Record<string, number> = {};
-  for (const user of users) {
+  for (const user of enriched) {
     byRole[user.role] = (byRole[user.role] ?? 0) + 1;
   }
 
   return {
-    total: users.length,
+    total: enriched.length,
     byRole,
-    users,
+    users: enriched,
     windowSeconds: ONLINE_WINDOW_MS / 1000,
   };
 }

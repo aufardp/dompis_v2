@@ -37,6 +37,7 @@ type Overview = {
       path: string;
       userAgent: string;
       lastSeenAt: string;
+      nama?: string | null;
     }>;
     windowSeconds: number;
   };
@@ -273,7 +274,7 @@ export default function AppPerformanceMonitor() {
               data.online.users.map((user) => (
                 <div key={user.id} className='rounded-md border border-(--border) bg-(--surface-2) p-2'>
                   <div className='flex items-center justify-between gap-2 text-xs'>
-                    <span className='font-semibold text-(--text-primary)'>#{user.id} {user.role}</span>
+                    <span className='font-semibold text-(--text-primary)'>{user.nama || user.role}</span>
                     <span className='text-(--text-muted)'>{formatDate(user.lastSeenAt)}</span>
                   </div>
                   <p className='mt-1 truncate text-xs text-(--text-secondary)'>{user.path}</p>
