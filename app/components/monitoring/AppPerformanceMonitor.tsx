@@ -14,6 +14,7 @@ import {
   Inbox,
   Layers,
   RefreshCw,
+  Send,
   Server,
   ShieldCheck,
   Users,
@@ -151,6 +152,13 @@ interface Overview {
   };
   health: HealthState;
 }
+
+type TestAlertState =
+  | { state: 'idle' }
+  | { state: 'sending' }
+  | { state: 'done'; message: string }
+  | { state: 'unconfigured'; message: string }
+  | { state: 'error'; message: string };
 
 const REFRESH_INTERVAL_MS = 5_000;
 
@@ -554,6 +562,7 @@ export default function AppPerformanceMonitor() {
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [testAlert, setTestAlert] = useState<TestAlertState>({ state: 'idle' });
   const intervalRef = useRef<number | null>(null);
 
   const load = useMemo(
@@ -574,6 +583,27 @@ export default function AppPerformanceMonitor() {
     },
     [],
   );
+
+  const runTestAlert = async () => {
+    setTestAlert({ state: 'sending' });
+    try {
+      const res = await fetchWithAuth('/api/monitoring/test-alert', { method: 'POST' });
+      const json = res ? await res.json() : null;
+      if (!res?.ok || !json?.success) {
+        throw new Error(json?.message || 'Gagal mengirim test alert');
+      }
+      setTestAlert(
+        json.delivered
+          ? { state: 'done', message: 'Alert uji terkirim ke Telegram.' }
+          : { state: 'unconfigured', message: json.message || 'Kanal alert belum dikonfigurasi.' },
+      );
+    } catch (err) {
+      setTestAlert({
+        state: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -879,7 +909,39 @@ export default function AppPerformanceMonitor() {
       <Panel
         icon={<Server size={18} />}
         title='System & Integrasi'
-        right={<span className='text-xs text-(--text-muted)'>response {data.responseTimeMs ?? 0} ms</span>}
+        right={
+          <div className='flex items-center gap-3'>
+            {testAlert.state !== 'idle' && (
+              <span
+                className={`max-w-56 text-right text-xs ${
+                  testAlert.state === 'done'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : testAlert.state === 'unconfigured'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : testAlert.state === 'error'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-(--text-muted)'
+                }`}
+              >
+                {testAlert.state === 'sending'
+                  ? 'Mengirim alert uji...'
+                  : testAlert.message}
+              </span>
+            )}
+            <button
+              type='button'
+              onClick={() => void runTestAlert()}
+              disabled={testAlert.state === 'sending'}
+              className='flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-primary) transition-colors hover:bg-(--surface-2) disabled:opacity-50'
+            >
+              <Send size={12} />
+              Test Alert
+            </button>
+            <span className='text-xs text-(--text-muted)'>
+              response {data.responseTimeMs ?? 0} ms
+            </span>
+          </div>
+        }
       >
         <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
           <div className='rounded-lg border border-(--border) bg-(--surface-2) p-4'>

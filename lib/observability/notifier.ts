@@ -1,8 +1,16 @@
+import os from 'node:os';
+
 import { logger } from '@/lib/observability/logger';
 import { isRedisReady, redis } from '@/lib/redis';
 
 const DEBOUNCE_TTL_SECONDS = 900; // 15 menit
 const DEBOUNCE_PREFIX = 'alert:debounce:';
+
+function getAlertPrefix(): string {
+  const env = process.env.ALERT_ENV_LABEL || process.env.NODE_ENV || 'unknown';
+  const server = process.env.SERVER_NAME || os.hostname();
+  return `[${env} · ${server}]`;
+}
 
 function getAlertKey(type: string, key: string): string {
   return `${DEBOUNCE_PREFIX}${type}:${key}`;
@@ -35,6 +43,7 @@ interface AlertPayload {
   message: string;
   severity: 'critical' | 'warning' | 'info';
   fields?: Record<string, unknown>;
+  bypassDebounce?: boolean;
 }
 
 async function sendTelegram(payload: AlertPayload): Promise<void> {
@@ -98,12 +107,14 @@ async function sendSlack(payload: AlertPayload): Promise<void> {
 }
 
 export async function sendAlert(payload: AlertPayload): Promise<void> {
-  if (await isDebounced(payload.type, payload.key)) return;
-  await markDebounced(payload.type, payload.key);
+  if (!payload.bypassDebounce && (await isDebounced(payload.type, payload.key))) return;
+  if (!payload.bypassDebounce) await markDebounced(payload.type, payload.key);
+
+  const titled = { ...payload, title: `${getAlertPrefix()} ${payload.title}` };
 
   await Promise.allSettled([
-    sendTelegram(payload),
-    sendSlack(payload),
+    sendTelegram(titled),
+    sendSlack(titled),
   ]);
 }
 
