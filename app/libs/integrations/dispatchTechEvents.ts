@@ -1,4 +1,4 @@
-import prisma from '@/app/libs/prisma';
+import { prismaBulk } from '@/app/libs/prisma';
 import { postTechEvents } from './techEvents';
 import { TechEventWebhookBatch, TechEventPayload } from './techEventTypes';
 import { logger } from '@/lib/observability/logger';
@@ -9,6 +9,7 @@ const BASE_BACKOFF_MS = 60 * 1000;
 const MAX_BACKOFF_MS = 15 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 100;
+const SENDING_CHUNK_SIZE = 50; // chunk size for SENDING updates to avoid long-running TX
 
 export const DISPATCHABLE_TECH_EVENT_TYPES = [
   'TICKET_STATUS_CHANGED',
@@ -64,7 +65,7 @@ export async function dispatchTechEvents() {
   // Hapus event lama yang sudah SENT/FAILED (>7 hari)
   const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   await withP1017Retry(() =>
-    prisma.tech_event_outbox.deleteMany({
+    prismaBulk.tech_event_outbox.deleteMany({
       where: {
         created_at: { lte: cutoff },
         status: { in: ['SENT', 'FAILED'] },
@@ -76,7 +77,7 @@ export async function dispatchTechEvents() {
   // (Artinya proses crash sebelum update status ke SENT/FAILED/PENDING)
   const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);
   await withP1017Retry(() =>
-    prisma.tech_event_outbox.updateMany({
+    prismaBulk.tech_event_outbox.updateMany({
       where: {
         status: 'SENDING',
         updated_at: { lte: stuckCutoff },
@@ -94,7 +95,7 @@ export async function dispatchTechEvents() {
   // COUNT(PENDING) sangat lambat (insiden pool exhaustion).
   const archiveCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const archived = await withP1017Retry(() =>
-    prisma.tech_event_outbox.updateMany({
+    prismaBulk.tech_event_outbox.updateMany({
       where: {
         status: 'PENDING',
         created_at: { lte: archiveCutoff },
@@ -114,7 +115,7 @@ export async function dispatchTechEvents() {
   }
 
   const events = await withP1017Retry(() =>
-    prisma.tech_event_outbox.findMany({
+    prismaBulk.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
         event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
@@ -131,13 +132,16 @@ export async function dispatchTechEvents() {
 
   const ids = events.map((e: { id: number }) => e.id);
 
-  // Mark sebagai SENDING dulu (hindari double send)
-  await withP1017Retry(() =>
-    prisma.tech_event_outbox.updateMany({
-      where: { id: { in: ids }, status: 'PENDING' },
-      data: { status: 'SENDING' },
-    }),
-  );
+  // Mark sebagai SENDING dulu (hindari double send) — chunked untuk hindari long TX
+  for (let i = 0; i < ids.length; i += SENDING_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + SENDING_CHUNK_SIZE);
+    await withP1017Retry(() =>
+      prismaBulk.tech_event_outbox.updateMany({
+        where: { id: { in: chunk }, status: 'PENDING' },
+        data: { status: 'SENDING' },
+      }),
+    );
+  }
 
   let successCount = 0;
 
@@ -149,16 +153,20 @@ export async function dispatchTechEvents() {
     const res = await postTechEvents({ url, secret }, batch);
 
     if (res.ok) {
-      await withP1017Retry(() =>
-        prisma.tech_event_outbox.updateMany({
-          where: { id: { in: ids }, status: 'SENDING' },
-          data: {
-            status: 'SENT',
-            sent_at: new Date(),
-            last_error: null,
-          },
-        }),
-      );
+      // Chunked update SENT untuk hindari long TX
+      for (let i = 0; i < ids.length; i += SENDING_CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + SENDING_CHUNK_SIZE);
+        await withP1017Retry(() =>
+          prismaBulk.tech_event_outbox.updateMany({
+            where: { id: { in: chunk }, status: 'SENDING' },
+            data: {
+              status: 'SENT',
+              sent_at: new Date(),
+              last_error: null,
+            },
+          }),
+        );
+      }
       await decrOutboxPending(events.length);
       successCount = events.length;
     } else {
@@ -176,7 +184,7 @@ export async function dispatchTechEvents() {
     const newAttempt = maxAttempt + 1;
     const isFinal = newAttempt >= MAX_RETRY;
     await withP1017Retry(() =>
-      prisma.tech_event_outbox.updateMany({
+      prismaBulk.tech_event_outbox.updateMany({
         where: { id: { in: ids } },
         data: {
           attempt_count: { increment: 1 },

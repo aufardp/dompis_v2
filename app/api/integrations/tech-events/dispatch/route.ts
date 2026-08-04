@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/app/libs/prisma';
+import { prismaBulk } from '@/app/libs/prisma';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
@@ -14,6 +14,8 @@ import {
 import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
 import { DISPATCHABLE_TECH_EVENT_TYPES } from '@/app/libs/integrations/dispatchTechEvents';
 import { decrOutboxPending } from '@/lib/observability/gauge-counters';
+
+const SENDING_CHUNK_SIZE = 50;
 
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
     const limit = 25;
 
     // STEP 1: Ambil ID saja dulu (lebih aman)
-    const pendingIds = await prisma.tech_event_outbox.findMany({
+    const pendingIds = await prismaBulk.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
         event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
     const ids = pendingIds.map((e: { id: number }) => e.id);
 
     // STEP 2: Mark SENDING hanya yang masih PENDING
-    const updateResult = await prisma.tech_event_outbox.updateMany({
+    const updateResult = await prismaBulk.tech_event_outbox.updateMany({
       where: { id: { in: ids }, status: 'PENDING' },
       data: { status: 'SENDING' },
     });
@@ -107,7 +109,7 @@ export async function POST(req: NextRequest) {
     }
 
     // STEP 3: Ambil ulang hanya yang berhasil di-mark SENDING
-    const events = await prisma.tech_event_outbox.findMany({
+    const events = await prismaBulk.tech_event_outbox.findMany({
       where: { id: { in: ids }, status: 'SENDING' },
       orderBy: { created_at: 'asc' },
       take: 100,
@@ -121,17 +123,22 @@ export async function POST(req: NextRequest) {
     try {
       res = await withCircuitBreaker('tech-events-webhook', async () => {
         return await postTechEvents({ url, secret }, payload);
-      }, { failureThreshold: 5, timeoutMs: 120000 });
+      }, { failureThreshold: 3, timeoutMs: 30000 });
 
       if (res.ok) {
-        await prisma.tech_event_outbox.updateMany({
-          where: { id: { in: events.map((e: { id: number }) => e.id) } },
-          data: {
-            status: 'SENT',
-            sent_at: new Date(),
-            last_error: null,
-          },
-        });
+        // Chunked update SENT untuk hindari long TX
+        for (let i = 0; i < events.length; i += SENDING_CHUNK_SIZE) {
+          const chunk = events.slice(i, i + SENDING_CHUNK_SIZE);
+          const chunkIds = chunk.map((e: { id: number }) => e.id);
+          await prismaBulk.tech_event_outbox.updateMany({
+            where: { id: { in: chunkIds } },
+            data: {
+              status: 'SENT',
+              sent_at: new Date(),
+              last_error: null,
+            },
+          });
+        }
         await decrOutboxPending(events.length);
 
         return NextResponse.json({
@@ -151,7 +158,7 @@ export async function POST(req: NextRequest) {
         const isFinal = attempt >= 10;
         if (isFinal) finalizedCount++;
 
-        await prisma.tech_event_outbox.update({
+        await prismaBulk.tech_event_outbox.update({
           where: { id: e.id },
           data: {
             status: isFinal ? 'FAILED' : 'PENDING',
