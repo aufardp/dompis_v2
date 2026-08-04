@@ -3,12 +3,17 @@ import { logger } from '@/lib/observability/logger';
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
+  prismaBulk?: PrismaClient;
 };
 
 const connectionLimit = parseInt(process.env.PRISMA_CONNECTION_LIMIT || '20', 10);
 const poolTimeoutSeconds = parseInt(process.env.PRISMA_POOL_TIMEOUT || '30', 10);
 const socketTimeoutSeconds = parseInt(
   process.env.PRISMA_SOCKET_TIMEOUT || '10',
+  10,
+);
+const socketTimeoutBulkSeconds = parseInt(
+  process.env.PRISMA_SOCKET_TIMEOUT_BULK || '60',
   10,
 );
 const slowQueryThresholdMs = Number(process.env.PRISMA_SLOW_QUERY_MS || '0');
@@ -26,6 +31,10 @@ const dbUrl = process.env.DATABASE_URL
   ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=${poolTimeoutSeconds}&connect_timeout=15&socket_timeout=${socketTimeoutSeconds}`
   : undefined;
 
+const dbUrlBulk = process.env.DATABASE_URL
+  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=${poolTimeoutSeconds}&connect_timeout=15&socket_timeout=${socketTimeoutBulkSeconds}`
+  : undefined;
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
@@ -33,6 +42,17 @@ export const prisma =
     datasources: dbUrl
       ? {
           db: { url: dbUrl },
+        }
+      : undefined,
+  });
+
+export const prismaBulk =
+  globalForPrisma.prismaBulk ??
+  new PrismaClient({
+    log: prismaLogConfig,
+    datasources: dbUrlBulk
+      ? {
+          db: { url: dbUrlBulk },
         }
       : undefined,
   });
@@ -54,6 +74,7 @@ if (enableSlowQueryLogging) {
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaBulk = prismaBulk;
 }
 
 export async function connectDB() {
@@ -61,6 +82,7 @@ export async function connectDB() {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       await prisma.$connect();
+      await prismaBulk.$connect();
       logger.info('✅ Database connected');
       return;
     } catch (error) {

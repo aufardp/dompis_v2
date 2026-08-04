@@ -1,4 +1,4 @@
-import { prisma } from '@/app/libs/prisma';
+import { prisma, prismaBulk } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import {
   getTableNames,
@@ -622,7 +622,6 @@ function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow
 }
 
 async function bulkUpsertTicketRaw(
-  tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
   updateColumns: readonly TicketRawBulkColumn[],
 ): Promise<void> {
@@ -674,7 +673,7 @@ async function bulkUpsertTicketRaw(
   }
 
   for (const chunk of chunkArray(rows, sqlBatchSize)) {
-    await tx.$executeRaw`
+    await prismaBulk.$executeRaw`
       INSERT INTO ${sqlIdentifier('ticket_raw')}
         (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
       VALUES ${Prisma.join(
@@ -924,7 +923,7 @@ async function processBatch(
     const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
     assertNotAborted(signal);
-    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
+    await bulkUpsertTicketRaw(sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
     // Skip heartbeat upsert — hash & status unchanged, no data to write.
     // lastSeenAt tracking is not critical; stale detection uses updated_at.
     if (quarantined.length > 0) {
