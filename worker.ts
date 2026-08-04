@@ -184,6 +184,31 @@ async function runTechEvents(): Promise<void> {
   }
 }
 
+let gaugeReconcileRunning = false;
+
+async function runGaugeReconcile(): Promise<void> {
+  if (gaugeReconcileRunning) return;
+  gaugeReconcileRunning = true;
+  try {
+    const {
+      setOutboxPendingCount,
+      setIngestionQuarantineCount,
+    } = await import('@/lib/observability/gauge-counters');
+    const [outboxPending, quarantine] = await Promise.all([
+      prisma.tech_event_outbox
+        .count({ where: { status: 'PENDING' } })
+        .catch(() => null),
+      prisma.ingestion_quarantine.count().catch(() => null),
+    ]);
+    if (outboxPending !== null) await setOutboxPendingCount(outboxPending);
+    if (quarantine !== null) await setIngestionQuarantineCount(quarantine);
+  } catch {
+    // best-effort — mirror counter tetap dipakai sampai reconcile berikutnya
+  } finally {
+    gaugeReconcileRunning = false;
+  }
+}
+
 async function runRegulerWebhook(): Promise<void> {
   const state = regulerWebhookState;
   if (state.running) { logger.info('Reguler webhook skipped — previous run still in progress', { component: 'worker', task: 'reguler_webhook' }); return; }
@@ -469,6 +494,7 @@ async function startWorker() {
 
   scheduledTasks = [
     cron.schedule('*/2 * * * *', () => runWithCorrelationContext('ops-worker', () => void runTechEvents())),
+    cron.schedule('*/2 * * * *', () => runWithCorrelationContext('ops-worker', () => void runGaugeReconcile())),
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void runRegulerWebhook())),
     cron.schedule('*/5 * * * *', () => runWithCorrelationContext('ops-worker', () => void runAutoAssign())),
     cron.schedule('*/5 * * * *', () => runWithCorrelationContext('ops-worker', () => void runDlqRetry())),
@@ -478,7 +504,7 @@ async function startWorker() {
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void monitorBridgeDLQ())),
   ];
 
-  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m)', { component: 'worker' });
+  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m) gauge-reconcile(2m)', { component: 'worker' });
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },

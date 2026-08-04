@@ -10,6 +10,7 @@ import { authorizeInternalRoute } from '@/app/libs/internalRouteAuth';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getMetricAgeMs, parseProjectionCheckpointMeta } from '@/lib/observability/worker-health';
 import { getOrSetCache } from '@/lib/cache';
+import { getOutboxPendingCount } from '@/lib/observability/gauge-counters';
 
 const WORKER_NAMES = ['ingestion-worker', 'projection-worker', 'active-refresh-worker', 'status-refresh-worker', 'ops-worker'] as const;
 const DATABASE_METRICS_CACHE_KEY = 'internal:metrics:db-snapshot';
@@ -29,7 +30,7 @@ async function collectDatabaseMetrics(): Promise<DatabaseMetrics> {
       const [ticketRawActive, ticketCount, pendingOutbox, externalDbConnected] = await Promise.all([
         prisma.ticket_raw.count({ where: { isActive: true } }).catch(() => 0),
         prisma.ticket.count().catch(() => 0),
-        prisma.tech_event_outbox.count({ where: { status: 'PENDING' } }).catch(() => 0),
+        getOutboxPendingCount().catch(() => 0),
         testExternalConnection(),
       ]);
 

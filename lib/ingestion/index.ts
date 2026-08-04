@@ -32,6 +32,10 @@ import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
 import { isRedisReady, redis } from '@/lib/redis';
+import {
+  incrIngestionQuarantine,
+  decrIngestionQuarantine,
+} from '@/lib/observability/gauge-counters';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
 import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
@@ -925,6 +929,7 @@ async function processBatch(
     // lastSeenAt tracking is not critical; stale detection uses updated_at.
     if (quarantined.length > 0) {
       await tx.ingestion_quarantine.createMany({ data: quarantined });
+      await incrIngestionQuarantine(quarantined.length);
     }
 
     if (events.length > 0) {
@@ -1702,6 +1707,7 @@ export async function retryQuarantinedItems(options?: {
         });
         await tx.ingestion_quarantine.delete({ where: { id: item.id } });
       });
+      await decrIngestionQuarantine(1);
       await redis.del(retryKey).catch(() => {});
       result.recovered++;
     } catch (error) {

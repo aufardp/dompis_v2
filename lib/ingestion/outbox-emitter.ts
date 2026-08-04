@@ -2,6 +2,7 @@ import { prisma } from '@/app/libs/prisma';
 import type { Prisma } from '@prisma/client';
 import { nowWib } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
+import { incrOutboxPending } from '@/lib/observability/gauge-counters';
 
 function generateEventId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -58,6 +59,7 @@ export async function emitTicketRawEvent(
         updated_at: nowWib(),
       },
     });
+    await incrOutboxPending(1);
   } catch (error) {
     logger.error('[OutboxEmitter] Failed to emit event:', { error: String(error) });
   }
@@ -81,6 +83,7 @@ export async function emitIngestionCompleteEvent(
         updated_at: nowWib(),
       },
     });
+    await incrOutboxPending(1);
   } catch (error) {
     logger.error('[OutboxEmitter] Failed to emit completion event:', { error: String(error) });
   }
@@ -107,6 +110,7 @@ export async function emitIngestionFailedEvent(
         updated_at: nowWib(),
       },
     });
+    await incrOutboxPending(1);
   } catch (error) {
     logger.error('[OutboxEmitter] Failed to emit failed event:', { error: String(error) });
   }
@@ -134,6 +138,7 @@ export async function emitBulkEvents(
     for (let i = 0; i < eventsToInsert.length; i += OUTBOX_CHUNK_SIZE) {
       const chunk = eventsToInsert.slice(i, i + OUTBOX_CHUNK_SIZE);
       await prisma.tech_event_outbox.createMany({ data: chunk });
+      await incrOutboxPending(chunk.length);
     }
   } catch (error) {
     logger.error('[OutboxEmitter] Failed to emit bulk events:', { error: String(error) });
@@ -161,5 +166,6 @@ export async function createBulkOutboxEvents(
   for (let i = 0; i < eventsToInsert.length; i += OUTBOX_CHUNK_SIZE) {
     const chunk = eventsToInsert.slice(i, i + OUTBOX_CHUNK_SIZE);
     await tx.tech_event_outbox.createMany({ data: chunk });
+    await incrOutboxPending(chunk.length);
   }
 }

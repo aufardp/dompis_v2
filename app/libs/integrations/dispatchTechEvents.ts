@@ -2,6 +2,7 @@ import prisma from '@/app/libs/prisma';
 import { postTechEvents } from './techEvents';
 import { TechEventWebhookBatch, TechEventPayload } from './techEventTypes';
 import { logger } from '@/lib/observability/logger';
+import { decrOutboxPending } from '@/lib/observability/gauge-counters';
 
 const MAX_RETRY = 5;
 const BASE_BACKOFF_MS = 60 * 1000;
@@ -88,6 +89,30 @@ export async function dispatchTechEvents() {
     }),
   );
 
+  // Archive PENDING yang stuck lebih dari 7 hari → FAILED.
+  // Menghindari backlog PENDING membengkak tanpa batas yang membuat
+  // COUNT(PENDING) sangat lambat (insiden pool exhaustion).
+  const archiveCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const archived = await withP1017Retry(() =>
+    prisma.tech_event_outbox.updateMany({
+      where: {
+        status: 'PENDING',
+        created_at: { lte: archiveCutoff },
+      },
+      data: {
+        status: 'FAILED',
+        last_error: 'Archived: stuck PENDING terlalu lama',
+        next_attempt_at: null,
+      },
+    }),
+  ).catch(() => ({ count: 0 }));
+  if (archived.count > 0) {
+    await decrOutboxPending(archived.count);
+    logger.info('[TechEvents] Archived stuck PENDING events', {
+      count: archived.count,
+    });
+  }
+
   const events = await withP1017Retry(() =>
     prisma.tech_event_outbox.findMany({
       where: {
@@ -134,6 +159,7 @@ export async function dispatchTechEvents() {
           },
         }),
       );
+      await decrOutboxPending(events.length);
       successCount = events.length;
     } else {
       throw new Error(res.text || `HTTP ${res.status}`);
@@ -148,20 +174,20 @@ export async function dispatchTechEvents() {
     const batchErrorMsg = err?.message || String(err);
     const maxAttempt = Math.max(...events.map((e) => e.attempt_count));
     const newAttempt = maxAttempt + 1;
+    const isFinal = newAttempt >= MAX_RETRY;
     await withP1017Retry(() =>
       prisma.tech_event_outbox.updateMany({
         where: { id: { in: ids } },
         data: {
           attempt_count: { increment: 1 },
           last_error: batchErrorMsg,
-          status: newAttempt >= MAX_RETRY ? 'FAILED' : 'PENDING',
+          status: isFinal ? 'FAILED' : 'PENDING',
           next_attempt_at:
-            newAttempt >= MAX_RETRY
-              ? null
-              : new Date(Date.now() + computeBackoff(newAttempt)),
+            isFinal ? null : new Date(Date.now() + computeBackoff(newAttempt)),
         },
       }),
     );
+    if (isFinal) await decrOutboxPending(events.length);
 
     const dispatchError = new Error(
       `Failed to dispatch ${events.length} tech event(s): ${batchErrorMsg}`,

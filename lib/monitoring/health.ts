@@ -14,6 +14,10 @@ import { getQuarantineCount } from '@/lib/dlq';
 import { getOnlineUsers } from '@/lib/monitoring/online-users';
 import { prisma } from '@/app/libs/prisma';
 import { logger } from '@/lib/observability/logger';
+import {
+  getOutboxPendingCount,
+  getIngestionQuarantineCount,
+} from '@/lib/observability/gauge-counters';
 
 export type HealthSeverity = 'critical' | 'warning' | 'info';
 export type HealthStatus = 'healthy' | 'warning' | 'critical';
@@ -544,6 +548,26 @@ export function evaluateHealth(input: HealthInput): {
   return { status, issues, summary };
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function getHealthSnapshot() {
   const started = Date.now();
 
@@ -633,31 +657,28 @@ export async function getHealthSnapshot() {
   }
 
   // Pipeline: outbox
-  let pendingOutbox = 0;
+  // COUNT(*) di tabel outbox bisa sangat lambat (backlog membesar) dan sempat
+  // menghabiskan connection pool → ganti dengan Redis gauge counter.
+  const pendingOutbox = await getOutboxPendingCount();
   let outboxOldestAgeMs: number | null = null;
   try {
-    const [count, oldest] = await Promise.all([
-      prisma.tech_event_outbox.count({ where: { status: 'PENDING' } }),
+    const oldest = await withTimeout(
       prisma.tech_event_outbox.findFirst({
         where: { status: 'PENDING' },
         orderBy: { created_at: 'asc' },
         select: { created_at: true },
       }),
-    ]);
-    pendingOutbox = count;
+      5_000,
+      null,
+    );
     outboxOldestAgeMs = oldest
       ? Math.max(0, Date.now() - oldest.created_at.getTime())
       : null;
   } catch {
-    // keep defaults
+    // keep null
   }
 
-  let ingestionQuarantine = 0;
-  try {
-    ingestionQuarantine = await prisma.ingestion_quarantine.count();
-  } catch {
-    // keep 0
-  }
+  const ingestionQuarantine = await getIngestionQuarantineCount();
 
   const dlqCounts: Record<string, number> = {};
   for (const source of ['projection', 'status-refresh', 'active-refresh']) {

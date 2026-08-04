@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { formatInTimeZone } from 'date-fns-tz';
 import { redis } from '@/lib/redis';
+import { incrOutboxPending } from '@/lib/observability/gauge-counters';
 
 const WIB = 'Asia/Jakarta';
 
@@ -56,6 +57,7 @@ export async function createTechEvent(
     },
   });
 
+  await incrOutboxPending(1);
   redis.publish('worker:tech-events:request', eventId).catch(() => {});
 
   return eventId;

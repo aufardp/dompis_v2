@@ -160,7 +160,7 @@ type TestAlertState =
   | { state: 'unconfigured'; message: string }
   | { state: 'error'; message: string };
 
-const REFRESH_INTERVAL_MS = 5_000;
+const REFRESH_INTERVAL_MS = 15_000;
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value)) return '-';

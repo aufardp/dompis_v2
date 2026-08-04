@@ -6,7 +6,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getOrSetCache } from '@/lib/cache';
 import { getHealthSnapshot } from '@/lib/monitoring/health';
 
-const CACHE_TTL_SECONDS = 5;
+const CACHE_TTL_SECONDS = 30;
 const CACHE_KEY = 'monitoring_overview:v1';
 
 export async function GET() {

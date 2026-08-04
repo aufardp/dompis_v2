@@ -13,6 +13,7 @@ import {
 } from '@/app/libs/integrations/techEventTypes';
 import { withCircuitBreaker } from '@/app/libs/circuitBreaker';
 import { DISPATCHABLE_TECH_EVENT_TYPES } from '@/app/libs/integrations/dispatchTechEvents';
+import { decrOutboxPending } from '@/lib/observability/gauge-counters';
 
 function requireCronSecret(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
@@ -131,6 +132,7 @@ export async function POST(req: NextRequest) {
             last_error: null,
           },
         });
+        await decrOutboxPending(events.length);
 
         return NextResponse.json({
           success: true,
@@ -143,9 +145,11 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       const msg = String(err?.message || err).slice(0, 2000);
 
+      let finalizedCount = 0;
       for (const e of events) {
         const attempt = e.attempt_count + 1;
         const isFinal = attempt >= 10;
+        if (isFinal) finalizedCount++;
 
         await prisma.tech_event_outbox.update({
           where: { id: e.id },
@@ -159,6 +163,7 @@ export async function POST(req: NextRequest) {
           },
         });
       }
+      if (finalizedCount > 0) await decrOutboxPending(finalizedCount);
 
       return NextResponse.json(
         {

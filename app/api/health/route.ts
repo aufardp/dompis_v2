@@ -6,6 +6,7 @@ import prisma from '@/app/libs/prisma';
 import redis, { isRedisReady } from '@/lib/redis';
 import { authorizeInternalRoute } from '@/app/libs/internalRouteAuth';
 import { testExternalConnection } from '@/lib/external-db/connection';
+import { getOutboxPendingCount } from '@/lib/observability/gauge-counters';
 
 export async function GET(req: NextRequest) {
   const start = Date.now();
@@ -76,10 +77,8 @@ export async function GET(req: NextRequest) {
       health.status = 'warning';
     }
 
-    // 🔹 Outbox backlog
-    const pendingCount = await prisma.tech_event_outbox.count({
-      where: { status: 'PENDING' },
-    });
+    // 🔹 Outbox backlog (baca Redis gauge, bukan COUNT(*) — hindari pool exhaustion)
+    const pendingCount = await getOutboxPendingCount().catch(() => 0);
 
     health.metrics.pendingEvents = pendingCount;
 

@@ -188,7 +188,17 @@ export async function invalidateTechniciansCache(): Promise<void> {
 }
 
 /**
+ * In-flight map untuk single-flight cache-aside.
+ * Mencegah request konkuren memanggil fn() berulang kali saat cache miss
+ * (mis. snapshot health yang mahal) — cukup satu komputasi, sisanya menunggu.
+ */
+const inFlight = new Map<string, Promise<unknown>>();
+
+/**
  * Cache-aside helper: ambil dari cache, jika miss jalankan fn() lalu simpan.
+ *
+ * Single-flight: saat cache miss, request lain yang datang untuk key yang sama
+ * menunggu komputasi yang sedang berjalan, bukan memulai komputasi baru.
  *
  * @example
  * const data = await getOrSetCache('stats:dashboard', () => fetchStats(), 120);
@@ -202,11 +212,22 @@ export async function getOrSetCache<T>(
   const cached = await getCache<T>(key);
   if (cached !== null) return cached;
 
-  // Cache miss — compute
-  const data = await fn();
+  // Single-flight: kalau ada komputasi in-flight untuk key yang sama, ikuti.
+  const existing = inFlight.get(key);
+  if (existing) return existing as Promise<T>;
 
-  // Store synchronously — blocking is negligible vs recompute cost
-  await setCache(key, data, ttl);
+  const computation = (async () => {
+    try {
+      // Cache miss — compute
+      const data = await fn();
+      // Store synchronously — blocking is negligible vs recompute cost
+      await setCache(key, data, ttl);
+      return data;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
 
-  return data;
+  inFlight.set(key, computation);
+  return computation;
 }
