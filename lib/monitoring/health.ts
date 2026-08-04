@@ -11,6 +11,7 @@ import {
 } from '@/lib/external-db/connection';
 import { getSloSummary } from '@/lib/observability/slo-tracker';
 import { getQuarantineCount } from '@/lib/dlq';
+import { getDLQCounts } from '@/lib/external-db/qosmic-bridge/bridge-queue';
 import { getOnlineUsers } from '@/lib/monitoring/online-users';
 import { prisma } from '@/app/libs/prisma';
 import { logger } from '@/lib/observability/logger';
@@ -69,6 +70,7 @@ export interface PipelineSnapshot {
   outboxOldestAgeMs: number | null;
   dlqCounts: Record<string, number>;
   ingestionQuarantine: number;
+  bridgeDLQ: { total: number; interactive: number; ingestion: number; backfill: number } | null;
 }
 
 export interface SloSnapshot {
@@ -520,6 +522,23 @@ export function evaluateHealth(input: HealthInput): {
     );
   }
 
+  // Bridge DLQ
+  if (input.pipeline.bridgeDLQ && input.pipeline.bridgeDLQ.total > 100) {
+    push(
+      'critical',
+      'bridge-dlq',
+      `Bridge DLQ total ${input.pipeline.bridgeDLQ.total} (interactive: ${input.pipeline.bridgeDLQ.interactive}, ingestion: ${input.pipeline.bridgeDLQ.ingestion}, backfill: ${input.pipeline.bridgeDLQ.backfill})`,
+      'Webhook mungkin down — cek endpoint https://webhookdompis.telkomakses-area3.id/webhook/dompis',
+    );
+  } else if (input.pipeline.bridgeDLQ && input.pipeline.bridgeDLQ.total > 50) {
+    push(
+      'warning',
+      'bridge-dlq',
+      `Bridge DLQ total ${input.pipeline.bridgeDLQ.total}`,
+      'Bridge jobs gagal terkirim — monitor webhook endpoint',
+    );
+  }
+
   // External DB
   if (input.externalDb.configured && !input.externalDb.connected) {
     push(
@@ -685,6 +704,15 @@ export async function getHealthSnapshot() {
     dlqCounts[source] = await getQuarantineCount(source);
   }
 
+  // Bridge DLQ
+  let bridgeDLQ = { total: 0, interactive: 0, ingestion: 0, backfill: 0 };
+  try {
+    const counts = await getDLQCounts();
+    bridgeDLQ = { total: counts.total, interactive: counts.interactive, ingestion: counts.ingestion, backfill: counts.backfill };
+  } catch {
+    // bridge queue not configured yet — skip silently
+  }
+
   // SLO summaries
   const sloNames = [
     'ingestion',
@@ -717,6 +745,7 @@ export async function getHealthSnapshot() {
     outboxOldestAgeMs,
     dlqCounts,
     ingestionQuarantine,
+    bridgeDLQ,
   };
 
   const health = evaluateHealth({

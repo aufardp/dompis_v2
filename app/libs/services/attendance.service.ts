@@ -1,4 +1,4 @@
-import prisma from '@/app/libs/prisma';
+import { prisma, prismaBulk } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import {
   format,
@@ -63,7 +63,7 @@ export class AttendanceService {
     const year = this.getTodayYear();
     const now = new Date();
 
-    const existingAttendance = await prisma.technician_attendance.findFirst({
+    const existingAttendance = await prismaBulk.technician_attendance.findFirst({
       where: {
         technician_id: technicianId,
         date: today,
@@ -79,7 +79,7 @@ export class AttendanceService {
 
     const status = this.computeStatus(now);
 
-    const attendance = await prisma.technician_attendance.create({
+    const attendance = await prismaBulk.technician_attendance.create({
       data: {
         technician_id: technicianId,
         workzone_id: workzoneId,
@@ -106,7 +106,7 @@ export class AttendanceService {
     const today = this.getTodayDateString();
     const now = new Date();
 
-    const existingAttendance = await prisma.technician_attendance.findFirst({
+    const existingAttendance = await prismaBulk.technician_attendance.findFirst({
       where: {
         technician_id: technicianId,
         date: today,
@@ -132,7 +132,7 @@ export class AttendanceService {
     const diffMs = now.getTime() - checkIn.getTime();
     const workingHours = Math.round((diffMs / 3600000) * 100) / 100; // Round to 2 decimal places
 
-    await prisma.technician_attendance.update({
+    await prismaBulk.technician_attendance.update({
       where: { id: existingAttendance.id },
       data: {
         check_out_at: now,
@@ -151,7 +151,7 @@ export class AttendanceService {
   ): Promise<TodayAttendanceStatus> {
     const today = this.getTodayDateString();
 
-    const attendance = await prisma.technician_attendance.findFirst({
+    const attendance = await prismaBulk.technician_attendance.findFirst({
       where: {
         technician_id: technicianId,
         date: today,
@@ -180,7 +180,7 @@ export class AttendanceService {
   static async getTodayPresentTechnicianIds(): Promise<number[]> {
     const today = this.getTodayDateString();
 
-    const attendances = await prisma.technician_attendance.findMany({
+    const attendances = await prismaBulk.technician_attendance.findMany({
       where: {
         date: today,
       },
@@ -216,7 +216,7 @@ export class AttendanceService {
       whereClause.technician_id = { in: technicianIds };
     }
 
-    const records = await prisma.technician_attendance.findMany({
+    const records = await prismaBulk.technician_attendance.findMany({
       where: whereClause,
       include: {
         technician: {
@@ -292,7 +292,7 @@ export class AttendanceService {
   ): Promise<MonthlyAttendanceSummary[]> {
     const workingDays = this.getWorkingDaysInMonth(month, year);
 
-    const records = await prisma.technician_attendance.findMany({
+    const records = await prismaBulk.technician_attendance.findMany({
       where: {
         month,
         year,
@@ -384,7 +384,7 @@ export class AttendanceService {
     month: number,
     year: number,
   ): Promise<TechnicianAttendanceWithDetails[]> {
-    const records = await prisma.technician_attendance.findMany({
+    const records = await prismaBulk.technician_attendance.findMany({
       where: {
         technician_id: technicianId,
         month,
@@ -452,7 +452,7 @@ export class AttendanceService {
     const month = parseInt(monthStr);
     const year = parseInt(yearStr);
 
-    const existingAttendance = await prisma.technician_attendance.findFirst({
+    const existingAttendance = await prismaBulk.technician_attendance.findFirst({
       where: {
         technician_id: data.technician_id,
         date: data.date,
@@ -460,7 +460,7 @@ export class AttendanceService {
     });
 
     if (existingAttendance) {
-      await prisma.technician_attendance.update({
+      await prismaBulk.technician_attendance.update({
         where: { id: existingAttendance.id },
         data: {
           check_in_at: new Date(data.check_in_at),
@@ -477,7 +477,7 @@ export class AttendanceService {
       };
     }
 
-    await prisma.technician_attendance.create({
+    await prismaBulk.technician_attendance.create({
       data: {
         technician_id: data.technician_id,
         workzone_id: data.workzone_id,

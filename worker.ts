@@ -1,6 +1,6 @@
 import cron, { ScheduledTask } from 'node-cron';
 import 'dotenv/config';
-import { prisma, connectDB } from '@/app/libs/prisma';
+import { prisma, connectDB, prismaBulk } from '@/app/libs/prisma';
 import { redis } from '@/lib/redis';
 import { publishSyncEvent } from '@/lib/sse-redis';
 import { syncSpreadsheet } from '@/lib/google-sheets/sync';
@@ -14,6 +14,7 @@ import { retryQuarantined as retryIntegrationDlq, getQuarantineSources } from '@
 import { resetAllStaleAssignedTickets } from '@/lib/active-refresh';
 import { fetchTableCount, getTableNames } from '@/lib/external-db/connection';
 import { sendWarningAlert, sendCriticalAlert } from '@/lib/observability/notifier';
+import { decrOutboxPending } from '@/lib/observability/gauge-counters';
 import {
   withTaskLock,
   withCancellableTimeout,
@@ -348,6 +349,115 @@ async function monitorBridgeDLQ(): Promise<void> {
   }
 }
 
+const CLEANUP_CHUNK_SIZE = 500;
+const LOCK_WAIT_TIMEOUT = 120;
+
+async function setLockWaitTimeout() {
+  await prismaBulk.$executeRawUnsafe(`SET SESSION innodb_lock_wait_timeout = ${LOCK_WAIT_TIMEOUT}`);
+}
+
+async function chunkedUpdate(
+  whereClause: string,
+  setClause: string,
+  chunkSize = 500
+): Promise<number> {
+  let total = 0;
+  while (true) {
+    const result = await prismaBulk.$executeRawUnsafe(`
+      UPDATE tech_event_outbox
+      SET ${setClause}
+      WHERE id IN (
+        SELECT id FROM tech_event_outbox
+        WHERE ${whereClause}
+        ORDER BY id LIMIT ${chunkSize}
+      )
+    `);
+    if (result === 0) break;
+    total += result;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return total;
+}
+
+async function chunkedDelete(
+  whereClause: string,
+  chunkSize = 500
+): Promise<number> {
+  let total = 0;
+  while (true) {
+    const result = await prismaBulk.$executeRawUnsafe(`
+      DELETE FROM tech_event_outbox
+      WHERE id IN (
+        SELECT id FROM tech_event_outbox
+        WHERE ${whereClause}
+        ORDER BY id LIMIT ${chunkSize}
+      )
+    `);
+    if (result === 0) break;
+    total += result;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return total;
+}
+
+async function runTechEventCleanup(): Promise<void> {
+  await setLockWaitTimeout();
+
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const cutoffISO = cutoff.toISOString().slice(0, 19).replace('T', ' ');
+  const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000);
+  const stuckCutoffISO = stuckCutoff.toISOString().slice(0, 19).replace('T', ' ');
+  const oldCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const oldCutoffISO = oldCutoff.toISOString().slice(0, 19).replace('T', ' ');
+
+  logger.info('[TechEventCleanup] Starting periodic cleanup', { cutoff: cutoffISO });
+
+  // 1. Archive PENDING > 7 days to FAILED (chunked)
+  const archived = await chunkedUpdate(
+    `status = 'PENDING' AND created_at <= '${cutoffISO}'`,
+    `status = 'FAILED', last_error = 'Archived: stuck PENDING > 7 days', next_attempt_at = NULL`
+  );
+
+  if (archived > 0) {
+    await decrOutboxPending(archived);
+    logger.info('[TechEventCleanup] Archived stuck PENDING events', { count: archived });
+  }
+
+  // 2. Reset stuck SENDING > 5 minutes to PENDING (chunked)
+  const resetSending = await chunkedUpdate(
+    `status = 'SENDING' AND updated_at <= '${stuckCutoffISO}'`,
+    `status = 'PENDING', last_error = 'Reset from stuck SENDING state (periodic)', next_attempt_at = NULL`
+  );
+
+  if (resetSending > 0) {
+    logger.info('[TechEventCleanup] Reset stuck SENDING events to PENDING', { count: resetSending });
+  }
+
+  // 3. Cleanup old SENT/FAILED > 7 days (chunked)
+  const deleted = await chunkedDelete(
+    `created_at <= '${oldCutoffISO}' AND status IN ('SENT', 'FAILED')`
+  );
+
+  if (deleted > 0) {
+    logger.info('[TechEventCleanup] Deleted old SENT/FAILED events', { count: deleted });
+  }
+
+  // Log remaining counts
+  const [pendingCount, sendingCount, sentCount, failedCount] = await Promise.all([
+    prismaBulk.tech_event_outbox.count({ where: { status: 'PENDING' } }),
+    prismaBulk.tech_event_outbox.count({ where: { status: 'SENDING' } }),
+    prismaBulk.tech_event_outbox.count({ where: { status: 'SENT' } }),
+    prismaBulk.tech_event_outbox.count({ where: { status: 'FAILED' } }),
+  ]);
+
+  logger.info('[TechEventCleanup] Completed. Current counts:', {
+    pending: pendingCount,
+    sending: sendingCount,
+    sent: sentCount,
+    failed: failedCount,
+  });
+}
+
 async function logWorkerHealth(): Promise<void> {
   const lockKeys = ['sync', 'push', 'tech_events', 'auto_assign'] as const;
   const lockStatuses = await Promise.all(lockKeys.map((k) => getLockStatus(k)));
@@ -502,9 +612,10 @@ async function startWorker() {
     cron.schedule('0 6 * * *', () => runWithCorrelationContext('ops-worker', () => void runReconciliation())),
     cron.schedule('5 0 * * *', () => runWithCorrelationContext('ops-worker', () => void resetAllStaleAssignedTickets())),
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void monitorBridgeDLQ())),
+    cron.schedule('0 3 * * *', () => runWithCorrelationContext('ops-worker', () => void runTechEventCleanup())),
   ];
 
-  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m) gauge-reconcile(2m)', { component: 'worker' });
+  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m) gauge-reconcile(2m) tech-event-cleanup(3am)', { component: 'worker' });
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },

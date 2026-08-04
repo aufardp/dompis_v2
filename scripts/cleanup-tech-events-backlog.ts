@@ -9,66 +9,99 @@ import { prismaBulk } from '@/app/libs/prisma';
 import { decrOutboxPending } from '@/lib/observability/gauge-counters';
 import { logger } from '@/lib/observability/logger';
 
+const CHUNK_SIZE = 500;
+const LOCK_WAIT_TIMEOUT = 120;
+
+async function setLockWaitTimeout() {
+  await prismaBulk.$executeRawUnsafe(`SET SESSION innodb_lock_wait_timeout = ${LOCK_WAIT_TIMEOUT}`);
+}
+
+async function chunkedUpdate(
+  whereClause: string,
+  setClause: string,
+  chunkSize = CHUNK_SIZE
+): Promise<number> {
+  let total = 0;
+  while (true) {
+    const result = await prismaBulk.$executeRawUnsafe(`
+      UPDATE tech_event_outbox
+      SET ${setClause}
+      WHERE id IN (
+        SELECT id FROM tech_event_outbox
+        WHERE ${whereClause}
+        ORDER BY id LIMIT ${chunkSize}
+      )
+    `);
+    if (result === 0) break;
+    total += result;
+    await new Promise(r => setTimeout(r, 100)); // yield to other queries
+  }
+  return total;
+}
+
+async function chunkedDelete(
+  whereClause: string,
+  chunkSize = CHUNK_SIZE
+): Promise<number> {
+  let total = 0;
+  while (true) {
+    const result = await prismaBulk.$executeRawUnsafe(`
+      DELETE FROM tech_event_outbox
+      WHERE id IN (
+        SELECT id FROM tech_event_outbox
+        WHERE ${whereClause}
+        ORDER BY id LIMIT ${chunkSize}
+      )
+    `);
+    if (result === 0) break;
+    total += total + result;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return total;
+}
+
 async function cleanupStuckPending() {
+  await setLockWaitTimeout();
+
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  
-  logger.info('[Cleanup] Starting tech_event_outbox backlog cleanup', {
-    cutoff: cutoff.toISOString(),
-  });
-
-  // Archive PENDING > 7 days to FAILED
-  const archived = await prismaBulk.tech_event_outbox.updateMany({
-    where: {
-      status: 'PENDING',
-      created_at: { lte: cutoff },
-    },
-    data: {
-      status: 'FAILED',
-      last_error: 'Archived: stuck PENDING > 7 days',
-      next_attempt_at: null,
-    },
-  });
-
-  if (archived.count > 0) {
-    await decrOutboxPending(archived.count);
-    logger.info('[Cleanup] Archived stuck PENDING events', {
-      count: archived.count,
-    });
-  }
-
-  // Also reset stuck SENDING > 5 minutes to PENDING
+  const cutoffISO = cutoff.toISOString().slice(0, 19).replace('T', ' ');
   const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000);
-  const resetSending = await prismaBulk.tech_event_outbox.updateMany({
-    where: {
-      status: 'SENDING',
-      updated_at: { lte: stuckCutoff },
-    },
-    data: {
-      status: 'PENDING',
-      last_error: 'Reset from stuck SENDING state (cleanup)',
-      next_attempt_at: null,
-    },
+  const stuckCutoffISO = stuckCutoff.toISOString().slice(0, 19).replace('T', ' ');
+  const oldCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const oldCutoffISO = oldCutoff.toISOString().slice(0, 19).replace('T', ' ');
+
+  logger.info('[Cleanup] Starting tech_event_outbox backlog cleanup', {
+    cutoff: cutoffISO,
   });
 
-  if (resetSending.count > 0) {
-    logger.info('[Cleanup] Reset stuck SENDING events to PENDING', {
-      count: resetSending.count,
-    });
+  // 1. Archive PENDING > 7 days to FAILED (chunked)
+  const archived = await chunkedUpdate(
+    `status = 'PENDING' AND created_at <= '${cutoffISO}'`,
+    `status = 'FAILED', last_error = 'Archived: stuck PENDING > 7 days', next_attempt_at = NULL`
+  );
+
+  if (archived > 0) {
+    await decrOutboxPending(archived);
+    logger.info('[Cleanup] Archived stuck PENDING events', { count: archived });
   }
 
-  // Cleanup old SENT/FAILED (>7 days)
-  const oldCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const deleted = await prismaBulk.tech_event_outbox.deleteMany({
-    where: {
-      created_at: { lte: oldCutoff },
-      status: { in: ['SENT', 'FAILED'] },
-    },
-  });
+  // 2. Reset stuck SENDING > 5 minutes to PENDING (chunked)
+  const resetSending = await chunkedUpdate(
+    `status = 'SENDING' AND updated_at <= '${stuckCutoffISO}'`,
+    `status = 'PENDING', last_error = 'Reset from stuck SENDING state (cleanup)', next_attempt_at = NULL`
+  );
 
-  if (deleted.count > 0) {
-    logger.info('[Cleanup] Deleted old SENT/FAILED events', {
-      count: deleted.count,
-    });
+  if (resetSending > 0) {
+    logger.info('[Cleanup] Reset stuck SENDING events to PENDING', { count: resetSending });
+  }
+
+  // 3. Cleanup old SENT/FAILED > 7 days (chunked)
+  const deleted = await chunkedDelete(
+    `created_at <= '${oldCutoffISO}' AND status IN ('SENT', 'FAILED')`
+  );
+
+  if (deleted > 0) {
+    logger.info('[Cleanup] Deleted old SENT/FAILED events', { count: deleted });
   }
 
   // Show remaining counts
