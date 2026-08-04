@@ -5,6 +5,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
+import { getOrSetCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,11 +92,18 @@ export async function GET(request: Request) {
       sortField: searchParams.get('sortField') || undefined,
     };
 
-    // Fetch from database
-    const result = await DailyTicketService.getDailyTicketTable(
-      user.role,
-      user.id_user,
-      filters,
+    // Build cache key identical to service internal cacheKeyBase
+    const cacheKey = `dashboard:daily:${user.role}:${user.id_user}:${JSON.stringify(filters)}`;
+    const CACHE_TTL_SECONDS = 15;
+
+    // Fetch from database with route-level single-flight cache
+    const result = await getOrSetCache(cacheKey, () =>
+      DailyTicketService.getDailyTicketTable(
+        user.role,
+        user.id_user,
+        filters,
+      ),
+      CACHE_TTL_SECONDS,
     );
 
     return NextResponse.json(

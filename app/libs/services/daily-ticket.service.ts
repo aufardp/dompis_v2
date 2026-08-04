@@ -1914,7 +1914,32 @@ export class DailyTicketService {
     userId: number,
     filters?: TicketFilters,
   ) {
-    await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 60000').catch(() => {});
+    await prisma.$executeRawUnsafe('SET SESSION max_execution_time = 10000').catch(() => {});
+
+    // Concurrency limiter: max 3 simultaneous heavy queries per wave
+    // Prevents a single dashboard request from exhausting the connection pool
+    const MAX_CONCURRENT = 3;
+    async function limitedPromiseAll<F extends Array<() => Promise<any>>>(
+      promises: F
+    ): Promise<{ [K in keyof F]: Awaited<ReturnType<F[K]>> }> {
+      const results: any[] = new Array(promises.length);
+      const executing: Promise<void>[] = [];
+      for (let i = 0; i < promises.length; i++) {
+        const promiseFn = promises[i];
+        const p = promiseFn().then((result) => {
+          results[i] = result;
+        });
+        executing.push(p);
+        if (executing.length >= MAX_CONCURRENT) {
+          await Promise.race(executing);
+          const idx = executing.findIndex((ep) => ep === p);
+          if (idx >= 0) executing.splice(idx, 1);
+        }
+      }
+      await Promise.all(executing);
+      return results as { [K in keyof F]: Awaited<ReturnType<F[K]>> };
+    }
+
     const { page = 1, limit = 10, sort = 'desc', sortField } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
     const includeValidasiTickets = filters?.includeValidasiTickets !== false;
@@ -2013,10 +2038,14 @@ export class DailyTicketService {
         const result = await this.countStatusesAndCustomerTypes(mainTableWhere);
         summary = result.summary;
         customerTypeSummary = result.customerTypeSummary;
-        [flaggingSummary, validasiCount] = await Promise.all([
-          this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
-          validasiCountPromise,
+        const [fs, vc] = await limitedPromiseAll<
+          [() => Promise<FlaggingSummary>, () => Promise<number>]
+        >([
+          () => this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
+          () => validasiCountPromise,
         ]);
+        flaggingSummary = fs;
+        validasiCount = vc;
       }
     } else {
       summary = { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 };
@@ -2026,10 +2055,12 @@ export class DailyTicketService {
     }
 
     // Gelombang 3 — optional filters
-    const [validasiTicketIds, statusOptions, ticketTypeOptions] = await Promise.all([
-      validasiTicketIdsPromise,
-      statusOptionsPromise,
-      ticketTypeOptionsPromise,
+    const [validasiTicketIds, statusOptions, ticketTypeOptions] = await limitedPromiseAll<
+      [() => Promise<number[]>, () => Promise<string[]>, () => Promise<TicketTypeOption[]>]
+    >([
+      () => validasiTicketIdsPromise,
+      () => statusOptionsPromise,
+      () => ticketTypeOptionsPromise,
     ]);
 
     const rankMap = new Map<number, number>();
@@ -2038,11 +2069,14 @@ export class DailyTicketService {
       return r.id_ticket;
     });
 
-    const [tickets, validasiTickets] = await Promise.all([
-      hydrateTicketsByIds(ticketIdList),
-      includeValidasiTickets
-        ? hydrateTicketsByIds(validasiTicketIds)
-        : Promise.resolve([] as Awaited<ReturnType<typeof hydrateTicketsByIds>>),
+    const [tickets, validasiTickets] = await limitedPromiseAll<
+      [() => Promise<Awaited<ReturnType<typeof hydrateTicketsByIds>>>, () => Promise<Awaited<ReturnType<typeof hydrateTicketsByIds>>>]
+    >([
+      () => hydrateTicketsByIds(ticketIdList),
+      () =>
+        includeValidasiTickets
+          ? hydrateTicketsByIds(validasiTicketIds)
+          : Promise.resolve([] as Awaited<ReturnType<typeof hydrateTicketsByIds>>),
     ]);
 
     const mappedTickets = tickets.filter((t): t is NonNullable<typeof t> => t != null).map((t) => {
