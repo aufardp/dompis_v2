@@ -561,7 +561,9 @@ export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string
   const conditions: string[] = [];
   const params: any[] = [];
 
-  function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
+  const FULLTEXT_FIELDS = new Set(['jenis_tiket_1', 'jenis_tiket_2', 'symptom']);
+
+function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
     if (!node || typeof node !== 'object') return;
 
     if (Array.isArray(node)) {
@@ -666,8 +668,13 @@ export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string
           if (operator.not === null) {
             conditions.push(`\`${key}\` IS NOT NULL`);
           } else if (typeof operator.not === 'object' && operator.not.contains !== undefined) {
-            conditions.push(`\`${key}\` NOT LIKE ?`);
-            params.push(`%${operator.not.contains}%`);
+            if (FULLTEXT_FIELDS.has(key)) {
+              conditions.push(`NOT MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
+              params.push(`+${operator.not.contains}*`);
+            } else {
+              conditions.push(`\`${key}\` NOT LIKE ?`);
+              params.push(`%${operator.not.contains}%`);
+            }
           } else if (typeof operator.not === 'object' && operator.not.startsWith !== undefined) {
             conditions.push(`\`${key}\` NOT LIKE ?`);
             params.push(`${operator.not.startsWith}%`);
@@ -694,8 +701,14 @@ export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string
         }
 
         if (operator.contains !== undefined) {
-          conditions.push(`\`${key}\` LIKE ?`);
-          params.push(`%${operator.contains}%`);
+          if (FULLTEXT_FIELDS.has(key)) {
+            // Use FULLTEXT search with boolean mode for partial matching
+            conditions.push(`MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
+            params.push(`+${operator.contains}*`);
+          } else {
+            conditions.push(`\`${key}\` LIKE ?`);
+            params.push(`%${operator.contains}%`);
+          }
           continue;
         }
 
