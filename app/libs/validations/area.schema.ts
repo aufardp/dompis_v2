@@ -5,6 +5,9 @@ export const createAreaSchema = z.object({
       .string()
       .min(2, "Nama minimal 2 karakter")
       .max(100, "Nama maksimal 100 karakter"),
+   branch_id: z.coerce.number({
+      message: "Branch wajib dipilih",
+   }),
 });
 
 export const updateAreaSchema = z.object({
@@ -15,4 +18,7 @@ export const updateAreaSchema = z.object({
       .string()
       .min(2, "Nama minimal 2 karakter")
       .max(100, "Nama maksimal 100 karakter"),
+   branch_id: z.coerce.number({
+      message: "Branch wajib dipilih",
+   }).optional(),
 });

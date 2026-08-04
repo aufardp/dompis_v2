@@ -20,13 +20,77 @@ export async function getWorkzonesForUser(userId: number): Promise<string[]> {
   return getOrSetCache(
     `ticket_helpers:workzones:${userId}`,
     async () => {
-      const userSas = await prisma.user_sa.findMany({
-        where: { user_id: userId },
-        include: { service_area: true },
+      const [directSas, areaSas, branchSas, regionSas] = await Promise.all([
+        prisma.user_sa.findMany({
+          where: { user_id: userId },
+          include: { service_area: { select: { nama_sa: true } } },
+        }),
+        prisma.user_area.findMany({
+          where: { user_id: userId },
+          include: {
+            area: {
+              include: { service_area: { select: { nama_sa: true } } },
+            },
+          },
+        }),
+        prisma.user_branch.findMany({
+          where: { user_id: userId },
+          include: {
+            branch: {
+              include: {
+                areas: {
+                  include: { service_area: { select: { nama_sa: true } } },
+                },
+              },
+            },
+          },
+        }),
+        prisma.user_region.findMany({
+          where: { user_id: userId },
+          include: {
+            region: {
+              include: {
+                branches: {
+                  include: {
+                    areas: {
+                      include: { service_area: { select: { nama_sa: true } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+      const names = new Set<string>();
+
+      directSas.forEach((us) => {
+        if (us.service_area?.nama_sa) names.add(us.service_area.nama_sa);
       });
-      return userSas
-        .map((us) => us.service_area?.nama_sa)
-        .filter((name): name is string => name !== null && name !== undefined);
+      areaSas.forEach((ua) => {
+        ua.area?.service_area.forEach((sa) => {
+          if (sa.nama_sa) names.add(sa.nama_sa);
+        });
+      });
+      branchSas.forEach((ub) => {
+        ub.branch?.areas.forEach((a) =>
+          a.service_area.forEach((sa) => {
+            if (sa.nama_sa) names.add(sa.nama_sa);
+          }),
+        );
+      });
+      regionSas.forEach((ur) => {
+        ur.region?.branches.forEach((b) =>
+          b.areas.forEach((a) =>
+            a.service_area.forEach((sa) => {
+              if (sa.nama_sa) names.add(sa.nama_sa);
+            }),
+          ),
+        );
+      });
+
+      return [...names];
     },
     3600,
   );

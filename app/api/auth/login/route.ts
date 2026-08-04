@@ -10,7 +10,7 @@ import {
 } from '@/app/libs/auth';
 
 import { AttendanceService } from '@/app/libs/services/attendance.service';
-import { roleKeyToRoleId } from '@/app/libs/roles';
+import { roleKeyToRoleId, NormalizedRoleKey } from '@/app/libs/roles';
 import {
   findUserByUsername,
   findUserWorkzones,
@@ -116,9 +116,7 @@ export async function POST(req: Request) {
 
     const role = user.role_key ?? '';
 
-    const role_id = roleKeyToRoleId(
-      role as 'superadmin' | 'admin' | 'helpdesk' | 'teknisi',
-    );
+    const role_id = roleKeyToRoleId(role as NormalizedRoleKey);
 
     /**
      * Workzone (only for teknisi)

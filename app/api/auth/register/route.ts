@@ -38,6 +38,13 @@ export async function POST(req: Request) {
 
     const { nik, nama, jabatan, username, password, role_id, id_area, id_sa } = parsed.data;
 
+    if (Number(role_id) === 1) {
+      return NextResponse.json(
+        { success: false, message: 'Tidak dapat membuat user ber-role superadmin melalui registrasi' },
+        { status: 403 },
+      );
+    }
+
     const sa_ids = id_sa ? [id_sa] : [];
 
     const id = await createUser({

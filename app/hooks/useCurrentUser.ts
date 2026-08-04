@@ -9,6 +9,7 @@ export interface CurrentUser {
   nama: string;
   jabatan: string;
   role_name: string;
+  role_key: string;
 }
 
 export function useCurrentUser() {

@@ -21,7 +21,7 @@ export default async function RekapWorkorderPage() {
   const user = await getUser();
   if (!user) redirect('/auth/login');
   if (user.role === 'teknisi') redirect('/teknisi');
-  const homeHref = user.role === 'superadmin' ? '/superadmin' : '/admin';
+  const homeHref = '/admin';
   const initialWorkzone = await getInitialWorkzoneScope();
 
   return (

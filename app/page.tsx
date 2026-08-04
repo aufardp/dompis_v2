@@ -13,7 +13,9 @@ export default async function Home() {
       if (
         decoded.role === 'admin' ||
         decoded.role === 'superadmin' ||
-        decoded.role === 'super_admin'
+        decoded.role === 'super_admin' ||
+        decoded.role === 'senior_leader' ||
+        decoded.role === 'admin_branch'
       ) {
         redirect('/admin');
       }

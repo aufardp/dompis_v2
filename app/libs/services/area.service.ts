@@ -26,23 +26,37 @@ export async function getAreaById(id: string) {
   };
 }
 
-export async function createArea(data: { nama_area: string }) {
+export async function createArea(data: { nama_area: string; branch_id: number }) {
+  const branch = await prisma.branch.findUnique({
+    where: { id_branch: data.branch_id },
+  });
+
+  if (!branch) {
+    throw new Error('Branch tidak ditemukan');
+  }
+
   const existing = await prisma.area.findFirst({
-    where: { nama_area: data.nama_area },
+    where: {
+      nama_area: data.nama_area,
+      branch_id: data.branch_id,
+    },
   });
 
   if (existing) {
-    throw new Error('Area sudah ada');
+    throw new Error('Area sudah ada di branch tersebut');
   }
 
   const area = await prisma.area.create({
-    data: { nama_area: data.nama_area },
+    data: { nama_area: data.nama_area, branch_id: data.branch_id },
   });
 
   return area.id_area;
 }
 
-export async function updateArea(id: string, data: { nama_area?: string }) {
+export async function updateArea(
+  id: string,
+  data: { nama_area?: string; branch_id?: number },
+) {
   const existing = await prisma.area.findUnique({
     where: { id_area: Number(id) },
   });
@@ -51,16 +65,27 @@ export async function updateArea(id: string, data: { nama_area?: string }) {
     throw new Error('Area tidak ditemukan');
   }
 
+  if (data.branch_id) {
+    const branch = await prisma.branch.findUnique({
+      where: { id_branch: data.branch_id },
+    });
+
+    if (!branch) {
+      throw new Error('Branch tidak ditemukan');
+    }
+  }
+
   if (data.nama_area) {
     const duplicate = await prisma.area.findFirst({
       where: {
         nama_area: data.nama_area,
+        branch_id: data.branch_id ?? existing.branch_id,
         NOT: { id_area: Number(id) },
       },
     });
 
     if (duplicate) {
-      throw new Error('Nama area sudah ada');
+      throw new Error('Nama area sudah ada di branch tersebut');
     }
   }
 
@@ -68,6 +93,7 @@ export async function updateArea(id: string, data: { nama_area?: string }) {
     where: { id_area: Number(id) },
     data: {
       nama_area: data.nama_area,
+      branch_id: data.branch_id,
       updated_at: new Date(),
     },
   });

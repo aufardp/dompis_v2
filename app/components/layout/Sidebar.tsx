@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { subscribe, getSnapshot } from '@/app/libs/bucket-sync-store';
 import clsx from 'clsx';
 import {
+  Activity,
   Archive,
   BarChart3,
   BookUser,
@@ -24,11 +25,11 @@ import {
   MapPinned,
   Ticket,
 } from 'lucide-react';
-import { fetchWithAuth } from '@/app/libs/fetcher';
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
+import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import Image from 'next/image';
 
 type MenuIcon = ComponentType<{ className?: string }>;
@@ -38,6 +39,7 @@ const MENU_ITEMS: Array<{
   path: string;
   icon: MenuIcon;
   superadminOnly?: boolean;
+  adminBranchVisible?: boolean;
   hint: string;
 }> = [
   {
@@ -87,6 +89,21 @@ const MENU_ITEMS: Array<{
     path: '/admin/import-tiket',
     icon: Upload,
     hint: 'Data pipeline',
+  },
+  {
+    label: 'Infrastructure Monitor',
+    path: '/superadmin',
+    icon: Activity,
+    hint: 'Workers & system health',
+    superadminOnly: true,
+  },
+  {
+    label: 'Manajemen User',
+    path: '/superadmin/users',
+    icon: ShieldCheck,
+    hint: 'User & hierarki region',
+    superadminOnly: true,
+    adminBranchVisible: true,
   },
 ];
 
@@ -247,9 +264,11 @@ export default function Sidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [roleName, setRoleName] = useState('');
   const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
+  const { user } = useCurrentUser();
+  const roleName = String(user?.role_name ?? '').toLowerCase();
+  const roleKey = String(user?.role_key ?? '').toLowerCase();
 
   const kpiCustomerFallback = useDailyTicketPage({
     dept: 'all',
@@ -320,49 +339,22 @@ export default function Sidebar({
   const sqmUpdateTotal = syncedCounts['sqm-update'] ?? sqmUpdateFallback;
   const obsoleteTotal = syncedCounts['obsolete'] ?? obsoleteFallback;
 
-  console.log('[SIDEBAR] display:', {
-    syncedCounts,
-    nonKpiUnspecFallback,
-    nonKpiUnspecTotal,
-    kpiCustomerTotal,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCurrentUser() {
-      try {
-        const userRes = await fetchWithAuth('/api/users/me');
-        if (!userRes) return;
-
-        const data = await userRes.json();
-        if (!cancelled && data.success) {
-          setRoleName(String(data.data?.role_name ?? '').toLowerCase());
-        }
-      } catch {
-        // Sidebar context is non-critical; keep the shell stable if auth is
-        // temporarily unavailable or the request is blocked.
-        if (!cancelled) {
-          setRoleName('');
-        }
-      }
-    }
-
-    loadCurrentUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleNavigate = (path: string) => {
     router.push(path);
     onClose();
   };
 
-  const isSuperAdmin = roleName === 'superadmin' || roleName === 'super_admin';
+  const isSuperAdmin =
+    roleKey === 'superadmin' ||
+    roleName === 'superadmin' ||
+    roleName === 'super_admin' ||
+    roleName === 'super admin';
+  const isAdminBranch = roleKey === 'admin_branch';
   const visibleMenuItems = MENU_ITEMS.filter(
-    (item) => !item.superadminOnly || isSuperAdmin,
+    (item) =>
+      !item.superadminOnly ||
+      isSuperAdmin ||
+      (item.adminBranchVisible && isAdminBranch),
   );
   const isTicketManagementOpen =
     pathname === '/admin' || pathname.startsWith('/admin/ticket-management');

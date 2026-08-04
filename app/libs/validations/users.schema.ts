@@ -37,9 +37,18 @@ export const userSchema = z.object({
       message: "Area wajib dipilih",
    }),
 
-   sa_id: z.coerce.number().refine((val) => val > 0, {
-      message: "SA wajib dipilih",
-   }),
+   sa_ids: z
+      .array(z.coerce.number().positive({ message: "Service area wajib dipilih" }))
+      .min(1, "Pilih minimal 1 service area"),
+   region_ids: z
+      .array(z.coerce.number().positive())
+      .optional(),
+   branch_ids: z
+      .array(z.coerce.number().positive())
+      .optional(),
+   area_ids: z
+      .array(z.coerce.number().positive())
+      .optional(),
    created_at: z.date().optional(),
    updated_at: z.date().optional(),
 });
@@ -54,7 +63,10 @@ export const updateUserSchema = userSchema.extend({
    password: z.string().min(6).optional(),
    role_id: z.number().optional(),
    area_id: z.number().optional(),
-   sa_id: z.number().optional(),
+   sa_ids: z.array(z.coerce.number().positive()).optional(),
+   region_ids: z.array(z.coerce.number().positive()).optional(),
+   branch_ids: z.array(z.coerce.number().positive()).optional(),
+   area_ids: z.array(z.coerce.number().positive()).optional(),
    // created_at: z.date().optional(),
    // updated_at: z.date().optional(),
 });

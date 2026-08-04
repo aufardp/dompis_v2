@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     });
     if (rateLimited) return rateLimited;
 
-    await protectApi(['admin', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const body = await req.json();
     const validated = createServiceAreaSchema.parse({
@@ -136,7 +136,7 @@ export async function PUT(req: Request) {
     });
     if (rateLimited) return rateLimited;
 
-    await protectApi(['admin', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const body = await req.json();
 
@@ -180,7 +180,7 @@ export async function DELETE(req: Request) {
     });
     if (rateLimited) return rateLimited;
 
-    await protectApi(['admin', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

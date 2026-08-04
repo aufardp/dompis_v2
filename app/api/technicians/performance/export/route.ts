@@ -11,6 +11,11 @@ import { getOrSetCache } from '@/lib/cache';
 
 const CACHE_TTL_SECONDS = 30;
 
+const EXPORT_MAX_ROWS = Number.parseInt(
+  process.env.TECH_PERFORMANCE_EXPORT_MAX_ROWS || '10000',
+  10,
+);
+
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.floor(n) : fallback;
@@ -101,8 +106,18 @@ export async function GET(req: NextRequest) {
             ...(wzFilter ? wzFilter : {}),
           };
 
+          const total = await prisma.ticket.count({ where });
+          if (total > EXPORT_MAX_ROWS) {
+            throw Object.assign(
+              new Error(
+                `Export terlalu besar (${total} row). Persempit workzone atau periode export.`,
+              ),
+              { status: 413 },
+            );
+          }
+
           const rows = await prisma.ticket.findMany({
-            take: 10000,
+            take: EXPORT_MAX_ROWS,
             where,
             include: { users: { select: { nama: true, nik: true } } },
             orderBy: { closed_at: 'desc' },

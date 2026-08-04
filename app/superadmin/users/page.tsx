@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import { verifyAccessToken } from '@/app/libs/auth';
 import { cookies } from 'next/headers';
-import RekapWorkorderClient from '@/app/components/dashboard/rekap/RekapWorkorderClient';
 import AdminLayout from '@/app/components/layout/AdminLayout';
+import { AdminToastProvider } from '@/app/admin/components/dashboard/admin-toast';
+import SuperadminUsersClient from './SuperadminUsersClient';
 
 async function getUser() {
   try {
@@ -10,16 +11,22 @@ async function getUser() {
     const token = cookieStore.get('token')?.value;
     if (!token) return null;
     return await verifyAccessToken(token);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export default async function RekapWorkorderPage() {
+export default async function SuperadminUsersPage() {
   const user = await getUser();
-  if (!user) redirect('/auth/login');
+  if (!user) redirect('/login');
+  const role = String(user.role).toLowerCase();
+  if (role !== 'superadmin' && role !== 'admin_branch') redirect('/admin');
 
   return (
     <AdminLayout>
-      <RekapWorkorderClient />
+      <AdminToastProvider>
+        <SuperadminUsersClient />
+      </AdminToastProvider>
     </AdminLayout>
   );
 }

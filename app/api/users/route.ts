@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { getAllUsers, createUser } from '@/app/libs/services/users.service';
+import { getAllUsers, createUser, canAssignRole } from '@/app/libs/services/users.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { createUserSchema } from '@/app/libs/validations/users.schema';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const rateLimited = await enforceApiRateLimit(req, {
       namespace: 'users-create',
@@ -50,6 +50,17 @@ export async function POST(req: NextRequest) {
     if (rateLimited) return rateLimited;
 
     const body = await req.json();
+
+    if (!canAssignRole(actor.role, Number(body.role_id))) {
+      const msg =
+        Number(body.role_id) === 1
+          ? 'Hanya superadmin yang dapat membuat user ber-role superadmin'
+          : 'Role senior leader hanya dapat dibuat oleh superadmin / admin branch';
+      return NextResponse.json(
+        { success: false, message: msg },
+        { status: 403 },
+      );
+    }
 
     const parsed = createUserSchema.safeParse(body);
     if (!parsed.success) {

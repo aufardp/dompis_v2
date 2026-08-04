@@ -42,8 +42,8 @@ export default function LoginForm() {
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         if (role === 'superadmin') {
-          window.location.replace('/superadmin');
-        } else if (role === 'admin') {
+          window.location.replace('/admin');
+        } else if (role === 'admin' || role === 'senior_leader' || role === 'admin_branch') {
           window.location.replace('/admin');
         } else if (role === 'teknisi') {
           if (needsAttendanceCheck) {

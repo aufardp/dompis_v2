@@ -55,13 +55,21 @@ function normalizeRoleKey(role: string): string {
   if (key === 'teknisi' || key === 'technician') {
     return 'teknisi';
   }
+  if (key === 'senior_leader' || key === 'sl' || key === 'seniorleader') {
+    return 'senior_leader';
+  }
+  if (key === 'admin_branch' || key === 'adminbranch') {
+    return 'admin_branch';
+  }
   return '';
 }
 
 // --- CONFIG ---
 const ROLE_HOME: Record<string, string> = {
-  superadmin: '/superadmin',
+  superadmin: '/admin',
   admin: '/admin',
+  senior_leader: '/admin',
+  admin_branch: '/admin',
   helpdesk: '/helpdesk',
   teknisi: '/teknisi',
 };
@@ -161,7 +169,9 @@ export async function middleware(req: NextRequest) {
   if (
     pathname.startsWith('/admin') &&
     userRole !== 'admin' &&
-    userRole !== 'superadmin'
+    userRole !== 'superadmin' &&
+    userRole !== 'senior_leader' &&
+    userRole !== 'admin_branch'
   ) {
     return safeRedirect(roleHome);
   }
@@ -169,13 +179,22 @@ export async function middleware(req: NextRequest) {
   if (
     pathname.startsWith('/helpdesk') &&
     userRole !== 'helpdesk' &&
-    userRole !== 'superadmin'
+    userRole !== 'superadmin' &&
+    userRole !== 'senior_leader'
   ) {
     return safeRedirect(roleHome);
   }
 
-  if (pathname.startsWith('/superadmin') && userRole !== 'superadmin') {
-    return safeRedirect(roleHome);
+  if (pathname.startsWith('/superadmin')) {
+    const isUsersPage =
+      pathname === '/superadmin/users' ||
+      pathname.startsWith('/superadmin/users/');
+    const allowed =
+      userRole === 'superadmin' ||
+      (userRole === 'admin_branch' && isUsersPage);
+    if (!allowed) {
+      return safeRedirect(roleHome);
+    }
   }
 
   if (pathname.startsWith('/teknisi') && userRole !== 'teknisi') {

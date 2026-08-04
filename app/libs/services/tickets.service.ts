@@ -17,6 +17,7 @@ import { toWibString, toWibDateString, getTodayWibRange } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
 import { buildSqlWhereClause } from './daily-ticket.service';
+import { ApiError } from '@/app/libs/apiError';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -735,6 +736,16 @@ export class TicketService {
       endDate,
       searchType,
     });
+
+    if (maxRows > 0) {
+      const total = await prisma.ticket.count({ where });
+      if (total > safeLimit) {
+        throw new ApiError(
+          413,
+          `Export terlalu besar (${total} row). Persempit filter sebelum export.`,
+        );
+      }
+    }
 
     const tickets = await prisma.ticket.findMany({
       where,

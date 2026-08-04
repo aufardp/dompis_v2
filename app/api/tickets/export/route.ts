@@ -9,6 +9,11 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export const dynamic = 'force-dynamic';
 
+const SEMESTA_EXPORT_MAX_ROWS = Number.parseInt(
+  process.env.SEMESTA_EXPORT_MAX_ROWS || '100000',
+  10,
+);
+
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
@@ -235,7 +240,7 @@ export async function GET(request: Request) {
       ticketType,
       startDate,
       endDate,
-      maxRows: 10000,
+      maxRows: SEMESTA_EXPORT_MAX_ROWS,
     });
 
     const columns = getTicketColumns();

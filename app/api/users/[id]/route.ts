@@ -7,9 +7,11 @@ import {
   getUserById,
   updateUser,
   deleteUser,
+  canAssignRole,
 } from '@/app/libs/services/users.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { updateUserSchema } from '@/app/libs/validations/users.schema';
+import { normalizeRoleKey } from '@/app/libs/roles';
 
 export async function GET(
   req: NextRequest,
@@ -50,7 +52,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const rateLimited = await enforceApiRateLimit(req, {
       namespace: 'users-update',
@@ -69,6 +71,33 @@ export async function PUT(
     }
 
     const body = await req.json();
+
+    const targetUser = await getUserById(id);
+    if (
+      targetUser &&
+      targetUser.role_id === 1 &&
+      normalizeRoleKey(actor.role) !== 'superadmin'
+    ) {
+      return NextResponse.json(
+        { success: false, message: 'Hanya superadmin yang dapat mengubah user ber-role superadmin' },
+        { status: 403 },
+      );
+    }
+
+    if (
+      body.role_id !== undefined &&
+      !canAssignRole(actor.role, Number(body.role_id))
+    ) {
+      const msg =
+        Number(body.role_id) === 1
+          ? 'Hanya superadmin yang dapat mengubah role menjadi superadmin'
+          : 'Role senior leader hanya dapat diatur oleh superadmin / admin branch';
+      return NextResponse.json(
+        { success: false, message: msg },
+        { status: 403 },
+      );
+    }
+
     const parsed = updateUserSchema.passthrough().safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -96,7 +125,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const rateLimited = await enforceApiRateLimit(req, {
       namespace: 'users-update',
@@ -111,6 +140,18 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, message: 'Invalid user id' },
         { status: 400 },
+      );
+    }
+
+    const targetUser = await getUserById(id);
+    if (
+      targetUser &&
+      targetUser.role_id === 1 &&
+      normalizeRoleKey(actor.role) !== 'superadmin'
+    ) {
+      return NextResponse.json(
+        { success: false, message: 'Hanya superadmin yang dapat menghapus user ber-role superadmin' },
+        { status: 403 },
       );
     }
 

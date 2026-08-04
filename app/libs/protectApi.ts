@@ -2,7 +2,10 @@ import { cookies, headers } from 'next/headers';
 import { verifyAccessToken } from './auth';
 import { ApiError } from './apiError';
 
-export async function protectApi(allowedRoles: string[] = []) {
+export async function protectApi(
+  allowedRoles: string[] = [],
+  opts: { strict?: boolean } = {},
+) {
   let token: string | undefined;
 
   // 🔹 1. Check Authorization Bearer
@@ -29,9 +32,34 @@ export async function protectApi(allowedRoles: string[] = []) {
     throw new ApiError(401, 'Unauthorized - Invalid or expired token');
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(decoded.role)) {
+  if (
+    allowedRoles.length > 0 &&
+    !isRoleAllowed(decoded.role, allowedRoles, opts.strict)
+  ) {
     throw new ApiError(403, 'Forbidden - Access denied');
   }
 
   return decoded;
+}
+
+/**
+ * Role hierarchy check.
+ * `senior_leader` and `admin_branch` are granted the same access as
+ * `admin`/`superadmin` (admin-equivalent roles with restricted menus).
+ * When `strict` is true, no equivalence mapping is applied (exact match only).
+ */
+function isRoleAllowed(
+  role: string,
+  allowedRoles: string[],
+  strict?: boolean,
+): boolean {
+  if (allowedRoles.includes(role)) return true;
+
+  if (strict) return false;
+
+  if (role === 'senior_leader' || role === 'admin_branch') {
+    return allowedRoles.includes('admin') || allowedRoles.includes('superadmin');
+  }
+
+  return false;
 }

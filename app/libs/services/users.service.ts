@@ -1,5 +1,7 @@
 import prisma from '@/app/libs/prisma';
 import bcrypt from 'bcryptjs';
+import { deleteCache } from '@/lib/cache';
+import { normalizeRoleKey } from '@/app/libs/roles';
 
 export interface CreateUserDTO {
   nik: string;
@@ -11,6 +13,9 @@ export interface CreateUserDTO {
   area_id: number;
   sa_ids?: number[];
   sa_id?: number;
+  region_ids?: number[];
+  branch_ids?: number[];
+  area_ids?: number[];
 }
 
 export interface UpdateUserDTO {
@@ -23,6 +28,9 @@ export interface UpdateUserDTO {
   area_id?: number;
   sa_ids?: number[];
   sa_id?: number;
+  region_ids?: number[];
+  branch_ids?: number[];
+  area_ids?: number[];
 }
 
 export interface CurrentUser {
@@ -30,6 +38,7 @@ export interface CurrentUser {
   nama: string;
   jabatan: string;
   role_name: string;
+  role_key: string;
 }
 
 export interface UserById {
@@ -44,6 +53,9 @@ export interface UserById {
   created_at: Date;
   updated_at: Date;
   sa_ids: number[];
+  region_ids: number[];
+  branch_ids: number[];
+  area_ids: number[];
 }
 
 export async function getAllUsers(filters?: {
@@ -76,6 +88,7 @@ export async function getAllUsers(filters?: {
       area_id: true,
       created_at: true,
       updated_at: true,
+      roles: { select: { key: true, name: true } },
     },
     orderBy: { id_user: 'desc' },
     take: 1000,
@@ -84,22 +97,73 @@ export async function getAllUsers(filters?: {
   return users;
 }
 
+export async function findUserByNik(nik: string, excludeId?: number) {
+  return prisma.users.findFirst({
+    where: {
+      nik,
+      ...(excludeId ? { NOT: { id_user: excludeId } } : {}),
+    },
+    select: {
+      id_user: true,
+      nik: true,
+      nama: true,
+      username: true,
+      roles: { select: { name: true, key: true } },
+    },
+  });
+}
+
 export async function getUserById(id: number) {
   const user = await prisma.users.findUnique({
     where: { id_user: id },
     include: {
-      user_sa: true,
+      user_sa: {
+        include: {
+          service_area: {
+            include: { area: true },
+          },
+        },
+      },
+      user_region: true,
+      user_branch: true,
+      user_area: true,
     },
   });
 
   if (!user) return null;
 
-  const sa_ids = user.user_sa
-    .map((us: { sa_id: number | null }) => us.sa_id)
-    .filter((sa: number | null): sa is number => sa !== null);
+  const pickIds = (
+    rows: { user_id: number | null; sa_id?: number | null; region_id?: number | null; branch_id?: number | null; area_id?: number | null }[],
+    key: 'sa_id' | 'region_id' | 'branch_id' | 'area_id',
+  ) =>
+    rows
+      .map((r) => r[key])
+      .filter((v): v is number => v !== null && v !== undefined);
 
-  const { password: _password, user_sa, ...rest } = user;
-  return { ...rest, sa_ids };
+  const {
+    password: _password,
+    user_sa,
+    user_region,
+    user_branch,
+    user_area,
+    ...rest
+  } = user;
+
+  return {
+    ...rest,
+    sa_ids: pickIds(user_sa, 'sa_id'),
+    sa_areas: user_sa
+      .filter((us) => us.sa_id !== null)
+      .map((us) => ({
+        sa_id: us.sa_id as number,
+        area_id: us.service_area?.area_id ?? null,
+        nama_sa: us.service_area?.nama_sa ?? null,
+        nama_area: us.service_area?.area?.nama_area ?? null,
+      })),
+    region_ids: pickIds(user_region, 'region_id'),
+    branch_ids: pickIds(user_branch, 'branch_id'),
+    area_ids: pickIds(user_area, 'area_id'),
+  };
 }
 
 export async function getCurrentUser(
@@ -109,7 +173,7 @@ export async function getCurrentUser(
     where: { id_user },
     include: {
       roles: {
-        select: { name: true },
+        select: { name: true, key: true },
       },
     },
   });
@@ -121,6 +185,7 @@ export async function getCurrentUser(
     nama: user.nama || '',
     jabatan: user.jabatan || '',
     role_name: user.roles?.name || '',
+    role_key: user.roles?.key || '',
   };
 }
 
@@ -227,6 +292,21 @@ export async function createUser(data: CreateUserDTO) {
           sa_id: saId,
         })),
       },
+      user_region: {
+        create: (data.region_ids ?? []).map((regionId) => ({
+          region_id: regionId,
+        })),
+      },
+      user_branch: {
+        create: (data.branch_ids ?? []).map((branchId) => ({
+          branch_id: branchId,
+        })),
+      },
+      user_area: {
+        create: (data.area_ids ?? []).map((areaId) => ({
+          area_id: areaId,
+        })),
+      },
     },
   });
 
@@ -304,6 +384,43 @@ export async function updateUser(id: number, data: UpdateUserDTO) {
     }
   }
 
+  if (data.region_ids !== undefined) {
+    await prisma.user_region.deleteMany({ where: { user_id: id } });
+    if (data.region_ids.length > 0) {
+      await prisma.user_region.createMany({
+        data: data.region_ids.map((regionId) => ({ user_id: id, region_id: regionId })),
+      });
+    }
+  }
+
+  if (data.branch_ids !== undefined) {
+    await prisma.user_branch.deleteMany({ where: { user_id: id } });
+    if (data.branch_ids.length > 0) {
+      await prisma.user_branch.createMany({
+        data: data.branch_ids.map((branchId) => ({ user_id: id, branch_id: branchId })),
+      });
+    }
+  }
+
+  if (data.area_ids !== undefined) {
+    await prisma.user_area.deleteMany({ where: { user_id: id } });
+    if (data.area_ids.length > 0) {
+      await prisma.user_area.createMany({
+        data: data.area_ids.map((areaId) => ({ user_id: id, area_id: areaId })),
+      });
+    }
+  }
+
+  const scopeChanged =
+    data.sa_ids !== undefined ||
+    data.sa_id !== undefined ||
+    data.region_ids !== undefined ||
+    data.branch_ids !== undefined ||
+    data.area_ids !== undefined;
+  if (scopeChanged) {
+    await deleteCache(`ticket_helpers:workzones:${id}`);
+  }
+
   await prisma.users.update({
     where: { id_user: id },
     data: updateData,
@@ -324,6 +441,9 @@ export async function deleteUser(id: number) {
   await prisma.user_sa.deleteMany({
     where: { user_id: id },
   });
+  await prisma.user_region.deleteMany({ where: { user_id: id } });
+  await prisma.user_branch.deleteMany({ where: { user_id: id } });
+  await prisma.user_area.deleteMany({ where: { user_id: id } });
 
   await prisma.users.delete({
     where: { id_user: id },
@@ -332,8 +452,18 @@ export async function deleteUser(id: number) {
   return true;
 }
 
-export async function changePassword(
-  userId: number,
+export function canAssignRole(actorRole: string, targetRoleId: number): boolean {
+  const normalized = normalizeRoleKey(actorRole);
+  const isSuperadmin = normalized === 'superadmin';
+
+  if (targetRoleId === 1) return isSuperadmin;
+  if (targetRoleId === 5) {
+    return isSuperadmin || normalized === 'admin_branch';
+  }
+  return true;
+}
+
+export async function changePassword(  userId: number,
   currentPassword: string,
   newPassword: string,
 ) {

@@ -16,6 +16,16 @@ const DIRECT_EXPORT_MAX_ROWS = Number.parseInt(
   10,
 );
 
+function rejectTooLarge(count: number): NextResponse {
+  return NextResponse.json(
+    {
+      success: false,
+      message: `Export terlalu besar (${count} row). Persempit filter atau turunkan rentang data sebelum export.`,
+    },
+    { status: 413 },
+  );
+}
+
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
@@ -575,6 +585,10 @@ export async function GET(request: Request) {
       } else {
         allTickets = await fetchValidasiForDept(dept as 'b2b' | 'b2c');
       }
+
+      if (allTickets.length > DIRECT_EXPORT_MAX_ROWS) {
+        return rejectTooLarge(allTickets.length);
+      }
     } else {
       const firstRes = await DailyTicketService.getDailyTicketTable(
         user.role,
@@ -606,48 +620,55 @@ export async function GET(request: Request) {
 
     allTickets.push(...(firstRes.data ?? []));
 
-      const totalPages = firstRes.totalPages ?? 1;
-      if (totalPages > 1) {
-        const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-        const pageResults = await Promise.all(
-          remainingPages.map((p) =>
-            DailyTicketService.getDailyTicketTable(
-              user.role,
-              user.id_user,
-              {
-                page: p,
-                limit: FETCH_PAGE_SIZE,
-                dept,
-                search: search || undefined,
-                searchType,
-                workzone: workzone || undefined,
-                ctype: ctype || undefined,
-                startDate: startDate || undefined,
-                endDate: endDate || undefined,
-                includeValidasi: false,
-                includeSummary: false,
-                includeOptions: false,
-                ticketGroup: ticketGroupRaw,
-                operationalBucket: operationalBucketRaw,
-                anomalyBucket: anomalyBucketRaw,
-                regulerOnly: regulerOnlyRaw === 'true',
-                ticketStatus: ticketStatusRaw,
-                statusUpdate: statusUpdateRaw,
-                ticketType: ticketTypeRaw,
-                flagging: flaggingRaw,
-                gamasOnly,
-              },
-            ),
+    if (allTickets.length > DIRECT_EXPORT_MAX_ROWS) {
+      return rejectTooLarge(allTickets.length);
+    }
+
+    const totalPages = firstRes.totalPages ?? 1;
+    if (totalPages > 1) {
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+      const pageResults = await Promise.all(
+        remainingPages.map((p) =>
+          DailyTicketService.getDailyTicketTable(
+            user.role,
+            user.id_user,
+            {
+              page: p,
+              limit: FETCH_PAGE_SIZE,
+              dept,
+              search: search || undefined,
+              searchType,
+              workzone: workzone || undefined,
+              ctype: ctype || undefined,
+              startDate: startDate || undefined,
+              endDate: endDate || undefined,
+              includeValidasi: false,
+              includeSummary: false,
+              includeOptions: false,
+              ticketGroup: ticketGroupRaw,
+              operationalBucket: operationalBucketRaw,
+              anomalyBucket: anomalyBucketRaw,
+              regulerOnly: regulerOnlyRaw === 'true',
+              ticketStatus: ticketStatusRaw,
+              statusUpdate: statusUpdateRaw,
+              ticketType: ticketTypeRaw,
+              flagging: flaggingRaw,
+              gamasOnly,
+            },
           ),
-        );
-        for (const pageRes of pageResults) {
-          allTickets.push(...(pageRes.data ?? []));
+        ),
+      );
+      for (const pageRes of pageResults) {
+        allTickets.push(...(pageRes.data ?? []));
+        if (allTickets.length > DIRECT_EXPORT_MAX_ROWS) {
+          return rejectTooLarge(allTickets.length);
         }
       }
+    }
 
-      if (allTickets.length <= 500) {
-        await setCache(cacheKey, allTickets, EXPORT_CACHE_TTL);
-      }
+    if (allTickets.length <= 500) {
+      await setCache(cacheKey, allTickets, EXPORT_CACHE_TTL);
+    }
     }
 
     const filtered = applyFilters(allTickets, dept, filters);

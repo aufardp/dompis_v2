@@ -14,19 +14,32 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await protectApi(['admin', 'helpdesk', 'superadmin']);
 
+    const { searchParams } = new URL(request.url);
+    const branch_id = searchParams.get('branch_id')
+      ? Number(searchParams.get('branch_id'))
+      : undefined;
+
     const areas = await prisma.area.findMany({
       take: 500,
-      select: { id_area: true, nama_area: true },
+      where: branch_id ? { branch_id } : {},
+      select: {
+        id_area: true,
+        nama_area: true,
+        branch_id: true,
+        branch: { select: { nama_branch: true } },
+      },
       orderBy: { nama_area: 'asc' },
     });
 
     const options = areas.map((a) => ({
       value: a.id_area,
       label: a.nama_area,
+      branch_id: a.branch_id,
+      branch: a.branch?.nama_branch ?? null,
     }));
 
     return NextResponse.json(
@@ -44,7 +57,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const rateLimited = await enforceApiRateLimit(request, {
       namespace: 'area',
@@ -79,7 +92,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const rateLimited = await enforceApiRateLimit(request, {
       namespace: 'area',
@@ -92,10 +105,12 @@ export async function PUT(request: Request) {
     const validated = updateAreaSchema.parse({
       id_area: Number(body.id_area),
       nama_area: body.nama_area,
+      branch_id: body.branch_id !== undefined ? Number(body.branch_id) : undefined,
     });
 
     await updateArea(String(validated.id_area), {
       nama_area: validated.nama_area,
+      branch_id: validated.branch_id,
     });
 
     return NextResponse.json({
@@ -118,7 +133,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin', 'super_admin']);
+    await protectApi(['superadmin'], { strict: true });
 
     const rateLimited = await enforceApiRateLimit(request, {
       namespace: 'area',

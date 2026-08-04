@@ -5,6 +5,8 @@ export const ADMIN_ROLES = [
   'helpdesk',
   'superadmin',
   'super_admin',
+  'senior_leader',
+  'admin_branch',
 ] as const;
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];

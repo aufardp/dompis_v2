@@ -16,19 +16,21 @@ model area {
   branch       branch?        @relation(fields: [branch_id], references: [id_branch])
   service_area service_area[]
   users        users[]
+  user_area    user_area[]
 
   @@index([branch_id])
 }
 
 model branch {
-  id_branch   Int      @id @default(autoincrement())
-  nama_branch String   @db.VarChar(100)
-  kode_branch String   @unique @db.VarChar(10)
-  created_at  DateTime @default(now()) @db.Timestamp(0)
-  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  id_branch   Int           @id @default(autoincrement())
+  nama_branch String        @db.VarChar(100)
+  kode_branch String        @unique @db.VarChar(10)
+  created_at  DateTime      @default(now()) @db.Timestamp(0)
+  updated_at  DateTime      @default(now()) @db.Timestamp(0)
   region_id   Int?
   areas       area[]
-  region      region?  @relation(fields: [region_id], references: [id_region])
+  region      region?       @relation(fields: [region_id], references: [id_region])
+  user_branch user_branch[]
 
   @@index([kode_branch])
   @@index([region_id])
@@ -138,12 +140,13 @@ model manhours_config {
 }
 
 model region {
-  id_region   Int      @id @default(autoincrement())
-  nama_region String   @unique @db.VarChar(100)
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now()) @db.Timestamp(0)
-  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  id_region   Int           @id @default(autoincrement())
+  nama_region String        @unique @db.VarChar(100)
+  is_active   Boolean       @default(true)
+  created_at  DateTime      @default(now()) @db.Timestamp(0)
+  updated_at  DateTime      @default(now()) @db.Timestamp(0)
   branches    branch[]
+  user_region user_region[]
 }
 
 model roles {
@@ -750,13 +753,55 @@ model user_sa {
   id           Int           @id @default(autoincrement())
   user_id      Int?
   sa_id        Int?
-  created_at   DateTime?     @db.Timestamp(0)
-  updated_at   DateTime?     @db.Timestamp(0)
+  created_at   DateTime?     @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?     @default(now()) @db.Timestamp(0)
   users        users?        @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_1")
   service_area service_area? @relation(fields: [sa_id], references: [id_sa], onDelete: Cascade, onUpdate: NoAction, map: "user_sa_ibfk_2")
 
   @@index([user_id, sa_id], map: "idx_user_sa")
   @@index([sa_id], map: "sa_id")
+  @@index([user_id], map: "user_id")
+}
+
+model user_region {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  region_id  Int?
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_region_ibfk_1")
+  region     region?   @relation(fields: [region_id], references: [id_region], onDelete: Cascade, onUpdate: NoAction, map: "user_region_ibfk_2")
+
+  @@index([user_id, region_id], map: "idx_user_region")
+  @@index([region_id], map: "region_id")
+  @@index([user_id], map: "user_id")
+}
+
+model user_branch {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  branch_id  Int?
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_branch_ibfk_1")
+  branch     branch?   @relation(fields: [branch_id], references: [id_branch], onDelete: Cascade, onUpdate: NoAction, map: "user_branch_ibfk_2")
+
+  @@index([user_id, branch_id], map: "idx_user_branch")
+  @@index([branch_id], map: "branch_id")
+  @@index([user_id], map: "user_id")
+}
+
+model user_area {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  area_id    Int?
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: NoAction, map: "user_area_ibfk_1")
+  area       area?     @relation(fields: [area_id], references: [id_area], onDelete: Cascade, onUpdate: NoAction, map: "user_area_ibfk_2")
+
+  @@index([user_id, area_id], map: "idx_user_area")
+  @@index([area_id], map: "area_id")
   @@index([user_id], map: "user_id")
 }
 
@@ -789,6 +834,9 @@ model users {
   ticket_tracking_usersId_user_rel                  ticket_tracking[]           @relation("ticket_tracking_usersId_userTousers")
   topbar_notification_state                         topbar_notification_state[]
   user_sa                                           user_sa[]
+  user_region                                       user_region[]
+  user_branch                                       user_branch[]
+  user_area                                         user_area[]
   area                                              area?                       @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
   roles                                             roles?                      @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
 

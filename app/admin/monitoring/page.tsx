@@ -27,7 +27,7 @@ export default async function MonitoringPage() {
     redirect('/teknisi');
   }
 
-  const homeHref = user.role === 'superadmin' || user.role === 'super_admin' ? '/superadmin' : '/admin';
+  const homeHref = '/admin';
 
   return (
     <div className="min-h-screen bg-(--bg) p-4 md:p-6">
