@@ -98,6 +98,7 @@ type TicketFilters = {
   gamasOnly?: boolean;
   sort?: 'asc' | 'desc';
   sortField?: string;
+  cursor?: string;
 };
 
 type TicketTypeOption = {
@@ -1315,7 +1316,7 @@ export class DailyTicketService {
     return where;
   }
 
-    private static async fetchTicketIdsBySql(
+private static async fetchTicketIdsBySql(
       where: Prisma.ticketWhereInput,
       options: {
         sort: 'asc' | 'desc';
@@ -1323,67 +1324,123 @@ export class DailyTicketService {
         offset: number;
         limit: number;
         priorityToday?: string | null;
+        cursor?: string | null; // reported_date cursor for keyset pagination
       },
-  ): Promise<Array<{ id_ticket: number; rank_global: number }>> {
-    const [orderByClause, orderParams] = options.priorityToday
-      ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
-      : [
-          `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
-          [],
-        ];
+    ): Promise<{ rows: Array<{ id_ticket: number; rank_global: number }>; nextCursor: string | null }> {
+      const [orderByClause, orderParams] = options.priorityToday
+        ? buildMainTableOrderBySql(options.sort, options.priorityToday, options.sortField)
+        : [
+            `reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC`,
+            [],
+          ];
 
-    const union = splitDailyFilterUnion(where);
+      const union = splitDailyFilterUnion(where);
+      const sortDirection = options.sort === 'asc' ? 'ASC' : 'DESC';
+      const cursor = options.cursor;
 
-    if (union) {
-      const [s1, s2] = union.branchSqls;
-      const [p1, p2] = union.params;
-      const sql = `
-        SELECT id_ticket,
-               ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
-        FROM (
-          SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s1}
-          UNION ALL
-          SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s2}
-        ) AS daily_union
-        ORDER BY ${orderByClause}
-        LIMIT ?, ?
-      `;
-      const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
+      // Build base WHERE clause
+      let whereClause: string;
+      let params: any[];
+      if (union) {
+        const [s1, s2] = union.branchSqls;
+        const [p1, p2] = union.params;
+        whereClause = `(${s1}) UNION ALL (${s2})`;
+        params = [...p1, ...p2];
+      } else {
+        [whereClause, params] = buildSqlWhereClause(where);
+      }
+
+      // Keyset pagination: if cursor provided, use keyset pagination
+      // Otherwise use ROW_NUMBER with OFFSET (page 1)
+      let sql: string;
+      let queryParams: any[];
+      let nextCursor: string | null = null;
+
+      if (cursor) {
+        // Keyset pagination: use cursor to seek directly
+        const cursorDirection = sortDirection === 'ASC' ? '>' : '<';
+        const cursorOrder = sortDirection === 'ASC' ? 'ASC' : 'DESC';
+        
+        if (union) {
+          const [s1, s2] = union.branchSqls;
+          const [p1, p2] = union.params;
+          sql = `
+            SELECT id_ticket, reported_date
+            FROM (
+              SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s1}
+              UNION ALL
+              SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s2}
+            ) AS daily_union
+            WHERE reported_date ${cursorDirection} ?
+            ORDER BY reported_date ${cursorOrder}, id_ticket ASC
+            LIMIT ?
+          `;
+          queryParams = [...p1, ...p2, cursor, options.limit];
+        } else {
+          [whereClause, params] = buildSqlWhereClause(where);
+          sql = `
+            SELECT id_ticket, reported_date
+            FROM ticket
+            WHERE ${whereClause}
+              AND reported_date ${cursorDirection} ?
+            ORDER BY reported_date ${cursorOrder}, id_ticket ASC
+            LIMIT ?
+          `;
+          queryParams = [...params, cursor, options.limit];
+        }
+      } else {
+        // Page 1: use ROW_NUMBER with OFFSET (existing behavior)
+        if (union) {
+          const [s1, s2] = union.branchSqls;
+          const [p1, p2] = union.params;
+          sql = `
+            SELECT id_ticket,
+                   ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+            FROM (
+              SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s1}
+              UNION ALL
+              SELECT id_ticket, reported_date, booking_date, flagging_manja, customer_type FROM ticket WHERE ${s2}
+            ) AS daily_union
+            ORDER BY ${orderByClause}
+            LIMIT ?, ?
+          `;
+          queryParams = [...p1, ...p2, ...orderParams, options.offset, options.limit];
+        } else {
+          [whereClause, params] = buildSqlWhereClause(where);
+          sql = `
+            SELECT id_ticket,
+                   ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
+            FROM ticket
+            WHERE ${whereClause}
+            ORDER BY ${orderByClause}
+            LIMIT ?, ?
+          `;
+          queryParams = [...params, ...orderParams, options.offset, options.limit];
+        }
+      }
+
+      const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global?: bigint | number; reported_date?: string | Date }>>(
         sql,
-        ...p1, ...p2,
-        ...orderParams,
-        options.offset,
-        options.limit,
+        ...queryParams,
       );
-      return rows.map((row) => ({
+
+      const mappedRows = rows.map((row) => ({
         id_ticket: row.id_ticket,
-        rank_global: Number(row.rank_global),
+        rank_global: row.rank_global ? Number(row.rank_global) : 0,
       }));
+
+      // Determine next cursor from last row's reported_date
+      if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        if (lastRow.reported_date) {
+          nextCursor = lastRow.reported_date instanceof Date
+            ? lastRow.reported_date.toISOString()
+            : String(lastRow.reported_date);
+        }
+      }
+
+      return { rows: mappedRows, nextCursor };
     }
-
-    const [whereClause, params] = buildSqlWhereClause(where);
-    const sql = `
-      SELECT id_ticket,
-             ROW_NUMBER() OVER (ORDER BY reported_date ASC) AS rank_global
-      FROM ticket
-      WHERE ${whereClause}
-      ORDER BY ${orderByClause}
-      LIMIT ?, ?
-    `;
-
-    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; rank_global: bigint | number }>>(
-      sql,
-      ...params,
-      ...orderParams,
-      options.offset,
-      options.limit,
-    );
-
-    return rows.map((row) => ({
-      id_ticket: row.id_ticket,
-      rank_global: Number(row.rank_global),
-    }));
-  }
 
   private static buildValidasiCondition(): Prisma.ticketWhereInput {
     if (process.env.VALIDASI_FLAG_ENABLED === 'true') {
@@ -1575,28 +1632,56 @@ export class DailyTicketService {
     );
   }
 
-  private static async fetchValidasiTicketIds(
-    validasiBaseWhere: Prisma.ticketWhereInput,
-    options: { sort: 'asc' | 'desc'; offset: number; limit: number },
-  ): Promise<number[]> {
-    const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
-    const sql = `
-      SELECT id_ticket, reported_date
-      FROM ticket
-      WHERE ${whereClause}
-      ORDER BY reported_date ${options.sort === 'asc' ? 'ASC' : 'DESC'}, id_ticket ASC
-      LIMIT ?, ?
-    `;
+private static async fetchValidasiTicketIds(
+      validasiBaseWhere: Prisma.ticketWhereInput,
+      options: { sort: 'asc' | 'desc'; offset: number; limit: number; cursor?: string | null },
+    ): Promise<{ ids: number[]; nextCursor: string | null }> {
+      const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
+      const sortDirection = options.sort === 'asc' ? 'ASC' : 'DESC';
+      const cursor = options.cursor;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number }>>(
-      sql,
-      ...params,
-      options.offset,
-      options.limit,
-    );
+      let sql: string;
+      let queryParams: any[];
+      let nextCursor: string | null = null;
 
-    return rows.map((row) => row.id_ticket);
-  }
+      if (cursor) {
+        const cursorDirection = sortDirection === 'ASC' ? '>' : '<';
+        sql = `
+          SELECT id_ticket, reported_date
+          FROM ticket
+          WHERE ${whereClause}
+            AND reported_date ${cursorDirection} ?
+          ORDER BY reported_date ${sortDirection}, id_ticket ASC
+          LIMIT ?
+        `;
+        queryParams = [...params, cursor, options.limit];
+      } else {
+        sql = `
+          SELECT id_ticket, reported_date
+          FROM ticket
+          WHERE ${whereClause}
+          ORDER BY reported_date ${sortDirection}, id_ticket ASC
+          LIMIT ?, ?
+        `;
+        queryParams = [...params, options.offset, options.limit];
+      }
+
+      const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; reported_date?: string | Date }>>(
+        sql,
+        ...queryParams,
+      );
+
+      if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        if (lastRow.reported_date) {
+          nextCursor = lastRow.reported_date instanceof Date
+            ? lastRow.reported_date.toISOString()
+            : String(lastRow.reported_date);
+        }
+      }
+
+      return { ids: rows.map((row) => row.id_ticket), nextCursor };
+    }
 
   private static async countStatusesAndCustomerTypes(
     where: Record<string, any>,
@@ -1940,7 +2025,7 @@ export class DailyTicketService {
       return results as { [K in keyof F]: Awaited<ReturnType<F[K]>> };
     }
 
-    const { page = 1, limit = 10, sort = 'desc', sortField } = filters ?? {};
+    const { page = 1, limit = 10, sort = 'desc', sortField, cursor } = filters ?? {};
     const includeValidasi = filters?.includeValidasi !== false;
     const includeValidasiTickets = filters?.includeValidasiTickets !== false;
     const includeSummary = filters?.includeSummary !== false;
@@ -1992,14 +2077,16 @@ export class DailyTicketService {
       offset,
       limit: safeLimit,
       priorityToday: toWibDateString(todayWibDateForDb()),
+      cursor,
     });
     const validasiTicketIdsPromise = includeValidasi && includeValidasiTickets && validasiBaseWhere
       ? this.fetchValidasiTicketIds(validasiBaseWhere, {
           sort,
           offset: validasiOffset,
           limit: safeValidasiLimit,
+          cursor,
         })
-      : Promise.resolve([] as number[]);
+      : Promise.resolve({ ids: [], nextCursor: null });
     const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
     const validasiCountPromise = includeValidasi && validasiBaseWhere
@@ -2018,9 +2105,11 @@ export class DailyTicketService {
       : Promise.resolve([] as TicketTypeOption[]);
 
     // Gelombang 1 — pagination (priority tinggi, user lihat data dulu)
-    const [ticketIds] = await Promise.all([
+    const [ticketIdsResult] = await Promise.all([
       ticketIdsPromise,
     ]);
+    const ticketIds = ticketIdsResult.rows;
+    const mainNextCursor = ticketIdsResult.nextCursor;
 
     // Gelombang 2 — summary metrics
     let summary: any;
@@ -2055,13 +2144,15 @@ export class DailyTicketService {
     }
 
     // Gelombang 3 — optional filters
-    const [validasiTicketIds, statusOptions, ticketTypeOptions] = await limitedPromiseAll<
-      [() => Promise<number[]>, () => Promise<string[]>, () => Promise<TicketTypeOption[]>]
+    const [validasiTicketIdsResult, statusOptions, ticketTypeOptions] = await limitedPromiseAll<
+      [() => Promise<{ ids: number[]; nextCursor: string | null }>, () => Promise<string[]>, () => Promise<TicketTypeOption[]>]
     >([
       () => validasiTicketIdsPromise,
       () => statusOptionsPromise,
       () => ticketTypeOptionsPromise,
     ]);
+    const validasiTicketIds = validasiTicketIdsResult.ids;
+    const validasiNextCursor = validasiTicketIdsResult.nextCursor;
 
     const rankMap = new Map<number, number>();
     const ticketIdList = ticketIds.map((r) => {
@@ -2112,6 +2203,8 @@ export class DailyTicketService {
       validasiLimit: safeValidasiLimit,
       validasiTotalPages: Math.ceil(validasiCount / safeValidasiLimit),
       validasiTickets: validasiTickets.map(mapTicket),
+      nextCursor: mainNextCursor,
+      validasiNextCursor: validasiNextCursor,
     };
   }
 

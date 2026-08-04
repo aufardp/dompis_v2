@@ -90,6 +90,7 @@ export async function GET(request: Request) {
       gamasOnly: searchParams.get('gamasOnly') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
       sortField: searchParams.get('sortField') || undefined,
+      cursor: searchParams.get('cursor') || undefined,
     };
 
     // Build cache key identical to service internal cacheKeyBase
