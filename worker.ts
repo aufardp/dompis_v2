@@ -26,7 +26,6 @@ import {
   type WorkerTaskState,
 } from '@/lib/workers/task-runner';
 import { cleanupStaleLock, getLockStatus } from '@/lib/distributed-lock';
-import { getProjectionHealth } from '@/lib/sync-metrics/metrics';
 import { logger } from '@/lib/observability/logger';
 import { logConfigWarnings } from '@/lib/observability/config-validator';
 import { recordRun } from '@/lib/observability/slo-tracker';
@@ -340,38 +339,11 @@ async function logWorkerHealth(): Promise<void> {
     sheetsQueue: { running: sheetsQueue.isRunning, queueLength: sheetsQueue.queueLength },
   });
 
-  // Alerts: projection lag > 30 min, DLQ growth
-  try {
-    const [projectionHealth, dlqCount] = await Promise.all([
-      getProjectionHealth().catch(() => null),
-      prisma.ingestion_quarantine.count().catch(() => 0),
-    ]);
-
-    if (projectionHealth?.lastProjectionTime) {
-      const lagMs = Date.now() - projectionHealth.lastProjectionTime;
-      if (lagMs > 30 * 60 * 1000) {
-        import('@/lib/observability/notifier').then(({ sendWarningAlert }) =>
-          sendWarningAlert(
-            '🐢 Projection Lag > 30m',
-            `Last projection: ${new Date(projectionHealth.lastProjectionTime!).toISOString()}, lag: ${Math.round(lagMs / 60000)}m`,
-            { lagMinutes: Math.round(lagMs / 60000), lastProjectionTime: projectionHealth.lastProjectionTime! },
-          ),
-        );
-      }
-    }
-
-    if (dlqCount > 100) {
-      import('@/lib/observability/notifier').then(({ sendWarningAlert }) =>
-        sendWarningAlert(
-          '📥 DLQ Size > 100',
-          `${dlqCount} items in ingestion_quarantine. Check ingestion quality.`,
-          { quarantineCount: dlqCount },
-        ),
-      );
-    }
-  } catch {
-    // best-effort alert check
-  }
+  // Alert otomatis berdasarkan aturan health (dashboard + Telegram/Slack).
+  // Debounce 15 menit sudah ditangani notifier; best-effort.
+  await import('@/lib/monitoring/health').then(({ sendHealthAlerts }) =>
+    sendHealthAlerts(),
+  );
 }
 
 const reconciliationState = createTaskState();
