@@ -8,17 +8,34 @@ import {
   updateUser,
   deleteUser,
   canAssignRole,
+  getBranchScope,
+  targetUserInScope,
+  validateUserInScope,
 } from '@/app/libs/services/users.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { updateUserSchema } from '@/app/libs/validations/users.schema';
 import { normalizeRoleKey } from '@/app/libs/roles';
+
+function canManageTarget(actorRole: string, targetRoleId: number | null | undefined): boolean {
+  if (targetRoleId === 1 || targetRoleId === 6) {
+    return normalizeRoleKey(actorRole) === 'superadmin';
+  }
+  return true;
+}
+
+function protectedUserMessage(targetRoleId: number | null | undefined): string {
+  if (targetRoleId === 1) {
+    return 'Hanya superadmin yang dapat mengubah user ber-role superadmin';
+  }
+  return 'Hanya superadmin yang dapat mengubah user ber-role admin branch';
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const { id: idParam } = await params;
     const id = Number(idParam);
@@ -35,6 +52,14 @@ export async function GET(
       return NextResponse.json(
         { success: false, message: 'User tidak ditemukan' },
         { status: 404 },
+      );
+    }
+
+    const scope = await getBranchScope(actor);
+    if (!targetUserInScope(scope, user.area_id)) {
+      return NextResponse.json(
+        { success: false, message: 'User berada di luar branch Anda' },
+        { status: 403 },
       );
     }
 
@@ -73,13 +98,12 @@ export async function PUT(
     const body = await req.json();
 
     const targetUser = await getUserById(id);
-    if (
-      targetUser &&
-      targetUser.role_id === 1 &&
-      normalizeRoleKey(actor.role) !== 'superadmin'
-    ) {
+    if (targetUser && !canManageTarget(actor.role, targetUser.role_id)) {
       return NextResponse.json(
-        { success: false, message: 'Hanya superadmin yang dapat mengubah user ber-role superadmin' },
+        {
+          success: false,
+          message: protectedUserMessage(targetUser.role_id),
+        },
         { status: 403 },
       );
     }
@@ -91,7 +115,9 @@ export async function PUT(
       const msg =
         Number(body.role_id) === 1
           ? 'Hanya superadmin yang dapat mengubah role menjadi superadmin'
-          : 'Role senior leader hanya dapat diatur oleh superadmin / admin branch';
+          : Number(body.role_id) === 6
+            ? 'Role admin branch hanya dapat diatur oleh superadmin'
+            : 'Role senior leader hanya dapat diatur oleh superadmin / admin branch';
       return NextResponse.json(
         { success: false, message: msg },
         { status: 403 },
@@ -106,6 +132,22 @@ export async function PUT(
           message: parsed.error.issues.map((i) => i.message).join(', '),
         },
         { status: 400 },
+      );
+    }
+
+    const scope = await getBranchScope(actor);
+    if (!targetUserInScope(scope, targetUser?.area_id)) {
+      return NextResponse.json(
+        { success: false, message: 'User berada di luar branch Anda' },
+        { status: 403 },
+      );
+    }
+
+    const scopeError = await validateUserInScope(scope, parsed.data);
+    if (scopeError) {
+      return NextResponse.json(
+        { success: false, message: scopeError },
+        { status: 403 },
       );
     }
 
@@ -144,13 +186,20 @@ export async function DELETE(
     }
 
     const targetUser = await getUserById(id);
-    if (
-      targetUser &&
-      targetUser.role_id === 1 &&
-      normalizeRoleKey(actor.role) !== 'superadmin'
-    ) {
+    if (targetUser && !canManageTarget(actor.role, targetUser.role_id)) {
       return NextResponse.json(
-        { success: false, message: 'Hanya superadmin yang dapat menghapus user ber-role superadmin' },
+        {
+          success: false,
+          message: protectedUserMessage(targetUser.role_id),
+        },
+        { status: 403 },
+      );
+    }
+
+    const scope = await getBranchScope(actor);
+    if (!targetUserInScope(scope, targetUser?.area_id)) {
+      return NextResponse.json(
+        { success: false, message: 'User berada di luar branch Anda' },
         { status: 403 },
       );
     }

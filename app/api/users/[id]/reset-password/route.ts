@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getUserById, updateUser } from '@/app/libs/services/users.service';
+import { getUserById, updateUser, getBranchScope, targetUserInScope } from '@/app/libs/services/users.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { normalizeRoleKey } from '@/app/libs/roles';
 
@@ -44,6 +44,24 @@ export async function POST(
     ) {
       return NextResponse.json(
         { success: false, message: 'Hanya superadmin yang dapat mereset password user ber-role superadmin' },
+        { status: 403 },
+      );
+    }
+
+    if (
+      targetUser.role_id === 6 &&
+      normalizeRoleKey(actor.role) !== 'superadmin'
+    ) {
+      return NextResponse.json(
+        { success: false, message: 'Hanya superadmin yang dapat mereset password user ber-role admin branch' },
+        { status: 403 },
+      );
+    }
+
+    const scope = await getBranchScope(actor);
+    if (!targetUserInScope(scope, targetUser.area_id)) {
+      return NextResponse.json(
+        { success: false, message: 'User berada di luar branch Anda' },
         { status: 403 },
       );
     }

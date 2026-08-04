@@ -2,14 +2,20 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { getAllUsers, createUser, canAssignRole } from '@/app/libs/services/users.service';
+import {
+  getAllUsers,
+  createUser,
+  canAssignRole,
+  getBranchScope,
+  validateUserInScope,
+} from '@/app/libs/services/users.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { createUserSchema } from '@/app/libs/validations/users.schema';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(req: NextRequest) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const { searchParams } = new URL(req.url);
 
@@ -24,7 +30,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const users = await getAllUsers({ role_id, search });
+    const scope = await getBranchScope(actor);
+    const users = await getAllUsers({
+      role_id,
+      search,
+      areaIds: scope?.areaIds,
+      excludeIds: scope ? [actor.id_user] : undefined,
+    });
 
     return NextResponse.json({ success: true, data: users });
   } catch (error: unknown) {
@@ -55,7 +67,9 @@ export async function POST(req: NextRequest) {
       const msg =
         Number(body.role_id) === 1
           ? 'Hanya superadmin yang dapat membuat user ber-role superadmin'
-          : 'Role senior leader hanya dapat dibuat oleh superadmin / admin branch';
+          : Number(body.role_id) === 6
+            ? 'Role admin branch hanya dapat dibuat oleh superadmin'
+            : 'Role senior leader hanya dapat dibuat oleh superadmin / admin branch';
       return NextResponse.json(
         { success: false, message: msg },
         { status: 403 },
@@ -70,6 +84,15 @@ export async function POST(req: NextRequest) {
           message: parsed.error.issues.map((i) => i.message).join(', '),
         },
         { status: 400 },
+      );
+    }
+
+    const scope = await getBranchScope(actor);
+    const scopeError = await validateUserInScope(scope, parsed.data);
+    if (scopeError) {
+      return NextResponse.json(
+        { success: false, message: scopeError },
+        { status: 403 },
       );
     }
 

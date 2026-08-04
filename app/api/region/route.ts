@@ -8,6 +8,7 @@ import {
   updateRegion,
   deleteRegion,
 } from '@/app/libs/services/region.service';
+import { getBranchScope } from '@/app/libs/services/users.service';
 import {
   createRegionSchema,
   updateRegionSchema,
@@ -17,19 +18,30 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 export async function GET(request: Request) {
   try {
-    await protectApi(['superadmin', 'admin', 'helpdesk']);
+    const actor = await protectApi(['superadmin', 'admin', 'helpdesk']);
 
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get('all') === 'true';
 
+    const scope = await getBranchScope(actor);
+
     const regions = await prisma.region.findMany({
       take: 50,
-      where: includeInactive ? {} : { is_active: true },
+      where: scope
+        ? {
+            ...(includeInactive ? {} : { is_active: true }),
+            branches: { some: { id_branch: { in: scope.branchIds } } },
+          }
+        : includeInactive
+          ? {}
+          : { is_active: true },
       orderBy: { nama_region: 'asc' },
       include: {
         branches: {
+          where: scope ? { id_branch: { in: scope.branchIds } } : {},
           include: {
             areas: {
+              where: scope ? { id_area: { in: scope.areaIds } } : {},
               select: { id_area: true, nama_area: true },
               orderBy: { nama_area: 'asc' },
             },

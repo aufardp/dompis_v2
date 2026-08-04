@@ -58,14 +58,133 @@ export interface UserById {
   area_ids: number[];
 }
 
+export interface UserBranchScope {
+  branchIds: number[];
+  areaIds: number[];
+}
+
+export async function getBranchScope(actor: {
+  id_user: number;
+  role: string;
+}): Promise<UserBranchScope | null> {
+  if (normalizeRoleKey(actor.role) !== 'admin_branch') return null;
+
+  const user = await prisma.users.findUnique({
+    where: { id_user: actor.id_user },
+    include: {
+      area: { select: { branch_id: true } },
+      user_branch: { select: { branch_id: true } },
+    },
+  });
+  if (!user) return { branchIds: [], areaIds: [] };
+
+  const branchIds = new Set<number>();
+  if (user.area?.branch_id) branchIds.add(user.area.branch_id);
+  user.user_branch.forEach((ub) => {
+    if (ub.branch_id !== null) branchIds.add(ub.branch_id);
+  });
+
+  if (branchIds.size === 0) return { branchIds: [], areaIds: [] };
+
+  const areas = await prisma.area.findMany({
+    where: { branch_id: { in: [...branchIds] } },
+    select: { id_area: true },
+  });
+
+  return {
+    branchIds: [...branchIds],
+    areaIds: areas.map((a) => a.id_area),
+  };
+}
+
+export function targetUserInScope(
+  scope: UserBranchScope | null,
+  areaId: number | null | undefined,
+): boolean {
+  if (!scope) return true;
+  return areaId !== null && areaId !== undefined && scope.areaIds.includes(areaId);
+}
+
+export async function validateUserInScope(
+  scope: UserBranchScope | null,
+  data: {
+    area_id?: number;
+    sa_ids?: number[];
+    region_ids?: number[];
+    branch_ids?: number[];
+    area_ids?: number[];
+  },
+): Promise<string | null> {
+  if (!scope) return null;
+  const { branchIds, areaIds } = scope;
+
+  if (areaIds.length === 0) {
+    return 'Anda belum memiliki area/branch untuk mengelola user';
+  }
+
+  if (data.area_id !== undefined && !areaIds.includes(data.area_id)) {
+    return 'Area user berada di luar branch Anda';
+  }
+
+  if (data.sa_ids && data.sa_ids.length > 0) {
+    const uniqueSaIds = [...new Set(data.sa_ids)];
+    const sas = await prisma.service_area.findMany({
+      where: { id_sa: { in: uniqueSaIds } },
+      select: { id_sa: true, area_id: true },
+    });
+    if (sas.length !== uniqueSaIds.length) {
+      return 'Terdapat service area yang tidak valid';
+    }
+    const bad = sas.some((sa) => sa.area_id === null || !areaIds.includes(sa.area_id));
+    if (bad) {
+      return 'Terdapat service area di luar branch Anda';
+    }
+  }
+
+  if (data.branch_ids && data.branch_ids.length > 0) {
+    if (data.branch_ids.some((b) => !branchIds.includes(b))) {
+      return 'Terdapat branch scope di luar branch Anda';
+    }
+  }
+
+  if (data.area_ids && data.area_ids.length > 0) {
+    if (data.area_ids.some((a) => !areaIds.includes(a))) {
+      return 'Terdapat area scope di luar branch Anda';
+    }
+  }
+
+  if (data.region_ids && data.region_ids.length > 0) {
+    const regions = await prisma.region.findMany({
+      where: { branches: { some: { id_branch: { in: branchIds } } } },
+      select: { id_region: true },
+    });
+    const allowedRegions = new Set(regions.map((r) => r.id_region));
+    if (data.region_ids.some((r) => !allowedRegions.has(r))) {
+      return 'Terdapat region scope di luar branch Anda';
+    }
+  }
+
+  return null;
+}
+
 export async function getAllUsers(filters?: {
   role_id?: number;
   search?: string;
+  areaIds?: number[];
+  excludeIds?: number[];
 }) {
   const where: Record<string, any> = {};
 
   if (filters?.role_id) {
     where.role_id = filters.role_id;
+  }
+
+  if (filters?.areaIds) {
+    where.area_id = { in: filters.areaIds };
+  }
+
+  if (filters?.excludeIds && filters.excludeIds.length > 0) {
+    where.id_user = { notIn: filters.excludeIds };
   }
 
   if (filters?.search) {
@@ -460,6 +579,7 @@ export function canAssignRole(actorRole: string, targetRoleId: number): boolean 
   if (targetRoleId === 5) {
     return isSuperadmin || normalized === 'admin_branch';
   }
+  if (targetRoleId === 6) return isSuperadmin;
   return true;
 }
 

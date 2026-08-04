@@ -13,19 +13,26 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { getBranchScope } from '@/app/libs/services/users.service';
 
 export async function GET(request: Request) {
   try {
-    await protectApi(['admin', 'helpdesk', 'superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const { searchParams } = new URL(request.url);
     const branch_id = searchParams.get('branch_id')
       ? Number(searchParams.get('branch_id'))
       : undefined;
 
+    const scope = await getBranchScope(actor);
+
     const areas = await prisma.area.findMany({
       take: 500,
-      where: branch_id ? { branch_id } : {},
+      where: scope
+        ? { branch_id: { in: scope.branchIds } }
+        : branch_id
+          ? { branch_id }
+          : {},
       select: {
         id_area: true,
         nama_area: true,

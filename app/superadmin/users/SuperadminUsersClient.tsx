@@ -73,10 +73,21 @@ function canAssignRoleClient(actorRoleKey: string, targetRoleId: number): boolea
     if (targetRoleId === 5) {
       return isSuperadmin || normalized === 'admin_branch';
     }
+    if (targetRoleId === 6) return isSuperadmin;
     return true;
   } catch {
     return false;
   }
+}
+
+function canManageTargetClient(
+  actorRoleKey: string,
+  targetRoleId: number | null | undefined,
+): boolean {
+  if (targetRoleId === 1 || targetRoleId === 6) {
+    return normalizeRoleKey(actorRoleKey) === 'superadmin';
+  }
+  return true;
 }
 
 function MultiSelect({
@@ -1605,21 +1616,27 @@ function UserListPanel() {
                     {user.area_id ? areaNameMap[user.area_id] ?? `Area #${user.area_id}` : '-'}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button type="button" className={btnIcon} onClick={() => openEdit(user)}>
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </button>
-                      <button type="button" className={btnIcon} onClick={() => setResetTarget(user)}>
-                        <RefreshCw className="h-3.5 w-3.5" /> Reset PW
-                      </button>
-                      <button
-                        type="button"
-                        className={btnDanger}
-                        onClick={() => removeUser(user)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {canManageTargetClient(actorRoleKey, user.role_id) ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" className={btnIcon} onClick={() => openEdit(user)}>
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button type="button" className={btnIcon} onClick={() => setResetTarget(user)}>
+                          <RefreshCw className="h-3.5 w-3.5" /> Reset PW
+                        </button>
+                        <button
+                          type="button"
+                          className={btnDanger}
+                          onClick={() => removeUser(user)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="flex items-center justify-end text-[11px] text-slate-400">
+                        Hanya superadmin
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))

@@ -14,19 +14,22 @@ import {
   deleteBranchSchema,
 } from '@/app/libs/validations/branch.schema';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { getBranchScope } from '@/app/libs/services/users.service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    await protectApi(['superadmin']);
+    const actor = await protectApi(['superadmin']);
 
     const { searchParams } = new URL(request.url);
     const region_id = searchParams.get('region_id')
       ? Number(searchParams.get('region_id'))
       : undefined;
 
-    const branches = await getBranchesByRegion(region_id);
+    const scope = await getBranchScope(actor);
+
+    const branches = await getBranchesByRegion(region_id, scope?.branchIds);
 
     return NextResponse.json({ success: true, data: branches });
   } catch (error: any) {

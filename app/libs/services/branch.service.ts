@@ -1,8 +1,11 @@
 import prisma from '@/app/libs/prisma';
 
-export async function getBranchesByRegion(region_id?: number) {
+export async function getBranchesByRegion(region_id?: number, branchIds?: number[]) {
   const branches = await prisma.branch.findMany({
-    where: region_id ? { region_id } : {},
+    where: {
+      ...(region_id ? { region_id } : {}),
+      ...(branchIds ? { id_branch: { in: branchIds } } : {}),
+    },
     include: {
       region: { select: { id_region: true, nama_region: true } },
       areas: { select: { id_area: true, nama_area: true } },
