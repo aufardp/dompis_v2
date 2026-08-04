@@ -749,26 +749,48 @@ export async function getHealthSnapshot() {
 export async function sendHealthAlerts(options?: { maxIssues?: number }): Promise<void> {
   try {
     const snapshot = await getHealthSnapshot();
-    const maxIssues = options?.maxIssues ?? 5;
-    const critical = snapshot.health.issues
-      .filter((issue) => issue.severity === 'critical')
-      .slice(0, maxIssues);
-    const warning = snapshot.health.issues
-      .filter((issue) => issue.severity === 'warning')
-      .slice(0, maxIssues);
+    const maxIssues = options?.maxIssues ?? 8;
 
-    if (critical.length === 0 && warning.length === 0) return;
+    const allCritical = snapshot.health.issues.filter(
+      (issue) => issue.severity === 'critical',
+    );
+    const allWarning = snapshot.health.issues.filter(
+      (issue) => issue.severity === 'warning',
+    );
+
+    if (allCritical.length === 0 && allWarning.length === 0) return;
 
     const { sendCriticalAlert, sendWarningAlert } = await import(
       '@/lib/observability/notifier'
     );
+
+    const formatIssue = (issue: HealthIssue): string =>
+      `• ${issue.title} — ${issue.detail} (source: ${issue.source})`;
+
+    const buildMessage = (issues: HealthIssue[], total: number): string => {
+      const lines = issues.map(formatIssue);
+      const omitted = total - issues.length;
+      if (omitted > 0) lines.push(`…dan ${omitted} issue lainnya`);
+      return lines.join('\n\n');
+    };
+
+    const totalIssues = allCritical.length + allWarning.length;
+
     await Promise.allSettled([
-      ...critical.map((issue) =>
-        sendCriticalAlert(`🚨 ${issue.title}`, issue.detail, { source: issue.source }),
-      ),
-      ...warning.map((issue) =>
-        sendWarningAlert(`⚠️ ${issue.title}`, issue.detail, { source: issue.source }),
-      ),
+      allCritical.length > 0
+        ? sendCriticalAlert(
+            `Monitoring: ${allCritical.length} masalah kritis`,
+            buildMessage(allCritical, allCritical.length),
+            { 'Total issue': totalIssues },
+          )
+        : Promise.resolve(),
+      allWarning.length > 0
+        ? sendWarningAlert(
+            `Monitoring: ${allWarning.length} peringatan`,
+            buildMessage(allWarning, allWarning.length),
+            { 'Total issue': totalIssues },
+          )
+        : Promise.resolve(),
     ]);
   } catch (error) {
     logger.warn('[HealthAlerts] Failed to evaluate/send alerts:', {
