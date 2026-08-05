@@ -6,13 +6,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
-import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
 import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
+import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 import { queryKeys } from '@/app/libs/query-keys';
-import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
@@ -405,157 +404,16 @@ export default function TicketManagementOverviewPage({
 
   const queryClient = useQueryClient();
 
-  const kpiCustomerPage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_customer'],
-    page: 1,
-    limit: 1,
+  const overview = useTicketManagementOverview({
     workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
   });
-  const kpiProactivePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_proactive'],
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const nonKpiUnspecPage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_kpi_unspec'],
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const nonTechnicalPage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_technical'],
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const sqmUpdatePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['sqm_update'],
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const obsoletePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['obsolete'],
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const kpiCustomerClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_customer'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const kpiProactiveClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_proactive'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const nonKpiUnspecClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_kpi_unspec'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const nonTechnicalClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_technical'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const sqmUpdateClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['sqm_update'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const obsoleteClosePage = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['obsolete'],
-    ticketStatus: CLOSE_STATUS_VALUES,
-    includeClosed: true,
-    page: 1,
-    limit: 1,
-    workzone: workzone || undefined,
-    includeValidasi: false,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    enabled: true,
-  });
-  const isLoading =
-    kpiCustomerPage.loading ||
-    kpiProactivePage.loading ||
-    nonKpiUnspecPage.loading ||
-    nonTechnicalPage.loading ||
-    sqmUpdatePage.loading ||
-    obsoletePage.loading;
+  const overviewData = overview.data;
+  const isLoading = overview.isLoading;
+
+  const bucketSummaries = useMemo(
+    () => overviewData?.cards ?? null,
+    [overviewData],
+  );
 
   const {
     technicians: overviewTechnicians,
@@ -626,66 +484,21 @@ export default function TicketManagementOverviewPage({
     setAssignTarget(null);
   }, []);
 
-  const allCardData = useMemo(
-    () => [
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[0],
-        summary: {
-          ...kpiCustomerPage.summary,
-          close: kpiCustomerClosePage.summary.close,
-        },
-      },
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[1],
-        summary: {
-          ...kpiProactivePage.summary,
-          close: kpiProactiveClosePage.summary.close,
-        },
-      },
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[2],
-        summary: {
-          ...nonKpiUnspecPage.summary,
-          close: nonKpiUnspecClosePage.summary.close,
-        },
-      },
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[3],
-        summary: {
-          ...nonTechnicalPage.summary,
-          close: nonTechnicalClosePage.summary.close,
-        },
-      },
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[4],
-        summary: {
-          ...sqmUpdatePage.summary,
-          close: sqmUpdateClosePage.summary.close,
-        },
-      },
-      {
-        ...TICKET_MANAGEMENT_BUCKET_ITEMS[5],
-        summary: {
-          ...obsoletePage.summary,
-          close: obsoleteClosePage.summary.close,
-        },
-      },
-    ],
-    [
-      kpiCustomerPage.summary,
-      kpiCustomerClosePage.summary.close,
-      kpiProactivePage.summary,
-      kpiProactiveClosePage.summary.close,
-      nonKpiUnspecPage.summary,
-      nonKpiUnspecClosePage.summary.close,
-      nonTechnicalPage.summary,
-      nonTechnicalClosePage.summary.close,
-      sqmUpdatePage.summary,
-      sqmUpdateClosePage.summary.close,
-      obsoletePage.summary,
-      obsoleteClosePage.summary.close,
-    ],
-  );
+  const allCardData = useMemo(() => {
+    const summaryMap: Record<string, BucketSummaryLike | undefined> = {
+      'kpi-customer': bucketSummaries?.kpiCustomer,
+      'kpi-proactive': bucketSummaries?.kpiProactive,
+      'non-kpi-unspec': bucketSummaries?.nonKpiUnspec,
+      'non-technical': bucketSummaries?.nonTechnical,
+      'sqm-update': bucketSummaries?.sqmUpdate,
+      obsolete: bucketSummaries?.obsolete,
+    };
+
+    return TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => ({
+      ...item,
+      summary: summaryMap[item.key] as BucketSummaryLike | undefined,
+    }));
+  }, [bucketSummaries]);
 
   const visibleCardData = useMemo(
     () =>
@@ -756,34 +569,10 @@ export default function TicketManagementOverviewPage({
         unassigned: bucketOverviewTotals.open,
         assigned: bucketOverviewTotals.assigned,
         close: bucketOverviewTotals.close,
-        p1Count:
-          (kpiCustomerPage.summary.p1Count ?? 0) +
-          (kpiProactivePage.summary.p1Count ?? 0) +
-          (nonKpiUnspecPage.summary.p1Count ?? 0) +
-          (nonTechnicalPage.summary.p1Count ?? 0) +
-          (sqmUpdatePage.summary.p1Count ?? 0) +
-          (obsoletePage.summary.p1Count ?? 0),
-        pPlusCount:
-          (kpiCustomerPage.summary.pPlusCount ?? 0) +
-          (kpiProactivePage.summary.pPlusCount ?? 0) +
-          (nonKpiUnspecPage.summary.pPlusCount ?? 0) +
-          (nonTechnicalPage.summary.pPlusCount ?? 0) +
-          (sqmUpdatePage.summary.pPlusCount ?? 0) +
-          (obsoletePage.summary.pPlusCount ?? 0),
-        ffgCount:
-          (kpiCustomerPage.summary.ffgCount ?? 0) +
-          (kpiProactivePage.summary.ffgCount ?? 0) +
-          (nonKpiUnspecPage.summary.ffgCount ?? 0) +
-          (nonTechnicalPage.summary.ffgCount ?? 0) +
-          (sqmUpdatePage.summary.ffgCount ?? 0) +
-          (obsoletePage.summary.ffgCount ?? 0),
-        gamasCount:
-          (kpiCustomerPage.summary.gamasCount ?? 0) +
-          (kpiProactivePage.summary.gamasCount ?? 0) +
-          (nonKpiUnspecPage.summary.gamasCount ?? 0) +
-          (nonTechnicalPage.summary.gamasCount ?? 0) +
-          (sqmUpdatePage.summary.gamasCount ?? 0) +
-          (obsoletePage.summary.gamasCount ?? 0),
+        p1Count: overviewData?.totals.p1Count ?? 0,
+        pPlusCount: overviewData?.totals.pPlusCount ?? 0,
+        ffgCount: overviewData?.totals.ffgCount ?? 0,
+        gamasCount: overviewData?.totals.gamasCount ?? 0,
       };
     }
     const s = visibleCardData[0]?.summary;
@@ -805,18 +594,7 @@ export default function TicketManagementOverviewPage({
     bucketOverviewTotals.open,
     bucketOverviewTotals.assigned,
     bucketOverviewTotals.close,
-    kpiCustomerPage.summary,
-    kpiCustomerClosePage.summary.close,
-    kpiProactivePage.summary,
-    kpiProactiveClosePage.summary.close,
-    nonKpiUnspecPage.summary,
-    nonKpiUnspecClosePage.summary.close,
-    nonTechnicalPage.summary,
-    nonTechnicalClosePage.summary.close,
-    sqmUpdatePage.summary,
-    sqmUpdateClosePage.summary.close,
-    obsoletePage.summary,
-    obsoleteClosePage.summary.close,
+    overviewData?.totals,
     selectedBucket,
     visibleCardData,
   ]);

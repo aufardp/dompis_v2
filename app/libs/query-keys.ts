@@ -30,6 +30,10 @@ export const queryKeys = {
       filters
         ? ([...queryKeys.dashboard.all, 'semesta-summary', filters] as const)
         : ([...queryKeys.dashboard.all, 'semesta-summary'] as const),
+    ticketManagementOverview: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'ticket-management-overview', filters] as const)
+        : ([...queryKeys.dashboard.all, 'ticket-management-overview'] as const),
     durasi: (bucket?: string) =>
       bucket
         ? ([...queryKeys.dashboard.all, 'durasi', bucket] as const)

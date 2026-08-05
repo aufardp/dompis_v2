@@ -1,21 +1,19 @@
-'use client';
-
 import { useQuery } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { queryKeys } from '@/app/libs/query-keys';
 
-type BucketSummary = {
+export type TicketManagementBucketSummary = {
   total: number;
   open: number;
   assigned: number;
   close: number;
-  ffgCount?: number;
-  gamasCount?: number;
-  p1Count?: number;
-  pPlusCount?: number;
+  ffgCount: number;
+  gamasCount: number;
+  p1Count: number;
+  pPlusCount: number;
 };
 
-export type TicketManagementOverview = {
+export type TicketManagementOverviewData = {
   generatedAt: string;
   totals: {
     total: number;
@@ -24,43 +22,41 @@ export type TicketManagementOverview = {
     unassigned: number;
     assigned: number;
     close: number;
-    ffgCount?: number;
-    gamasCount?: number;
-    p1Count?: number;
-    pPlusCount?: number;
+    ffgCount: number;
+    gamasCount: number;
+    p1Count: number;
+    pPlusCount: number;
   };
   cards: {
-    kpiCustomer: BucketSummary;
-    kpiProactive: BucketSummary;
-    nonKpiUnspec: BucketSummary;
-    nonTechnical: BucketSummary;
-    sqmUpdate: BucketSummary;
-    obsolete: BucketSummary;
+    kpiCustomer: TicketManagementBucketSummary;
+    kpiProactive: TicketManagementBucketSummary;
+    nonKpiUnspec: TicketManagementBucketSummary;
+    nonTechnical: TicketManagementBucketSummary;
+    sqmUpdate: TicketManagementBucketSummary;
+    obsolete: TicketManagementBucketSummary;
   };
 };
 
-export function useTicketManagementOverview(
-  enabled = true,
-  workzone?: string,
-) {
+type Options = {
+  workzone?: string;
+  enabled?: boolean;
+};
+
+export function useTicketManagementOverview({ workzone, enabled = true }: Options) {
+  const filters = { workzone: workzone || undefined };
+
   return useQuery({
-    queryKey: [
-      ...queryKeys.dashboard.all,
-      'ticket-management-overview',
-      'v5',
-      workzone || 'all',
-    ],
+    queryKey: queryKeys.dashboard.ticketManagementOverview(filters),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (workzone) params.set('workzone', workzone);
-      const url = params.toString()
-        ? `/api/dashboard/ticket-management-overview?${params.toString()}`
-        : '/api/dashboard/ticket-management-overview';
+      if (filters.workzone) params.set('workzone', filters.workzone);
 
-      const res = await fetchWithAuth(url);
+      const res = await fetchWithAuth(
+        `/api/dashboard/ticket-management-overview?${params.toString()}`,
+      );
       if (!res) throw new Error('No response from ticket management overview');
 
       const json = await res.json();
@@ -68,7 +64,7 @@ export function useTicketManagementOverview(
         throw new Error(json?.message || 'Failed to fetch ticket management overview');
       }
 
-      return json.data as TicketManagementOverview;
+      return json.data as TicketManagementOverviewData;
     },
   });
 }
