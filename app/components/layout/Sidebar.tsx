@@ -278,6 +278,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const kpiProactiveFallback = useDailyTicketPage({
@@ -288,6 +289,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const nonKpiUnspecFallback = useDailyTicketPage({
@@ -298,6 +300,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const nonTechnicalFallback = useDailyTicketPage({
@@ -308,6 +311,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const sqmUpdateFallback = useDailyTicketPage({
@@ -318,6 +322,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const obsoleteFallback = useDailyTicketPage({
@@ -328,6 +333,7 @@ export default function Sidebar({
     workzone: selectedWorkzone || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
+    countOnly: true,
   }).summary.total;
 
   const syncedCounts = useSyncExternalStore(subscribe, getSnapshot);

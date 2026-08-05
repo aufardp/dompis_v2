@@ -7,42 +7,41 @@ import {
 } from '@/app/config/operational-buckets';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
-function uniqueStrings(values: Array<string | null | undefined>): string[] {
+function uniqueStrings(values: readonly (string | null | undefined)[]): string[] {
   return [...new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean))];
 }
 
-function buildCaseVariants(values: readonly string[]): string[] {
-  return uniqueStrings(
-    values.flatMap((value) => [
-      value,
-      value.toLowerCase(),
-      value.toUpperCase(),
-      value.replace(/\b\w/g, c => c.toUpperCase()),
-      value.replace(/\s+/g, ''),
-      value.replace(/\s+/g, '').toLowerCase(),
-      value.replace(/\s+/g, '').toUpperCase(),
-    ]),
-  );
-}
+/**
+ * Categorical fields (exact stored values, case-insensitive collation).
+ * Equality IN is index-friendly; avoid FULLTEXT MATCH / LIKE wildcards here.
+ */
+const CATEGORICAL_FIELDS = new Set<keyof Prisma.ticketWhereInput>([
+  'jenis_tiket_1',
+  'jenis_tiket_2',
+]);
 
 function withVariants(values: readonly string[]) {
-  return { in: buildCaseVariants(values) };
+  // utf8mb4_unicode_ci collation is already case-insensitive, so case variants
+  // are redundant and only bloat the IN list (which defeats the BTREE index).
+  return { in: uniqueStrings(values) };
 }
 
 function containsAny(field: keyof Prisma.ticketWhereInput, values: readonly string[]): Prisma.ticketWhereInput {
+  if (CATEGORICAL_FIELDS.has(field)) {
+    return { [field]: { in: uniqueStrings(values) } };
+  }
+  // Genuine free-text (symptom): keep FULLTEXT MATCH, one term per value.
   return {
-    OR: values.flatMap((value) =>
-      buildCaseVariants([value]).map((variant) => ({
-        [field]: { contains: variant },
-      })),
-    ),
+    OR: uniqueStrings(values).map((value) => ({
+      [field]: { contains: value },
+    })),
   };
 }
 
 export function buildRegulerJenis1Where(): Prisma.ticketWhereInput {
   return {
     jenis_tiket_1: {
-      in: buildCaseVariants(['reguler', 'regular', 'reg']),
+      in: uniqueStrings(['reguler', 'regular', 'reg']),
     },
   };
 }
@@ -63,7 +62,7 @@ export function buildOperationalBucketWhere(
 
   const definition = OPERATIONAL_BUCKET_DEFINITIONS[bucket];
 
-  const sourceVariants = buildCaseVariants(definition.sourceTicket);
+  const sourceVariants = uniqueStrings(definition.sourceTicket);
 
   const clauses: Prisma.ticketWhereInput[] = [
     { source_ticket: { in: sourceVariants } },
@@ -186,10 +185,9 @@ export function buildOperationalBucketWhere(
   }
 
   if (definition.jenisTiket1Filter?.length) {
-    const jenisClauses = definition.jenisTiket1Filter.flatMap(jenis =>
-      buildCaseVariants([jenis]).map(v => ({ jenis_tiket_1: { contains: v } }))
-    );
-    clauses.push({ OR: jenisClauses });
+    clauses.push({
+      jenis_tiket_1: { in: uniqueStrings(definition.jenisTiket1Filter) },
+    });
   }
 
   return { AND: clauses };

@@ -36,6 +36,7 @@ type DailyTicketPageFilters = {
   includeOptions?: boolean;
   includeClosed?: boolean;
   gamasOnly?: boolean;
+  countOnly?: boolean;
 };
 
 type PaginationInfo = {
@@ -82,6 +83,7 @@ export function useDailyTicketPage({
   includeOptions = true,
   includeClosed = false,
   gamasOnly = false,
+  countOnly = false,
   sortField,
   sortOrder,
 }: DailyTicketPageFilters & { sortField?: string; sortOrder?: 'asc' | 'desc' }) {
@@ -114,6 +116,7 @@ export function useDailyTicketPage({
     includeOptions,
     includeClosed,
     gamasOnly,
+    countOnly,
   });
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -137,6 +140,7 @@ export function useDailyTicketPage({
       if (!includeOptions) params.set('includeOptions', 'false');
       if (includeClosed) params.set('includeClosed', 'true');
       if (gamasOnly) params.set('gamasOnly', 'true');
+      if (countOnly) params.set('countOnly', 'true');
 
       const normalizedSearch = search?.trim();
       if (normalizedSearch) {
@@ -218,7 +222,7 @@ export function useDailyTicketPage({
     const pagination: PaginationInfo = {
       currentPage: Number(data?.page || page),
       totalPages: Math.max(1, Number(data?.totalPages || 1)),
-      total: Math.max(0, Number(data?.total || 0) - Number(data?.validasiCount || 0)),
+      total: Math.max(0, Number(data?.total || 0)),
       limit: Number(data?.limit || limit),
     };
 

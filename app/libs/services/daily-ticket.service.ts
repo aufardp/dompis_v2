@@ -99,6 +99,7 @@ type TicketFilters = {
   sort?: 'asc' | 'desc';
   sortField?: string;
   cursor?: string;
+  countOnly?: boolean;
 };
 
 type TicketTypeOption = {
@@ -2085,15 +2086,18 @@ private static async fetchValidasiTicketIds(
     const validasiBaseWhere = includeValidasi
       ? this.buildValidasiBaseWhere(validasiWhere ?? where)
       : null;
-    const ticketIdsPromise = this.fetchTicketIdsBySql(mainTableWhere, {
-      sort,
-      sortField: sortField && sortField !== 'priority' ? sortField : undefined,
-      offset,
-      limit: safeLimit,
-      priorityToday: toWibDateString(todayWibDateForDb()),
-      cursor,
-    });
-    const validasiTicketIdsPromise = includeValidasi && includeValidasiTickets && validasiBaseWhere
+    const countOnly = filters?.countOnly === true;
+    const ticketIdsPromise = countOnly
+      ? Promise.resolve({ rows: [] as Array<{ id_ticket: number; rank_global: number }>, nextCursor: null })
+      : this.fetchTicketIdsBySql(mainTableWhere, {
+          sort,
+          sortField: sortField && sortField !== 'priority' ? sortField : undefined,
+          offset,
+          limit: safeLimit,
+          priorityToday: toWibDateString(todayWibDateForDb()),
+          cursor,
+        });
+    const validasiTicketIdsPromise = !countOnly && includeValidasi && includeValidasiTickets && validasiBaseWhere
       ? this.fetchValidasiTicketIds(validasiBaseWhere, {
           sort,
           offset: validasiOffset,
@@ -2103,13 +2107,13 @@ private static async fetchValidasiTicketIds(
       : Promise.resolve({ ids: [], nextCursor: null });
     const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
-    const validasiCountPromise = includeValidasi && validasiBaseWhere
+    const validasiCountPromise = !countOnly && includeValidasi && validasiBaseWhere
       ? getOrSetCache(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0);
-    const statusOptionsPromise = includeOptions
+    const statusOptionsPromise = includeOptions && !countOnly
       ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
       : Promise.resolve([] as string[]);
-    const ticketTypeOptionsPromise = includeOptions
+    const ticketTypeOptionsPromise = includeOptions && !countOnly
       ? this.getTicketTypeOptions(
           this.buildMainTableWhere(ticketTypeOptionsWhere ?? where),
           includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
@@ -2141,14 +2145,19 @@ private static async fetchValidasiTicketIds(
         const result = await this.countStatusesAndCustomerTypes(mainTableWhere);
         summary = result.summary;
         customerTypeSummary = result.customerTypeSummary;
-        const [fs, vc] = await limitedPromiseAll<
-          [() => Promise<FlaggingSummary>, () => Promise<number>]
-        >([
-          () => this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
-          () => validasiCountPromise,
-        ]);
-        flaggingSummary = fs;
-        validasiCount = vc;
+        if (countOnly) {
+          flaggingSummary = { ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 };
+          validasiCount = 0;
+        } else {
+          const [fs, vc] = await limitedPromiseAll<
+            [() => Promise<FlaggingSummary>, () => Promise<number>]
+          >([
+            () => this.countFlaggingSummary(mainTableWhere, validasiBaseWhere),
+            () => validasiCountPromise,
+          ]);
+          flaggingSummary = fs;
+          validasiCount = vc;
+        }
       }
     } else {
       summary = { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0, unassigned: 0 };

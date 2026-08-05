@@ -91,6 +91,7 @@ export async function GET(request: Request) {
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
       sortField: searchParams.get('sortField') || undefined,
       cursor: searchParams.get('cursor') || undefined,
+      countOnly: searchParams.get('countOnly') === 'true',
     };
 
     // Build cache key identical to service internal cacheKeyBase

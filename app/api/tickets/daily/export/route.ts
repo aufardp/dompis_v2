@@ -415,8 +415,8 @@ async function buildXlsx(data: any[], columns: string[], filename: string) {
   const ws = XLSX.utils.aoa_to_sheet([columns, ...data]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Tiket');
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
-  return new Blob([buf], {
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer', compression: true }) as Buffer;
+  return new Blob([Uint8Array.from(buf)], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
 }
