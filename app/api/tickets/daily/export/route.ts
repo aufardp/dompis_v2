@@ -516,7 +516,6 @@ export async function GET(request: Request) {
             validasiPage: 1,
             validasiLimit: FETCH_PAGE_SIZE,
             includeValidasi: true,
-            includeSummary: false,
             includeOptions: false,
             ticketGroup: ticketGroupRaw,
             operationalBucket: operationalBucketRaw,
@@ -532,7 +531,7 @@ export async function GET(request: Request) {
 
         results.push(...(firstRes.validasiTickets ?? []));
 
-        const vPages = firstRes.validasiTotalPages ?? 1;
+        const vPages = Math.max(1, firstRes.validasiTotalPages ?? 1);
         if (vPages > 1) {
           const remainingPages = Array.from({ length: vPages - 1 }, (_, i) => i + 2);
           const pageResults = await Promise.all(
@@ -604,7 +603,6 @@ export async function GET(request: Request) {
           startDate: startDate || undefined,
           endDate: endDate || undefined,
           includeValidasi: false,
-          includeSummary: false,
           includeOptions: false,
           ticketGroup: ticketGroupRaw,
           operationalBucket: operationalBucketRaw,
@@ -624,7 +622,7 @@ export async function GET(request: Request) {
       return rejectTooLarge(allTickets.length);
     }
 
-    const totalPages = firstRes.totalPages ?? 1;
+    const totalPages = Math.max(1, firstRes.totalPages ?? 1);
     if (totalPages > 1) {
       const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
       const pageResults = await Promise.all(
