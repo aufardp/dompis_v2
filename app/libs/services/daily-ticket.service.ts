@@ -1530,6 +1530,7 @@ private static async fetchTicketIdsBySql(
     const sql = `
       SELECT COUNT(*) AS total
       FROM ticket
+      /*+ MAX_EXECUTION_TIME(5000) */
       WHERE ${whereClause}
     `;
 
@@ -1560,17 +1561,18 @@ private static async fetchTicketIdsBySql(
       const [p1, p2] = union.params;
       mainSql = `
         SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-        FROM ticket WHERE ${s1}
+        FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s1}
         UNION ALL
         SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-        FROM ticket WHERE ${s2}
+        FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s2}
       `;
       mainParams = [...p1, ...p2];
     } else {
       const [wc, ps] = buildSqlWhereClause(mainTableWhere);
       mainSql = `
         SELECT id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-        FROM ticket WHERE ${wc}
+        FROM ticket /*+ MAX_EXECUTION_TIME(5000) */
+        WHERE ${wc}
       `;
       mainParams = ps;
     }
@@ -1609,7 +1611,7 @@ private static async fetchTicketIdsBySql(
     }>);
   }
 
-  private static async countValidasiFlaggingSummary(
+private static async countValidasiFlaggingSummary(
     validasiBaseWhere: Prisma.ticketWhereInput,
   ): Promise<Array<Record<string, unknown>>> {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
@@ -1622,7 +1624,7 @@ private static async fetchTicketIdsBySql(
         t.ticket_id_gamas,
         t.flagging_manja,
         t.booking_date
-      FROM ticket t
+      FROM ticket t /*+ MAX_EXECUTION_TIME(5000) */
       WHERE ${sql}
     `;
     const sqlWithoutIndex = `
@@ -1733,10 +1735,10 @@ private static async fetchValidasiTicketIds(
           SUM(reguler) AS reguler
         FROM (
           SELECT ${aggSelect}
-          FROM ticket WHERE ${s1}
+          FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s1}
           UNION ALL
           SELECT ${aggSelect}
-          FROM ticket WHERE ${s2}
+          FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s2}
         ) AS combined
       `;
       params = [...p1, ...p2];
@@ -1754,7 +1756,7 @@ private static async fetchValidasiTicketIds(
           SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_platinum', 'hvc platinum', 'platinum') THEN 1 ELSE 0 END) AS hvc_platinum,
           SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_gold', 'hvc gold', 'gold') THEN 1 ELSE 0 END) AS hvc_gold,
           SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('reguler', 'regular') THEN 1 ELSE 0 END) AS reguler
-        FROM ticket
+        FROM ticket /*+ MAX_EXECUTION_TIME(5000) */
         WHERE ${wc}
       `;
       params = ps;
@@ -1867,9 +1869,9 @@ private static async fetchValidasiTicketIds(
       sql = `
         SELECT status, status_update, SUM(cnt) AS count
         FROM (
-          SELECT status, status_update, COUNT(*) AS cnt FROM ticket WHERE ${s1} GROUP BY status, status_update
+          SELECT status, status_update, COUNT(*) AS cnt FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s1} GROUP BY status, status_update
           UNION ALL
-          SELECT status, status_update, COUNT(*) AS cnt FROM ticket WHERE ${s2} GROUP BY status, status_update
+          SELECT status, status_update, COUNT(*) AS cnt FROM ticket /*+ MAX_EXECUTION_TIME(5000) */ WHERE ${s2} GROUP BY status, status_update
         ) AS daily_statuses
         GROUP BY status, status_update
       `;
@@ -1878,7 +1880,7 @@ private static async fetchValidasiTicketIds(
       const [wc, ps] = buildSqlWhereClause(where);
       sql = `
         SELECT status, status_update, COUNT(*) AS count
-        FROM ticket
+        FROM ticket /*+ MAX_EXECUTION_TIME(5000) */
         WHERE ${wc}
         GROUP BY status, status_update
       `;
