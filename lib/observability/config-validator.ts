@@ -144,7 +144,7 @@ export function validateWorkerConfig(workerName: string): { valid: boolean; warn
 }
 
 export function logConfigWarnings(workerName: string): void {
-  const { warnings } = validateWorkerConfig(workerName);
+  const warnings = collectConfigWarnings(workerName);
   if (warnings.length === 0) {
     logger.info('Config validation passed', { worker: workerName });
     return;
@@ -152,4 +152,44 @@ export function logConfigWarnings(workerName: string): void {
   for (const w of warnings) {
     logger.warn(`Config: ${w}`, { worker: workerName });
   }
+}
+
+export function collectConfigWarnings(workerName: string): string[] {
+  const { warnings } = validateWorkerConfig(workerName);
+  return warnings;
+}
+
+const SERVER_CONFIG: EnvVarSpec[] = [
+  { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 100 },
+  { name: 'TICKETS_CACHE_TTL', type: 'int', min: 1, max: 300, optional: true },
+  { name: 'DASHBOARD_CACHE_TTL', type: 'int', min: 1, max: 300, optional: true },
+  { name: 'WEB_INSTANCES', type: 'int', min: 1, max: 8, optional: true },
+  { name: 'REDIS_PORT', type: 'int', min: 1, max: 65535, optional: true },
+];
+
+export function getServerConfigWarnings(): string[] {
+  const warnings: string[] = [];
+  for (const spec of [...SHARED_CONFIG, ...SERVER_CONFIG]) {
+    const value = process.env[spec.name];
+    if (value === undefined || value === '') {
+      if (!spec.optional) {
+        warnings.push(`${spec.name}: MISSING (required)`);
+      }
+      continue;
+    }
+    if (spec.type === 'int') {
+      const parsed = parseInt(value, 10);
+      if (!Number.isFinite(parsed)) {
+        warnings.push(`${spec.name}=${value}: not a valid integer`);
+        continue;
+      }
+      if (spec.min !== undefined && parsed < spec.min) {
+        warnings.push(`${spec.name}=${parsed}: below minimum ${spec.min}`);
+      }
+      if (spec.max !== undefined && parsed > spec.max) {
+        warnings.push(`${spec.name}=${parsed}: above maximum ${spec.max}`);
+      }
+    }
+  }
+  return warnings;
 }

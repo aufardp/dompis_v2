@@ -7,6 +7,8 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   Database,
   Gauge,
@@ -14,9 +16,11 @@ import {
   Inbox,
   Layers,
   RefreshCw,
+  RotateCcw,
   Send,
   Server,
   ShieldCheck,
+  Trash2,
   Users,
   Wifi,
 } from 'lucide-react';
@@ -75,6 +79,54 @@ interface SloSnapshot {
   recentError?: string;
 }
 
+interface RedisInfo {
+  usedMemoryBytes: number;
+  usedMemoryHuman: string;
+  connectedClients: number;
+  evictedKeys: number;
+  keyspaceHits: number;
+  keyspaceMisses: number;
+  hitRate: number | null;
+  dbSize: number;
+  slowlogCount: number;
+}
+
+interface AuditEvent {
+  ts: number;
+  worker: string;
+  action: string;
+  detail: string;
+  durationMs?: number;
+  meta?: Record<string, unknown>;
+}
+
+interface BridgeQueueStatus {
+  name: string;
+  waiting: number;
+  active: number;
+  delayed: number;
+  completed: number;
+  failed: number;
+  recentFailed: Array<{
+    id: string | undefined;
+    name: string;
+    attemptsMade: number;
+    failedReason: string;
+    timestamp: number | undefined;
+    finishedOn: number | undefined;
+    durationMs: number | null;
+  }>;
+}
+
+interface DlqItem {
+  id: string;
+  source: string;
+  payload: string;
+  error: string;
+  failedAt: string;
+  retryCount: number;
+}
+
 interface Overview {
   timestamp: string;
   responseTimeMs?: number;
@@ -98,7 +150,7 @@ interface Overview {
     memory: { rss: number; heapUsed: number; heapTotal: number; external: number };
   };
   database: { status: string; latencyMs: number; error?: string };
-  redis: { status: string };
+  redis: { status: string; info: RedisInfo | null };
   locks: Record<string, { held: boolean; owner: string | null; ttlMs: number | null }>;
   workers: Record<string, WorkerState>;
   sync: {
@@ -143,7 +195,14 @@ interface Overview {
     outboxOldestAgeMs: number | null;
     dlqCounts: Record<string, number>;
     ingestionQuarantine: number;
+    bridgeDLQ: { total: number; interactive: number; ingestion: number; backfill: number } | null;
   };
+  bridgeRate: {
+    global: { used: number; limit: number };
+    backfill: { used: number; limit: number };
+  } | null;
+  audit: AuditEvent[];
+  configWarnings: string[];
   lag: {
     ingestionAgeMs: number | null;
     projectionAgeMs: number | null;
@@ -555,6 +614,316 @@ function statusTone(status: string): 'good' | 'warn' | 'bad' | 'neutral' {
   return 'neutral';
 }
 
+function RateGauge({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number;
+}) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  return (
+    <div>
+      <div className='flex items-center justify-between text-xs'>
+        <span className='font-semibold text-(--text-primary)'>{label}</span>
+        <span className={pct >= 100 ? 'font-bold text-red-600 dark:text-red-400' : pct >= 80 ? 'font-semibold text-amber-600 dark:text-amber-400' : 'text-(--text-secondary)'}>
+          {used}/{limit}
+        </span>
+      </div>
+      <div className='mt-1 h-1.5 w-full overflow-hidden rounded-full bg-(--border)'>
+        <div
+          className={`h-full rounded-full transition-all ${
+            pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500'
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BridgePanel({
+  rate,
+}: {
+  rate: Overview['bridgeRate'];
+}) {
+  const [queues, setQueues] = useState<BridgeQueueStatus[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState('');
+
+  const loadQueues = async () => {
+    try {
+      const res = await fetchWithAuth('/api/monitoring/bridge-queues');
+      if (!res) return;
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.message || 'Gagal memuat antrian bridge');
+      setQueues(json.queues);
+      setQueueError('');
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    void loadQueues();
+    const t = window.setInterval(() => void loadQueues(), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  return (
+    <Panel icon={<Activity size={18} />} title='Bridge (Qosmic)' right={<span className='text-xs text-(--text-muted)'>queue & budget</span>}>
+      <div className='grid gap-3 md:grid-cols-2'>
+        <div className='space-y-2 rounded-lg border border-(--border) bg-(--surface-2) p-3'>
+          <p className='text-[10px] font-bold tracking-wide text-(--text-muted) uppercase'>Rate limit budget</p>
+          {rate ? (
+            <>
+              <RateGauge label='Ingestion + Refresh (global)' used={rate.global.used} limit={rate.global.limit} />
+              <RateGauge label='Backfill' used={rate.backfill.used} limit={rate.backfill.limit} />
+              <p className='text-[11px] text-(--text-muted)'>req/menit di window bergulir Redis (shared semua konsumen)</p>
+            </>
+          ) : (
+            <p className='text-sm text-(--text-secondary)'>Bridge tidak dikonfigurasi.</p>
+          )}
+        </div>
+        <div className='rounded-lg border border-(--border) bg-(--surface-2) p-3'>
+          <p className='text-[10px] font-bold tracking-wide text-(--text-muted) uppercase'>Queue depth</p>
+          {queueError && <p className='text-xs text-red-600 dark:text-red-400'>{queueError}</p>}
+          {!queues ? (
+            <p className='text-sm text-(--text-secondary)'>Memuat...</p>
+          ) : (
+            <div className='space-y-2'>
+              {queues.map((q) => (
+                <div key={q.name}>
+                  <button
+                    type='button'
+                    onClick={() => setOpen(open === q.name ? null : q.name)}
+                    className='flex w-full items-center justify-between gap-2 text-left text-sm'
+                  >
+                    <span className='flex items-center gap-1 font-semibold text-(--text-primary)'>
+                      {open === q.name ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {q.name}
+                    </span>
+                    <span className='flex items-center gap-2 text-xs text-(--text-secondary)'>
+                      <span>waiting <b className='text-(--text-primary)'>{q.waiting}</b></span>
+                      <span>active <b className='text-(--text-primary)'>{q.active}</b></span>
+                      <span className={q.failed > 0 ? 'font-bold text-red-600 dark:text-red-400' : ''}>
+                        failed <b>{q.failed}</b>
+                      </span>
+                    </span>
+                  </button>
+                  {open === q.name && (
+                    <div className='mt-2 space-y-1.5 border-l-2 border-(--border) pl-3'>
+                      <div className='grid grid-cols-4 gap-2 text-xs text-(--text-secondary)'>
+                        <span>delayed: <b className='text-(--text-primary)'>{q.delayed}</b></span>
+                        <span>completed: <b className='text-(--text-primary)'>{q.completed}</b></span>
+                        <span>failed: <b className='text-(--text-primary)'>{q.failed}</b></span>
+                        <span>retain: 100</span>
+                      </div>
+                      {q.recentFailed.length === 0 ? (
+                        <p className='text-xs text-(--text-secondary)'>Tidak ada job gagal baru.</p>
+                      ) : (
+                        <div className='space-y-1.5'>
+                          {q.recentFailed.map((job) => (
+                            <div key={job.id} className='rounded-md bg-(--surface-2) p-2 text-xs'>
+                              <div className='flex items-center justify-between gap-2'>
+                                <span className='font-semibold text-(--text-primary)'>{job.name}</span>
+                                <span className='text-(--text-muted)'>
+                                  {job.finishedOn ? formatDate(new Date(job.finishedOn).toISOString()) : '-'} · {job.attemptsMade}x
+                                </span>
+                              </div>
+                              <p className='mt-1 truncate text-(--text-secondary)' title={job.failedReason}>
+                                {job.failedReason}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function DlqBrowser({
+  dlqCounts,
+}: {
+  dlqCounts: Record<string, number>;
+}) {
+  const sources = Object.keys(dlqCounts);
+  const [open, setOpen] = useState<string | null>(null);
+  const [items, setItems] = useState<Record<string, DlqItem[]>>({});
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [actionMsg, setActionMsg] = useState('');
+  const [error, setError] = useState('');
+
+  const loadItems = async (source: string) => {
+    setLoading((v) => ({ ...v, [source]: true }));
+    setError('');
+    try {
+      const res = await fetchWithAuth(`/api/monitoring/dlq?source=${encodeURIComponent(source)}&limit=30`);
+      if (!res) return;
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.message || 'Gagal memuat item DLQ');
+      setItems((v) => ({ ...v, [source]: json.items }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading((v) => ({ ...v, [source]: false }));
+    }
+  };
+
+  const runRetry = async (source: string) => {
+    setActionMsg(`Retry ${source}...`);
+    setError('');
+    try {
+      const res = await fetchWithAuth('/api/monitoring/dlq/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, max: 50 }),
+      });
+      const json = res ? await res.json() : null;
+      if (!res?.ok || !json?.success) throw new Error(json?.message || 'Retry gagal');
+      setActionMsg(`Retry ${source}: ${json.recovered} pulih, ${json.failed} gagal, ${json.purged} dibersihkan.`);
+      if (open === source) await loadItems(source);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const runDelete = async (source: string, id: string) => {
+    setError('');
+    try {
+      const res = await fetchWithAuth('/api/monitoring/dlq/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, id }),
+      });
+      const json = res ? await res.json() : null;
+      if (!res?.ok || !json?.success) throw new Error(json?.message || 'Hapus gagal');
+      setActionMsg(`Item ${id} dihapus dari ${source}.`);
+      await loadItems(source);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <Panel icon={<Inbox size={18} />} title='DLQ Browser' right={<span className='text-xs text-(--text-muted)'>retry / hapus item</span>}>
+      {error && <p className='mb-2 text-xs text-red-600 dark:text-red-400'>{error}</p>}
+      {actionMsg && <p className='mb-2 text-xs text-emerald-600 dark:text-emerald-400'>{actionMsg}</p>}
+      {sources.length === 0 ? (
+        <p className='text-sm text-(--text-secondary)'>Tidak ada DLQ aktif.</p>
+      ) : (
+        <div className='space-y-2'>
+          {sources.map((source) => (
+            <div key={source} className='rounded-lg border border-(--border) bg-(--surface-2) p-3'>
+              <div className='flex items-center justify-between gap-2'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    const next = open === source ? null : source;
+                    setOpen(next);
+                    if (next && !items[source]) void loadItems(source);
+                  }}
+                  className='flex items-center gap-1 text-sm font-semibold text-(--text-primary)'
+                >
+                  {open === source ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {source}
+                  <span className='text-(--text-muted)'>({dlqCounts[source]})</span>
+                </button>
+                <div className='flex items-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => void runRetry(source)}
+                    className='flex items-center gap-1 rounded-md border border-(--border) px-2 py-1 text-[11px] font-semibold text-(--text-primary) transition-colors hover:bg-(--surface)'
+                  >
+                    <RotateCcw size={11} />
+                    Retry
+                  </button>
+                  {open === source && (
+                    <button
+                      type='button'
+                      onClick={() => void loadItems(source)}
+                      className='flex items-center gap-1 rounded-md border border-(--border) px-2 py-1 text-[11px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface)'
+                    >
+                      <RefreshCw size={11} className={loading[source] ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
+              </div>
+              {open === source && (
+                <div className='mt-2 space-y-1.5 border-t border-(--border) pt-2'>
+                  {loading[source] ? (
+                    <p className='text-xs text-(--text-secondary)'>Memuat item...</p>
+                  ) : !items[source] || items[source].length === 0 ? (
+                    <p className='text-xs text-(--text-secondary)'>Kosong.</p>
+                  ) : (
+                    items[source].map((item) => (
+                      <div key={item.id} className='rounded-md bg-(--surface) p-2 text-xs'>
+                        <div className='flex items-center justify-between gap-2'>
+                          <span className='truncate font-mono text-[11px] text-(--text-muted)'>{item.id}</span>
+                          <span className='flex shrink-0 items-center gap-1 text-(--text-muted)'>
+                            retry {item.retryCount} · {formatDate(item.failedAt)}
+                            <button
+                              type='button'
+                              onClick={() => void runDelete(source, item.id)}
+                              title='Hapus item'
+                              className='text-red-600 transition-opacity hover:opacity-70 dark:text-red-400'
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </span>
+                        </div>
+                        <p className='mt-0.5 truncate text-(--text-secondary)' title={item.error}>
+                          {item.error}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function AuditFeed({ events }: { events: AuditEvent[] }) {
+  return (
+    <Panel icon={<ShieldCheck size={18} />} title='Worker Events' right={<span className='text-xs text-(--text-muted)'>audit trail 3 hari</span>}>
+      {events.length === 0 ? (
+        <p className='text-sm text-(--text-secondary)'>Belum ada event terekam.</p>
+      ) : (
+        <div className='max-h-72 space-y-2 overflow-auto'>
+          {events.map((event, index) => (
+            <div key={`${event.ts}-${index}`} className='rounded-md border border-(--border) bg-(--surface-2) p-2'>
+              <div className='flex items-center justify-between gap-2 text-xs'>
+                <span className='font-semibold text-(--text-primary)'>{event.worker}</span>
+                <span className='text-(--text-muted)'>{formatDate(new Date(event.ts).toISOString())}</span>
+              </div>
+              <p className='mt-0.5 text-xs font-semibold text-(--text-secondary)'>{event.action}</p>
+              <p className='mt-0.5 truncate text-xs text-(--text-muted)' title={event.detail}>
+                {event.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export default function AppPerformanceMonitor() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
@@ -659,6 +1028,20 @@ export default function AppPerformanceMonitor() {
     <div className='space-y-5'>
       <HealthBanner health={health} onToggle={() => setIssuesOpen((v) => !v)} expanded={issuesOpen} />
 
+      {data.configWarnings.length > 0 && (
+        <div className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300'>
+          <p className='flex items-center gap-1.5 font-semibold'>
+            <AlertTriangle size={14} />
+            Konfigurasi server perlu dicek
+          </p>
+          <ul className='mt-1.5 list-inside list-disc space-y-0.5 text-xs'>
+            {data.configWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
         <MetricCard
           icon={<Users size={20} />}
@@ -678,7 +1061,11 @@ export default function AppPerformanceMonitor() {
           icon={<Wifi size={20} />}
           label='Redis'
           value={data.redis.status}
-          detail='cache, lock, heartbeat'
+          detail={
+            data.redis.info
+              ? `${data.redis.info.usedMemoryHuman} · ${data.redis.info.connectedClients} clients`
+              : 'cache, lock, heartbeat'
+          }
           tone={data.redis.status === 'ready' ? 'good' : 'warn'}
         />
         <div className='rounded-lg border border-(--border) bg-(--surface) p-4 shadow-sm'>
@@ -749,6 +1136,15 @@ export default function AppPerformanceMonitor() {
               name='Ops'
               worker={data.workers['ops-worker'] ?? emptyWorker}
               slo={data.slo['ops-worker']}
+            />
+            <WorkerRow
+              name='Bridge'
+              worker={data.workers['bridge-worker'] ?? emptyWorker}
+              slo={data.slo['ops-worker']}
+            />
+            <WorkerRow
+              name='Snapshot'
+              worker={data.workers['snapshot-worker'] ?? emptyWorker}
             />
           </Panel>
 
@@ -1036,6 +1432,44 @@ export default function AppPerformanceMonitor() {
           </div>
         </div>
       </Panel>
+
+      <div className='grid gap-4 lg:grid-cols-2'>
+        <Panel icon={<Wifi size={18} />} title='Redis Detail' right={<span className='text-xs text-(--text-muted)'>memory & keyspace</span>}>
+          {data.redis.info ? (
+            <div className='space-y-1.5'>
+              <Stat label='Memory' value={`${data.redis.info.usedMemoryHuman} (${formatBytes(data.redis.info.usedMemoryBytes)})`} />
+              <Stat label='Connected clients' value={data.redis.info.connectedClients} />
+              <Stat label='DB size' value={`${data.redis.info.dbSize} keys`} />
+              <Stat label='Evicted keys' value={data.redis.info.evictedKeys} />
+              <Stat label='Slowlog count' value={data.redis.info.slowlogCount} />
+              <div className='flex items-center justify-between gap-2 pt-1'>
+                <span className='text-(--text-muted)'>Keyspace hit rate</span>
+                {data.redis.info.hitRate !== null && (
+                  <div className='flex w-1/2 items-center gap-2'>
+                    <div className='h-1.5 flex-1 overflow-hidden rounded-full bg-(--border)'>
+                      <div
+                        className={`h-full rounded-full ${data.redis.info.hitRate > 0.9 ? 'bg-emerald-500' : data.redis.info.hitRate > 0.7 ? 'bg-amber-500' : 'bg-red-500'}`}
+                        style={{ width: `${Math.round(data.redis.info.hitRate * 100)}%` }}
+                      />
+                    </div>
+                    <span className='text-xs font-semibold text-(--text-primary)'>
+                      {Math.round(data.redis.info.hitRate * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className='text-sm text-(--text-secondary)'>Redis info tidak tersedia.</p>
+          )}
+        </Panel>
+
+        <AuditFeed events={data.audit} />
+      </div>
+
+      <BridgePanel rate={data.bridgeRate} />
+
+      <DlqBrowser dlqCounts={data.pipeline.dlqCounts} />
 
       <div className='grid gap-4 lg:grid-cols-2 xl:grid-cols-4'>
         <MetricCard icon={<Clock3 size={20} />} label='Uptime API' value={formatDuration(data.uptimeSec)} detail={`pid ${data.system.pid}`} />

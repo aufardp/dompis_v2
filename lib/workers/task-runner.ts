@@ -405,6 +405,7 @@ export function startWorkerHeartbeat(
         lastRunAt: state.lastRunAt?.toISOString() ?? '',
         lastError: state.lastError ?? '',
         consecutiveErrors: String(state.consecutiveErrors),
+        circuitOpen: String(Boolean(state.circuitOpenedAt)),
         rss: String(memory.rss),
         heapUsed: String(memory.heapUsed),
         heapTotal: String(memory.heapTotal),

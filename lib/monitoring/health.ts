@@ -1,4 +1,4 @@
-import { redis, getRedisStatus } from '@/lib/redis';
+import { redis, getRedisStatus, isRedisReady, ensureRedisReady } from '@/lib/redis';
 import { getLockStatus } from '@/lib/distributed-lock';
 import {
   getSyncHealth,
@@ -10,8 +10,10 @@ import {
   testExternalConnection,
 } from '@/lib/external-db/connection';
 import { getSloSummary } from '@/lib/observability/slo-tracker';
+import { getAllAuditEvents } from '@/lib/observability/audit-trail';
+import { getServerConfigWarnings } from '@/lib/observability/config-validator';
 import { getQuarantineCount } from '@/lib/dlq';
-import { getDLQCounts } from '@/lib/external-db/qosmic-bridge/bridge-queue';
+import { getDLQCounts, getBridgeRateUsage } from '@/lib/external-db/qosmic-bridge/bridge-queue';
 import { getOnlineUsers } from '@/lib/monitoring/online-users';
 import { prisma } from '@/app/libs/prisma';
 import { logger } from '@/lib/observability/logger';
@@ -103,6 +105,8 @@ const WORKER_LABELS: Record<string, string> = {
   'data-worker': 'Data Worker',
   'projection-worker': 'Projection',
   'ops-worker': 'Ops',
+  'bridge-worker': 'Bridge',
+  'snapshot-worker': 'Snapshot',
 };
 
 const SLO_LABELS: Record<string, string> = {
@@ -123,6 +127,8 @@ const WORKER_INTERVAL_MS: Record<string, number> = {
   'data-worker': minutes(process.env.DATA_WORKER_INTERVAL_MINUTES, 2),
   'projection-worker': minutes(process.env.PROJECTION_INTERVAL_MINUTES, 2),
   'ops-worker': 15 * 60_000,
+  'bridge-worker': 15 * 60_000,
+  'snapshot-worker': (Number(process.env.SNAPSHOT_INTERVAL_SECONDS ?? 60) || 60) * 1000,
 };
 
 function numberFrom(value: unknown): number {
@@ -567,6 +573,61 @@ export function evaluateHealth(input: HealthInput): {
   return { status, issues, summary };
 }
 
+export interface RedisInfoSnapshot {
+  usedMemoryBytes: number;
+  usedMemoryHuman: string;
+  connectedClients: number;
+  evictedKeys: number;
+  keyspaceHits: number;
+  keyspaceMisses: number;
+  hitRate: number | null;
+  dbSize: number;
+  slowlogCount: number;
+}
+
+export async function getRedisInfo(): Promise<RedisInfoSnapshot | null> {
+  if (!isRedisReady()) {
+    const becameReady = await ensureRedisReady().catch(() => false);
+    if (!becameReady) return null;
+  }
+  try {
+    const [info, dbSize, slowlogCount] = await withTimeout(
+      Promise.all([
+        redis.info(),
+        redis.dbsize().catch(() => 0),
+        redis.call('SLOWLOG', 'COUNT').catch(() => 0),
+      ]),
+      3_000,
+      ['', 0, 0] as unknown as [string, number, number],
+    );
+    const lines = String(info).split('\r\n');
+    const findNum = (prefix: string): number => {
+      const line = lines.find((l) => l.startsWith(prefix));
+      const value = line ? Number(line.slice(prefix.length)) : NaN;
+      return Number.isFinite(value) ? value : 0;
+    };
+    const keyspaceHits = findNum('keyspace_hits:');
+    const keyspaceMisses = findNum('keyspace_misses:');
+    return {
+      usedMemoryBytes: findNum('used_memory:'),
+      usedMemoryHuman:
+        lines.find((l) => l.startsWith('used_memory_human:'))?.slice('used_memory_human:'.length).trim() ?? '',
+      connectedClients: findNum('connected_clients:'),
+      evictedKeys: findNum('evicted_keys:'),
+      keyspaceHits,
+      keyspaceMisses,
+      hitRate:
+        keyspaceHits + keyspaceMisses > 0
+          ? keyspaceHits / (keyspaceHits + keyspaceMisses)
+          : null,
+      dbSize: Number(dbSize),
+      slowlogCount: Number(slowlogCount),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
@@ -594,21 +655,24 @@ export async function getHealthSnapshot() {
     redis.hgetall('worker:heartbeat:data-worker').catch(() => ({})),
     redis.hgetall('worker:heartbeat:projection-worker').catch(() => ({})),
     redis.hgetall('worker:heartbeat:ops-worker').catch(() => ({})),
+    redis.hgetall('worker:heartbeat:bridge-worker').catch(() => ({})),
+    redis.hgetall('worker:heartbeat:snapshot-worker').catch(() => ({})),
   ]);
 
   const workers: Record<string, WorkerSnapshot> = {};
-  const workerNames = ['data-worker', 'projection-worker', 'ops-worker'] as const;
+  const workerNames = ['data-worker', 'projection-worker', 'ops-worker', 'bridge-worker', 'snapshot-worker'] as const;
   for (let i = 0; i < workerNames.length; i++) {
     workers[workerNames[i]] = parseWorkerHeartbeat(asStringRecord(heartbeatRows[i]));
   }
 
-  const [online, sync, projection, activeRefreshMetrics, statusRefreshMetrics] =
+  const [online, sync, projection, activeRefreshMetrics, statusRefreshMetrics, redisInfo] =
     await Promise.all([
       getOnlineUsers(),
       getSyncHealth(),
       getProjectionHealth(),
       redis.hgetall('active-refresh:metrics').catch(() => ({})),
       redis.hgetall('status-refresh:metrics').catch(() => ({})),
+      getRedisInfo(),
     ]);
 
   const [ingestionLock, projectionLock, activeRefreshLock, statusRefreshLock] =
@@ -713,6 +777,14 @@ export async function getHealthSnapshot() {
     // bridge queue not configured yet — skip silently
   }
 
+  // Bridge rate-limit budget usage (global 14 req/min + backfill 6 req/min)
+  let bridgeRate: { global: { used: number; limit: number }; backfill: { used: number; limit: number } } | null = null;
+  try {
+    bridgeRate = await getBridgeRateUsage();
+  } catch {
+    bridgeRate = null;
+  }
+
   // SLO summaries
   const sloNames = [
     'ingestion',
@@ -730,6 +802,12 @@ export async function getHealthSnapshot() {
   const projectionCheckpointMeta = parseProjectionCheckpointMeta(
     projection.checkpoint ?? null,
   );
+
+  const [auditEvents, configWarnings] = await Promise.all([
+    getAllAuditEvents(20).catch(() => []),
+    Promise.resolve(getServerConfigWarnings()),
+  ]);
+
   const lag = {
     ingestionAgeMs: msAge(sync.lastSyncTime),
     projectionAgeMs: msAge(projection.lastProjectionTime),
@@ -776,7 +854,7 @@ export async function getHealthSnapshot() {
       memory: process.memoryUsage(),
     },
     database,
-    redis: { status: getRedisStatus() },
+    redis: { status: getRedisStatus(), info: redisInfo },
     locks: {
       ingestion: ingestionLock,
       projection: projectionLock,
@@ -791,6 +869,9 @@ export async function getHealthSnapshot() {
     externalDb,
     slo,
     pipeline,
+    bridgeRate,
+    audit: auditEvents,
+    configWarnings,
     lag,
     health,
   };

@@ -136,3 +136,53 @@ export async function getQuarantineSources(): Promise<string[]> {
     return [];
   }
 }
+
+export async function getQuarantineItems(
+  source: string,
+  limit = 20,
+  offset = 0,
+): Promise<DlqEntry[]> {
+  if (!isRedisReady()) return [];
+  try {
+    const raw = await redis.zrange(
+      `${DLQ_PREFIX}${source}`,
+      offset,
+      offset + Math.max(1, limit) - 1,
+    );
+    const items: DlqEntry[] = [];
+    for (const item of raw) {
+      try {
+        const entry = JSON.parse(item) as DlqEntry;
+        items.push(entry);
+      } catch {
+        // skip malformed entry
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteQuarantineItem(
+  source: string,
+  id: string,
+): Promise<boolean> {
+  if (!isRedisReady()) return false;
+  try {
+    const raw = await redis.zrange(`${DLQ_PREFIX}${source}`, 0, -1);
+    for (const item of raw) {
+      try {
+        const entry = JSON.parse(item) as DlqEntry;
+        if (entry.id !== id) continue;
+        const removed = await redis.zrem(`${DLQ_PREFIX}${source}`, item);
+        return removed > 0;
+      } catch {
+        // skip malformed entry
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}

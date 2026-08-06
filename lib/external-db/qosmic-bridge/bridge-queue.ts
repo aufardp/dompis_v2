@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/observability/logger';
 import { WorkerTaskState, shouldRunWithCircuitBreaker, nowWIB, runWithCorrelationContext } from '@/lib/workers/task-runner';
 import { iterateNossaOpen, iterateNossaClosedIncremental, iterateNossaClosedWindow, fetchByIncident } from './nossa';
-import { RATE_LIMIT_KEY_BACKFILL } from './client';
+import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY } from './client';
 import { normalizeExternalRow } from '@/lib/ingestion/normalizer';
 import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
@@ -138,6 +138,18 @@ function isTransientBridgeError(err: unknown): boolean {
     if (err.message.includes('timeout') || err.message.includes('ETIMEDOUT')) return true;
   }
   return true; // default to transient for unknown errors
+}
+
+export function getBridgeCircuitState(): {
+  consecutiveErrors: number;
+  circuitOpenedAt: Date | null;
+  lastError: string | null;
+} {
+  return {
+    consecutiveErrors: circuitState.consecutiveErrors,
+    circuitOpenedAt: circuitState.circuitOpenedAt,
+    lastError: circuitState.lastError,
+  };
 }
 
 // ── Queues ───────────────────────────────────────────────────────────
@@ -537,4 +549,78 @@ export async function getDLQCounts(): Promise<{
     backfill: Number(b?.failed ?? 0),
     total: Number(i?.failed ?? 0) + Number(ing?.failed ?? 0) + Number(b?.failed ?? 0),
   };
+}
+
+export interface BridgeQueueJobSnapshot {
+  id: string | undefined;
+  name: string;
+  attemptsMade: number;
+  failedReason: string;
+  timestamp: number | undefined;
+  finishedOn: number | undefined;
+  durationMs: number | null;
+}
+
+export interface BridgeQueueSnapshot {
+  name: string;
+  waiting: number;
+  active: number;
+  delayed: number;
+  completed: number;
+  failed: number;
+  recentFailed: BridgeQueueJobSnapshot[];
+}
+
+export async function getBridgeQueueStatus(): Promise<BridgeQueueSnapshot[]> {
+  const queues = [
+    { name: 'interactive', queue: interactiveQueue },
+    { name: 'ingestion', queue: ingestionQueue },
+    { name: 'backfill', queue: backfillQueue },
+  ] as const;
+
+  return Promise.all(
+    queues.map(async ({ name, queue }) => {
+      const counts = (await queue.getJobCounts()) as any;
+      const failedJobs = await queue.getFailed(0, 10);
+      return {
+        name,
+        waiting: Number(counts.waiting ?? 0),
+        active: Number(counts.active ?? 0),
+        delayed: Number(counts.delayed ?? 0),
+        completed: Number(counts.completed ?? 0),
+        failed: Number(counts.failed ?? 0),
+        recentFailed: failedJobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          attemptsMade: job.attemptsMade,
+          failedReason: String(job.failedReason ?? '').slice(0, 800),
+          timestamp: job.timestamp,
+          finishedOn: job.finishedOn ?? undefined,
+          durationMs:
+            job.finishedOn != null ? Math.max(0, job.finishedOn - job.timestamp) : null,
+        })),
+      };
+    }),
+  );
+}
+
+export async function getBridgeRateUsage(): Promise<{
+  global: { used: number; limit: number };
+  backfill: { used: number; limit: number };
+} | null> {
+  try {
+    const keyFor = (key: string) => `ratelimit:${key}`;
+    const [globalUsed, backfillUsed] = await Promise.all([
+      redis.zcard(keyFor(RATE_LIMIT_KEY)).catch(() => 0),
+      redis.zcard(keyFor(RATE_LIMIT_KEY_BACKFILL)).catch(() => 0),
+    ]);
+    const totalLimit = Number(process.env.QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN ?? 20);
+    const backfillLimit = Number(process.env.QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN ?? 6);
+    return {
+      global: { used: Number(globalUsed), limit: Math.max(0, totalLimit - backfillLimit) },
+      backfill: { used: Number(backfillUsed), limit: backfillLimit },
+    };
+  } catch {
+    return null;
+  }
 }

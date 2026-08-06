@@ -7,10 +7,16 @@ import {
   installShutdownHandlers,
   runWithCorrelationContext,
   scheduleEveryMinutes,
+  startWorkerHeartbeat,
   waitForRedisReady,
   waitStartupDelay,
 } from '@/lib/workers/task-runner';
-import { startBridgeWorkers, stopBridgeWorkers, getDLQCounts } from '@/lib/external-db/qosmic-bridge/bridge-queue';
+import {
+  startBridgeWorkers,
+  stopBridgeWorkers,
+  getDLQCounts,
+  getBridgeCircuitState,
+} from '@/lib/external-db/qosmic-bridge/bridge-queue';
 
 const WORKER_NAME = 'bridge-worker';
 const DLQ_CHECK_INTERVAL = 15;
@@ -34,6 +40,12 @@ async function checkDLQ(): Promise<void> {
     }
   } catch (err) {
     logger.warn('[Bridge] DLQ check failed', { error: String(err) });
+  } finally {
+    state.lastRunAt = new Date();
+    const circuit = getBridgeCircuitState();
+    state.consecutiveErrors = circuit.consecutiveErrors;
+    state.circuitOpenedAt = circuit.circuitOpenedAt;
+    state.lastError = circuit.lastError;
   }
 }
 
@@ -45,6 +57,8 @@ async function startWorker(): Promise<void> {
 
   await connectDB();
   await waitForRedisReady();
+
+  startWorkerHeartbeat(WORKER_NAME, state);
 
   await startBridgeWorkers();
 

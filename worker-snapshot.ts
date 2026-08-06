@@ -5,6 +5,7 @@ import {
   installShutdownHandlers,
   runWithCorrelationContext,
   scheduleEveryMinutes,
+  startWorkerHeartbeat,
   waitForRedisReady,
   waitStartupDelay,
 } from '@/lib/workers/task-runner';
@@ -25,8 +26,15 @@ async function runSnapshotTask(): Promise<void> {
 
   try {
     const updated = await recomputeTodaySnapshot();
+    state.lastRunAt = new Date();
+    state.lastError = null;
+    state.consecutiveErrors = 0;
+    state.circuitOpenedAt = null;
     logger.info('Snapshot updated', { rows: updated, elapsed: Date.now() - startedAt });
   } catch (error) {
+    state.lastRunAt = new Date();
+    state.lastError = String(error);
+    state.consecutiveErrors++;
     logger.error('Snapshot task failed', { error: String(error) });
   } finally {
     state.running = false;
@@ -39,6 +47,8 @@ async function startWorker(): Promise<void> {
   await waitStartupDelay();
   await connectDB();
   await waitForRedisReady();
+
+  startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
     scheduleEveryMinutes(
