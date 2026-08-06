@@ -43,6 +43,11 @@ const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
 );
 const DEFAULT_CONCURRENCY = parsePositiveIntEnv('PROJECTION_CONCURRENCY', 2);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv('PROJECTION_RETRY_MAX', 3);
+const DEFAULT_FAILED_COOLDOWN_MINUTES = parsePositiveIntEnv(
+  'PROJECTION_FAILED_COOLDOWN_MINUTES',
+  30,
+);
+const DEFAULT_FAILED_COOLDOWN_MS = DEFAULT_FAILED_COOLDOWN_MINUTES * 60 * 1000;
 const DEFAULT_TRANSACTION_TIMEOUT_MS = parsePositiveIntEnv(
   'PROJECTION_TRANSACTION_TIMEOUT_MS',
   30_000,
@@ -648,6 +653,17 @@ async function fetchBatch(
     ? Prisma.sql`AND tr.importedAt >= ${options.since}`
     : Prisma.empty;
 
+  const retryMax = options.retryMax ?? DEFAULT_RETRY_MAX;
+  const failedCooldownCutoff = new Date(Date.now() - DEFAULT_FAILED_COOLDOWN_MS);
+  const cooldownSql = Prisma.sql`
+    AND NOT EXISTS (
+      SELECT 1 FROM ticket_projection_log tpl
+      WHERE tpl.ticketRawId = tr.id_ticket
+        AND tpl.status = 'failed'
+        AND tpl.attempts >= ${retryMax}
+        AND tpl.projectedAt > ${failedCooldownCutoff}
+    )`;
+
   return prisma.$queryRaw<RawSelectResult[]>`
     SELECT
       tr.id_ticket,
@@ -703,6 +719,7 @@ async function fetchBatch(
         WHERE f.incident = tr.incident
       )
       ${cursorSql}
+      ${cooldownSql}
       ${syncBatchSql}
       ${sinceSql}
     ORDER BY tr.importedAt ASC, tr.id_ticket ASC

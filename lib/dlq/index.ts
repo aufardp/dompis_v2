@@ -1,5 +1,6 @@
 import { logger } from '@/lib/observability/logger';
 import { isRedisReady, redis } from '@/lib/redis';
+import { prisma } from '@/app/libs/prisma';
 
 const DLQ_PREFIX = 'dlq:integration:';
 const DLQ_TTL = 7 * 86400;
@@ -42,20 +43,37 @@ export async function quarantine(
 export async function retryQuarantined(
   source: string,
   maxItems = 50,
-): Promise<{ recovered: number; failed: number }> {
-  if (!isRedisReady()) return { recovered: 0, failed: 0 };
+): Promise<{ recovered: number; failed: number; purged: number }> {
+  if (!isRedisReady()) return { recovered: 0, failed: 0, purged: 0 };
 
   const key = `${DLQ_PREFIX}${source}`;
   const raw = await redis.zrange(key, 0, maxItems - 1);
-  if (raw.length === 0) return { recovered: 0, failed: 0 };
+  if (raw.length === 0) return { recovered: 0, failed: 0, purged: 0 };
 
   let recovered = 0;
   let failed = 0;
+  let purged = 0;
 
   for (const item of raw) {
     try {
       const entry: DlqEntry = JSON.parse(item);
       entry.retryCount++;
+
+      // Projection: pemulihan asli ditangani oleh cooldown di fetchBatch
+      // (row gagal di-skip sementara lalu otomatis dicoba lagi). Di sini hanya
+      // purge entry yang row-nya sudah berhasil diproyeksi / sudah tidak aktif.
+      if (source === 'projection') {
+        if (!(await isProjectionDlqStale(entry))) continue;
+        const removed = await redis.zrem(key, item);
+        if (removed === 0) continue;
+        purged++;
+        logger.info('[DLQ] Purged stale projection item:', {
+          source,
+          id: entry.id,
+          retryCount: entry.retryCount,
+        });
+        continue;
+      }
 
       const removed = await redis.zrem(key, item);
       if (removed === 0) continue;
@@ -74,7 +92,30 @@ export async function retryQuarantined(
     }
   }
 
-  return { recovered, failed };
+  return { recovered, failed, purged };
+}
+
+async function isProjectionDlqStale(entry: DlqEntry): Promise<boolean> {
+  try {
+    const payload =
+      typeof entry.payload === 'string' ? JSON.parse(entry.payload) : entry.payload;
+    const itemId = payload?.itemId as string | undefined;
+    if (!itemId) return false;
+
+    const log = await prisma.ticket_projection_log.findUnique({
+      where: { ticketRawId: itemId },
+      select: { status: true },
+    });
+    if (log?.status === 'success') return true;
+
+    const raw = await prisma.ticket_raw.findUnique({
+      where: { id_ticket: itemId },
+      select: { isActive: true },
+    });
+    return !raw || !raw.isActive;
+  } catch {
+    return false;
+  }
 }
 
 export async function getQuarantineCount(source: string): Promise<number> {
