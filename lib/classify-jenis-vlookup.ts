@@ -219,6 +219,18 @@ function checkUnspecBySymptomOverride(input: JenisVlookupInput): JenisVlookupRes
   return null;
 }
 
+/**
+ * symptom mengandung C_KONTEN → PERMINTAAN (Non Technical).
+ * Prioritas tertinggi: berlaku untuk B2C dan B2B.
+ */
+function checkKontenOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  const symptom = (input.symptom ?? '').trim().toUpperCase();
+  if (symptom.includes('C_KONTEN')) {
+    return { jenis_tiket_1: 'PERMINTAAN', jenis_tiket_2: 'PERMINTAAN' };
+  }
+  return null;
+}
+
 function validateConsistency(input: JenisVlookupInput, result: JenisVlookupResult): void {
   const isB2cInput = isB2C(input.customer_segment);
   const expected = isB2cInput ? 'b2c' : 'b2b';
@@ -415,6 +427,9 @@ export async function classifyJenisFromVlookup(
 ): Promise<JenisVlookupResult> {
   await refreshVlookupCache();
 
+  const kontenOverride = checkKontenOverride(input);
+  if (kontenOverride) return kontenOverride;
+
   const override = checkTselOverride(input);
   if (override) return override;
 
@@ -447,6 +462,9 @@ export async function batchClassifyJenisFromVlookup(
   await refreshVlookupCache();
 
   return inputs.map((input) => {
+    const kontenOverride = checkKontenOverride(input);
+    if (kontenOverride) return kontenOverride;
+
     const override = checkTselOverride(input);
     if (override) return override;
 
