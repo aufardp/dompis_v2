@@ -424,6 +424,8 @@ let workerBackfill: Worker | null = null;
 
 function setupWorkerHooks(worker: Worker): void {
   worker.on('completed', (job) => {
+    const returnValue = job.returnvalue;
+    if (returnValue && (returnValue as any).reason === 'circuit_open') return;
     circuitState.consecutiveErrors = 0;
     circuitState.circuitOpenedAt = null;
     circuitState.lastError = null;
@@ -485,6 +487,11 @@ export async function startBridgeWorkers(): Promise<void> {
     'bridge-ingestion',
     async (job) => {
       if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
+
+      if (!shouldRunWithCircuitBreaker(circuitState, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
+        logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
+        return { skipped: true, reason: 'circuit_open' };
+      }
 
       switch (job.name) {
         case 'ingest-nossa':
