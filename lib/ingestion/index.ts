@@ -22,12 +22,6 @@ import {
   validateExternalRow,
 } from './normalizer';
 import { resolveConflict } from './conflict-resolver';
-import {
-  emitIngestionCompleteEvent,
-  emitIngestionFailedEvent,
-  createBulkOutboxEvents,
-  IngestionEventTypes,
-} from './outbox-emitter';
 import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
@@ -688,28 +682,6 @@ async function bulkUpsertTicketRaw(
   }
 }
 
-function buildEvent(
-  eventType: (typeof IngestionEventTypes)[keyof typeof IngestionEventTypes],
-  row: ProcessableRow,
-  sourceTable: string,
-  previousStatus: string | null,
-  syncVersion: number,
-  batchId: string,
-) {
-  return {
-    eventType,
-    payload: {
-      sourceTable,
-      incident: row.row.incident || row.identity,
-      identity: row.identity,
-      previousStatus,
-      newStatus: row.normalizedStatus,
-      syncVersion,
-      syncBatchId: batchId,
-    },
-  };
-}
-
 async function processBatch(
   rows: NormalizedExternalRow[],
   rawRows: Record<string, unknown>[],
@@ -822,7 +794,6 @@ async function processBatch(
   const {
     changedRows,
     heartbeatRows,
-    events,
     inserted,
     updated,
     skipped,
@@ -852,7 +823,6 @@ async function processBatch(
           ).flat().map(row => [row.incident, row]),
         )
       : new Map();
-    const events: Array<Parameters<typeof createBulkOutboxEvents>[1][number]> = [];
     const changedRows: TicketRawBulkRow[] = [];
     const heartbeatRows: TicketRawBulkRow[] = [];
     let inserted = 0;
@@ -886,31 +856,9 @@ async function processBatch(
 
       if (!existing) {
         changedRows.push(data as TicketRawBulkRow);
-        events.push(
-          buildEvent(
-            IngestionEventTypes.TICKET_RAW_CREATED,
-            item,
-            sourceTable,
-            null,
-            conflict.newVersion,
-            batchId,
-          ),
-        );
         inserted++;
       } else if (conflict.shouldUpdate) {
         changedRows.push(data as TicketRawBulkRow);
-        events.push(
-          buildEvent(
-            existing.status !== conflict.newStatus
-              ? IngestionEventTypes.TICKET_RAW_STATUS_CHANGED
-              : IngestionEventTypes.TICKET_RAW_UPDATED,
-            item,
-            sourceTable,
-            existing.status,
-            conflict.newVersion,
-            batchId,
-          ),
-        );
         updated++;
       } else {
         heartbeatRows.push(data as TicketRawBulkRow);
@@ -929,10 +877,6 @@ async function processBatch(
     if (quarantined.length > 0) {
       await tx.ingestion_quarantine.createMany({ data: quarantined });
       await incrIngestionQuarantine(quarantined.length);
-    }
-
-    if (events.length > 0) {
-      await createBulkOutboxEvents(tx, events);
     }
 
     const checkpointData = {
@@ -958,7 +902,7 @@ async function processBatch(
       update: checkpointData,
     });
 
-    return { changedRows, heartbeatRows, events, inserted, updated, skipped };
+    return { changedRows, heartbeatRows, inserted, updated, skipped };
   }, {
     isolationLevel: 'ReadCommitted',
     maxWait: Math.min(DEFAULT_TRANSACTION_TIMEOUT_MS, 30_000),
@@ -1020,7 +964,7 @@ async function processBatch(
 /**
  * Shared helper: normalize and process a page of raw rows through the batch
  * pipeline (validation → identity resolution → conflict resolution → upsert →
- * quarantine → events → checkpoint). Used by both MySQL and bridge paths.
+ * quarantine → checkpoint). Used by both MySQL and bridge paths.
  */
 export async function processRawRows(
   rawRows: Record<string, unknown>[],
@@ -1558,7 +1502,6 @@ async function runIngestionMode(
         result.failed++;
         result.errors.push({ table: tableName, incident: 'table', error: message });
         if (result.errors.length > 100) result.errors.length = 100;
-        await emitIngestionFailedEvent(batchId, tableName, message);
         throw error;
       }
     });
@@ -1567,16 +1510,6 @@ async function runIngestionMode(
     const rowsPerSecond = duration > 0
       ? Math.round(((result.processed || 0) / duration) * 1000 * 100) / 100
       : 0;
-    await emitIngestionCompleteEvent({
-      syncBatchId: batchId,
-      tableName: 'all',
-      totalProcessed: result.processed ?? 0,
-      inserted: result.inserted,
-      updated: result.updated,
-      skipped: result.skipped,
-      failed: result.failed,
-      duration,
-    });
     await setSyncStatus(result.failed > 0 ? 'failed' : 'success', {
       duration,
       rowsPerSecond,

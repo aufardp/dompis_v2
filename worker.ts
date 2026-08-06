@@ -367,9 +367,11 @@ async function chunkedUpdate(
       UPDATE tech_event_outbox
       SET ${setClause}
       WHERE id IN (
-        SELECT id FROM tech_event_outbox
-        WHERE ${whereClause}
-        ORDER BY id LIMIT ${chunkSize}
+        SELECT id FROM (
+          SELECT id FROM tech_event_outbox
+          WHERE ${whereClause}
+          ORDER BY id LIMIT ${chunkSize}
+        ) AS _tmp
       )
     `);
     if (result === 0) break;
@@ -388,9 +390,11 @@ async function chunkedDelete(
     const result = await prismaBulk.$executeRawUnsafe(`
       DELETE FROM tech_event_outbox
       WHERE id IN (
-        SELECT id FROM tech_event_outbox
-        WHERE ${whereClause}
-        ORDER BY id LIMIT ${chunkSize}
+        SELECT id FROM (
+          SELECT id FROM tech_event_outbox
+          WHERE ${whereClause}
+          ORDER BY id LIMIT ${chunkSize}
+        ) AS _tmp
       )
     `);
     if (result === 0) break;

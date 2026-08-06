@@ -62,17 +62,6 @@ export async function dispatchTechEvents() {
   const now = new Date();
   const batchSize = getBatchSize();
 
-  // Hapus event lama yang sudah SENT/FAILED (>7 hari)
-  const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  await withP1017Retry(() =>
-    prismaBulk.tech_event_outbox.deleteMany({
-      where: {
-        created_at: { lte: cutoff },
-        status: { in: ['SENT', 'FAILED'] },
-      },
-    }),
-  ).catch(() => undefined);
-
   // Reset SENDING yang stuck lebih dari 5 menit
   // (Artinya proses crash sebelum update status ke SENT/FAILED/PENDING)
   const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);
@@ -89,30 +78,6 @@ export async function dispatchTechEvents() {
       },
     }),
   );
-
-  // Archive PENDING yang stuck lebih dari 7 hari → FAILED.
-  // Menghindari backlog PENDING membengkak tanpa batas yang membuat
-  // COUNT(PENDING) sangat lambat (insiden pool exhaustion).
-  const archiveCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const archived = await withP1017Retry(() =>
-    prismaBulk.tech_event_outbox.updateMany({
-      where: {
-        status: 'PENDING',
-        created_at: { lte: archiveCutoff },
-      },
-      data: {
-        status: 'FAILED',
-        last_error: 'Archived: stuck PENDING terlalu lama',
-        next_attempt_at: null,
-      },
-    }),
-  ).catch(() => ({ count: 0 }));
-  if (archived.count > 0) {
-    await decrOutboxPending(archived.count);
-    logger.info('[TechEvents] Archived stuck PENDING events', {
-      count: archived.count,
-    });
-  }
 
   const events = await withP1017Retry(() =>
     prismaBulk.tech_event_outbox.findMany({
