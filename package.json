@@ -49,6 +49,7 @@
     "outbox:cleanup:hygiene": "tsx scripts/cleanup-tech-events-backlog.ts --only-hygiene",
     "dlq:diagnose": "tsx scripts/diagnose-dlq.ts",
     "bridge:dlq-retry": "tsx scripts/bridge-dlq-retry.ts",
+    "logs:diagnose": "tsx scripts/diagnose-log-tables.ts",
     "projection:reset-failed": "tsx scripts/projection-reset-failed.ts",
     "agg:rebuild": "tsx scripts/rebuild-aggregation.ts",
     "bridge:ingest": "tsx scripts/qosmic-bridge-ingest.ts",

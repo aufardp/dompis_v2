@@ -381,27 +381,112 @@ async function chunkedUpdate(
   return total;
 }
 
-async function chunkedDelete(
+const RETENTION_TABLES = {
+  tech_event_outbox: 'tech_event_outbox',
+  ingestion_run_log: 'ingestion_run_log',
+  status_refresh_run_log: 'status_refresh_run_log',
+  active_refresh_run_log: 'active_refresh_run_log',
+  projection_request: 'projection_request',
+  ingestion_quarantine: 'ingestion_quarantine',
+  status_refresh_ticket_state: 'status_refresh_ticket_state',
+  reguler_webhook_outbox: 'reguler_webhook_outbox',
+  invite_tokens: 'invite_tokens',
+  ticket_raw_finalized: 'ticket_raw_finalized',
+  ticket_active_viewers: 'ticket_active_viewers',
+} as const;
+
+type RetentionTable = keyof typeof RETENTION_TABLES;
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+const LOG_RETENTION_DAYS = readPositiveIntEnv('LOG_RETENTION_DAYS', 30);
+const FINALIZED_RETENTION_DAYS = readPositiveIntEnv('FINALIZED_RETENTION_DAYS', 90);
+const ACTIVE_VIEWER_STALE_MINUTES = readPositiveIntEnv('ACTIVE_VIEWER_STALE_MINUTES', 120);
+
+function toMysqlTs(d: Date): string {
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+async function chunkedDeleteFrom(
+  table: RetentionTable,
   whereClause: string,
+  orderCol = 'id',
   chunkSize = 500
 ): Promise<number> {
+  const tableName = RETENTION_TABLES[table];
+  const orderBy = orderCol ? ` ORDER BY ${orderCol}` : '';
   let total = 0;
   while (true) {
     const result = await prismaBulk.$executeRawUnsafe(`
-      DELETE FROM tech_event_outbox
-      WHERE id IN (
-        SELECT id FROM (
-          SELECT id FROM tech_event_outbox
-          WHERE ${whereClause}
-          ORDER BY id LIMIT ${chunkSize}
-        ) AS _tmp
-      )
+      DELETE FROM ${tableName}
+      WHERE ${whereClause}
+      ${orderBy} LIMIT ${chunkSize}
     `);
     if (result === 0) break;
     total += result;
     await new Promise(r => setTimeout(r, 100));
   }
   return total;
+}
+
+async function runLogRetention(): Promise<void> {
+  await setLockWaitTimeout();
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const cutoffLogs = toMysqlTs(new Date(Date.now() - LOG_RETENTION_DAYS * dayMs));
+  const cutoffFinalized = toMysqlTs(new Date(Date.now() - FINALIZED_RETENTION_DAYS * dayMs));
+
+  const jobs: Array<{ table: RetentionTable; where: string; orderCol?: string }> = [
+    { table: 'ingestion_run_log', where: `startedAt <= '${cutoffLogs}'` },
+    { table: 'status_refresh_run_log', where: `startedAt <= '${cutoffLogs}'` },
+    { table: 'active_refresh_run_log', where: `startedAt <= '${cutoffLogs}'` },
+    { table: 'projection_request', where: `processed_at IS NOT NULL AND processed_at <= '${cutoffLogs}'` },
+    { table: 'ingestion_quarantine', where: `createdAt <= '${cutoffLogs}'` },
+    { table: 'status_refresh_ticket_state', where: `lastCheckedAt <= '${cutoffLogs}'` },
+    { table: 'reguler_webhook_outbox', where: `created_at <= '${cutoffLogs}'` },
+    { table: 'invite_tokens', where: `(used_at IS NOT NULL OR expires_at <= '${cutoffLogs}') AND created_at <= '${cutoffLogs}'` },
+    { table: 'ticket_raw_finalized', where: `finalized_at <= '${cutoffFinalized}'`, orderCol: '' },
+  ];
+
+  logger.info('[LogRetention] Starting periodic log retention', {
+    logRetentionDays: LOG_RETENTION_DAYS,
+    finalizedRetentionDays: FINALIZED_RETENTION_DAYS,
+    cutoffLogs,
+    cutoffFinalized,
+  });
+
+  const summary: Record<string, number> = {};
+  for (const job of jobs) {
+    try {
+      const deleted = await chunkedDeleteFrom(job.table, job.where, job.orderCol);
+      summary[job.table] = deleted;
+      if (deleted > 0) {
+        logger.info('[LogRetention] Purged', { table: job.table, deleted });
+      }
+    } catch (err: any) {
+      logger.error('[LogRetention] Purge failed', err, { table: job.table });
+    }
+  }
+
+  logger.info('[LogRetention] Completed', { summary });
+}
+
+async function runTransientCleanup(): Promise<void> {
+  await setLockWaitTimeout();
+  const cutoff = toMysqlTs(new Date(Date.now() - ACTIVE_VIEWER_STALE_MINUTES * 60 * 1000));
+  try {
+    const deleted = await chunkedDeleteFrom('ticket_active_viewers', `last_seen_at <= '${cutoff}'`);
+    if (deleted > 0) {
+      logger.info('[TransientCleanup] Pruned stale active viewers', { deleted, staleMinutes: ACTIVE_VIEWER_STALE_MINUTES });
+    }
+  } catch (err: any) {
+    logger.error('[TransientCleanup] Failed', err);
+  }
 }
 
 async function runTechEventCleanup(): Promise<void> {
@@ -438,7 +523,8 @@ async function runTechEventCleanup(): Promise<void> {
   }
 
   // 3. Cleanup old SENT/FAILED > 7 days (chunked)
-  const deleted = await chunkedDelete(
+  const deleted = await chunkedDeleteFrom(
+    'tech_event_outbox',
     `created_at <= '${oldCutoffISO}' AND status IN ('SENT', 'FAILED')`
   );
 
@@ -617,9 +703,11 @@ async function startWorker() {
     cron.schedule('5 0 * * *', () => runWithCorrelationContext('ops-worker', () => void resetAllStaleAssignedTickets())),
     cron.schedule('*/15 * * * *', () => runWithCorrelationContext('ops-worker', () => void monitorBridgeDLQ())),
     cron.schedule('0 3 * * *', () => runWithCorrelationContext('ops-worker', () => void runTechEventCleanup())),
+    cron.schedule('10 3 * * *', () => runWithCorrelationContext('ops-worker', () => void runLogRetention())),
+    cron.schedule('*/30 * * * *', () => runWithCorrelationContext('ops-worker', () => void runTransientCleanup())),
   ];
 
-  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m) gauge-reconcile(2m) tech-event-cleanup(3am)', { component: 'worker' });
+  logger.info('Scheduled: tech-events(2m) reguler-webhook(15m) auto-assign(5m) dlq-retry(5m) health(15m) reconciliation(6am) midnight-reset(00:05) bridge-dlq(15m) gauge-reconcile(2m) tech-event-cleanup(3am) log-retention(3:10am) transient-cleanup(30m)', { component: 'worker' });
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },
