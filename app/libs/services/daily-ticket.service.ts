@@ -558,11 +558,24 @@ function isMissingIndexError(error: unknown): boolean {
   return message.includes('Code: `1176`') || /doesn't exist in table/i.test(message);
 }
 
+const FULLTEXT_FIELDS = new Set(['jenis_tiket_1', 'jenis_tiket_2', 'symptom']);
+const FULLTEXT_MIN_TOKEN_LENGTH = 3;
+
+function buildFtsBooleanQuery(term: string): { match: string | null; like: string } {
+  const tokens = term
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= FULLTEXT_MIN_TOKEN_LENGTH);
+  if (tokens.length === 0) {
+    return { match: null, like: `%${term}%` };
+  }
+  return { match: tokens.map((t) => `+${t}*`).join(' '), like: `%${term}%` };
+}
+
 export function buildSqlWhereClause(baseWhere: Prisma.ticketWhereInput): [string, any[]] {
   const conditions: string[] = [];
   const params: any[] = [];
 
-  const FULLTEXT_FIELDS = new Set(['jenis_tiket_1', 'jenis_tiket_2', 'symptom']);
 
 function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
     if (!node || typeof node !== 'object') return;
@@ -670,8 +683,14 @@ function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
             conditions.push(`\`${key}\` IS NOT NULL`);
           } else if (typeof operator.not === 'object' && operator.not.contains !== undefined) {
             if (FULLTEXT_FIELDS.has(key)) {
-              conditions.push(`NOT MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
-              params.push(`+${operator.not.contains}*`);
+              const fts = buildFtsBooleanQuery(String(operator.not.contains));
+              if (fts.match) {
+                conditions.push(`NOT MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
+                params.push(fts.match);
+              } else {
+                conditions.push(`\`${key}\` NOT LIKE ?`);
+                params.push(fts.like);
+              }
             } else {
               conditions.push(`\`${key}\` NOT LIKE ?`);
               params.push(`%${operator.not.contains}%`);
@@ -703,9 +722,14 @@ function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
 
         if (operator.contains !== undefined) {
           if (FULLTEXT_FIELDS.has(key)) {
-            // Use FULLTEXT search with boolean mode for partial matching
-            conditions.push(`MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
-            params.push(`+${operator.contains}*`);
+            const fts = buildFtsBooleanQuery(String(operator.contains));
+            if (fts.match) {
+              conditions.push(`MATCH(\`${key}\`) AGAINST(? IN BOOLEAN MODE)`);
+              params.push(fts.match);
+            } else {
+              conditions.push(`\`${key}\` LIKE ?`);
+              params.push(fts.like);
+            }
           } else {
             conditions.push(`\`${key}\` LIKE ?`);
             params.push(`%${operator.contains}%`);
