@@ -158,6 +158,64 @@ function TicketTableValidasiLoadingDesktop({
   );
 }
 
+const VALIDASI_REASON_LABEL: Record<string, string> = {
+  'Status update: close': 'Status close',
+  'Worklog menunjukkan sudah selesai': 'Worklog selesai',
+};
+
+function shortReasonLabel(reason?: string | null): string | undefined {
+  if (!reason) return undefined;
+  return VALIDASI_REASON_LABEL[reason] ?? reason;
+}
+
+function ValidasiStatusBadge({
+  reason,
+  align = 'center',
+}: {
+  reason?: string | null;
+  align?: 'center' | 'start';
+}) {
+  const isCloseReason = reason === 'Status update: close';
+  const tone = isCloseReason
+    ? {
+        container:
+          'border-blue-200 bg-blue-50 dark:border-blue-400/20 dark:bg-blue-500/15',
+        label: 'text-blue-600/80 dark:text-blue-400/80',
+        text: 'text-blue-700 dark:text-blue-400',
+        icon: 'text-blue-600 dark:text-blue-400',
+      }
+    : {
+        container:
+          'border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-500/15',
+        label: 'text-amber-600/80 dark:text-amber-400/80',
+        text: 'text-amber-700 dark:text-amber-400',
+        icon: 'text-amber-600 dark:text-amber-400',
+      };
+  const label = shortReasonLabel(reason);
+
+  return (
+    <div
+      className={`inline-flex flex-col ${
+        align === 'center' ? 'items-center' : 'items-start'
+      } gap-0.5 rounded border px-2.5 py-1 ${tone.container}`}
+    >
+      {label && (
+        <span
+          className={`text-[9px] leading-tight font-medium whitespace-nowrap ${tone.label}`}
+        >
+          {label}
+        </span>
+      )}
+      <span
+        className={`inline-flex items-center gap-1 text-[11px] font-bold ${tone.text}`}
+      >
+        <AlertTriangle size={11} strokeWidth={2.5} className={tone.icon} />
+        Cek Insera
+      </span>
+    </div>
+  );
+}
+
 export default function TicketTableValidasi({
   tickets,
   pagination,
@@ -432,17 +490,12 @@ export default function TicketTableValidasi({
                       <p>{renderAgeSLA(ticket)}</p>
                     </div>
                   </div>
-                  {ticket.validationReason && (
-                    <div className='mt-1'>
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        ticket.validationReason === 'Status update: close'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
-                      }`}>
-                        {ticket.validationReason}
-                      </span>
-                    </div>
-                  )}
+                  <div className='mt-1'>
+                    <ValidasiStatusBadge
+                      reason={ticket.validationReason}
+                      align='start'
+                    />
+                  </div>
                   <div className='mt-3 flex items-center justify-between'>
                     <div className='max-w-[50%] truncate'>
                       <p className='text-[10px] text-(--text-secondary)'>
@@ -629,7 +682,7 @@ export default function TicketTableValidasi({
                             </span>
                           </td>
                           <td className='px-3 py-3 text-center'>
-                            <span className='inline-block max-w-[120px] truncate align-middle text-xs text-(--text-secondary)'>
+                            <span className='inline-block max-w-30 truncate align-middle text-xs text-(--text-secondary)'>
                               {ticket.worklogSummary || '-'}
                             </span>
                           </td>
@@ -644,26 +697,9 @@ export default function TicketTableValidasi({
                             </button>
                           </td>
                           <td className='px-3 py-3 text-center'>
-                            <div className='flex flex-col items-center gap-2'>
-                              <div className='inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-400/20 dark:bg-amber-500/15'>
-                                <AlertTriangle
-                                  size={12}
-                                  className='text-amber-600 dark:text-amber-400'
-                                />
-                                <span className='text-xs font-semibold text-amber-700 dark:text-amber-400'>
-                                  Menunggu Dorong Insera
-                                </span>
-                              </div>
-                              {ticket.validationReason && (
-                                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                  ticket.validationReason === 'Status update: close'
-                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
-                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
-                                }`}>
-                                  {ticket.validationReason}
-                                </span>
-                              )}
-                            </div>
+                            <ValidasiStatusBadge
+                              reason={ticket.validationReason}
+                            />
                           </td>
                         </tr>
                       );
