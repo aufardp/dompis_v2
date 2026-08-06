@@ -231,6 +231,18 @@ function checkKontenOverride(input: JenisVlookupInput): JenisVlookupResult | nul
   return null;
 }
 
+/**
+ * symptom mengandung NONTECHNICAL (varian NON TECHNICAL, NON-TECHNICAL) → PERMINTAAN (Non Technical).
+ * Prioritas tertinggi: berlaku untuk B2C dan B2B.
+ */
+function checkNonTechnicalSymptomOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  const symptom = (input.symptom ?? '').toUpperCase().replace(/[-\s]+/g, '');
+  if (symptom.includes('NONTECHNICAL')) {
+    return { jenis_tiket_1: 'PERMINTAAN', jenis_tiket_2: 'PERMINTAAN' };
+  }
+  return null;
+}
+
 function validateConsistency(input: JenisVlookupInput, result: JenisVlookupResult): void {
   const isB2cInput = isB2C(input.customer_segment);
   const expected = isB2cInput ? 'b2c' : 'b2b';
@@ -430,6 +442,9 @@ export async function classifyJenisFromVlookup(
   const kontenOverride = checkKontenOverride(input);
   if (kontenOverride) return kontenOverride;
 
+  const nonTechnicalSymptomOverride = checkNonTechnicalSymptomOverride(input);
+  if (nonTechnicalSymptomOverride) return nonTechnicalSymptomOverride;
+
   const override = checkTselOverride(input);
   if (override) return override;
 
@@ -464,6 +479,9 @@ export async function batchClassifyJenisFromVlookup(
   return inputs.map((input) => {
     const kontenOverride = checkKontenOverride(input);
     if (kontenOverride) return kontenOverride;
+
+    const nonTechnicalSymptomOverride = checkNonTechnicalSymptomOverride(input);
+    if (nonTechnicalSymptomOverride) return nonTechnicalSymptomOverride;
 
     const override = checkTselOverride(input);
     if (override) return override;
