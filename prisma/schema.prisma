@@ -322,6 +322,8 @@ model ticket {
   ticket_evidence             ticket_evidence[]
   ticket_status_history       ticket_status_history[]
   ticket_tracking             ticket_tracking?
+  service_location            service_location[]          @relation("service_location_last_ticket")
+  service_location_history    service_location_history[]  @relation("service_location_history_ticket")
 
   @@index([teknisi_user_id], map: "fk_ticket_user")
   @@index([teknisi_user_id, status_update, rk_information], map: "idx_auto_assign_lookup")
@@ -835,9 +837,11 @@ model users {
   topbar_notification_state                         topbar_notification_state[]
   user_sa                                           user_sa[]
   user_region                                       user_region[]
-  user_branch                                       user_branch[]
+user_branch                                       user_branch[]
   user_area                                         user_area[]
-  area                                              area?                       @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
+  service_location                                  service_location[]           @relation("service_location_last_teknisi")
+  service_location_history                          service_location_history[]   @relation("service_location_history_teknisi")
+  area                                              area?                        @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
   roles                                             roles?                      @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
 
   @@index([area_id], map: "id_area")
@@ -945,4 +949,59 @@ model DashboardSummarySnapshot {
   @@unique([aggDate, workzone])
   @@index([aggDate])
   @@map("dashboard_summary_snapshot")
+}
+
+model service_location {
+  id              Int       @id @default(autoincrement())
+  service_no      String    @unique @db.VarChar(100)
+  customer_name   String?   @db.VarChar(255)
+  alamat          String?   @db.Text
+  latitude        Decimal   @db.Decimal(10, 7)
+  longitude       Decimal   @db.Decimal(10, 7)
+  accuracy_meters Decimal?  @db.Decimal(6, 2)
+  device_name     String?   @db.VarChar(100)
+  barcode_dc      String?   @db.VarChar(150)
+  workzone        String?   @db.VarChar(100)
+  last_ticket_id  Int?
+  last_teknisi_id Int?
+  tagged_count    Int       @default(1)
+  created_at      DateTime  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+
+  history        service_location_history[]
+  last_ticket    ticket?  @relation("service_location_last_ticket", fields: [last_ticket_id], references: [id_ticket], onDelete: SetNull)
+  last_teknisi   users?   @relation("service_location_last_teknisi", fields: [last_teknisi_id], references: [id_user], onDelete: SetNull)
+
+  @@index([workzone])
+  @@index([latitude, longitude], map: "idx_service_location_geo")
+  @@index([updated_at])
+}
+
+model service_location_history {
+  id                   Int       @id @default(autoincrement())
+  service_location_id  Int
+  ticket_id            Int
+  incident             String    @db.VarChar(100)
+  service_no           String    @db.VarChar(100)
+  customer_name        String?   @db.VarChar(255)
+  alamat               String?   @db.Text
+  latitude             Decimal   @db.Decimal(10, 7)
+  longitude            Decimal   @db.Decimal(10, 7)
+  accuracy_meters      Decimal?  @db.Decimal(6, 2)
+  device_name          String?   @db.VarChar(100)
+  barcode_dc           String?   @db.VarChar(150)
+  workzone             String?   @db.VarChar(100)
+  teknisi_user_id      Int
+  source               String    @default("manual_tag") @db.VarChar(20)
+  tagged_at            DateTime  @default(now()) @db.Timestamp(0)
+
+  service_location service_location @relation(fields: [service_location_id], references: [id], onDelete: Cascade)
+  ticket           ticket           @relation("service_location_history_ticket", fields: [ticket_id], references: [id_ticket], onDelete: Cascade)
+  teknisi          users            @relation("service_location_history_teknisi", fields: [teknisi_user_id], references: [id_user])
+
+  @@index([service_location_id])
+  @@index([ticket_id])
+  @@index([service_no, tagged_at], map: "idx_slh_service_no_tagged_at")
+  @@index([workzone, tagged_at], map: "idx_slh_workzone_tagged_at")
+  @@index([latitude, longitude], map: "idx_slh_geo")
 }

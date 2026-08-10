@@ -95,6 +95,27 @@ export function useSubRcaOptions(): UseDropdownOptionsReturn {
   };
 }
 
+export function useWarMapFilterOptions() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.warMap.filterOptions(),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/war-map/filters');
+      if (!res) throw new Error('Failed to fetch war map filter options');
+      const result = await res.json();
+      if (!result.success) throw new Error(result.message || 'Failed to fetch war map filter options');
+      return result.data as { workzones: Option[]; areas: Option[] };
+    },
+  });
+
+  return {
+    workzones: data?.workzones ?? [],
+    areas: data?.areas ?? [],
+    loading: isLoading,
+    error: error ? (error as Error).message : null,
+  };
+}
+
 export function useWorkzoneOptions() {
   const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.dropdowns.workzone(),

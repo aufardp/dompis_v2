@@ -136,6 +136,8 @@ export type LockedTicket = {
   alamat: string | null;
   service_no: string | null;
   contact_name: string | null;
+  customer_name: string | null;
+  device_name: string | null;
   owner_group: string | null;
   customer_type: string | null;
 };

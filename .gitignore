@@ -65,3 +65,5 @@ results/
 *.log
 EOF
 logs/*.log
+# accidental backups
+*.zip

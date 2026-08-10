@@ -35,6 +35,9 @@ import EvidenceGallery from './detail-modal/EvidenceGallery';
 import EvidenceSliderModal from './EvidenceSliderModal';
 import AddressEditor from './detail-modal/AddressEditor';
 import DeviceEditor from './detail-modal/DeviceEditor';
+import LocationTagger, {
+  LocationTagState,
+} from './detail-modal/LocationTagger';
 import InfoField from './detail-modal/InfoField';
 import TicketHistoryTimeline from './detail-modal/TicketHistoryTimeline';
 import { filesToDataUrls } from './detail-modal/file-preview';
@@ -135,6 +138,7 @@ export default function TicketDetailModal({
   const [showAddMember, setShowAddMember] = useState(false);
   const addressSectionRef = useRef<HTMLDivElement>(null);
   const evidenceUploaderRef = useRef<HTMLDivElement>(null);
+  const [locationTag, setLocationTag] = useState<LocationTagState | null>(null);
 
   const status = useMemo(() => {
     const raw = ticket.status_update ?? ticket.hasilVisit ?? '';
@@ -193,6 +197,15 @@ export default function TicketDetailModal({
       .toLowerCase();
     return v.length === 0 || DEVICE_EMPTY_VALUES.includes(v);
   })();
+
+  const geotagRequired = process.env.NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED === 'true';
+
+  const isLocationEmpty = useMemo(() => {
+    if (!locationTag) return true;
+    if (!Number.isFinite(locationTag.latitude)) return true;
+    if (!Number.isFinite(locationTag.longitude)) return true;
+    return locationTag.barcodeDc.trim().length === 0;
+  }, [locationTag]);
 
   useEffect(() => {
     if (!ticket.idTicket) return;
@@ -542,6 +555,11 @@ export default function TicketDetailModal({
       return;
     }
 
+    if (geotagRequired && isLocationEmpty) {
+      setError('Lokasi (titik koordinat + barcode DC) wajib ditandai sebelum menutup tiket.');
+      return;
+    }
+
     if (isRcaIncomplete) {
       setError('RCA dan Sub RCA wajib diisi sebelum menutup tiket.');
       return;
@@ -572,6 +590,11 @@ export default function TicketDetailModal({
           rca: selectedRca,
           subRca: selectedSubRca,
           descriptionSolutionDompis: detailPerbaikan.trim(),
+          latitude: locationTag?.latitude ?? undefined,
+          longitude: locationTag?.longitude ?? undefined,
+          accuracyMeters: locationTag?.accuracyMeters ?? undefined,
+          barcodeDc: locationTag?.barcodeDc ?? undefined,
+          locationSource: locationTag?.locationSource ?? undefined,
         }),
       });
 
@@ -595,6 +618,8 @@ export default function TicketDetailModal({
   }, [
     isAlamatEmpty,
     isDeviceNameEmpty,
+    geotagRequired,
+    isLocationEmpty,
     isRcaIncomplete,
     isDetailPerbaikanEmpty,
     selectedFiles.length,
@@ -603,6 +628,11 @@ export default function TicketDetailModal({
     selectedRca,
     selectedSubRca,
     detailPerbaikan,
+    locationTag?.latitude,
+    locationTag?.longitude,
+    locationTag?.accuracyMeters,
+    locationTag?.barcodeDc,
+    locationTag?.locationSource,
     onUpdated,
   ]);
 
@@ -627,6 +657,10 @@ export default function TicketDetailModal({
   );
   const handleScrollToDevice = useCallback(
     () => handleScrollToSection('device-editor-section'),
+    [handleScrollToSection],
+  );
+  const handleScrollToLocation = useCallback(
+    () => handleScrollToSection('location-tagger-section'),
     [handleScrollToSection],
   );
   const handleScrollToRca = useCallback(
@@ -844,6 +878,31 @@ export default function TicketDetailModal({
                         setError(null);
                         onUpdated();
                       }}
+                    />
+                  </div>
+
+                  <div
+                    className='border-t border-(--border) pt-2'
+                    id='location-tagger-section'
+                  >
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                      Lokasi Penanganan
+                      {isOnProgress && geotagRequired && isLocationEmpty && (
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                          <AlertTriangle size={10} className='mr-1 inline' />
+                          WAJIB
+                        </span>
+                      )}
+                    </p>
+                    <LocationTagger
+                      ticketId={ticket.idTicket}
+                      serviceNo={ticket.serviceNo}
+                      contactName={ticket.contactName}
+                      alamat={ticket.alamat}
+                      deviceName={ticket.deviceName}
+                      canEdit={canUpdateAlamat}
+                      onError={setError}
+                      onLocationChange={setLocationTag}
                     />
                   </div>
 
@@ -1088,6 +1147,8 @@ export default function TicketDetailModal({
           isEvidenceIncomplete={isEvidenceIncomplete}
           isAlamatEmpty={isAlamatEmpty}
           isDeviceNameEmpty={isDeviceNameEmpty}
+          isLocationEmpty={isLocationEmpty}
+          geotagRequired={geotagRequired}
           isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
           photoCount={photoCount}
           photoRequired={photoRequired}
@@ -1098,6 +1159,7 @@ export default function TicketDetailModal({
           onAddMember={() => setShowAddMember(true)}
           onScrollToAlamat={handleScrollToAlamat}
           onScrollToDevice={handleScrollToDevice}
+          onScrollToLocation={handleScrollToLocation}
           onScrollToRca={handleScrollToRca}
           onScrollToDetail={handleScrollToDetail}
           onScrollToFoto={handlePhotoClick}

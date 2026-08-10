@@ -70,6 +70,10 @@ export const queryKeys = {
     serviceArea: (area?: string) => (area ? (['sa', area] as const) : (['sa'] as const)),
     workzone: () => ['workzone'] as const,
   },
+  warMap: {
+    all: ['war-map'] as const,
+    filterOptions: () => [...queryKeys.warMap.all, 'filters'] as const,
+  },
   sync: {
     all: ['sync'] as const,
     status: () => [...queryKeys.sync.all, 'status'] as const,

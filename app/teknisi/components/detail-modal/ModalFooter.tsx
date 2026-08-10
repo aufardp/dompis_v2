@@ -98,6 +98,8 @@ function CombinedActionButtons({
   onClose,
   isAlamatEmpty,
   isDeviceNameEmpty,
+  isLocationEmpty,
+  geotagRequired,
   isDetailPerbaikanEmpty,
   isEvidenceIncomplete,
   photoCount,
@@ -109,6 +111,8 @@ function CombinedActionButtons({
   const getCloseContent = () => {
     if (isAlamatEmpty) return { Icon: MapPin, main: 'Isi Alamat' };
     if (isDeviceNameEmpty) return { Icon: Smartphone, main: 'Isi Device' };
+    if (geotagRequired && isLocationEmpty)
+      return { Icon: MapPin, main: 'Isi Lokasi' };
     if (isDetailPerbaikanEmpty) return { Icon: FileText, main: 'Isi Detail' };
     if (isEvidenceIncomplete)
       return { Icon: Camera, main: `Foto ${photoCount}/${photoRequired}` };
@@ -170,6 +174,8 @@ interface ModalFooterProps {
   isEvidenceIncomplete: boolean;
   isAlamatEmpty: boolean;
   isDeviceNameEmpty: boolean;
+  isLocationEmpty: boolean;
+  geotagRequired: boolean;
   isDetailPerbaikanEmpty: boolean;
   photoCount: number;
   photoRequired?: number;
@@ -180,6 +186,7 @@ interface ModalFooterProps {
   onAddMember: () => void;
   onScrollToAlamat?: () => void;
   onScrollToDevice?: () => void;
+  onScrollToLocation?: () => void;
   onScrollToRca?: () => void;
   onScrollToDetail?: () => void;
   onScrollToFoto?: () => void;
@@ -195,6 +202,8 @@ export default function ModalFooter({
   isEvidenceIncomplete,
   isAlamatEmpty,
   isDeviceNameEmpty,
+  isLocationEmpty,
+  geotagRequired,
   isDetailPerbaikanEmpty,
   photoCount,
   photoRequired = 2,
@@ -205,6 +214,7 @@ export default function ModalFooter({
   onAddMember,
   onScrollToAlamat,
   onScrollToDevice,
+  onScrollToLocation,
   onScrollToRca,
   onScrollToDetail,
   onScrollToFoto,
@@ -216,6 +226,7 @@ export default function ModalFooter({
     !isEvidenceIncomplete &&
     !isAlamatEmpty &&
     !isDeviceNameEmpty &&
+    !(geotagRequired && isLocationEmpty) &&
     !isDetailPerbaikanEmpty &&
     !anyLoading;
 
@@ -233,6 +244,13 @@ export default function ModalFooter({
       label: 'Device',
       ok: !isDeviceNameEmpty,
       onClick: onScrollToDevice,
+    },
+    {
+      key: 'lokasi',
+      icon: MapPin,
+      label: 'Lokasi',
+      ok: !isLocationEmpty,
+      onClick: onScrollToLocation,
     },
     {
       key: 'rca',
@@ -307,6 +325,8 @@ export default function ModalFooter({
             onClose={onClose}
             isAlamatEmpty={isAlamatEmpty}
             isDeviceNameEmpty={isDeviceNameEmpty}
+            isLocationEmpty={isLocationEmpty}
+            geotagRequired={geotagRequired}
             isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
             isEvidenceIncomplete={isEvidenceIncomplete}
             photoCount={photoCount}

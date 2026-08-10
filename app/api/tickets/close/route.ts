@@ -4,7 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketWorkflowService } from '@/app/libs/services/ticketWorkflow.service';
 import { NextResponse } from 'next/server';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
+import { broadcastTicketInvalidate, broadcastWarMapUpsert } from '@/app/libs/sseBroadcast';
 import { closeTicketSchema } from '@/app/libs/validations/ticket.schema';
 import { validateBody } from '@/app/libs/validations/validate';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
@@ -26,6 +26,11 @@ export async function POST(req: Request) {
       rca: body?.rca,
       subRca: body?.subRca,
       descriptionSolutionDompis: body?.descriptionSolutionDompis,
+      latitude: body?.latitude,
+      longitude: body?.longitude,
+      accuracyMeters: body?.accuracyMeters,
+      barcodeDc: body?.barcodeDc,
+      locationSource: body?.locationSource,
     });
 
     if (!parsed.success) {
@@ -35,6 +40,8 @@ export async function POST(req: Request) {
       if (fieldErrors.descriptionSolutionDompis) messages.push('detail perbaikan minimal 10 karakter');
       if (fieldErrors.rca) messages.push('RCA tidak valid (maks 100 karakter)');
       if (fieldErrors.subRca) messages.push('Sub RCA tidak valid (maks 100 karakter)');
+      if (fieldErrors.latitude || fieldErrors.longitude) messages.push('Koordinat lokasi tidak valid');
+      if (fieldErrors.barcodeDc) messages.push('Barcode DC tidak valid (maks 150 karakter)');
 
       return NextResponse.json(
         {
@@ -46,7 +53,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const { ticketId, rca, subRca, descriptionSolutionDompis } = parsed.data;
+    const {
+      ticketId,
+      rca,
+      subRca,
+      descriptionSolutionDompis,
+      latitude,
+      longitude,
+      accuracyMeters,
+      barcodeDc,
+      locationSource,
+    } = parsed.data;
 
     const result = (await TicketWorkflowService.closeTicket(
       Number(ticketId),
@@ -54,9 +71,20 @@ export async function POST(req: Request) {
       rca ?? '',
       subRca ?? '',
       descriptionSolutionDompis,
-    )) as { message: string };
+      {
+        latitude: latitude as number | undefined,
+        longitude: longitude as number | undefined,
+        accuracyMeters: accuracyMeters as number | undefined,
+        barcodeDc: barcodeDc as string | undefined,
+        locationSource: locationSource as 'manual_tag' | 'reused_bank_data' | undefined,
+      },
+    )) as { message: string; warMapPoint?: { serviceNo: string; incident: string; latitude: number; longitude: number; workzone: string | null; taggedAt: string } | null };
 
     broadcastTicketInvalidate('close');
+
+    if (result?.warMapPoint) {
+      broadcastWarMapUpsert(result.warMapPoint);
+    }
 
     return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {

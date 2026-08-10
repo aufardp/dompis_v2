@@ -1,5 +1,6 @@
 import { logger } from '@/lib/observability/logger';
 import { redis, isRedisReady } from '@/lib/redis';
+import { invalidateWarMapCache } from '@/lib/cache';
 
 let subClient: ReturnType<typeof redis.duplicate> | null = null;
 const activeConnections = new Set<ReadableStreamDefaultController>();
@@ -44,7 +45,7 @@ export async function initSSERedis() {
       broadcastToActive(message);
     });
 
-    await subClient.subscribe('sse:sync', 'sse:tickets');
+    await subClient.subscribe('sse:sync', 'sse:tickets', 'sse:war-map');
 
     logger.info('[SSE-Redis] Subscriber connected');
   } catch (err) {
@@ -128,6 +129,26 @@ export function broadcastTicketViewers(payload: {
   broadcastToActive(message);
   if (isRedisReady()) {
     void redis.publish('sse:tickets', message).catch(() => {});
+  }
+}
+
+export function broadcastWarMapUpsert(payload: {
+  serviceNo: string;
+  latitude: number;
+  longitude: number;
+  incident: string;
+  taggedAt: string;
+  workzone?: string | null;
+}) {
+  const message = JSON.stringify({
+    type: 'war-map:new-point',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  broadcastToActive(message);
+  if (isRedisReady()) {
+    void redis.publish('sse:war-map', message).catch(() => {});
+    void invalidateWarMapCache().catch(() => {});
   }
 }
 

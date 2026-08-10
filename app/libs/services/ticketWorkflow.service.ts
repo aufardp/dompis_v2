@@ -27,6 +27,7 @@ import {
   TicketUpdateWorkflow,
   UpdateTicketInput,
 } from '@/app/types/ticket';
+import { CloseLocationInput } from '@/app/libs/validations/ticket.schema';
 
 type TechnicianSnapshot = {
   id_user: number;
@@ -291,7 +292,7 @@ async function lockTicketRow(
     SELECT id_ticket,
       incident, workzone, teknisi_user_id, status_update,
       pending_dompis AS pending_dompis, alamat, service_no, contact_name,
-      owner_group, customer_type
+      owner_group, customer_type, device_name, customer_name
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -1220,6 +1221,7 @@ export class TicketWorkflowService {
     rca: string,
     subRca: string,
     descriptionSolutionDompis: string,
+    location: CloseLocationInput = {},
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Ticket ID wajib diisi');
@@ -1247,6 +1249,16 @@ export class TicketWorkflowService {
     )
       throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
+    const geotagRequired = process.env.GEOTAG_REQUIRED_ENABLED === 'true';
+    const hasGeo =
+      Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude);
+    if (geotagRequired) {
+      if (!hasGeo)
+        throw new Error('Lokasi wajib ditandai sebelum close');
+      if (!location?.barcodeDc || !String(location.barcodeDc).trim())
+        throw new Error('Barcode DC wajib diisi sebelum close');
+    }
+
     return commitAndInvalidate(
       prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
@@ -1267,6 +1279,11 @@ export class TicketWorkflowService {
 
         if (!alamat) throw new Error('Alamat wajib diisi sebelum close');
 
+        const deviceNameValue = cleanNullableString(ticket.device_name);
+
+        if (!deviceNameValue)
+          throw new Error('Device Name (ODP) wajib diisi sebelum close');
+
         const evidenceCount = await tx.ticket_evidence.count({
           where: { ticket_id: ticketId },
         });
@@ -1284,6 +1301,56 @@ export class TicketWorkflowService {
             closed_at: now,
           },
         });
+
+        const geoServiceNo = hasGeo ? cleanNullableString(ticket.service_no) : null;
+
+        if (hasGeo) {
+          const serviceNo = geoServiceNo;
+          if (serviceNo) {
+            const snapshot = {
+              service_no: serviceNo,
+              customer_name: cleanNullableString(ticket.contact_name) ?? cleanNullableString(ticket.customer_name),
+              alamat,
+              latitude: new Prisma.Decimal(location.latitude as number),
+              longitude: new Prisma.Decimal(location.longitude as number),
+              accuracy_meters:
+                Number.isFinite(location.accuracyMeters)
+                  ? new Prisma.Decimal(location.accuracyMeters as number)
+                  : null,
+              device_name: deviceNameValue,
+              barcode_dc: cleanNullableString(location.barcodeDc),
+              workzone: cleanNullableString(ticket.workzone),
+            };
+
+            const saved = await tx.service_location.upsert({
+              where: { service_no: serviceNo },
+              update: {
+                ...snapshot,
+                last_ticket_id: ticketId,
+                last_teknisi_id: actor.id_user,
+                tagged_count: { increment: 1 },
+              },
+              create: {
+                ...snapshot,
+                last_ticket_id: ticketId,
+                last_teknisi_id: actor.id_user,
+                tagged_count: 1,
+              },
+            });
+
+            await tx.service_location_history.create({
+              data: {
+                service_location_id: saved.id,
+                ticket_id: ticketId,
+                incident: ticket.incident,
+                ...snapshot,
+                teknisi_user_id: actor.id_user,
+                source: location.locationSource ?? 'manual_tag',
+                tagged_at: now,
+              },
+            });
+          }
+        }
 
         await upsertTracking(tx, {
           ticketId,
@@ -1350,7 +1417,17 @@ export class TicketWorkflowService {
           tx,
         );
 
-        return { message: 'Ticket closed successfully' };
+        return {
+          message: 'Ticket closed successfully',
+          warMapPoint: geoServiceNo ? {
+            serviceNo: geoServiceNo,
+            incident: ticket.incident,
+            latitude: Number(location?.latitude),
+            longitude: Number(location?.longitude),
+            workzone: ticket.workzone,
+            taggedAt: now.toISOString(),
+          } : null,
+        };
       }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
     );
   }

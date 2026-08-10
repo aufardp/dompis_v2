@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from 'react';
+import { useEffect, useMemo, useSyncExternalStore, type ComponentType } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { subscribe, getSnapshot } from '@/app/libs/bucket-sync-store';
 import clsx from 'clsx';
@@ -10,7 +10,6 @@ import {
   BarChart3,
   BookUser,
   CircleHelp,
-  ChevronDown,
   Clock3,
   LayoutDashboard,
   Layers3,
@@ -27,6 +26,7 @@ import {
 } from 'lucide-react';
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
+import ExpandableMenuGroup from '@/app/components/layout/ExpandableMenuGroup';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
@@ -40,6 +40,7 @@ const MENU_ITEMS: Array<{
   icon: MenuIcon;
   superadminOnly?: boolean;
   adminBranchVisible?: boolean;
+  helpdeskVisible?: boolean;
   hint: string;
 }> = [
   {
@@ -85,10 +86,11 @@ const MENU_ITEMS: Array<{
     hint: 'Case investigation',
   },
   {
-    label: 'Import Tiket',
-    path: '/admin/import-tiket',
-    icon: Upload,
-    hint: 'Data pipeline',
+    label: 'Tools',
+    path: '/admin/tools',
+    icon: Wrench,
+    hint: 'Utilities & maps',
+    helpdeskVisible: true,
   },
   {
     label: 'Infrastructure Monitor',
@@ -104,6 +106,31 @@ const MENU_ITEMS: Array<{
     hint: 'User & hierarki region',
     superadminOnly: true,
     adminBranchVisible: true,
+  },
+];
+
+const TOOLS_ITEMS: Array<{
+  key: string;
+  label: string;
+  path: string;
+  icon: MenuIcon;
+  hint: string;
+  adminOnly?: boolean;
+}> = [
+  {
+    key: 'war-map',
+    label: 'War Map',
+    path: '/admin/tools/war-map',
+    icon: MapPinned,
+    hint: 'Peta sebaran gangguan',
+  },
+  {
+    key: 'import-tiket',
+    label: 'Import Tiket',
+    path: '/admin/tools/import-tiket',
+    icon: Upload,
+    hint: 'Data pipeline',
+    adminOnly: true,
   },
 ];
 
@@ -224,35 +251,6 @@ function SubmenuButton({
   );
 }
 
-function SectionToggle({
-  expanded,
-  onClick,
-}: {
-  expanded: boolean;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <button
-      type='button'
-      onClick={onClick}
-      className={clsx(
-        'grid h-7 w-7 place-items-center rounded-full transition-all duration-200',
-        expanded
-          ? 'bg-blue-500/10 text-blue-700 dark:bg-blue-500/10 dark:text-blue-100'
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/8 dark:hover:text-white',
-      )}
-      aria-label='Toggle ticket management submenu'
-    >
-      <ChevronDown
-        className={clsx(
-          'h-4 w-4 transition-transform duration-200',
-          expanded ? 'rotate-180' : 'translate-y-px',
-        )}
-      />
-    </button>
-  );
-}
-
 export default function Sidebar({
   isOpen,
   onClose,
@@ -264,7 +262,6 @@ export default function Sidebar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ticketMenuExpanded, setTicketMenuExpanded] = useState(false);
   const { options: workzoneOptions } = useWorkzoneOptions();
   const { user } = useCurrentUser();
   const roleName = String(user?.role_name ?? '').toLowerCase();
@@ -356,14 +353,17 @@ export default function Sidebar({
     roleName === 'super_admin' ||
     roleName === 'super admin';
   const isAdminBranch = roleKey === 'admin_branch';
-  const visibleMenuItems = MENU_ITEMS.filter(
-    (item) =>
-      !item.superadminOnly ||
-      isSuperAdmin ||
-      (item.adminBranchVisible && isAdminBranch),
-  );
-  const isTicketManagementOpen =
-    pathname === '/admin' || pathname.startsWith('/admin/ticket-management');
+  const isHelpdesk = roleKey === 'helpdesk';
+  const handled = useMemo(() => {
+    const items = MENU_ITEMS.filter((item) => {
+      if (item.superadminOnly) {
+        return isSuperAdmin || (item.adminBranchVisible && isAdminBranch);
+      }
+      if (item.helpdeskVisible) return true;
+      return !isHelpdesk;
+    });
+    return items;
+  }, [isSuperAdmin, isAdminBranch, isHelpdesk]);
   const selectedWorkzoneLabel = useMemo(() => {
     if (!selectedWorkzone) return 'All workzones';
     const workzones = workzoneOptions ?? [];
@@ -386,11 +386,14 @@ export default function Sidebar({
     return String(partial?.label ?? selectedWorkzone);
   }, [selectedWorkzone, workzoneOptions]);
 
-  useEffect(() => {
-    if (isTicketManagementOpen) {
-      setTicketMenuExpanded(true);
-    }
-  }, [isTicketManagementOpen]);
+  const isTicketManagementAllowed =
+    !isHelpdesk &&
+    handled.some((item) => item.path === '/admin');
+  const isToolsAllowed = handled.some((item) => item.path === '/admin/tools');
+  const visibleToolsItems = useMemo(
+    () => TOOLS_ITEMS.filter((item) => !(isHelpdesk && item.adminOnly)),
+    [isHelpdesk],
+  );
 
   return (
     <aside
@@ -466,81 +469,94 @@ export default function Sidebar({
               Workspace
             </p>
             <div className='flex flex-col gap-1.5'>
-              {visibleMenuItems.map((item) => {
-                const isActive = isPathActive(pathname, item.path);
-                const Icon = item.icon;
-                const isAdminItem = item.path === '/admin';
+              {isTicketManagementAllowed && (
+                <ExpandableMenuGroup
+                  label='Ticket Management'
+                  hint='Overview buckets'
+                  path='/admin'
+                  icon={LayoutDashboard}
+                  openPathPrefixes={['/admin/ticket-management', '/admin']}
+                  onNavigate={handleNavigate}
+                  count={TICKET_MANAGEMENT_BUCKET_ITEMS.length}
+                >
+                  {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => {
+                    const subActive = pathname === item.path;
+                    const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
+                    const count =
+                      item.key === 'kpi-customer'
+                        ? kpiCustomerTotal
+                        : item.key === 'kpi-proactive'
+                          ? kpiProactiveTotal
+                          : item.key === 'non-kpi-unspec'
+                            ? nonKpiUnspecTotal
+                            : item.key === 'non-technical'
+                              ? nonTechnicalTotal
+                              : item.key === 'sqm-update'
+                                ? sqmUpdateTotal
+                                : item.key === 'obsolete'
+                                  ? obsoleteTotal
+                                  : undefined;
 
-                return (
-                  <div key={item.path} className='space-y-2'>
-                    <div className='relative'>
-                      <NavButton
+                    return (
+                      <SubmenuButton
+                        key={item.key}
                         label={item.label}
-                        hint={item.hint}
                         icon={Icon}
-                        active={isActive}
+                        active={subActive}
+                        count={count}
                         onClick={() => handleNavigate(item.path)}
-                        rightSlot={
-                          isAdminItem ? (
-                            <SectionToggle
-                              expanded={ticketMenuExpanded}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setTicketMenuExpanded((value) => !value);
-                              }}
-                            />
-                          ) : null
-                        }
                       />
-                    </div>
+                    );
+                  })}
+                </ExpandableMenuGroup>
+              )}
 
-                    {isAdminItem && ticketMenuExpanded && (
-                      <div className='ml-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-white/8 dark:bg-black/10'>
-                        <div className='mb-2 flex items-center justify-between gap-2 px-1'>
-                          <p className='text-[10px] font-bold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400'>
-                            Buckets
-                          </p>
-                          <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/10 dark:bg-white/6 dark:text-slate-200'>
-                            {TICKET_MANAGEMENT_BUCKET_ITEMS.length}
-                          </span>
-                        </div>
+              {handled
+                .filter(
+                  (item) =>
+                    item.path !== '/admin' && item.path !== '/admin/tools',
+                )
+                .map((item) => {
+                  const isActive = isPathActive(pathname, item.path);
+                  const Icon = item.icon;
 
-                        <div className='grid gap-1.5'>
-                          {TICKET_MANAGEMENT_BUCKET_ITEMS.map((item) => {
-                            const subActive = pathname === item.path;
-                            const Icon = SUBMENU_ICON_MAP[item.key] ?? Ticket;
-                            const count =
-                              item.key === 'kpi-customer'
-                                ? kpiCustomerTotal
-                                : item.key === 'kpi-proactive'
-                                  ? kpiProactiveTotal
-                                  : item.key === 'non-kpi-unspec'
-                                    ? nonKpiUnspecTotal
-                                    : item.key === 'non-technical'
-                                      ? nonTechnicalTotal
-                                      : item.key === 'sqm-update'
-                                        ? sqmUpdateTotal
-                                        : item.key === 'obsolete'
-                                          ? obsoleteTotal
-                                          : undefined;
+                  return (
+                    <NavButton
+                      key={item.path}
+                      label={item.label}
+                      hint={item.hint}
+                      icon={Icon}
+                      active={isActive}
+                      onClick={() => handleNavigate(item.path)}
+                    />
+                  );
+                })}
 
-                            return (
-                              <SubmenuButton
-                                key={item.key}
-                                label={item.label}
-                                icon={Icon}
-                                active={subActive}
-                                count={count}
-                                onClick={() => handleNavigate(item.path)}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {isToolsAllowed && (
+                <ExpandableMenuGroup
+                  label='Tools'
+                  hint='Utilities & maps'
+                  path='/admin/tools'
+                  icon={Wrench}
+                  openPathPrefixes={['/admin/tools']}
+                  onNavigate={(path) => handleNavigate(path)}
+                  count={visibleToolsItems.length}
+                >
+                  {visibleToolsItems.map((item) => {
+                    const subActive = pathname === item.path;
+                    const Icon = item.icon;
+                    return (
+                      <SubmenuButton
+                        key={item.key}
+                        label={item.label}
+                        icon={Icon}
+                        active={subActive}
+                        onClick={() => handleNavigate(item.path)}
+                      />
+                    );
+                  })}
+                </ExpandableMenuGroup>
+              )}
             </div>
           </div>
         </nav>

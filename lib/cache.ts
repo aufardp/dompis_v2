@@ -188,6 +188,20 @@ export async function invalidateTechniciansCache(): Promise<void> {
 }
 
 /**
+ * Invalidate semua cache war map (points bbox/filter) setelah ada tagging baru.
+ * Fire-and-forget — dipanggil dari broadcastWarMapUpsert via SSE.
+ */
+export async function invalidateWarMapCache(): Promise<void> {
+  if (!(await ensureRedisReady())) return;
+
+  try {
+    await deleteCachePattern('war-map:*');
+  } catch (error) {
+    logger.warn('[Cache] Operation failed:', { error: String(error) });
+  }
+}
+
+/**
  * In-flight map untuk single-flight cache-aside.
  * Mencegah request konkuren memanggil fn() berulang kali saat cache miss
  * (mis. snapshot health yang mahal) — cukup satu komputasi, sisanya menunggu.

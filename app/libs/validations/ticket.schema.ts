@@ -39,6 +39,11 @@ export const closeTicketSchema = z.object({
   rca: optionalTrimmedString(100),
   subRca: optionalTrimmedString(100),
   descriptionSolutionDompis: z.string().trim().min(10).max(255),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+  accuracyMeters: z.coerce.number().min(0).optional(),
+  barcodeDc: optionalTrimmedString(150),
+  locationSource: z.enum(['manual_tag', 'reused_bank_data']).optional(),
 });
 
 export const updateTicketSchema = z.object({
@@ -97,3 +102,11 @@ export type UnassignTicketInput = z.infer<typeof unassignTicketSchema>;
 export type PickupTicketInput = z.infer<typeof pickupTicketSchema>;
 export type CloseTicketInput = z.infer<typeof closeTicketSchema>;
 export type UpdateTicketInputSchema = z.infer<typeof updateTicketSchema>;
+
+export interface CloseLocationInput {
+  latitude?: number;
+  longitude?: number;
+  accuracyMeters?: number;
+  barcodeDc?: string;
+  locationSource?: 'manual_tag' | 'reused_bank_data';
+}

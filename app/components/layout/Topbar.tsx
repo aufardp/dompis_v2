@@ -23,6 +23,8 @@ import {
   SearchCheck,
   Clock3,
   Loader2,
+  MapPinned,
+  Wrench,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
 import { useTheme } from '@/app/contexts/ThemeContext';
@@ -103,13 +105,31 @@ function getRouteMeta(pathname: string): RouteMeta {
       icon: Layers3,
     };
   }
-  if (pathname.startsWith('/admin/import-tiket')) {
+  if (pathname.startsWith('/admin/tools/import-tiket')) {
     return {
       eyebrow: 'Utility',
       title: 'Import Tiket',
       subtitle: 'Alur upload, preview, validasi, dan eksekusi import data.',
       badge: 'Pipeline',
       icon: Upload,
+    };
+  }
+  if (pathname.startsWith('/admin/tools/war-map')) {
+    return {
+      eyebrow: 'Utility',
+      title: 'War Map',
+      subtitle: 'Peta sebaran lokasi gangguan (geo-tagged) untuk memonitor titik rawan.',
+      badge: 'Map',
+      icon: MapPinned,
+    };
+  }
+  if (pathname.startsWith('/admin/tools')) {
+    return {
+      eyebrow: 'Utilities',
+      title: 'Tools',
+      subtitle: 'Kumpulan utilitas & peta untuk operasional lapangan.',
+      badge: 'Tools',
+      icon: Wrench,
     };
   }
   if (pathname.startsWith('/admin/monitoring')) {

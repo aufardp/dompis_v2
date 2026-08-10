@@ -166,14 +166,24 @@ export async function middleware(req: NextRequest) {
   const userRole = normalizeRoleKey(String(payload?.role ?? ''));
   const roleHome = ROLE_HOME[userRole] ?? '/login';
 
-  if (
-    pathname.startsWith('/admin') &&
-    userRole !== 'admin' &&
-    userRole !== 'superadmin' &&
-    userRole !== 'senior_leader' &&
-    userRole !== 'admin_branch'
-  ) {
-    return safeRedirect(roleHome);
+  // helpdesk hanya boleh akses Tools index + War Map (keputusan v1.3 / v1.4)
+  // -> prefix /admin/tools/* diwhitelist, bukan seluruhnya, supaya
+  //    tools admin-only (mis. Import Tiket) tidak bocor ke helpdesk.
+  const isHelpdeskToolsPath =
+    pathname === '/admin/tools' ||
+    pathname.startsWith('/admin/tools/war-map');
+  const isToolsAllowedToHelpdesk = isHelpdeskToolsPath && userRole === 'helpdesk';
+
+  if (pathname.startsWith('/admin')) {
+    const isAdminRole =
+      userRole === 'admin' ||
+      userRole === 'superadmin' ||
+      userRole === 'senior_leader' ||
+      userRole === 'admin_branch';
+
+    if (!isAdminRole && !isToolsAllowedToHelpdesk) {
+      return safeRedirect(roleHome);
+    }
   }
 
   if (

@@ -97,7 +97,7 @@ export function applySecurityHeaders<T extends NextResponse>(response: T): T {
       "form-action 'self'",
       `script-src ${scriptSrc}`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data:",
+      "img-src 'self' data: https://*.tile.openstreetmap.org",
       `connect-src ${connectSrc}`,
       "font-src 'self' https://fonts.gstatic.com",
     ].join('; '),
