@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MapPinned, Upload, ArrowRight } from 'lucide-react';
+import { MapPinned, Upload, Layers, ArrowRight } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 
@@ -68,6 +68,15 @@ export default function ToolsPage() {
               href='/admin/tools/import-tiket'
               icon={Upload}
               iconClass='border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+            />
+          )}
+          {!isHelpdesk && (
+            <ToolCard
+              title='Import KML Skema'
+              description='Upload file KML topologi ODC/ODP/kabel sebagai skema overlay War Map.'
+              href='/admin/tools/import-kml'
+              icon={Layers}
+              iconClass='border-indigo-500/20 bg-indigo-500/10 text-indigo-600'
             />
           )}
         </div>

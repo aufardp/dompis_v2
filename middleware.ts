@@ -171,7 +171,8 @@ export async function middleware(req: NextRequest) {
   //    tools admin-only (mis. Import Tiket) tidak bocor ke helpdesk.
   const isHelpdeskToolsPath =
     pathname === '/admin/tools' ||
-    pathname.startsWith('/admin/tools/war-map');
+    pathname.startsWith('/admin/tools/war-map') ||
+    pathname.startsWith('/admin/tools/import-kml');
   const isToolsAllowedToHelpdesk = isHelpdeskToolsPath && userRole === 'helpdesk';
 
   if (pathname.startsWith('/admin')) {

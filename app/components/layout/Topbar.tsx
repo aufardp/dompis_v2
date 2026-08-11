@@ -24,6 +24,7 @@ import {
   Clock3,
   Loader2,
   MapPinned,
+  Layers,
   Wrench,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
@@ -112,6 +113,15 @@ function getRouteMeta(pathname: string): RouteMeta {
       subtitle: 'Alur upload, preview, validasi, dan eksekusi import data.',
       badge: 'Pipeline',
       icon: Upload,
+    };
+  }
+  if (pathname.startsWith('/admin/tools/import-kml')) {
+    return {
+      eyebrow: 'Utility',
+      title: 'Import KML Skema',
+      subtitle: 'Upload topologi jaringan sebagai skema overlay War Map.',
+      badge: 'Map',
+      icon: Layers,
     };
   }
   if (pathname.startsWith('/admin/tools/war-map')) {

@@ -17,7 +17,7 @@ import type { OperationalBucketKey } from '@/app/config/operational-buckets';
 
 const CACHE_TTL = 15;
 const MAX_POINTS = 5000;
-const HOT_LOOKBACK_DAYS = 90;
+const HOT_LOOKBACK_DAYS = 60;
 const CUSTOMER_BUCKET_SERVICE_NO_LIMIT = 20000;
 const ACTIVE_STATUSES = ['open', 'assigned', 'on_progress', 'pending'];
 const ALL_STATUSES = [...ACTIVE_STATUSES, 'close', 'closed'];
@@ -87,12 +87,20 @@ export async function GET(req: NextRequest) {
     const bucket = resolveBucketKey(searchParams.get('bucket'));
 
     // Scoping wilayah
-    const isRootRole = ['admin', 'superadmin', 'super_admin'].includes(user.role);
-    const userWorkzones = isRootRole
+    const isSuperAdmin = user.role === 'superadmin' || user.role === 'super_admin';
+    const userWorkzones = isSuperAdmin
       ? null
       : (await getWorkzonesForUser(user.id_user)).filter(
           (w) => w && w.trim() !== '',
         );
+
+    // Strict: non-superadmin tanpa mapping workzone tidak berhak melihat titik.
+    if (!isSuperAdmin && (userWorkzones ?? []).length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: { points: [], meta: { total: 0, limit: MAX_POINTS } },
+      });
+    }
 
     const saNames = areas.length > 0 ? await resolveAreaSamNames(areas) : [];
 
@@ -112,12 +120,21 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const effectiveWorkzones: string[] = [];
-    if (workzones.length > 0) effectiveWorkzones.push(...workzones);
-    if (saNames.length > 0) effectiveWorkzones.push(...saNames);
-    if (userWorkzones && userWorkzones.length > 0) effectiveWorkzones.push(...userWorkzones);
-
-    if (effectiveWorkzones.length > 0) {
+    if (isSuperAdmin) {
+      const effectiveWorkzones = [...new Set([...workzones, ...saNames])];
+      if (effectiveWorkzones.length > 0) {
+        where.workzone = { in: effectiveWorkzones };
+      }
+    } else {
+      // Non-superadmin: dibatasi ketat ke workzone miliknya.
+      // Param workzone/area yang diminta di-intersect ke set miliknya (anti-spoof).
+      const own = userWorkzones ?? [];
+      const allowed = new Set(own);
+      const requested = [...new Set([...workzones, ...saNames])];
+      const effectiveWorkzones = [
+        ...own,
+        ...requested.filter((w) => allowed.has(w)),
+      ];
       where.workzone = { in: [...new Set(effectiveWorkzones)] };
     }
 
@@ -228,7 +245,7 @@ export async function GET(req: NextRequest) {
           barcodeDc: r.barcode_dc,
           workzone: r.workzone,
           taggedCount: r.tagged_count,
-          historyCount90d: r._count.history,
+          historyCount60d: r._count.history,
           isHot: r._count.history >= 3,
           updatedAt: r.updated_at,
           lastTicket: r.last_ticket

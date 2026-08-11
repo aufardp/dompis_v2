@@ -23,6 +23,7 @@ import {
   RefreshCcw,
   MapPinned,
   Ticket,
+  Layers,
 } from 'lucide-react';
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
@@ -130,6 +131,14 @@ const TOOLS_ITEMS: Array<{
     path: '/admin/tools/import-tiket',
     icon: Upload,
     hint: 'Data pipeline',
+    adminOnly: true,
+  },
+  {
+    key: 'import-kml',
+    label: 'Import KML Skema',
+    path: '/admin/tools/import-kml',
+    icon: Layers,
+    hint: 'Topologi ODC/ODP',
     adminOnly: true,
   },
 ];

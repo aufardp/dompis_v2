@@ -6,18 +6,36 @@ import {
   TileLayer,
   Marker,
   Popup,
+  Tooltip,
   useMap,
   useMapEvents,
   CircleMarker,
+  Polyline,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Supercluster from 'supercluster';
+import { Funnel, Layers, X, ExternalLink, ChevronDown } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { useWarMapFilterOptions } from '@/app/hooks/useDropdownOptions';
 import { JENIS_TIKET_LIST } from '@/app/config/jenis-tiket';
 import TicketDetailDrawer from '@/app/admin/components/dashboard/TicketDetailDrawer';
 import type { PointFeature } from 'supercluster';
+import type { KmlIconKey, KmlLayerItem } from '@/app/libs/kml/client-types';
+import {
+  computeOdpAlerts,
+  DEFAULT_ODP_ALERT_OPTIONS,
+  type DisturbancePointLike,
+  type OdpAlert,
+  type OdpNearbyPoint,
+} from '@/app/libs/kml/geo';
+import LayerManagerPanel from './LayerManagerPanel';
+import DeleteSchemaModal from './DeleteSchemaModal';
+import MeasureTool from './MeasureTool';
+import MeasurePanel from './MeasurePanel';
+import MeasureLayer from './MeasureLayer';
+import MeasureMapEvents from './MeasureMapEvents';
+import { useMeasure } from './useMeasure';
 
 export interface WarMapPoint {
   id: number;
@@ -31,7 +49,7 @@ export interface WarMapPoint {
   barcodeDc: string | null;
   workzone: string | null;
   taggedCount: number;
-  historyCount90d: number;
+  historyCount60d: number;
   isHot: boolean;
   updatedAt: string;
   lastTicket: {
@@ -61,6 +79,33 @@ export interface WarMapHistoryItem {
   subRca: string | null;
   descriptionSolution: string | null;
   closedAt: string | null;
+}
+
+export interface KmlPointFeature {
+  id: number;
+  name: string;
+  folderPath: string;
+  descriptionRaw: string | null;
+  sublayerId: number;
+  isOdc: boolean;
+  iconKey: KmlIconKey;
+  iconColor: string | null;
+  iconScale: number | null;
+  latitude: number;
+  longitude: number;
+}
+
+export interface KmlLineFeature {
+  id: number;
+  name: string;
+  folderPath: string;
+  descriptionRaw: string | null;
+  parsedMetadata: Record<string, string> | null;
+  styleColor: string | null;
+  lineColor: string | null;
+  lineWidth: number | null;
+  sublayerId: number;
+  coordinates: [number, number][];
 }
 
 type PointFeatureProps = {
@@ -109,7 +154,7 @@ function maskName(name: string | null) {
 // ── Marker icons ────────────────────────────────────────────────
 
 function markerIcon(point: WarMapPoint) {
-  const hot = point.isHot || point.historyCount90d >= HOT_THRESHOLD;
+  const hot = point.isHot || point.historyCount60d >= HOT_THRESHOLD;
   const color = hot ? '#dc2626' : point.lastTicket ? '#2563eb' : '#059669';
   return L.divIcon({
     className: '',
@@ -120,7 +165,7 @@ function markerIcon(point: WarMapPoint) {
         background:${color}; border:2.5px solid white;
         box-shadow:0 2px 8px rgba(0,0,0,0.35);
         font-size:11px; font-weight:700; color:white;
-      ">${point.historyCount90d >= HOT_THRESHOLD ? point.historyCount90d : ''}</div>
+      ">${point.historyCount60d >= HOT_THRESHOLD ? point.historyCount60d : ''}</div>
     `,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
@@ -143,6 +188,79 @@ function clusterIcon(count: number) {
     `,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
+  });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Ikon KML — preservasi bentuk asli via SVG lokal (PRD §9.4)
+// iconKey dipetakan dari IconStyle.Icon.href file asli (star/pushpin/dot/square/triangle).
+// 'star' digambar sebagai paddle gaya Google (plate putih + bintang berwarna).
+function kmlShapeSvg(key: NonNullable<KmlIconKey>, fill: string): string {
+  const stroke = '#ffffff';
+  switch (key) {
+    case 'star':
+      return `<svg viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="5.5" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.4"/><path d="M12 4.6l2 4.05 4.47.65-3.23 3.15.76 4.45L12 14.9 7.99 16.9l.76-4.45-3.23-3.15 4.47-.65z" fill="${fill}" stroke="#94a3b8" stroke-width="0.8" stroke-linejoin="round"/></svg>`;
+    case 'pushpin':
+      return `<svg viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><path d="M12 1.8a7.4 7.4 0 0 0-7.4 7.4c0 4.9 6.3 11.4 7 12.1a.55.55 0 0 0 .8 0c.7-.7 7-7.2 7-12.1A7.4 7.4 0 0 0 12 1.8zm0 4.4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" fill="${fill}" stroke="${stroke}" stroke-width="1.1"/></svg>`;
+    case 'square':
+      return `<svg viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/></svg>`;
+    case 'triangle':
+      return `<svg viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.2l10 17.8H2z" fill="${fill}" stroke="${stroke}" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+    case 'dot':
+    default:
+      return `<svg viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="8.4" fill="${fill}" stroke="${stroke}" stroke-width="1.2"/></svg>`;
+  }
+}
+
+function kmlIcon({
+  iconKey,
+  color,
+  scale,
+  isOdc,
+  showLabel,
+  label,
+  alertTier,
+}: {
+  iconKey: KmlIconKey;
+  color: string | null;
+  scale: number | null;
+  isOdc: boolean;
+  showLabel?: boolean;
+  label?: string;
+  alertTier?: OdpAlert['tier'];
+}) {
+  const s = Math.min(Math.max(scale ?? 1, 0.5), 2.5);
+  const size = Math.round(22 * s);
+  const fallbackKey = isOdc ? 'triangle' : 'dot';
+  const shape = iconKey ?? fallbackKey;
+  const fill = color ?? (isOdc ? '#6366f1' : '#475569');
+  const labelHeight = showLabel && label ? 17 : 0;
+  const badgeColor = alertTier === 'critical' ? '#dc2626' : '#f59e0b';
+  const badge = alertTier
+    ? `<div style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;">
+         <span class="kml-alert-ping" style="background:${badgeColor};"></span>
+         <span class="kml-alert-dot" style="top:3px;left:3px;right:3px;bottom:3px;background:${badgeColor};"></span>
+       </div>`
+    : '';
+  const labelHtml =
+    showLabel && label
+      ? `<div class="kml-icon-label" style="top:${size + 1}px;">${escapeHtml(label)}</div>`
+      : '';
+  const totalH = size + labelHeight;
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:${size}px;height:${totalH}px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.35));">${kmlShapeSvg(shape, fill)}${badge}${labelHtml}</div>`,
+    iconSize: [size, totalH],
+    iconAnchor: [size / 2, labelHeight > 0 ? size / 2 : size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 
@@ -187,6 +305,7 @@ function BboxReporter({
 function ZoomToCluster({
   cluster,
   onExpand,
+  disabled,
 }: {
   cluster: {
     latitude: number;
@@ -195,26 +314,80 @@ function ZoomToCluster({
     expansionZoom: number;
   };
   onExpand: () => void;
+  disabled?: boolean;
 }) {
   const map = useMap();
   return (
     <Marker
       position={[cluster.latitude, cluster.longitude]}
       icon={clusterIcon(cluster.count)}
-      eventHandlers={{
-        click: () => {
-          map.flyTo(
-            [cluster.latitude, cluster.longitude],
-            cluster.expansionZoom,
-            {
-              duration: 0.5,
-            },
-          );
-          onExpand();
-        },
-      }}
+      interactive={!disabled}
+      eventHandlers={
+        disabled
+          ? undefined
+          : {
+              click: () => {
+                map.flyTo(
+                  [cluster.latitude, cluster.longitude],
+                  cluster.expansionZoom,
+                  {
+                    duration: 0.5,
+                  },
+                );
+                onExpand();
+              },
+            }
+      }
     />
   );
+}
+
+function NetworkFitter({
+  bbox,
+  nonce,
+}: {
+  bbox: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null;
+  nonce: number;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!bbox || nonce === 0) return;
+    map.fitBounds(
+      [
+        [bbox.south, bbox.west],
+        [bbox.north, bbox.east],
+      ],
+      { padding: [36, 36] },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
+  return null;
+}
+
+// Fokus presisi ke titik koordinat tunggal (mis. ODP saat alert diklik).
+// setView menjamin peta memusat tepat ke koordinat sasaran di zoom tetap.
+function PointFitter({
+  lat,
+  lng,
+  seq,
+  zoom = 16,
+}: {
+  lat: number | null;
+  lng: number | null;
+  seq: number;
+  zoom?: number;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (lat === null || lng === null || seq === 0) return;
+    map.setView([lat, lng], zoom, { animate: true });
+  }, [seq]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
 }
 
 // ── Filter panel ────────────────────────────────────────────────
@@ -458,7 +631,7 @@ function FilterPanel({
                 : 'border border-(--border) bg-(--surface) text-(--text-secondary) hover:bg-(--surface-2)'
             }`}
           >
-            Gangguan Berulang ({HOT_THRESHOLD}+/90hr)
+            Gangguan Berulang ({HOT_THRESHOLD}+/60hr)
           </button>
           <button
             onClick={() => setShowHistory(!showHistory)}
@@ -485,6 +658,441 @@ function coordsEqual(
     Math.abs(a.west - b.west) < 1e-5 &&
     Math.abs(a.north - b.north) < 1e-5 &&
     Math.abs(a.east - b.east) < 1e-5
+  );
+}
+
+// ── KML feature rendering ───────────────────────────────────────
+
+function KmlCoordsFooter({
+  latitude,
+  longitude,
+}: {
+  latitude: number;
+  longitude: number;
+}) {
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  return (
+    <div className='mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1.5 dark:bg-white/5'>
+      <span className='truncate font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300'>
+        {latitude.toFixed(6)}, {longitude.toFixed(6)}
+      </span>
+      <a
+        href={mapsUrl}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='inline-flex shrink-0 items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400'
+      >
+        <ExternalLink className='h-3 w-3' />
+        Google Maps
+      </a>
+    </div>
+  );
+}
+
+function KmlPointMarker({
+  feature,
+  layerTitle,
+  showLabel,
+  alert,
+  measuring,
+}: {
+  feature: KmlPointFeature;
+  layerTitle: string;
+  showLabel: boolean;
+  alert: OdpAlert | null;
+  measuring?: boolean;
+}) {
+  const isOdc =
+    feature.isOdc ||
+    feature.name === layerTitle ||
+    !feature.folderPath.includes(' > ');
+  const zBase = isOdc ? 100 : 0;
+  const icon = useMemo(
+    () =>
+      kmlIcon({
+        iconKey: feature.iconKey,
+        color: feature.iconColor,
+        scale: feature.iconScale,
+        isOdc,
+        showLabel,
+        label: feature.name,
+        alertTier: alert?.tier,
+      }),
+    [
+      feature.iconKey,
+      feature.iconColor,
+      feature.iconScale,
+      feature.name,
+      isOdc,
+      showLabel,
+      alert?.tier,
+    ],
+  );
+  return (
+    <Marker
+      position={[feature.latitude, feature.longitude]}
+      icon={icon}
+      interactive={!measuring}
+      zIndexOffset={alert ? (alert.tier === 'critical' ? 300 : 200) : zBase}
+    >
+      <Tooltip direction='top' offset={[0, -16]} opacity={1} interactive={false}>
+        <span className='text-[11px] font-bold'>
+          {feature.name}
+        </span>
+      </Tooltip>
+      {!measuring && (
+        alert ? (
+          <OdpAlertPopup
+            alert={alert}
+            isOdc={isOdc}
+            folderPath={feature.folderPath}
+            descriptionRaw={feature.descriptionRaw}
+          />
+        ) : (
+          <Popup minWidth={240} maxWidth={300}>
+            <div className='w-64 space-y-1.5'>
+              <div className='flex items-center justify-between gap-2'>
+                <p className='text-sm font-bold text-slate-900 dark:text-white'>
+                  {feature.name}
+                </p>
+                <span className='shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[9px] font-bold text-indigo-600'>
+                  {isOdc ? 'ODC' : 'ODP'}
+                </span>
+              </div>
+              <p className='text-[10px] font-semibold text-slate-400'>
+                {feature.folderPath}
+              </p>
+              {feature.descriptionRaw && (
+                <pre className='mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+                  {feature.descriptionRaw}
+                </pre>
+              )}
+              <KmlCoordsFooter
+                latitude={feature.latitude}
+                longitude={feature.longitude}
+              />
+            </div>
+          </Popup>
+        )
+      )}
+    </Marker>
+  );
+}
+
+function OdpRows({ items }: { items: OdpNearbyPoint[] }) {
+  return (
+    <div className='max-h-40 overflow-auto'>
+      {items.slice(0, 15).map((n, i) => (
+        <div
+          key={`${n.serviceNo}-${i}`}
+          className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
+            i % 2 === 0 ? 'bg-slate-50 dark:bg-white/5' : 'bg-white dark:bg-transparent'
+          }`}
+        >
+          <span
+            className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+              n.status && ['open', 'assigned', 'on_progress', 'pending'].includes(n.status)
+                ? 'bg-red-500'
+                : 'bg-slate-300 dark:bg-slate-600'
+            }`}
+          />
+          <div className='min-w-0 flex-1'>
+            <p className='truncate font-semibold text-slate-700 dark:text-slate-200'>
+              {maskName(n.customerName)}
+              {n.incident ? (
+                <span className='ml-1 text-[10px] font-normal text-blue-500'>
+                  {n.incident}
+                </span>
+              ) : null}
+            </p>
+            <p className='text-[10px] text-slate-400'>
+              {n.serviceNo} · {n.distanceKm.toFixed(2)} km
+              {n.status ? ` · ${n.status.replace('_', ' ')}` : ''}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OdpSection({
+  label,
+  count,
+  accent,
+  items,
+}: {
+  label: string;
+  count?: number;
+  accent?: string;
+  items: OdpNearbyPoint[];
+}) {
+  return (
+    <div className='overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700'>
+      <div className='flex items-center justify-between bg-slate-50 px-2.5 py-1.5 text-[9px] font-bold tracking-wide text-slate-400 uppercase dark:bg-white/5'>
+        <span>{label}</span>
+        {count !== undefined && items.length > 0 && (
+          <span
+            className='rounded-full px-1.5 py-0.5 text-[9px] font-bold'
+            style={{ background: `${accent ?? '#475569'}20`, color: accent ?? '#475569' }}
+          >
+            {count}
+          </span>
+        )}
+      </div>
+      <OdpRows items={items} />
+    </div>
+  );
+}
+
+function OdpAlertPopup({
+  alert,
+  isOdc,
+  folderPath,
+  descriptionRaw,
+}: {
+  alert: OdpAlert;
+  isOdc: boolean;
+  folderPath: string;
+  descriptionRaw: string | null;
+}) {
+  const tierColor = alert.tier === 'critical' ? '#dc2626' : '#f59e0b';
+  const attributedSet = useMemo(
+    () => new Set(alert.attributed.map((a) => a.serviceNo)),
+    [alert.attributed],
+  );
+  return (
+    <Popup minWidth={300} maxWidth={380}>
+      <div className='w-80 space-y-2.5'>
+        <div className='flex items-center justify-between gap-2'>
+          <p className='text-sm font-bold text-slate-900 dark:text-white'>
+            {alert.name}
+          </p>
+          <span className='rounded-full px-2 py-0.5 text-[9px] font-bold text-white' style={{ background: tierColor }}>
+            {alert.tier === 'critical' ? '⚠ BERISIKO' : 'WASPADA'}
+          </span>
+        </div>
+        <p className='text-[10px] font-semibold text-slate-400'>{folderPath}</p>
+
+        <div className='grid grid-cols-3 gap-1.5'>
+          <div className='rounded-lg bg-slate-50 px-2 py-1.5 text-center dark:bg-white/5'>
+            <p className='text-base font-extrabold tabular-nums' style={{ color: tierColor }}>
+              {alert.totalPoints}
+            </p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>Gangguan</p>
+          </div>
+          <div className='rounded-lg bg-blue-50 px-2 py-1.5 text-center dark:bg-blue-500/10'>
+            <p className='text-base font-extrabold text-blue-600 tabular-nums dark:text-blue-400'>
+              {alert.activeCount}
+            </p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>Aktif</p>
+          </div>
+          <div className='rounded-lg bg-purple-50 px-2 py-1.5 text-center dark:bg-purple-500/10'>
+            <p className='text-base font-extrabold text-purple-600 tabular-nums dark:text-purple-400'>
+              {alert.hotCount}
+            </p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>Berulang</p>
+          </div>
+        </div>
+
+        {alert.attributed.length > 0 && (
+          <OdpSection
+            label={`Terdaftar pada ${isOdc ? 'ODC' : 'ODP'} ini (device_name)`}
+            count={alert.attributed.length}
+            accent={tierColor}
+            items={alert.attributed}
+          />
+        )}
+
+        {alert.nearby.filter((n) => !attributedSet.has(n.serviceNo)).length > 0 && (
+          <OdpSection
+            label={`Gangguan di sekitar ${isOdc ? 'ODC' : 'ODP'} (radius)`}
+            items={alert.nearby.filter((n) => !attributedSet.has(n.serviceNo))}
+          />
+        )}
+
+        {descriptionRaw && (
+          <pre className='max-h-24 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+            {descriptionRaw}
+          </pre>
+        )}
+        <p className='text-[10px] leading-4 text-amber-600 dark:text-amber-400'>
+          {alert.totalPoints} titik gangguan terkait {isOdc ? 'ODC' : 'ODP'} ini
+          (terdaftar pada {isOdc ? 'ODC' : 'ODP'} + dalam radius deteksi).
+          Lakukan pengecekan berkoordinasi dengan tiket sekitar.
+        </p>
+        <KmlCoordsFooter
+          latitude={alert.latitude}
+          longitude={alert.longitude}
+        />
+      </div>
+    </Popup>
+  );
+}
+
+function KmlLinePolyline({
+  feature,
+  measuring,
+}: {
+  feature: KmlLineFeature;
+  measuring?: boolean;
+}) {
+  const weight = feature.lineWidth != null
+    ? Math.min(Math.max(feature.lineWidth, 1), 5)
+    : 2;
+  const color = feature.lineColor ?? feature.styleColor ?? '#94a3b8';
+  return (
+    <Polyline
+      positions={feature.coordinates.map(([lng, lat]) => [lat, lng])}
+      interactive={!measuring}
+      pathOptions={{
+        color,
+        weight,
+        opacity: 0.85,
+      }}
+      eventHandlers={
+        measuring
+          ? undefined
+          : {
+              mouseover: (e) => {
+                e.target.setStyle({ weight: Math.min(weight + 1, 6), opacity: 1 });
+              },
+              mouseout: (e) => {
+                e.target.setStyle({ weight, opacity: 0.85 });
+              },
+            }
+      }
+    >
+      <Tooltip sticky opacity={1} interactive={false}>
+        <span className='text-[11px] font-bold'>{feature.name}</span>
+      </Tooltip>
+      {!measuring && (
+        <Popup minWidth={260} maxWidth={320}>
+          <div className='w-68 space-y-2'>
+            <div className='flex items-center justify-between gap-2'>
+              <p className='text-sm font-bold text-slate-900 dark:text-white'>
+                {feature.name}
+              </p>
+              <span
+                className='h-3 w-5 shrink-0 rounded-sm border border-slate-200 dark:border-slate-600'
+                style={{ background: color }}
+              />
+            </div>
+            <p className='text-[10px] font-semibold text-slate-400'>
+              {feature.folderPath}
+            </p>
+            {feature.parsedMetadata && (
+              <div className='overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700'>
+                {Object.entries(feature.parsedMetadata).map(([key, value], i) => (
+                  <div
+                    key={key}
+                    className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
+                      i % 2 === 0
+                        ? 'bg-slate-50 dark:bg-white/5'
+                        : 'bg-white dark:bg-transparent'
+                    }`}
+                  >
+                    <span className='w-32 shrink-0 font-semibold text-slate-500 dark:text-slate-400'>
+                      {key}
+                    </span>
+                    <span className='min-w-0 flex-1 text-slate-700 dark:text-slate-200'>
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!feature.parsedMetadata && feature.descriptionRaw && (
+              <pre className='max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+                {feature.descriptionRaw}
+              </pre>
+            )}
+          </div>
+        </Popup>
+      )}
+    </Polyline>
+  );
+}
+
+// ── Bottom sheet mobile (PRD §9.3) ──────────────────────────────
+
+type SheetTab = 'filter' | 'layer';
+
+function MobileSheet({
+  openTab,
+  onClose,
+  onTabChange,
+  filterContent,
+  layerContent,
+}: {
+  openTab: SheetTab | null;
+  onClose: () => void;
+  onTabChange: (tab: SheetTab) => void;
+  filterContent: React.ReactNode;
+  layerContent: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (openTab) setExpanded(false);
+  }, [openTab]);
+
+  if (!openTab) return null;
+
+  return (
+    <div className='fixed inset-0 z-1000 lg:hidden'>
+      <div
+        className='absolute inset-0 bg-black/40 backdrop-blur-[2px]'
+        onClick={onClose}
+      />
+      <div
+        className={`absolute inset-x-0 bottom-0 flex flex-col rounded-t-3xl bg-(--surface) shadow-2xl transition-[height] duration-300 ${
+          expanded ? 'h-[90dvh]' : 'h-[45dvh]'
+        }`}
+      >
+        <div className='mx-auto mt-2.5 h-1 w-10 rounded-full bg-(--text-tertiary)/30' />
+        <div className='flex shrink-0 items-center gap-2 border-b border-(--border) px-4 py-2'>
+          <button
+            onClick={() => onTabChange('filter')}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors ${
+              openTab === 'filter'
+                ? 'bg-blue-600 text-white'
+                : 'text-(--text-secondary)'
+            }`}
+          >
+            <Funnel className='h-3.5 w-3.5' />
+            Filter
+          </button>
+          <button
+            onClick={() => onTabChange('layer')}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors ${
+              openTab === 'layer'
+                ? 'bg-indigo-600 text-white'
+                : 'text-(--text-secondary)'
+            }`}
+          >
+            <Layers className='h-3.5 w-3.5' />
+            Skema
+          </button>
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className='ml-auto rounded-full border border-(--border) px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary)'
+          >
+            {expanded ? 'Ciutkan' : 'Perluas'}
+          </button>
+          <button
+            onClick={onClose}
+            className='rounded-full p-1.5 text-(--text-secondary) transition hover:bg-(--surface-2)'
+            aria-label='Tutup'
+          >
+            <X className='h-4 w-4' />
+          </button>
+        </div>
+        <div className='min-h-0 flex-1 overflow-y-auto px-4 py-3'>
+          {openTab === 'filter' ? filterContent : layerContent}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -532,6 +1140,36 @@ export default function WarMapClient() {
   );
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // ── Tab switcher (desktop) & bottom sheet (mobile) ──
+  const [desktopTab, setDesktopTab] = useState<'filter' | 'layer'>('filter');
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>(null);
+
+  // ── KML layer state ──
+  const [kmlLayers, setKmlLayers] = useState<KmlLayerItem[]>([]);
+  const [kmlLoading, setKmlLoading] = useState(true);
+  const [kmlError, setKmlError] = useState<string | null>(null);
+  const [kmlCanManage, setKmlCanManage] = useState(false);
+  const [kmlExpanded, setKmlExpanded] = useState<number[]>([]);
+  const [kmlSearch, setKmlSearch] = useState('');
+  // sublayerId -> visible (toggle aktif user)
+  const [sublayerVisible, setSublayerVisible] = useState<Record<number, boolean>>({});
+  // layerId -> visible (master view/hide per skema; default semua tersembunyi)
+  const [layerVisible, setLayerVisible] = useState<Record<number, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: number;
+    title: string;
+    pointCount: number;
+    lineCount: number;
+  } | null>(null);
+  const [kmlDeleting, setKmlDeleting] = useState(false);
+  const [kmlPoints, setKmlPoints] = useState<KmlPointFeature[]>([]);
+  const [kmlLines, setKmlLines] = useState<KmlLineFeature[]>([]);
+  const [kmlFeaturesLoading, setKmlFeaturesLoading] = useState(false);
+
+  // ── Alat ukur jarak & estimasi titik putus ──
+  const measure = useMeasure({ kmlLines, points, kmlPoints });
+  const measuring = measure.active && !measure.finished;
+
   const fetchIdRef = useRef(0);
   const bboxRef = useRef<{
     south: number;
@@ -540,6 +1178,7 @@ export default function WarMapClient() {
     east: number;
   } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const kmlFetchIdRef = useRef(0);
 
   const filtersKey = `${workzone}|${area}|${status}|${jenis}|${bucket}|${fromDate}|${toDate}|${activeOnly}|${hotOnly}`;
 
@@ -636,7 +1275,7 @@ export default function WarMapClient() {
 
   const bboxKey = bbox ? JSON.stringify(bbox) : null;
 
-  // Reload when bbox / filters change (debounced agar tidak boros quota rate-limit)
+  // Reload gangguan saat bbox / filter berubah (debounced)
   useEffect(() => {
     if (!bboxKey) return;
     const changed =
@@ -671,6 +1310,249 @@ export default function WarMapClient() {
       setJenis('');
     }
   }, [bucket, jenis]);
+
+  // ── Load daftar layer KML ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setKmlLoading(true);
+      try {
+        const res = await fetchWithAuth('/api/war-map/kml-layers');
+        if (!res || cancelled) return;
+        const json = await res.json();
+        if (cancelled) return;
+        if (json?.success) {
+          setKmlLayers(json.data?.layers ?? []);
+          setKmlCanManage(Boolean(json.data?.canManage));
+          const initialVisible: Record<number, boolean> = {};
+          for (const layer of json.data?.layers ?? []) {
+            for (const sub of layer.sublayers) {
+              initialVisible[sub.id] = sub.defaultVisible;
+            }
+          }
+          setSublayerVisible(initialVisible);
+          setKmlError(null);
+        } else {
+          setKmlError(json?.message ?? 'Gagal memuat skema KML');
+        }
+      } catch {
+        if (!cancelled) setKmlError('Terjadi kesalahan saat memuat skema KML');
+      } finally {
+        if (!cancelled) setKmlLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Fetch fitur KML per bbox + sublayer aktif ──
+  const visibleSublayerKey = useMemo(
+    () =>
+      kmlLayers
+        .filter((l) => layerVisible[l.id])
+        .flatMap((l) =>
+          l.sublayers.filter((s) => sublayerVisible[s.id]).map((s) => s.id),
+        )
+        .sort((a, b) => a - b)
+        .join(','),
+    [kmlLayers, layerVisible, sublayerVisible],
+  );
+
+  useEffect(() => {
+    if (!bboxKey) return;
+    const hasVisible = kmlLayers.some(
+      (l) =>
+        layerVisible[l.id] &&
+        l.sublayers.some((s) => sublayerVisible[s.id]),
+    );
+    if (!hasVisible) {
+      setKmlPoints([]);
+      setKmlLines([]);
+      return;
+    }
+
+    const id = ++kmlFetchIdRef.current;
+    setKmlFeaturesLoading(true);
+
+    const doFetch = async () => {
+      const allPoints: KmlPointFeature[] = [];
+      const allLines: KmlLineFeature[] = [];
+      try {
+        for (const layer of kmlLayers) {
+          if (!layerVisible[layer.id]) continue;
+          const visibleSublayerIds = layer.sublayers
+            .filter((s) => sublayerVisible[s.id])
+            .map((s) => s.id);
+          if (visibleSublayerIds.length === 0) continue;
+
+          const params = new URLSearchParams();
+          params.set('sublayer', visibleSublayerIds.join(','));
+
+          const res = await fetchWithAuth(
+            `/api/war-map/kml-layers/${layer.id}/geojson?${params.toString()}`,
+          );
+          if (!res) continue;
+          const json = await res.json();
+          if (!json?.success) continue;
+
+          for (const feature of json.data?.features ?? []) {
+            const props = feature.properties;
+            if (feature.geometry.type === 'Point') {
+              const [lng, lat] = feature.geometry.coordinates;
+              allPoints.push({
+                id: props.id,
+                name: props.name,
+                folderPath: props.folderPath,
+                descriptionRaw: props.descriptionRaw,
+                sublayerId: props.sublayerId,
+                isOdc: false,
+                iconKey: props.iconKey ?? null,
+                iconColor: props.iconColor ?? null,
+                iconScale: props.iconScale ?? null,
+                latitude: lat,
+                longitude: lng,
+              });
+            } else if (feature.geometry.type === 'LineString') {
+              allLines.push({
+                id: props.id,
+                name: props.name,
+                folderPath: props.folderPath,
+                descriptionRaw: props.descriptionRaw ?? null,
+                parsedMetadata: props.parsedMetadata,
+                styleColor: props.styleColor,
+                lineColor: props.lineColor ?? null,
+                lineWidth: props.lineWidth ?? null,
+                sublayerId: props.sublayerId,
+                coordinates: feature.geometry.coordinates,
+              });
+            }
+          }
+        }
+      } catch {
+        // fetch error — biarkan data lama
+      } finally {
+        if (id === kmlFetchIdRef.current) {
+          setKmlPoints(allPoints);
+          setKmlLines(allLines);
+          setKmlFeaturesLoading(false);
+        }
+      }
+    };
+
+    void doFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSublayerKey, kmlLayers]);
+
+  const kmlLayerTitleById = useMemo(
+    () => new Map(kmlLayers.map((l) => [l.id, l.title])),
+    [kmlLayers],
+  );
+  const kmlSublayerLayerId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const layer of kmlLayers) {
+      for (const sub of layer.sublayers) {
+        map.set(sub.id, layer.id);
+      }
+    }
+    return map;
+  }, [kmlLayers]);
+
+  // ── ODP alert (PRD §B) ──
+  const [odpAlertEnabled, setOdpAlertEnabled] = useState(true);
+  const [odpRadiusKm, setOdpRadiusKm] = useState(0.1);
+  const [fitTarget, setFitTarget] = useState<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null>(null);
+  const [fitNonce, setFitNonce] = useState(0);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertFocus, setAlertFocus] = useState<{
+    lat: number;
+    lng: number;
+    seq: number;
+  } | null>(null);
+  const alertsPanelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!alertsOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (
+        alertsPanelRef.current &&
+        !alertsPanelRef.current.contains(e.target as Node)
+      ) {
+        setAlertsOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [alertsOpen]);
+
+  const odpSublayerIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const layer of kmlLayers) {
+      for (const sub of layer.sublayers) {
+        if (sub.geometryKind === 'point' && /^ODP\b/i.test(sub.folderPath)) {
+          ids.add(sub.id);
+        }
+      }
+    }
+    return ids;
+  }, [kmlLayers]);
+
+  const odpAlerts = useMemo<OdpAlert[]>(() => {
+    if (!odpAlertEnabled) return [];
+    const odpPoints = kmlPoints
+      .filter((p) => odpSublayerIds.has(p.sublayerId))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+      }));
+    if (odpPoints.length === 0 || points.length === 0) return [];
+    const disturbances: DisturbancePointLike[] = points.map((p) => ({
+      id: p.id,
+      name: p.serviceNo,
+      serviceNo: p.serviceNo,
+      customerName: p.customerName,
+      deviceName: p.deviceName,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      isHot: p.isHot,
+      historyCount60d: p.historyCount60d,
+      lastTicket: p.lastTicket
+        ? {
+            statusUpdate: p.lastTicket.statusUpdate,
+            incident: p.lastTicket.incident,
+          }
+        : null,
+    }));
+    return computeOdpAlerts(odpPoints, disturbances, {
+      radiusKm: odpRadiusKm,
+      criticalCount: DEFAULT_ODP_ALERT_OPTIONS.criticalCount,
+      warnCount: DEFAULT_ODP_ALERT_OPTIONS.warnCount,
+    });
+  }, [odpAlertEnabled, odpSublayerIds, kmlPoints, points, odpRadiusKm]);
+
+  const odpAlertById = useMemo(() => {
+    const m = new Map<number, OdpAlert>();
+    for (const a of odpAlerts) m.set(a.odpId, a);
+    return m;
+  }, [odpAlerts]);
+
+  const criticalCount = odpAlerts.filter((a) => a.tier === 'critical').length;
+  const warningCount = odpAlerts.filter((a) => a.tier === 'warning').length;
+
+  const primaryLayerBbox = useMemo(() => {
+    const active = kmlLayers.find(
+      (l) =>
+        layerVisible[l.id] &&
+        l.sublayers.some((s) => sublayerVisible[s.id] ?? s.defaultVisible),
+    );
+    return active?.bbox ?? kmlLayers[0]?.bbox ?? null;
+  }, [kmlLayers, layerVisible, sublayerVisible]);
 
   const index = useMemo(() => {
     const sc = new Supercluster({
@@ -766,9 +1648,101 @@ export default function WarMapClient() {
 
   const pointCount = points.length;
 
-  return (
-    <div className='grid gap-3 lg:grid-cols-[300px_1fr]'>
-      <div className='order-2 lg:order-1'>
+  const handleDeleteLayer = useCallback(
+    (id: number) => {
+      const l = kmlLayers.find((x) => x.id === id);
+      setDeleteTarget(
+        l
+          ? {
+              id: l.id,
+              title: l.title,
+              pointCount: l.pointCount,
+              lineCount: l.lineCount,
+            }
+          : { id, title: '(tak dikenal)', pointCount: 0, lineCount: 0 },
+      );
+    },
+    [kmlLayers],
+  );
+
+  const confirmDeleteSchema = useCallback(async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    const layer = kmlLayers.find((l) => l.id === id);
+    const sublayerIds = layer?.sublayers.map((s) => s.id) ?? [];
+    setKmlDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/war-map/kml-layers/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res) return;
+      const json = await res.json();
+      if (json?.success) {
+        setKmlLayers((prev) => prev.filter((l) => l.id !== id));
+        setLayerVisible((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setSublayerVisible((prev) => {
+          const next = { ...prev };
+          for (const sid of sublayerIds) delete next[sid];
+          return next;
+        });
+        setKmlExpanded((prev) => prev.filter((x) => x !== id));
+        setDeleteTarget(null);
+      } else {
+        alert(json?.message ?? 'Gagal menghapus skema');
+      }
+    } catch {
+      alert('Terjadi kesalahan saat menghapus skema');
+    } finally {
+      setKmlDeleting(false);
+    }
+  }, [deleteTarget, kmlLayers]);
+
+  const toggleExpand = useCallback((id: number) => {
+    setKmlExpanded((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
+
+  const toggleSublayer = useCallback((sublayerId: number) => {
+    setSublayerVisible((prev) => ({ ...prev, [sublayerId]: !prev[sublayerId] }));
+  }, []);
+
+  const toggleLayer = useCallback((id: number) => {
+    setLayerVisible((prev) => ({ ...prev, [id]: !(prev[id] ?? false) }));
+  }, []);
+
+  const desktopPanel = (
+    <>
+      <div className='flex items-center gap-1 rounded-2xl border border-(--border) bg-(--surface) p-1'>
+        <button
+          onClick={() => setDesktopTab('filter')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors ${
+            desktopTab === 'filter'
+              ? 'bg-blue-600 text-white'
+              : 'text-(--text-secondary) hover:bg-(--surface-2)'
+          }`}
+        >
+          <Funnel className='h-3.5 w-3.5' />
+          Filter
+        </button>
+        <button
+          onClick={() => setDesktopTab('layer')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors ${
+            desktopTab === 'layer'
+              ? 'bg-indigo-600 text-white'
+              : 'text-(--text-secondary) hover:bg-(--surface-2)'
+          }`}
+        >
+          <Layers className='h-3.5 w-3.5' />
+          Skema
+        </button>
+      </div>
+
+      {desktopTab === 'filter' ? (
         <FilterPanel
           workzone={workzone}
           setWorkzone={setWorkzone}
@@ -791,142 +1765,480 @@ export default function WarMapClient() {
           showHistory={showHistory}
           setShowHistory={setShowHistory}
         />
+      ) : (
+        <LayerManagerPanel
+          layers={kmlLayers}
+          loading={kmlLoading}
+          error={kmlError}
+          canManage={kmlCanManage}
+          expanded={kmlExpanded}
+          onToggleExpand={toggleExpand}
+          onDelete={handleDeleteLayer}
+          sublayerVisible={sublayerVisible}
+          onToggleSublayer={toggleSublayer}
+          layerVisible={layerVisible}
+          onToggleLayer={toggleLayer}
+          search={kmlSearch}
+          onSearchChange={setKmlSearch}
+          odpAlertEnabled={odpAlertEnabled}
+          onToggleOdpAlert={setOdpAlertEnabled}
+          odpRadiusKm={odpRadiusKm}
+          onOdpRadiusKmChange={setOdpRadiusKm}
+        />
+      )}
+    </>
+  );
 
-        <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3.5'>
-          <div className='flex items-center justify-between'>
-            <p className='text-[11px] font-bold tracking-widest text-(--text-tertiary) uppercase'>
-              Statistik
-            </p>
-            {loading && (
-              <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600' />
-            )}
+  const mobileFilterContent = (
+    <FilterPanel
+      workzone={workzone}
+      setWorkzone={setWorkzone}
+      area={area}
+      setArea={setArea}
+      status={status}
+      setStatus={setStatus}
+      jenis={jenis}
+      setJenis={setJenis}
+      bucket={bucket}
+      setBucket={setBucket}
+      fromDate={fromDate}
+      setFromDate={setFromDate}
+      toDate={toDate}
+      setToDate={setToDate}
+      activeOnly={activeOnly}
+      setActiveOnly={setActiveOnly}
+      hotOnly={hotOnly}
+      setHotOnly={setHotOnly}
+      showHistory={showHistory}
+      setShowHistory={setShowHistory}
+    />
+  );
+
+  const mobileLayerContent = (
+    <LayerManagerPanel
+      layers={kmlLayers}
+      loading={kmlLoading}
+      error={kmlError}
+      canManage={kmlCanManage}
+      expanded={kmlExpanded}
+      onToggleExpand={toggleExpand}
+      onDelete={handleDeleteLayer}
+      sublayerVisible={sublayerVisible}
+      onToggleSublayer={toggleSublayer}
+      layerVisible={layerVisible}
+      onToggleLayer={toggleLayer}
+      search={kmlSearch}
+      onSearchChange={setKmlSearch}
+      odpAlertEnabled={odpAlertEnabled}
+      onToggleOdpAlert={setOdpAlertEnabled}
+      odpRadiusKm={odpRadiusKm}
+      onOdpRadiusKmChange={setOdpRadiusKm}
+    />
+  );
+
+  return (
+    <>
+      <div className='relative'>
+        <div className='grid gap-3 lg:grid-cols-[300px_1fr]'>
+          {/* Kolom kiri — desktop */}
+          <div className='hidden lg:block'>
+            {desktopPanel}
+
+            <div className='mt-3 rounded-2xl border border-(--border) bg-(--surface) p-3.5'>
+              <div className='flex items-center justify-between'>
+                <p className='text-[11px] font-bold tracking-widest text-(--text-tertiary) uppercase'>
+                  Statistik
+                </p>
+                {loading && (
+                  <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600' />
+                )}
+              </div>
+              <div className='mt-2 grid grid-cols-2 gap-2'>
+                <div className='rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/5'>
+                  <p className='text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+                    Titik
+                  </p>
+                  <p className='text-xl font-bold text-slate-900 tabular-nums dark:text-white'>
+                    {pointCount}
+                  </p>
+                </div>
+                <div className='rounded-xl bg-red-50 px-3 py-2.5 dark:bg-red-500/10'>
+                  <p className='text-[10px] font-bold tracking-wide text-red-400 uppercase'>
+                    Berulang
+                  </p>
+                  <p className='text-xl font-bold text-red-600 tabular-nums dark:text-red-400'>
+                    {points.filter((p) => p.isHot).length}
+                  </p>
+                </div>
+              </div>
+              <p className='mt-2 text-[10px] text-slate-400'>
+                Terakhir diperbarui: {formatDate(new Date().toISOString())}
+              </p>
+            </div>
           </div>
-          <div className='mt-2 grid grid-cols-2 gap-2'>
-            <div className='rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/5'>
-              <p className='text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
-                Titik
-              </p>
-              <p className='text-xl font-bold text-slate-900 tabular-nums dark:text-white'>
-                {pointCount}
-              </p>
-            </div>
-            <div className='rounded-xl bg-red-50 px-3 py-2.5 dark:bg-red-500/10'>
-              <p className='text-[10px] font-bold tracking-wide text-red-400 uppercase'>
-                Berulang
-              </p>
-              <p className='text-xl font-bold text-red-600 tabular-nums dark:text-red-400'>
-                {points.filter((p) => p.isHot).length}
-              </p>
-            </div>
-          </div>
-          <p className='mt-2 text-[10px] text-slate-400'>
-            Terakhir diperbarui: {formatDate(new Date().toISOString())}
-          </p>
-        </div>
-      </div>
 
-      <div className='order-1 lg:order-2'>
-        <div className='relative z-0 h-[calc(100dvh-220px)] min-h-120 overflow-hidden rounded-2xl border border-(--border)'>
-          {error && (
-            <div className='absolute top-3 left-3 z-1000 max-w-sm rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-400'>
-              {error}
-            </div>
-          )}
+          {/* Peta */}
+          <div className='relative'>
+            <div className='relative z-0 h-[calc(100dvh-220px)] min-h-120 overflow-hidden rounded-2xl border border-(--border)'>
+              {error && (
+                <div className='absolute top-3 left-3 z-1000 max-w-sm rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-400'>
+                  {error}
+                </div>
+              )}
+              {kmlFeaturesLoading && kmlLayers.length > 0 && (
+                <div className='absolute top-3 right-3 z-1000 flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[10px] font-bold text-indigo-600 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-400'>
+                  <span className='h-3 w-3 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-600' />
+                  Memuat skema...
+                </div>
+              )}
 
-          <MapContainer
-            center={[-7.1831, 112.7117]}
-            zoom={11}
-            className='h-full w-full'
-            scrollWheelZoom
-          >
-            <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
-              url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-              maxZoom={19}
-            />
-
-            <BboxReporter onBboxChange={handleBboxChange} />
-
-            {clusters.map((cluster, idx) => {
-              const [lng, lat] = cluster.geometry.coordinates;
-              const props =
-                cluster.properties as PointFeatureProps['properties'] & {
-                  cluster?: boolean;
-                  cluster_id?: number;
-                  point_count?: number;
-                  point_count_abbreviated?: number;
-                };
-
-              if (props.cluster) {
-                const count = props.point_count ?? 0;
-                const expansionZoom = index.getClusterExpansionZoom(
-                  props.cluster_id as number,
-                );
-                return (
-                  <ZoomToCluster
-                    key={`c-${props.cluster_id}-${idx}`}
-                    cluster={{
-                      latitude: lat,
-                      longitude: lng,
-                      count,
-                      expansionZoom,
+              {/* Fit-network (PRD §A4) — kiri atas, di bawah zoom control topleft */}
+              <div className='absolute top-[86px] left-3 z-1000 flex flex-col items-start gap-1.5'>
+                {kmlLayers.length > 0 && primaryLayerBbox && (
+                  <button
+                    onClick={() => {
+                      setFitTarget(primaryLayerBbox);
+                      setFitNonce((n) => n + 1);
                     }}
-                    onExpand={() => {}}
+                    className='rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-indigo-600 shadow-sm transition hover:bg-(--surface-2)'
+                  >
+                    Lihat jaringan
+                  </button>
+                )}
+                <MeasureTool
+                  active={measure.active}
+                  mode={measure.mode}
+                  onToggle={measure.toggle}
+                />
+              </div>
+
+              {/* Insight ribbon alert ODP (PRD §B3) */}
+              {odpAlertEnabled && (criticalCount > 0 || warningCount > 0) && (
+                <div
+                  ref={alertsPanelRef}
+                  className='absolute top-3 left-1/2 z-1000 -translate-x-1/2'
+                >
+                  <button
+                    onClick={() => setAlertsOpen((v) => !v)}
+                    className='flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 shadow-md dark:border-red-500/25 dark:bg-red-500/10'
+                  >
+                    <span className='relative flex h-2 w-2'>
+                      <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75' />
+                      <span className='relative inline-flex h-2 w-2 rounded-full bg-red-500' />
+                    </span>
+                    <p className='text-[11px] font-bold text-red-600 dark:text-red-400'>
+                      {criticalCount > 0
+                        ? `${criticalCount} ODP berisiko`
+                        : `${warningCount} ODP waspada`}
+                      {criticalCount > 0 && warningCount > 0
+                        ? ` · ${warningCount} waspada`
+                        : ''}
+                    </p>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-red-500 transition-transform ${alertsOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {alertsOpen && (
+                    <div className='absolute top-full left-1/2 mt-2 w-72 -translate-x-1/2 overflow-hidden rounded-xl border border-red-200 bg-white shadow-xl dark:border-red-500/25 dark:bg-slate-900'>
+                      <div className='flex items-center justify-between border-b border-red-100 px-3 py-2 dark:border-red-500/15'>
+                        <p className='text-[10px] font-bold tracking-wide text-red-600 uppercase dark:text-red-400'>
+                          Alert dari ODP
+                        </p>
+                        <p className='text-[10px] font-semibold text-slate-400'>
+                          {odpAlerts.length} ODP
+                        </p>
+                      </div>
+                      <div className='max-h-52 overflow-auto p-1'>
+                        {odpAlerts.map((a) => {
+                          const isCritical = a.tier === 'critical';
+                          const color = isCritical ? '#dc2626' : '#f59e0b';
+                          return (
+                            <button
+                              key={a.odpId}
+                              onClick={() => {
+                                setAlertsOpen(false);
+                                setAlertFocus((prev) => ({
+                                  lat: a.latitude,
+                                  lng: a.longitude,
+                                  seq: (prev?.seq ?? 0) + 1,
+                                }));
+                              }}
+                              className='flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-red-50 dark:hover:bg-red-500/10'
+                            >
+                              <span
+                                className='h-2 w-2 shrink-0 rounded-full'
+                                style={{ background: color }}
+                              />
+                              <div className='min-w-0 flex-1'>
+                                <p className='truncate text-[11px] font-bold text-slate-800 dark:text-slate-100'>
+                                  {a.name}
+                                </p>
+                                <p className='text-[10px] text-slate-400'>
+                                  {isCritical ? 'BERISIKO' : 'WASPADA'} ·{' '}
+                                  {a.totalPoints} titik
+                                  {a.activeCount > 0
+                                    ? ` · ${a.activeCount} aktif`
+                                    : ''}
+                                </p>
+                              </div>
+                              <span
+                                className='shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white'
+                                style={{ background: color }}
+                              >
+                                {isCritical ? '⚠' : '•'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <MapContainer
+                center={[-7.1831, 112.7117]}
+                zoom={11}
+                className='h-full w-full'
+                scrollWheelZoom
+              >
+                <TileLayer
+                  key='osm-street'
+                  attribution='&copy; OpenStreetMap contributors'
+                  url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                  maxZoom={19}
+                />
+
+                <BboxReporter onBboxChange={handleBboxChange} />
+
+                <NetworkFitter bbox={fitTarget} nonce={fitNonce} />
+
+                <PointFitter
+                  lat={alertFocus?.lat ?? null}
+                  lng={alertFocus?.lng ?? null}
+                  seq={alertFocus?.seq ?? 0}
+                />
+
+                <MeasureMapEvents
+                  ctrl={measure}
+                  points={points}
+                  kmlPoints={kmlPoints}
+                />
+
+                <MeasureLayer ctrl={measure} />
+
+                {/* Layer KML — garis kabel */}
+                {kmlLines.map((line) => (
+                  <KmlLinePolyline
+                    key={`kml-line-${line.id}`}
+                    feature={line}
+                    measuring={measuring}
                   />
-                );
-              }
+                ))}
 
-              const point = props as unknown as WarMapPoint;
-              const isHot =
-                point.isHot || point.historyCount90d >= HOT_THRESHOLD;
+                {/* Layer KML — titik ODC/ODP */}
+                {kmlPoints.map((pt) => (
+                  <KmlPointMarker
+                    key={`kml-point-${pt.id}`}
+                    feature={pt}
+                    layerTitle={
+                      kmlLayerTitleById.get(
+                        kmlSublayerLayerId.get(pt.sublayerId) ?? 0,
+                      ) ?? ''
+                    }
+                    showLabel={zoom >= 12}
+                    alert={odpAlertById.get(pt.id) ?? null}
+                    measuring={measuring}
+                  />
+                ))}
 
-              return showHistory ? (
-                <CircleMarker
-                  key={`p-${point.id}-${idx}`}
-                  center={[point.latitude, point.longitude]}
-                  radius={isHot ? 10 : 7}
-                  pathOptions={{
-                    color: isHot ? '#dc2626' : '#2563eb',
-                    fillColor: isHot ? '#dc2626' : '#2563eb',
-                    fillOpacity: 0.65,
-                    weight: 1.5,
-                  }}
-                  eventHandlers={{
-                    click: () => handlePointSelect(point),
-                  }}
-                >
-                  <Popup minWidth={260} maxWidth={320}>
-                    <PointPopupContent
-                      point={point}
-                      historyData={historyData}
-                      loading={historyLoading}
-                      onOpenDetail={openDetail}
-                    />
-                  </Popup>
-                </CircleMarker>
-              ) : (
-                <Marker
-                  key={`p-${point.id}-${idx}`}
-                  position={[point.latitude, point.longitude]}
-                  icon={markerIcon(point)}
-                  eventHandlers={{
-                    click: () => handlePointSelect(point),
-                  }}
-                >
-                  <Popup minWidth={260} maxWidth={320}>
-                    <PointPopupContent
-                      point={point}
-                      historyData={historyData}
-                      loading={historyLoading}
-                      onOpenDetail={openDetail}
-                    />
-                  </Popup>
-                </Marker>
-              );
-            })}
-          </MapContainer>
+                {clusters.map((cluster, idx) => {
+                  const [lng, lat] = cluster.geometry.coordinates;
+                  const props =
+                    cluster.properties as PointFeatureProps['properties'] & {
+                      cluster?: boolean;
+                      cluster_id?: number;
+                      point_count?: number;
+                      point_count_abbreviated?: number;
+                    };
+
+                  if (props.cluster) {
+                    const count = props.point_count ?? 0;
+                    const expansionZoom = index.getClusterExpansionZoom(
+                      props.cluster_id as number,
+                    );
+                    return (
+                      <ZoomToCluster
+                        key={`c-${props.cluster_id}-${idx}`}
+                        cluster={{
+                          latitude: lat,
+                          longitude: lng,
+                          count,
+                          expansionZoom,
+                        }}
+                        onExpand={() => {}}
+                        disabled={measuring}
+                      />
+                    );
+                  }
+
+                  const point = props as unknown as WarMapPoint;
+                  const isHot =
+                    point.isHot || point.historyCount60d >= HOT_THRESHOLD;
+
+                  return showHistory ? (
+                    <CircleMarker
+                      key={`p-${point.id}-${idx}`}
+                      center={[point.latitude, point.longitude]}
+                      radius={isHot ? 10 : 7}
+                      interactive={!measuring}
+                      pathOptions={{
+                        color: isHot ? '#dc2626' : '#2563eb',
+                        fillColor: isHot ? '#dc2626' : '#2563eb',
+                        fillOpacity: 0.65,
+                        weight: 1.5,
+                      }}
+                      eventHandlers={
+                        measuring
+                          ? undefined
+                          : { click: () => handlePointSelect(point) }
+                      }
+                    >
+                      {!measuring && (
+                        <Popup minWidth={260} maxWidth={320}>
+                          <PointPopupContent
+                            point={point}
+                            historyData={historyData}
+                            loading={historyLoading}
+                            onOpenDetail={openDetail}
+                          />
+                        </Popup>
+                      )}
+                    </CircleMarker>
+                  ) : (
+                    <Marker
+                      key={`p-${point.id}-${idx}`}
+                      position={[point.latitude, point.longitude]}
+                      icon={markerIcon(point)}
+                      interactive={!measuring}
+                      eventHandlers={
+                        measuring
+                          ? undefined
+                          : { click: () => handlePointSelect(point) }
+                      }
+                    >
+                      {!measuring && (
+                        <Popup minWidth={260} maxWidth={320}>
+                          <PointPopupContent
+                            point={point}
+                            historyData={historyData}
+                            loading={historyLoading}
+                            onOpenDetail={openDetail}
+                          />
+                        </Popup>
+                      )}
+                    </Marker>
+                  );
+                })}
+</MapContainer>
+
+            {measure.active && <MeasurePanel ctrl={measure} />}
+             </div>
+
+            {/* Legenda jaringan (PRD §A4) */}
+            {kmlLayers.length > 0 && (
+              <div className='absolute bottom-3 left-3 z-1000 hidden max-w-[200px] rounded-xl border border-(--border) bg-(--surface)/95 p-2.5 shadow-sm backdrop-blur lg:block'>
+                <p className='text-[9px] font-bold tracking-widest text-(--text-tertiary) uppercase'>
+                  Legenda
+                </p>
+                <div className='mt-1.5 space-y-1'>
+                  <div className='flex items-center gap-2'>
+                    <svg viewBox='0 0 24 24' width='14' height='14'>
+                      <path
+                        d='M12 3.2l10 17.8H2z'
+                        fill='#e10000'
+                        stroke='#ffffff'
+                        strokeWidth='1'
+                        strokeLinejoin='round'
+                      />
+                    </svg>
+                    <span className='text-[10px] font-semibold text-(--text-secondary)'>
+                      ODC
+                    </span>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <svg viewBox='0 0 24 24' width='14' height='14'>
+                      <rect
+                        x='2'
+                        y='2'
+                        width='20'
+                        height='20'
+                        rx='5.5'
+                        fill='#f8fafc'
+                        stroke='#cbd5e1'
+                        strokeWidth='1.2'
+                      />
+                      <path
+                        d='M12 4.6l2 4.05 4.47.65-3.23 3.15.76 4.45L12 14.9 7.99 16.9l.76-4.45-3.23-3.15 4.47-.65z'
+                        fill='#475569'
+                        stroke='#94a3b8'
+                        strokeWidth='0.6'
+                        strokeLinejoin='round'
+                      />
+                    </svg>
+                    <span className='text-[10px] font-semibold text-(--text-secondary)'>
+                      ODP
+                    </span>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <span className='inline-block h-0.5 w-5 rounded bg-blue-500' />
+                    <span className='text-[10px] font-semibold text-(--text-secondary)'>
+                      Kabel / Distribusi
+                    </span>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <span className='text-[11px] leading-none'>🔴</span>
+                    <span className='text-[10px] font-semibold text-(--text-secondary)'>
+                      ODP berisiko
+                    </span>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <span className='text-[11px] leading-none'>🟡</span>
+                    <span className='text-[10px] font-semibold text-(--text-secondary)'>
+                      ODP waspada
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className='absolute right-3 bottom-3 z-1000 flex flex-col gap-2 lg:hidden'>
+              <button
+                onClick={() => setSheetTab('filter')}
+                className='grid h-12 w-12 place-items-center rounded-full border border-(--border) bg-(--surface) text-blue-600 shadow-lg transition active:scale-95'
+                aria-label='Filter'
+              >
+                <Funnel className='h-5 w-5' />
+              </button>
+              <button
+                onClick={() => setSheetTab('layer')}
+                className='grid h-12 w-12 place-items-center rounded-full border border-(--border) bg-(--surface) text-indigo-600 shadow-lg transition active:scale-95'
+                aria-label='Skema'
+              >
+                <Layers className='h-5 w-5' />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      <MobileSheet
+        openTab={sheetTab}
+        onClose={() => setSheetTab(null)}
+        onTabChange={setSheetTab}
+        filterContent={mobileFilterContent}
+        layerContent={mobileLayerContent}
+      />
 
       <TicketDetailDrawer
         open={detailTicketId !== null}
@@ -952,7 +2264,17 @@ export default function WarMapClient() {
           }
         }}
       />
-    </div>
+
+      <DeleteSchemaModal
+        open={deleteTarget !== null}
+        schema={deleteTarget}
+        deleting={kmlDeleting}
+        onDelete={confirmDeleteSchema}
+        onClose={() => {
+          if (!kmlDeleting) setDeleteTarget(null);
+        }}
+      />
+    </>
   );
 }
 
@@ -1009,8 +2331,8 @@ function PointPopupContent({
         )}
         {point.workzone && <p>Workzone: {point.workzone}</p>}
         <p>
-          Histori 90 hari:{' '}
-          <span className='font-bold'>{point.historyCount90d}x</span>{' '}
+          Histori 60 hari:{' '}
+          <span className='font-bold'>{point.historyCount60d}x</span>{' '}
           <span className='text-slate-400'>(total {point.taggedCount}x)</span>
         </p>
         <p className='text-slate-400'>Ditag: {formatDate(point.updatedAt)}</p>

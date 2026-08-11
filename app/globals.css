@@ -566,3 +566,63 @@ phantom-ui {
     animation: none;
   }
 }
+
+/* ============================================================
+   WAR MAP — KML layer (PRD War Map v2)
+   Label ikon KML + pulse alert ODP (animasi via CSS, tidak
+   bergantung utility Tailwind di dalam divIcon Leaflet).
+   ============================================================ */
+
+@keyframes kml-alert-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.kml-alert-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  animation: kml-alert-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.kml-alert-dot {
+  position: absolute;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.kml-icon-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 0.01em;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kml-alert-ping {
+    animation: none;
+    opacity: 0.35;
+  }
+}
