@@ -9,7 +9,7 @@ const globalForPrisma = globalThis as unknown as {
 const connectionLimit = parseInt(process.env.PRISMA_CONNECTION_LIMIT || '20', 10);
 const poolTimeoutSeconds = parseInt(process.env.PRISMA_POOL_TIMEOUT || '30', 10);
 const socketTimeoutSeconds = parseInt(
-  process.env.PRISMA_SOCKET_TIMEOUT || '10',
+  process.env.PRISMA_SOCKET_TIMEOUT || '60',
   10,
 );
 const socketTimeoutBulkSeconds = parseInt(

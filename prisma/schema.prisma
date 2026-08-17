@@ -347,6 +347,8 @@ model ticket {
   @@index([needs_validation, status, workzone, reported_date], map: "idx_ticket_validasi_dashboard")
   @@index([workzone, classification_path, status, status_update], map: "idx_ticket_wz_cp_st_stu")
   @@index([reported_date, workzone, status], map: "idx_ticket_reported_wz_st")
+  @@index([device_name, rca, sub_rca, closed_at], map: "idx_ticket_rca_lookup")
+  @@index([sync_date], map: "idx_ticket_sync_date")
 }
 
 model ticket_activity_log {
@@ -1075,4 +1077,24 @@ model service_location_history {
   @@index([service_no, tagged_at], map: "idx_slh_service_no_tagged_at")
   @@index([workzone, tagged_at], map: "idx_slh_workzone_tagged_at")
   @@index([latitude, longitude], map: "idx_slh_geo")
+}
+
+model audit_log {
+  id            BigInt    @id @default(autoincrement())
+  actor_id      Int?
+  actor_role    String?   @db.VarChar(50)
+  actor_name    String?   @db.VarChar(100)
+  action        String    @db.VarChar(100)
+  resource_type String    @db.VarChar(50)
+  resource_id   String?   @db.VarChar(100)
+  meta          Json?
+  ip_address    String?   @db.VarChar(45)
+  user_agent    String?   @db.VarChar(255)
+  created_at    DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([actor_id, created_at], map: "idx_audit_actor_created")
+  @@index([action, created_at], map: "idx_audit_action_created")
+  @@index([resource_type, resource_id], map: "idx_audit_resource")
+  @@index([created_at], map: "idx_audit_created")
+  @@map("audit_log")
 }
