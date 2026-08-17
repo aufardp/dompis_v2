@@ -28,6 +28,7 @@ import { logger } from '@/lib/observability/logger';
 import { logConfigWarnings } from '@/lib/observability/config-validator';
 import { recordRun } from '@/lib/observability/slo-tracker';
 import { testExternalConnection } from '@/lib/external-db/connection';
+import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 
 const WORKER_NAME = 'data-worker';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
@@ -153,6 +154,37 @@ async function requestImmediateProjection(syncBatchId?: string | null): Promise<
   } catch (error) {
     logger.warn('Projection trigger publish failed', {
       batchId: syncBatchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function warmupDashboardSummary(): Promise<void> {
+  if (process.env.DASHBOARD_WARMUP_ENABLED === 'false') return;
+
+  try {
+    const startTime = Date.now();
+    await Promise.allSettled([
+      DailyTicketService.getKpiBucketSummaryMatrix(
+        'superadmin',
+        0,
+        { dept: 'all', includeClosed: true },
+        undefined,
+        undefined,
+      ),
+      DailyTicketService.getTicketManagementOverviewSummary(
+        'superadmin',
+        0,
+        undefined,
+        undefined,
+      ),
+    ]);
+    logger.info('Dashboard summary warmup complete', {
+      durationMs: Date.now() - startTime,
+      time: nowWIB(),
+    });
+  } catch (error) {
+    logger.warn('Dashboard summary warmup skipped', {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -366,6 +398,7 @@ async function runDataWorkerTask(): Promise<void> {
           time: nowWIB(),
         });
         await requestImmediateProjection();
+        await warmupDashboardSummary();
         await recordRun(WORKER_NAME, duration, true, {});
         await recordRun('data_worker_cycle', duration, true, {});
 

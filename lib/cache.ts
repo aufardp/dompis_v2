@@ -13,6 +13,7 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 
 export const TICKETS_CACHE_TTL = parsePositiveIntEnv('TICKETS_CACHE_TTL', 15);
 export const DASHBOARD_CACHE_TTL = parsePositiveIntEnv('DASHBOARD_CACHE_TTL', 30);
+export const DASHBOARD_SUMMARY_CACHE_TTL = parsePositiveIntEnv('DASHBOARD_SUMMARY_CACHE_TTL', 300);
 export const STATS_CACHE_TTL = parsePositiveIntEnv('STATS_CACHE_TTL', 30);
 
 const DEFAULT_TTL = 60;
