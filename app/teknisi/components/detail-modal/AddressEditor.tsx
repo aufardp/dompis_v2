@@ -1,28 +1,69 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+
+export interface AddressEditorHandle {
+  save: () => Promise<boolean>;
+}
+
+type SpeechRecognitionCtor = new () => {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  abort: () => void;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+};
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionCtor;
+  webkitSpeechRecognition?: SpeechRecognitionCtor;
+}
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  const w = window as SpeechRecognitionWindow;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 interface AddressEditorProps {
   ticketId: number;
+  serviceNo?: string | null;
   initialAddress?: string | null;
+  suggestion?: string | null;
   canEdit: boolean;
+  hideOwnSave?: boolean;
+  ref?: React.Ref<AddressEditorHandle>;
   onError: (error: string | null) => void;
   onAddressSaved?: (address: string) => void;
 }
 
 export default function AddressEditor({
-  ticketId,
-  initialAddress,
-  canEdit,
-  onError,
-  onAddressSaved,
-}: AddressEditorProps) {
+    ticketId,
+    serviceNo,
+    initialAddress,
+    suggestion,
+    canEdit,
+    hideOwnSave = false,
+    ref,
+    onError,
+    onAddressSaved,
+  }: AddressEditorProps) {
   const [alamatInitial, setAlamatInitial] = useState(initialAddress || '');
   const [alamatValue, setAlamatValue] = useState(initialAddress || '');
   const [alamatEditing, setAlamatEditing] = useState(!initialAddress?.trim());
   const [alamatSaving, setAlamatSaving] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [bankDraft, setBankDraft] = useState<string | null>(null);
+  const [dismissedSuggestion, setDismissedSuggestion] = useState<string | null>(
+    null,
+  );
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const voiceRecRef = useRef<{ abort: () => void } | null>(null);
 
   const alamatTrim = alamatValue.trim();
   const alamatInitialTrim = alamatInitial.trim();
@@ -30,7 +71,20 @@ export default function AddressEditor({
   const isAlamatDirty = alamatTrim !== alamatInitialTrim;
   const isFilled = alamatInitialTrim.length > 0;
 
+  const activeSuggestion =
+    suggestion &&
+    suggestion.trim() &&
+    suggestion !== dismissedSuggestion &&
+    alamatTrim !== suggestion.trim()
+      ? suggestion.trim()
+      : null;
+
   const MAX_LENGTH = 255;
+
+  useEffect(() => {
+    const recognition = getSpeechRecognition();
+    setVoiceSupported(Boolean(recognition));
+  }, []);
 
   // Fetch remote address if initial is empty
   useEffect(() => {
@@ -67,6 +121,87 @@ export default function AddressEditor({
       cancelled = true;
     };
   }, [ticketId, initialAddress, onAddressSaved]);
+
+  // Fetch bank-location draft (riwayat alamat per service_no)
+  useEffect(() => {
+    let cancelled = false;
+    if (!ticketId || !serviceNo) return;
+    if (alamatInitial.trim().length > 0 || bankDraft) return;
+
+    (async () => {
+      try {
+        const res = await fetchWithAuth(
+          `/api/tickets/${ticketId}/location-bank?serviceNo=${encodeURIComponent(serviceNo)}`,
+        );
+        if (cancelled || !res) return;
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+
+        if (data?.success && data?.found && data?.data?.alamat) {
+          const draft = String(data.data.alamat).trim();
+          if (draft && alamatInitial.trim().length === 0) {
+            setBankDraft(draft);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId, serviceNo]);
+
+  const useDraft = useCallback(
+    (draft: string | null) => {
+      if (!draft) return;
+      const next = draft.slice(0, MAX_LENGTH);
+      setAlamatValue(next);
+      setAlamatEditing(true);
+      onError(null);
+    },
+    [onError],
+  );
+
+  const handleVoiceInput = useCallback(() => {
+    const recognition = getSpeechRecognition();
+    if (!recognition) {
+      onError('Voice-to-text tidak didukung browser ini.');
+      return;
+    }
+
+    if (voiceListening) {
+      voiceRecRef.current?.abort();
+      setVoiceListening(false);
+      return;
+    }
+
+    onError(null);
+    const rec = new recognition();
+    rec.lang = 'id-ID';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (event: any) => {
+      const transcript = String(
+        event?.results?.[0]?.[0]?.transcript ?? '',
+      ).trim();
+      if (transcript) {
+        setAlamatValue((prev) =>
+          prev.trim() ? `${prev.trim()} ${transcript}` : transcript,
+        );
+      }
+    };
+    rec.onerror = () => setVoiceListening(false);
+    rec.onend = () => setVoiceListening(false);
+
+    voiceRecRef.current = rec;
+    setVoiceListening(true);
+    rec.start();
+  }, [voiceListening, onError]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!canEdit) return true;
@@ -134,34 +269,71 @@ export default function AddressEditor({
     setAlamatEditing(true);
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: handleSave,
+    }),
+    [handleSave],
+  );
+
   // State 1: Empty State
   if (!isFilled && !alamatEditing) {
     return (
-      <div className='addr-empty flex items-center justify-between gap-2'>
-        <div className='addr-empty-left flex items-center gap-2'>
-          <div className='addr-empty-dot box-shadow-[0_0_0_3px_rgba(251,191,36,0.2)] h-1.75 w-1.75 shrink-0 rounded-full bg-amber-500' />
-          <span className='addr-empty-text text-[13px] font-medium text-slate-400 italic'>
-            Belum diisi
-          </span>
-        </div>
-        {canEdit && (
-          <button
-            onClick={handleEditClick}
-            className='btn-isi-alamat inline-flex shrink-0 items-center gap-1.25 rounded-[20px] border-[1.5px] border-blue-200 bg-blue-50 px-3.25 py-1.75 text-[12px] font-bold text-blue-600 transition-all hover:bg-blue-100'
-          >
-            <svg
-              viewBox='0 0 16 16'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='2.2'
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              className='h-3 w-3'
+      <div className='flex flex-col gap-2'>
+        <div className='addr-empty flex items-center justify-between gap-2'>
+          <div className='addr-empty-left flex items-center gap-2'>
+            <div className='addr-empty-dot box-shadow-[0_0_0_3px_rgba(251,191,36,0.2)] h-1.75 w-1.75 shrink-0 rounded-full bg-amber-500' />
+            <span className='addr-empty-text text-[13px] font-medium text-slate-400 italic'>
+              Belum diisi
+            </span>
+          </div>
+          {canEdit && (
+            <button
+              onClick={handleEditClick}
+              className='btn-isi-alamat inline-flex shrink-0 items-center gap-1.25 rounded-[20px] border-[1.5px] border-blue-200 bg-blue-50 px-3.25 py-1.75 text-[12px] font-bold text-blue-600 transition-all hover:bg-blue-100'
             >
-              <path d='M8 2h6v6M14 2L8 8M4 4H2.5A1.5 1.5 0 0 0 1 5.5v8A1.5 1.5 0 0 0 2.5 15h8A1.5 1.5 0 0 0 12 13.5V12' />
-            </svg>
-            Isi Alamat
-          </button>
+              <svg
+                viewBox='0 0 16 16'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2.2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                className='h-3 w-3'
+              >
+                <path d='M8 2h6v6M14 2L8 8M4 4H2.5A1.5 1.5 0 0 0 1 5.5v8A1.5 1.5 0 0 0 2.5 15h8A1.5 1.5 0 0 0 12 13.5V12' />
+              </svg>
+              Isi Alamat
+            </button>
+          )}
+        </div>
+
+        {(activeSuggestion || bankDraft) && canEdit && (
+          <div className='addr-suggestion flex items-start justify-between gap-2 rounded-[12px] border border-blue-200 bg-blue-50/70 p-2.5 dark:border-blue-500/25 dark:bg-blue-500/10'>
+            <div className='min-w-0 flex-1'>
+              <p className='mb-1 flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300'>
+                <span>📍</span>
+                {activeSuggestion
+                  ? 'Perkiraan alamat dari GPS'
+                  : 'Alamat dari tag lokasi sebelumnya'}
+              </p>
+              <p className='truncate text-[12px] leading-snug font-semibold text-slate-700 dark:text-slate-200'>
+                {activeSuggestion || bankDraft}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const draft = activeSuggestion || bankDraft;
+                if (!draft) return;
+                useDraft(draft);
+                if (activeSuggestion) setDismissedSuggestion(activeSuggestion);
+              }}
+              className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[10px] bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition-opacity hover:opacity-90'
+            >
+              Pakai sebagai draft
+            </button>
+          </div>
         )}
       </div>
     );
@@ -205,14 +377,58 @@ export default function AddressEditor({
         </div>
 
         {/* Textarea */}
-        <textarea
-          className='addr-textarea min-h-20 w-full resize-none rounded-[14px] border-2 border-blue-200 bg-blue-50 px-3.25 py-2.75 font-sans text-[13.5px] leading-relaxed font-medium text-slate-800 placeholder-slate-300 transition-all outline-none focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]'
-          placeholder='Contoh: Jl. Raya Manukan Tama No. 12, RT 03/RW 02, Kel. Lontar, Kec. Sambikerep'
-          maxLength={MAX_LENGTH}
-          value={alamatValue}
-          onChange={(e) => setAlamatValue(e.target.value)}
-          disabled={alamatSaving}
-        />
+        <div className='relative'>
+          <textarea
+            className='addr-textarea min-h-20 w-full resize-none rounded-[14px] border-2 border-blue-200 bg-blue-50 px-3.25 py-2.75 pr-10 font-sans text-[13.5px] leading-relaxed font-medium text-slate-800 placeholder-slate-300 transition-all outline-none focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.1)]'
+            placeholder='Contoh: Jl. Raya Manukan Tama No. 12, RT 03/RW 02, Kel. Lontar, Kec. Sambikerep'
+            maxLength={MAX_LENGTH}
+            value={alamatValue}
+            onChange={(e) => setAlamatValue(e.target.value)}
+            disabled={alamatSaving}
+          />
+          {voiceSupported && canEdit && (
+            <button
+              type='button'
+              onClick={handleVoiceInput}
+              disabled={alamatSaving}
+              title={voiceListening ? 'Hentikan perekaman' : 'Isi alamat pakai suara'}
+              className={`absolute top-2 right-2 flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                voiceListening
+                  ? 'animate-pulse bg-red-500 text-white'
+                  : 'bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600'
+              }`}
+            >
+              {voiceListening ? (
+                <span className='h-2 w-2 rounded-full bg-white' />
+              ) : (
+                <svg width='13' height='13' viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round'>
+                  <rect x='5.5' y='2' width='5' height='8' rx='2.5' />
+                  <path d='M3 8a5 5 0 0 0 10 0M8 13v2' />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Active suggestion in edit mode */}
+        {activeSuggestion && (
+          <div className='mt-1.5 flex items-start justify-between gap-2 rounded-[10px] border border-blue-200 bg-blue-50/70 px-2.5 py-2 dark:border-blue-500/25 dark:bg-blue-500/10'>
+            <p className='min-w-0 flex-1 truncate text-[11.5px] font-semibold text-slate-700 dark:text-slate-200'>
+              <span className='mr-1'>📍</span>
+              {activeSuggestion}
+            </p>
+            <button
+              type='button'
+              onClick={() => {
+                useDraft(activeSuggestion);
+                setDismissedSuggestion(activeSuggestion);
+              }}
+              className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[8px] bg-blue-600 px-2 py-1 text-[10.5px] font-bold text-white transition-opacity hover:opacity-90'
+            >
+              Pakai
+            </button>
+          </div>
+        )}
 
         {/* Meta */}
         <div className='addr-meta mt-1.5 flex items-center justify-between'>
@@ -240,35 +456,37 @@ export default function AddressEditor({
           </span>
         </div>
 
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          disabled={alamatSaving || isAlamatEmpty}
-          className='btn-save-addr mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
-        >
-          {alamatSaving ? (
-            <>
-              <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-              Menyimpan...
-            </>
-          ) : (
-            <>
-              <svg
-                width='14'
-                height='14'
-                viewBox='0 0 16 16'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2.2'
-                strokeLinecap='round'
-                strokeLinejoin='round'
-              >
-                <path d='M13.5 4.5l-8 8L2 9' />
-              </svg>
-              Simpan Alamat
-            </>
-          )}
-        </button>
+        {!hideOwnSave && (
+          // Save Button
+          <button
+            onClick={handleSave}
+            disabled={alamatSaving || isAlamatEmpty}
+            className='btn-save-addr mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
+          >
+            {alamatSaving ? (
+              <>
+                <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <svg
+                  width='14'
+                  height='14'
+                  viewBox='0 0 16 16'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2.2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <path d='M13.5 4.5l-8 8L2 9' />
+                </svg>
+                Simpan Alamat
+              </>
+            )}
+          </button>
+        )}
       </div>
     );
   }

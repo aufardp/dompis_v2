@@ -1,12 +1,9 @@
 'use client';
 
-// app/teknisi/components/TeknisiDashboard/hooks/useTickets.ts
-
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Ticket } from '@/app/types/ticket';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { TicketFilter } from '../constants/ticket';
-import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { useTicketEvents, TicketUpdatedPayload } from '@/app/hooks/useTicketEvents';
 
 interface UseTicketsReturn {
@@ -14,10 +11,10 @@ interface UseTicketsReturn {
   loading: boolean;
   filter: TicketFilter;
   setFilter: (filter: TicketFilter) => void;
-  filteredTickets: Ticket[];
   paginatedTickets: Ticket[];
   currentPage: number;
   totalPages: number;
+  totalItems: number;
   setPage: (page: number) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -34,11 +31,21 @@ interface UseTicketsReturn {
 
 const PAGE_SIZE = 5;
 
-// Normalize status ke uppercase untuk perbandingan yang konsisten
-function normalizeStatus(t: Ticket): string {
-  // hasilVisit diisi dari status_update (lowercase), normalize ke uppercase
-  const raw = t.hasilVisit ?? t.status_update ?? '';
-  return raw.toUpperCase().trim();
+// Map filter tab to API parameters
+function getFilterParams(filter: TicketFilter) {
+  switch (filter) {
+    case 'assigned':
+      return { statusUpdate: 'assigned', dateRange: 'today' };
+    case 'on_progress':
+      return { statusUpdate: 'on_progress', dateRange: 'today' };
+    case 'pending':
+      return { statusUpdate: 'pending', dateRange: 'today' };
+    case 'closed':
+      return { statusUpdate: 'close', dateRange: 'thisMonth' };
+    case 'all':
+    default:
+      return { statusUpdate: undefined, dateRange: 'today' };
+  }
 }
 
 export function useTickets(
@@ -49,33 +56,87 @@ export function useTickets(
   const [filter, setFilter] = useState<TicketFilter>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState({
+    assigned: 0,
+    onProgress: 0,
+    pending: 0,
+    closed: 0,
+    totalAktif: 0,
+  });
   const [highlightedIncidents, setHighlightedIncidents] = useState<Set<string>>(new Set());
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const fetchTickets = useCallback(async () => {
+  const buildQueryParams = useCallback(
+    (page: number, search: string, filterParams: ReturnType<typeof getFilterParams>) => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+      if (search.trim()) {
+        params.set('search', search.trim());
+      }
+      if (filterParams.statusUpdate) {
+        params.set('statusUpdate', filterParams.statusUpdate);
+      }
+      if (filterParams.dateRange) {
+        params.set('dateRange', filterParams.dateRange);
+      }
+      return params.toString();
+    },
+    [],
+  );
+
+  const fetchStats = useCallback(async () => {
     try {
-      setLoading(true);
-      const res = await fetchWithAuth('/api/tickets?limit=200');
+      const res = await fetchWithAuth('/api/tickets/stats');
       if (!res) return;
       const data = await res.json();
-
-      if (data.success && data.data?.data) {
-        setTickets(data.data.data);
+      if (data.success && data.data) {
+        setStats(data.data);
       }
     } catch (err) {
-      console.error('Failed to fetch tickets:', err);
-    } finally {
-      setLoading(false);
+      console.error('Failed to fetch ticket stats:', err);
     }
   }, []);
 
-  useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+  const fetchPage = useCallback(
+    async (page: number, search: string, filterParam: TicketFilter) => {
+      try {
+        setLoading(true);
+        const filterParams = getFilterParams(filterParam);
+        const queryString = buildQueryParams(page, search, filterParams);
+        const res = await fetchWithAuth(`/api/tickets?${queryString}`);
+        if (!res) return;
+        const data = await res.json();
+        if (data.success && data.data) {
+          setTickets(data.data.data || []);
+          setTotalPages(data.data.totalPages || 1);
+          setTotalItems(data.data.total || 0);
+          setCurrentPage(data.data.page || page);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tickets:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [buildQueryParams],
+  );
 
-  // Listen SSE untuk auto-refresh saat admin assign/update tiket
+  // Initial load and when filter/search/page changes
+  useEffect(() => {
+    fetchStats();
+    fetchPage(1, searchQuery, filter);
+  }, [filter, searchQuery, fetchPage, fetchStats]);
+
+  // SSE for real-time updates
   useTicketEvents({
-    onInvalidate: fetchTickets,
+    onInvalidate: () => {
+      fetchStats();
+      fetchPage(currentPage, searchQuery, filter);
+    },
     onTicketUpdated: useCallback((payload: TicketUpdatedPayload) => {
       const inc = payload.incident;
       setHighlightedIncidents((prev) => {
@@ -84,7 +145,6 @@ export function useTickets(
         return next;
       });
 
-      // Clear highlight after 2 seconds
       const existing = highlightTimersRef.current.get(inc);
       if (existing) clearTimeout(existing);
       const timer = setTimeout(() => {
@@ -101,99 +161,32 @@ export function useTickets(
     debounceMs: 1000,
   });
 
-  // Auto-reset page to 1 when filter or searchQuery changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, searchQuery]);
-
-  // Step 1: Search - filter by ticket number (case-insensitive)
-  const searchedTickets = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return tickets;
-    return tickets.filter((t) => t.ticket?.toLowerCase().includes(q));
-  }, [tickets, searchQuery]);
-
-  // Step 2: Filter by status tab - from searchedTickets (NOT from tickets directly)
-  const filteredTickets = useMemo(() => {
-    const filtered = searchedTickets.filter((t) => {
-      const status = normalizeStatus(t);
-      const closed = isTicketClosed(t.status_update);
-
-      if (filter === 'all')         return !closed;
-      if (filter === 'assigned')    return status === 'ASSIGNED';
-      if (filter === 'on_progress') return status === 'ON_PROGRESS';
-      if (filter === 'pending')     return status === 'PENDING';
-      if (filter === 'closed')      return closed;
-      return true;
-    });
-
-    // Sort: tiket terbaru / terpenting di atas
-    return [...filtered].sort((a, b) => {
-      if (filter === 'closed') {
-        const aTime = a.closedAt ? new Date(a.closedAt).getTime() : 0;
-        const bTime = b.closedAt ? new Date(b.closedAt).getTime() : 0;
-        return bTime - aTime;
-      }
-
-      // Tab aktif: on_progress dulu, lalu assigned, lalu pending
-      const PRIORITY: Record<string, number> = {
-        ON_PROGRESS: 0,
-        ASSIGNED: 1,
-        PENDING: 2,
-      };
-      const aPriority = PRIORITY[normalizeStatus(a)] ?? 9;
-      const bPriority = PRIORITY[normalizeStatus(b)] ?? 9;
-      if (aPriority !== bPriority) return aPriority - bPriority;
-
-      // Same status: reportedDate DESC (terbaru di atas)
-      const aDate = a.reportedDate ? new Date(a.reportedDate as string).getTime() : 0;
-      const bDate = b.reportedDate ? new Date(b.reportedDate as string).getTime() : 0;
-      return bDate - aDate;
-    });
-  }, [searchedTickets, filter]);
-
-  // Step 3: Pagination
-  const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
-  }, [filteredTickets]);
-
-  const paginatedTickets = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredTickets.slice(start, start + PAGE_SIZE);
-  }, [filteredTickets, currentPage]);
-
-  // Stats calculated from searchedTickets to stay in sync with search
-  const stats = useMemo(() => {
-    const norm = (t: Ticket) => normalizeStatus(t);
-    return {
-      assigned:   searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length,
-      onProgress: searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
-      pending:    searchedTickets.filter((t) => norm(t) === 'PENDING').length,
-      closed:     searchedTickets.filter((t) => isTicketClosed(t.status_update)).length,
-      totalAktif:
-        searchedTickets.filter((t) => norm(t) === 'ASSIGNED').length +
-        searchedTickets.filter((t) => norm(t) === 'ON_PROGRESS').length,
-    };
-  }, [searchedTickets]);
-
   const setPage = useCallback((page: number) => {
-    setCurrentPage(page);
-  }, []);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      fetchPage(page, searchQuery, filter);
+    }
+  }, [currentPage, totalPages, searchQuery, filter, fetchPage]);
+
+  const refresh = useCallback(async () => {
+    await fetchStats();
+    await fetchPage(currentPage, searchQuery, filter);
+  }, [currentPage, searchQuery, filter, fetchStats, fetchPage]);
 
   return {
     tickets,
     loading,
     filter,
     setFilter,
-    filteredTickets,
-    paginatedTickets,
+    paginatedTickets: tickets, // Already paginated from server
     currentPage,
     totalPages,
+    totalItems,
     setPage,
     searchQuery,
     setSearchQuery,
     stats,
-    refresh: fetchTickets,
+    refresh,
     highlightedIncidents,
   };
 }

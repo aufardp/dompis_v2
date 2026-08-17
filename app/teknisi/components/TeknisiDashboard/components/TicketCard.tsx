@@ -142,7 +142,23 @@ export default function TicketCard({ ticket, onClick, isHighlighted }: TicketCar
       </div>
 
       {/* ── SLA Monitor ─────────────────────────────────────── */}
-      {slaInfo && (
+      {closed ? (
+        <div className='mt-3 flex items-center justify-between rounded-xl border border-green-200 bg-green-50 p-3 dark:border-green-500/20 dark:bg-green-500/10'>
+          <div>
+            <p className='text-[10px] font-bold text-(--text-tertiary) uppercase'>
+              Ditutup
+            </p>
+            <p className='mt-0.5 text-xs font-bold text-green-700 dark:text-green-400'>
+              {ticket.closedAt
+                ? formatDateTimeWIB(ticket.closedAt)
+                : 'Tiket selesai'}
+            </p>
+          </div>
+          <span className='rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold text-white'>
+            Selesai
+          </span>
+        </div>
+      ) : slaInfo ? (
         <div className='mt-3 space-y-1.5 rounded-xl border border-(--border) bg-(--surface-2) p-3'>
           <div className='flex items-center justify-between'>
             <span className='flex items-center gap-1 text-[10px] font-bold text-(--text-tertiary) uppercase'>
@@ -166,7 +182,7 @@ export default function TicketCard({ ticket, onClick, isHighlighted }: TicketCar
             </div>
           )}
         </div>
-      )}
+      ) : null}
     </button>
   );
 }

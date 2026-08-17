@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
@@ -9,6 +15,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  MapPin,
   PauseCircle,
   Phone,
   Search,
@@ -27,13 +34,25 @@ import {
 import { getMaxTtrInfo } from './TeknisiDashboard/utils/ttr';
 import SectionCard from './detail-modal/SectionCard';
 import InfoField from './detail-modal/InfoField';
+import LocationSummary from './detail-modal/LocationSummary';
 import EvidenceGallery from './detail-modal/EvidenceGallery';
 import EvidenceSliderModal from './EvidenceSliderModal';
 import TicketHistoryTimeline from './detail-modal/TicketHistoryTimeline';
-import AddressEditor from './detail-modal/AddressEditor';
-import DeviceEditor from './detail-modal/DeviceEditor';
+import AddressEditor, {
+  AddressEditorHandle,
+} from './detail-modal/AddressEditor';
+import DeviceEditor, {
+  DeviceEditorHandle,
+  isDeviceEmpty,
+} from './detail-modal/DeviceEditor';
+import LocationTagger, {
+  LocationTagState,
+  LocationTaggerHandle,
+} from './detail-modal/LocationTagger';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { rcaMapping } from '@/app/types/rca';
+import { useRcaSuggestions } from '@/app/hooks/useRcaSuggestions';
+import RcaSuggestionChips from './detail-modal/RcaSuggestionChips';
 import clsx from 'clsx';
 
 interface TicketDetailContentProps {
@@ -152,6 +171,7 @@ export default function TicketDetailContent({
 
   // SLA overdue calculation
   const slaInfo = useMemo(() => {
+    if (isTicketClosed) return null;
     const reported = parseWIBDateInput(ticket.reportedDate);
     if (!reported) return null;
     const slaHours = getSlaHours(ticket.customerType);
@@ -166,7 +186,7 @@ export default function TicketDetailContent({
       label: `${isOverdue ? '-' : ''}${h}j ${m}m`,
       deadline: formatDateTimeWIB(deadline.toISOString()),
     };
-  }, [ticket.reportedDate, ticket.customerType]);
+  }, [isTicketClosed, ticket.reportedDate, ticket.customerType]);
 
   // Evidence state
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
@@ -235,6 +255,12 @@ export default function TicketDetailContent({
   const [selectedRca, setSelectedRca] = useState('');
   const [selectedSubRca, setSelectedSubRca] = useState('');
   const [detailPerbaikan, setDetailPerbaikan] = useState('');
+  const [rcaFocusRequested, setRcaFocusRequested] = useState(false);
+  const { state: rcaSuggestionState } = useRcaSuggestions(
+    ticket.deviceName,
+    ticket.symptom,
+    rcaFocusRequested,
+  );
   const [closeEvidenceCount, setCloseEvidenceCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'detail' | 'evidence' | 'riwayat'>(
     'detail',
@@ -242,6 +268,29 @@ export default function TicketDetailContent({
 
   const [currentAddress, setCurrentAddress] = useState(ticket.alamat || '');
   const [currentDevice, setCurrentDevice] = useState(ticket.deviceName || '');
+
+  const addressEditorRef = useRef<AddressEditorHandle>(null);
+  const locationTaggerRef = useRef<LocationTaggerHandle>(null);
+  const deviceEditorRef = useRef<DeviceEditorHandle>(null);
+  const [locationTag, setLocationTag] = useState<LocationTagState | null>(null);
+  const [addressSuggestion, setAddressSuggestion] = useState<string | null>(
+    null,
+  );
+  const [combinedSaving, setCombinedSaving] = useState(false);
+
+  const geotagRequired =
+    process.env.NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED === 'true';
+
+  const canEditDetails = isOnProgress(status) || isPending(status);
+
+  const isLocationEmpty = useMemo(() => {
+    if (!locationTag) return true;
+    if (!Number.isFinite(locationTag.latitude)) return true;
+    if (!Number.isFinite(locationTag.longitude)) return true;
+    return locationTag.barcodeDc.trim().length === 0;
+  }, [locationTag]);
+
+  const isDeviceNameEmpty = isDeviceEmpty(currentDevice);
 
   useEffect(() => {
     setCurrentAddress(ticket.alamat || '');
@@ -273,7 +322,8 @@ export default function TicketDetailContent({
       !!selectedRca &&
       !!selectedSubRca &&
       detailPerbaikan.trim().length >= 10 &&
-      closeEvidenceCount >= 2
+      closeEvidenceCount >= 2 &&
+      !(geotagRequired && isLocationEmpty)
     );
   }, [
     currentAddress,
@@ -282,6 +332,8 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
+    geotagRequired,
+    isLocationEmpty,
   ]);
 
   const missingItems = useMemo(() => {
@@ -291,6 +343,7 @@ export default function TicketDetailContent({
     if (!selectedRca || !selectedSubRca) missing.push('RCA');
     if (detailPerbaikan.trim().length < 10) missing.push('Detail Perbaikan');
     if (closeEvidenceCount < 2) missing.push('Evidence (min 2 foto)');
+    if (geotagRequired && isLocationEmpty) missing.push('Lokasi');
     return missing;
   }, [
     currentAddress,
@@ -299,6 +352,8 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
+    geotagRequired,
+    isLocationEmpty,
   ]);
 
   // ── Back ────────────────────────────────────────────────────
@@ -400,6 +455,10 @@ export default function TicketDetailContent({
       );
       return;
     }
+    if (geotagRequired && isLocationEmpty) {
+      setError('Lokasi penanganan wajib ditag sebelum close.');
+      return;
+    }
     setError(null);
     setActionLoading('close');
     try {
@@ -411,6 +470,11 @@ export default function TicketDetailContent({
           rca: selectedRca,
           subRca: selectedSubRca,
           descriptionSolutionDompis: detailPerbaikan.trim(),
+          latitude: locationTag?.latitude ?? undefined,
+          longitude: locationTag?.longitude ?? undefined,
+          accuracyMeters: locationTag?.accuracyMeters ?? undefined,
+          barcodeDc: locationTag?.barcodeDc ?? undefined,
+          locationSource: locationTag?.locationSource ?? undefined,
         }),
       });
       if (!res) throw new Error('Tidak ada respon');
@@ -433,9 +497,42 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
+    geotagRequired,
+    isLocationEmpty,
+    locationTag?.latitude,
+    locationTag?.longitude,
+    locationTag?.accuracyMeters,
+    locationTag?.barcodeDc,
+    locationTag?.locationSource,
     ticket.idTicket,
     router,
   ]);
+
+  // ── Combined save (device + alamat + lokasi) ─────────────────
+  const handleCombinedSave = useCallback(async () => {
+    setError(null);
+    if (!canEditDetails) return;
+
+    setCombinedSaving(true);
+    try {
+      const deviceOk = await deviceEditorRef.current?.save();
+      const addressOk = await addressEditorRef.current?.save();
+      const locationOk = locationTaggerRef.current?.finalize();
+
+      if (deviceOk && addressOk && locationOk) {
+        setError(null);
+        handleScrollToSection('rca-section');
+      } else if (deviceOk === false) {
+        handleScrollToSection('device-editor-section');
+      } else if (addressOk === false) {
+        handleScrollToSection('address-editor-section');
+      } else {
+        handleScrollToSection('location-tagger-section');
+      }
+    } finally {
+      setCombinedSaving(false);
+    }
+  }, [canEditDetails, handleScrollToSection]);
 
   return (
     <div className='flex h-dvh flex-col bg-(--bg)'>
@@ -523,10 +620,16 @@ export default function TicketDetailContent({
       </div>
 
       {/* ── SLA Alert Banner ──────────────────────────────────── */}
-      {slaInfo?.isOverdue && (
+      {!isTicketClosed && slaInfo?.isOverdue && (
         <div className='flex items-center gap-2 bg-red-500 px-4 py-2.5 text-sm font-bold text-white'>
           <AlertTriangle size={16} />
           Terlambat {slaInfo.label} — Batas: {slaInfo.deadline}
+        </div>
+      )}
+      {isTicketClosed && (
+        <div className='flex items-center gap-2 bg-green-500 px-4 py-2.5 text-sm font-bold text-white'>
+          <CheckCircle2 size={16} />
+          Ditutup: {ticket.closedAt ? formatDateTimeWIB(ticket.closedAt) : 'Tiket selesai'}
         </div>
       )}
 
@@ -605,19 +708,80 @@ export default function TicketDetailContent({
                       )}
                     </div>
                   </div>
-                  <AddressEditor
-                    ticketId={ticket.idTicket}
-                    initialAddress={ticket.alamat}
-                    canEdit={isOnProgress(status) || isPending(status)}
-                    onError={setError}
-                    onAddressSaved={(addr) => setCurrentAddress(addr)}
-                  />
+                  <div
+                    className='border-t border-(--border) pt-2'
+                    id='location-tagger-section'
+                  >
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                      Lokasi Penanganan
+                      {canEditDetails && geotagRequired && isLocationEmpty && (
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                          <AlertTriangle size={10} className='mr-1 inline' />
+                          WAJIB
+                        </span>
+                      )}
+                    </p>
+                    {ticket.serviceLocation && !canEditDetails ? (
+                      <LocationSummary location={ticket.serviceLocation} />
+                    ) : (
+                      <LocationTagger
+                        ticketId={ticket.idTicket}
+                        serviceNo={ticket.serviceNo}
+                        contactName={ticket.contactName}
+                        alamat={ticket.alamat}
+                        deviceName={ticket.deviceName}
+                        canEdit={canEditDetails}
+                        hideOwnSave={canEditDetails}
+                        compact={canEditDetails}
+                        ref={locationTaggerRef}
+                        onError={setError}
+                        onLocationChange={setLocationTag}
+                        onAddressSuggestion={setAddressSuggestion}
+                      />
+                    )}
+                  </div>
+                  <div className='border-t border-(--border) pt-2'>
+                    <AddressEditor
+                      ticketId={ticket.idTicket}
+                      serviceNo={ticket.serviceNo}
+                      initialAddress={ticket.alamat}
+                      suggestion={addressSuggestion}
+                      canEdit={canEditDetails}
+                      hideOwnSave={canEditDetails}
+                      ref={addressEditorRef}
+                      onError={setError}
+                      onAddressSaved={(addr) => setCurrentAddress(addr)}
+                    />
+                  </div>
+                  <div
+                    className='border-t border-(--border) pt-2'
+                    id='device-editor-section'
+                  >
+                    <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                      Device Name (Pastikan Valid)
+                      {canEditDetails && isDeviceNameEmpty && (
+                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                          <AlertTriangle size={10} className='mr-1 inline' />
+                          WAJIB
+                        </span>
+                      )}
+                    </p>
+                    <DeviceEditor
+                      ticketId={ticket.idTicket}
+                      initialDevice={ticket.deviceName}
+                      canEdit={canEditDetails}
+                      hideOwnSave={canEditDetails}
+                      ref={deviceEditorRef}
+                      onError={setError}
+                      onDeviceSaved={(device) => setCurrentDevice(device)}
+                    />
+                  </div>
                 </div>
               </SectionCard>
             </div>
 
             {/* Technical Detail */}
-            <div id='device-editor-section'>
+            <div>
               <SectionCard
                 title='Detail Teknis'
                 icon={Smartphone}
@@ -628,13 +792,6 @@ export default function TicketDetailContent({
                   <InfoField
                     label='Tipe Layanan'
                     value={ticket.serviceType || 'Internet'}
-                  />
-                  <DeviceEditor
-                    ticketId={ticket.idTicket}
-                    initialDevice={ticket.deviceName}
-                    canEdit={isOnProgress(status) || isPending(status)}
-                    onError={setError}
-                    onDeviceSaved={(device) => setCurrentDevice(device)}
                   />
                   {ticket.onuRx && (
                     <InfoField label='RX Optical' value={ticket.onuRx} />
@@ -678,6 +835,9 @@ export default function TicketDetailContent({
                       </label>
                       <select
                         value={selectedRca}
+                        onFocus={() => {
+                          if (!rcaFocusRequested) setRcaFocusRequested(true);
+                        }}
                         onChange={(e) => {
                           setSelectedRca(e.target.value);
                           setSelectedSubRca('');
@@ -691,6 +851,15 @@ export default function TicketDetailContent({
                           </option>
                         ))}
                       </select>
+                      <RcaSuggestionChips
+                        state={rcaSuggestionState}
+                        onPick={(rca, subRca, description) => {
+                          setSelectedRca(rca);
+                          setSelectedSubRca(subRca);
+                          if (description) setDetailPerbaikan(description);
+                          setRcaFocusRequested(false);
+                        }}
+                      />
                     </div>
                     {selectedRca && (
                       <div>
@@ -747,6 +916,27 @@ export default function TicketDetailContent({
                 </SectionCard>
               )}
             </div>
+
+            {isOnProgress(status) && canEditDetails && (
+              <button
+                type='button'
+                onClick={() => void handleCombinedSave()}
+                disabled={combinedSaving}
+                className='flex h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none'
+              >
+                {combinedSaving ? (
+                  <>
+                    <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <MapPin size={17} />
+                    Simpan Semua
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Evidence upload (when on progress) */}
             <div id='evidence-section'>
@@ -816,6 +1006,14 @@ export default function TicketDetailContent({
                       <p className='text-sm leading-relaxed font-medium whitespace-pre-wrap text-(--text-primary)'>
                         {ticket.descriptionSolutionDompis}
                       </p>
+                    </div>
+                  )}
+                  {ticket.serviceLocation && (
+                    <div className='border-t border-(--border) pt-3'>
+                      <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                        Lokasi Penanganan
+                      </p>
+                      <LocationSummary location={ticket.serviceLocation} />
                     </div>
                   )}
                 </div>
@@ -909,7 +1107,7 @@ export default function TicketDetailContent({
       <div className='fixed right-0 bottom-0 left-0 z-20 border-t border-(--border) bg-(--surface) px-4 pt-2 pb-3'>
         <div className='mx-auto flex max-w-2xl flex-col gap-2'>
           {isOnProgress(status) && (
-            <div className='flex items-center justify-center gap-2 border-b border-(--border) px-4 pb-2'>
+            <div className='flex items-center justify-between gap-1 border-b border-(--border) pb-2'>
               {[
                 {
                   id: 'Alamat',
@@ -920,6 +1118,11 @@ export default function TicketDetailContent({
                   id: 'Device',
                   done: isFilled(currentDevice),
                   action: () => handleScrollToSection('device-editor-section'),
+                },
+                {
+                  id: 'Lokasi',
+                  done: !isLocationEmpty,
+                  action: () => handleScrollToSection('location-tagger-section'),
                 },
                 {
                   id: 'RCA',
@@ -943,16 +1146,16 @@ export default function TicketDetailContent({
                   type='button'
                   onClick={item.action}
                   className={clsx(
-                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all active:scale-90',
+                    'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold transition-colors',
                     item.done
-                      ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400'
+                      ? 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400'
                       : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400',
                   )}
                 >
                   {item.done ? (
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={11} />
                   ) : (
-                    <XCircle size={16} />
+                    <XCircle size={11} />
                   )}
                   {item.id}
                 </button>

@@ -199,9 +199,10 @@ export default function TeknisiDashboard() {
     filter,
     setFilter,
     paginatedTickets,
-    filteredTickets,
+    tickets,
     currentPage,
     totalPages,
+    totalItems,
     setPage,
     searchQuery,
     setSearchQuery,
@@ -341,7 +342,7 @@ export default function TeknisiDashboard() {
           />
         </div>
 
-        {filteredTickets.length > 0 && (
+        {tickets.length > 0 && (
           <section className='space-y-3'>
             <div className='flex items-end justify-between'>
               <div>
@@ -353,7 +354,7 @@ export default function TeknisiDashboard() {
                 </h2>
               </div>
               <div className='rounded-full border border-(--border) bg-(--surface-2) px-3 py-1 text-xs font-semibold text-(--text-secondary)'>
-                {filteredTickets.length} total
+                {totalItems} total
               </div>
             </div>
             <div className='space-y-3'>
@@ -369,12 +370,12 @@ export default function TeknisiDashboard() {
           </section>
         )}
 
-        {filteredTickets.length > 0 && (
+        {tickets.length > 0 && (
           <div className='pt-1'>
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              totalItems={filteredTickets.length}
+              totalItems={totalItems}
               pageSize={5}
               onPageChange={handlePageChange}
             />
@@ -386,7 +387,7 @@ export default function TeknisiDashboard() {
             <div className='flex items-center justify-center py-16'>
               <div className='h-10 w-10 animate-spin rounded-full border-4 border-black border-t-transparent dark:border-white dark:border-t-transparent' />
             </div>
-          ) : filteredTickets.length === 0 ? (
+          ) : tickets.length === 0 ? (
             <div className='rounded-4xl border border-dashed border-(--border) bg-(--surface) py-16 text-center shadow-sm'>
               <div className='mb-3 flex justify-center'>
                 <emptyMessage.icon className='h-12 w-12 text-(--text-tertiary)' />

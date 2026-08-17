@@ -222,6 +222,21 @@ export default function TicketHistoryTimeline({ ticket, status }: Props) {
           ? `Ditutup oleh: ${closeActivity.userName}`
           : null,
         hasReassign ? `Pernah reassign: ${reassignCount}x` : null,
+        (() => {
+          const loc = ticket.serviceLocation;
+          const lat = loc?.latitude ?? null;
+          const lng = loc?.longitude ?? null;
+          if (lat !== null && lng !== null) {
+            return `Lokasi: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          }
+          return null;
+        })(),
+        ticket.serviceLocation?.barcodeDc
+          ? `Barcode DC: ${ticket.serviceLocation.barcodeDc}`
+          : null,
+        ticket.serviceLocation?.deviceName
+          ? `Device: ${ticket.serviceLocation.deviceName}`
+          : null,
       ],
       tone: 'green',
     });
@@ -330,7 +345,8 @@ export default function TicketHistoryTimeline({ ticket, status }: Props) {
                           key={line}
                           className='inline-flex max-w-full items-center gap-1.5 rounded-full bg-(--surface-2) px-2.5 py-1 text-[11px] text-(--text-secondary)'
                         >
-                          {line?.includes('Workzone') ? (
+                          {line?.includes('Workzone') ||
+                          line?.startsWith('Lokasi:') ? (
                             <MapPin
                               size={11}
                               className='shrink-0 text-(--text-tertiary)'

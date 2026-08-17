@@ -28,6 +28,7 @@ import {
   parseWIBDateInput,
 } from '@/app/utils/datetime';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { filesToDataUrls } from './detail-modal/file-preview';
 
 interface EvidenceUploadPageProps {
@@ -201,6 +202,7 @@ export default function EvidenceUploadPage({
 
   // ── SLA info ────────────────────────────────────────────────
   const slaInfo = useMemo(() => {
+    if (isTicketClosed(ticket.status_update ?? ticket.hasilVisit)) return null;
     const reported = parseWIBDateInput(ticket.reportedDate);
     if (!reported) return null;
     const slaHours = getSlaHours(ticket.customerType);
@@ -215,7 +217,7 @@ export default function EvidenceUploadPage({
       label: `${h}j ${m}m`,
       deadline: formatDateTimeWIB(deadline.toISOString()),
     };
-  }, [ticket.reportedDate, ticket.customerType]);
+  }, [ticket.status_update, ticket.hasilVisit, ticket.reportedDate, ticket.customerType]);
 
   // ── States ──────────────────────────────────────────────────
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);

@@ -33,14 +33,20 @@ import AddMemberModal from './AddMemberModal';
 import EvidenceUploader from './detail-modal/EvidenceUploader';
 import EvidenceGallery from './detail-modal/EvidenceGallery';
 import EvidenceSliderModal from './EvidenceSliderModal';
-import AddressEditor from './detail-modal/AddressEditor';
+import AddressEditor, {
+  AddressEditorHandle,
+} from './detail-modal/AddressEditor';
 import DeviceEditor from './detail-modal/DeviceEditor';
 import LocationTagger, {
   LocationTagState,
+  LocationTaggerHandle,
 } from './detail-modal/LocationTagger';
 import InfoField from './detail-modal/InfoField';
+import LocationSummary from './detail-modal/LocationSummary';
 import TicketHistoryTimeline from './detail-modal/TicketHistoryTimeline';
 import { filesToDataUrls } from './detail-modal/file-preview';
+import { useRcaSuggestions } from '@/app/hooks/useRcaSuggestions';
+import RcaSuggestionChips from './detail-modal/RcaSuggestionChips';
 
 interface Props {
   ticket: Ticket;
@@ -130,6 +136,12 @@ export default function TicketDetailModal({
   const [selectedRca, setSelectedRca] = useState('');
   const [selectedSubRca, setSelectedSubRca] = useState('');
   const [detailPerbaikan, setDetailPerbaikan] = useState('');
+  const [rcaFocusRequested, setRcaFocusRequested] = useState(false);
+  const { state: rcaSuggestionState } = useRcaSuggestions(
+    ticket.deviceName,
+    ticket.symptom,
+    rcaFocusRequested,
+  );
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -138,7 +150,13 @@ export default function TicketDetailModal({
   const [showAddMember, setShowAddMember] = useState(false);
   const addressSectionRef = useRef<HTMLDivElement>(null);
   const evidenceUploaderRef = useRef<HTMLDivElement>(null);
+  const addressEditorRef = useRef<AddressEditorHandle>(null);
+  const locationTaggerRef = useRef<LocationTaggerHandle>(null);
   const [locationTag, setLocationTag] = useState<LocationTagState | null>(null);
+  const [addressSuggestion, setAddressSuggestion] = useState<string | null>(
+    null,
+  );
+  const [combinedSaving, setCombinedSaving] = useState(false);
 
   const status = useMemo(() => {
     const raw = ticket.status_update ?? ticket.hasilVisit ?? '';
@@ -672,6 +690,39 @@ export default function TicketDetailModal({
     [handleScrollToSection],
   );
 
+  const handleCombinedSave = useCallback(async () => {
+    setError(null);
+    if (!canUpdateAlamat) return;
+
+    if (isAlamatEmpty) {
+      setError('Alamat pelanggan wajib diisi sebelum menutup tiket.');
+      handleScrollToAlamat();
+      return;
+    }
+
+    setCombinedSaving(true);
+    try {
+      const addressOk = await addressEditorRef.current?.save();
+      const locationOk = locationTaggerRef.current?.finalize();
+
+      if (addressOk && locationOk) {
+        setError(null);
+        handleScrollToAlamat();
+      } else if (addressOk === false) {
+        handleScrollToAlamat();
+      } else {
+        handleScrollToLocation();
+      }
+    } finally {
+      setCombinedSaving(false);
+    }
+  }, [
+    canUpdateAlamat,
+    isAlamatEmpty,
+    handleScrollToAlamat,
+    handleScrollToLocation,
+  ]);
+
   return (
     <div
       className='fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm'
@@ -832,8 +883,12 @@ export default function TicketDetailModal({
                     </p>
                     <AddressEditor
                       ticketId={ticket.idTicket}
+                      serviceNo={ticket.serviceNo}
                       initialAddress={ticket.alamat}
+                      suggestion={addressSuggestion}
                       canEdit={canUpdateAlamat}
+                      hideOwnSave={canUpdateAlamat}
+                      ref={addressEditorRef}
                       onError={setError}
                       onAddressSaved={(savedAddress) => {
                         setCurrentAlamat(savedAddress);
@@ -894,16 +949,23 @@ export default function TicketDetailModal({
                         </span>
                       )}
                     </p>
-                    <LocationTagger
-                      ticketId={ticket.idTicket}
-                      serviceNo={ticket.serviceNo}
-                      contactName={ticket.contactName}
-                      alamat={ticket.alamat}
-                      deviceName={ticket.deviceName}
-                      canEdit={canUpdateAlamat}
-                      onError={setError}
-                      onLocationChange={setLocationTag}
-                    />
+                    {ticket.serviceLocation && !canUpdateAlamat ? (
+                      <LocationSummary location={ticket.serviceLocation} />
+                    ) : (
+                      <LocationTagger
+                        ticketId={ticket.idTicket}
+                        serviceNo={ticket.serviceNo}
+                        contactName={ticket.contactName}
+                        alamat={ticket.alamat}
+                        deviceName={ticket.deviceName}
+                        canEdit={canUpdateAlamat}
+                        hideOwnSave={canUpdateAlamat}
+                        ref={locationTaggerRef}
+                        onError={setError}
+                        onLocationChange={setLocationTag}
+                        onAddressSuggestion={setAddressSuggestion}
+                      />
+                    )}
                   </div>
 
                   <InfoField label='Workzone' value={ticket.workzone} />
@@ -938,6 +1000,9 @@ export default function TicketDetailModal({
                         </label>
                         <select
                           value={selectedRca}
+                          onFocus={() => {
+                            if (!rcaFocusRequested) setRcaFocusRequested(true);
+                          }}
                           onChange={(e) => {
                             setSelectedRca(e.target.value);
                             setSelectedSubRca('');
@@ -951,6 +1016,15 @@ export default function TicketDetailModal({
                             </option>
                           ))}
                         </select>
+                        <RcaSuggestionChips
+                          state={rcaSuggestionState}
+                          onPick={(rca, subRca, description) => {
+                            setSelectedRca(rca);
+                            setSelectedSubRca(subRca);
+                            if (description) setDetailPerbaikan(description);
+                            setRcaFocusRequested(false);
+                          }}
+                        />
                       </div>
 
                       {selectedRca && (
@@ -1037,10 +1111,39 @@ export default function TicketDetailModal({
                           </div>
                         </div>
                       )}
+                      {ticket.serviceLocation && (
+                        <div className='border-t border-(--border) pt-3'>
+                          <p className='mb-1.5 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                            Lokasi Penanganan
+                          </p>
+                          <LocationSummary location={ticket.serviceLocation} />
+                        </div>
+                      )}
                     </div>
                   </SectionCard>
                 ) : null}
               </div>
+
+              {isOnProgress && canUpdateAlamat && (
+                <button
+                  type='button'
+                  onClick={() => void handleCombinedSave()}
+                  disabled={combinedSaving}
+                  className='flex h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none'
+                >
+                  {combinedSaving ? (
+                    <>
+                      <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                      Menyimpan lokasi & alamat...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin size={17} />
+                      Selesai Tag Lokasi & Alamat
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
 

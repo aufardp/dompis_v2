@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useImperativeHandle } from 'react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+
+export interface DeviceEditorHandle {
+  save: () => Promise<boolean>;
+}
 
 interface DeviceEditorProps {
   ticketId: number;
   initialDevice?: string | null;
   canEdit: boolean;
+  hideOwnSave?: boolean;
+  ref?: React.Ref<DeviceEditorHandle>;
   onError: (error: string | null) => void;
   onDeviceSaved?: (device: string) => void;
 }
@@ -22,7 +28,7 @@ const DEVICE_EMPTY_VALUES = [
   'undefined',
 ];
 
-function isDeviceEmpty(value: string | null | undefined): boolean {
+export function isDeviceEmpty(value: string | null | undefined): boolean {
   if (!value) return true;
   const v = String(value).trim().toLowerCase();
   return v.length === 0 || DEVICE_EMPTY_VALUES.includes(v);
@@ -32,6 +38,8 @@ export default function DeviceEditor({
   ticketId,
   initialDevice,
   canEdit,
+  hideOwnSave = false,
+  ref,
   onError,
   onDeviceSaved,
 }: DeviceEditorProps) {
@@ -115,6 +123,14 @@ export default function DeviceEditor({
     onError,
     onDeviceSaved,
   ]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: handleSave,
+    }),
+    [handleSave],
+  );
 
   const handleCancel = useCallback(() => {
     setDeviceValue(deviceInitial);
@@ -227,34 +243,36 @@ export default function DeviceEditor({
         </div>
 
         {/* Save Button */}
-        <button
-          onClick={handleSave}
-          disabled={deviceSaving || isDeviceEmptyValue}
-          className='mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
-        >
-          {deviceSaving ? (
-            <>
-              <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-              Menyimpan...
-            </>
-          ) : (
-            <>
-              <svg
-                width='14'
-                height='14'
-                viewBox='0 0 16 16'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2.2'
-                strokeLinecap='round'
-                strokeLinejoin='round'
-              >
-                <path d='M13.5 4.5l-8 8L2 9' />
-              </svg>
-              Simpan Device
-            </>
-          )}
-        </button>
+        {!hideOwnSave && (
+          <button
+            onClick={handleSave}
+            disabled={deviceSaving || isDeviceEmptyValue}
+            className='mt-2.5 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
+          >
+            {deviceSaving ? (
+              <>
+                <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <svg
+                  width='14'
+                  height='14'
+                  viewBox='0 0 16 16'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2.2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <path d='M13.5 4.5l-8 8L2 9' />
+                </svg>
+                Simpan Device
+              </>
+            )}
+          </button>
+        )}
       </div>
     );
   }

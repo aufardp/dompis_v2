@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, ScanLine, ChevronLeft, Crosshair } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { reverseGeocode, formatAddressSuggestion } from '@/app/libs/reverse-geocode';
 import MiniMap from './MiniMap';
 
 const Scanner = dynamic(
@@ -36,6 +37,10 @@ interface BankLocationData {
   lastTechnician: string | null;
 }
 
+export interface LocationTaggerHandle {
+  finalize: () => boolean;
+}
+
 interface LocationTaggerProps {
   ticketId: number;
   serviceNo?: string | null;
@@ -43,8 +48,12 @@ interface LocationTaggerProps {
   alamat?: string | null;
   deviceName?: string | null;
   canEdit: boolean;
+  hideOwnSave?: boolean;
+  compact?: boolean;
+  ref?: React.Ref<LocationTaggerHandle>;
   onError: (err: string | null) => void;
   onLocationChange?: (location: LocationTagState | null) => void;
+  onAddressSuggestion?: (address: string | null) => void;
 }
 
 type Mode = 'idle' | 'confirm' | 'editing' | 'filled';
@@ -81,8 +90,12 @@ export default function LocationTagger({
   alamat,
   deviceName,
   canEdit,
+  hideOwnSave = false,
+  compact = false,
+  ref,
   onError,
   onLocationChange,
+  onAddressSuggestion,
 }: LocationTaggerProps) {
   const [mode, setMode] = useState<Mode>('idle');
   const [bank, setBank] = useState<BankLocationData | null>(null);
@@ -142,12 +155,13 @@ export default function LocationTagger({
 
   const handleOpenFromEmpty = useCallback(() => {
     onError(null);
+    onAddressSuggestion?.(null);
     if (bank) {
       setMode('confirm');
     } else {
       setMode('editing');
     }
-  }, [bank, onError]);
+  }, [bank, onError, onAddressSuggestion]);
 
   const emitChange = useCallback(
     (next: LocationTagState | null) => {
@@ -155,6 +169,31 @@ export default function LocationTagger({
     },
     [onLocationChange],
   );
+
+  const suggestionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gecodeSeq = useRef(0);
+
+  const suggestAddress = useCallback(
+    (latVal: number, lngVal: number) => {
+      if (!onAddressSuggestion) return;
+      if (suggestionTimer.current) clearTimeout(suggestionTimer.current);
+
+      const seq = ++gecodeSeq.current;
+      suggestionTimer.current = setTimeout(async () => {
+        if (!Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
+        const result = await reverseGeocode(latVal, lngVal);
+        if (gecodeSeq.current !== seq) return;
+        onAddressSuggestion(result ? formatAddressSuggestion(result) : null);
+      }, 600);
+    },
+    [onAddressSuggestion],
+  );
+
+  const cancelSuggestions = useCallback(() => {
+    gecodeSeq.current += 1;
+    if (suggestionTimer.current) clearTimeout(suggestionTimer.current);
+    onAddressSuggestion?.(null);
+  }, [onAddressSuggestion]);
 
   // "Data Masih Benar" — reuse bank data, no re-tag
   const handleReuse = useCallback(() => {
@@ -174,13 +213,15 @@ export default function LocationTagger({
     setDeviceValue(bank.deviceName ?? deviceName ?? '');
     setMode('filled');
     emitChange(rebuilt);
-  }, [bank, deviceName, emitChange]);
+    onAddressSuggestion?.(bank.alamat?.trim() || null);
+  }, [bank, deviceName, emitChange, onAddressSuggestion]);
 
   // "Ada yang Berubah" — open editing form prefilled from bank
   const handleEditOpen = useCallback(() => {
     onError(null);
+    onAddressSuggestion?.(null);
     setMode('editing');
-  }, [onError]);
+  }, [onError, onAddressSuggestion]);
 
   const requestCurrentPosition = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -201,6 +242,7 @@ export default function LocationTagger({
         setAccuracy(freshAccuracy);
         setAccuracyWarning(freshAccuracy > 100);
         setLocating(false);
+        suggestAddress(freshLat, freshLng);
       },
       (err) => {
         setLocating(false);
@@ -208,16 +250,16 @@ export default function LocationTagger({
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
-  }, [onError]);
+  }, [onError, suggestAddress]);
 
   const exposeManualTag = useCallback(() => {
     if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       onError('Ambil atau koreksi titik lokasi di peta terlebih dahulu.');
-      return;
+      return false;
     }
     if (!barcodeDc.trim()) {
       onError('Barcode DC wajib diisi (scan atau ketik manual).');
-      return;
+      return false;
     }
 
     const rebuilt: LocationTagState = {
@@ -230,7 +272,19 @@ export default function LocationTagger({
     };
     setMode('filled');
     emitChange(rebuilt);
+    return true;
   }, [lat, lng, accuracy, barcodeDc, deviceValue, deviceName, onError, emitChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      finalize: () => {
+        if (mode === 'filled' && lat !== null && lng !== null) return true;
+        return exposeManualTag();
+      },
+    }),
+    [mode, lat, lng, exposeManualTag],
+  );
 
   const handleCancel = useCallback(() => {
     onError(null);
@@ -251,7 +305,8 @@ export default function LocationTagger({
       emitChange(null);
     }
     setScanOpen(false);
-  }, [bank, deviceName, onError, emitChange]);
+    cancelSuggestions();
+  }, [bank, deviceName, onError, emitChange, cancelSuggestions]);
 
   const handleScanResult = useCallback(
     (results: Array<{ rawValue: string }>) => {
@@ -361,33 +416,37 @@ export default function LocationTagger({
           </button>
         </div>
 
-        {/* Info pelanggan read-only */}
-        <div className='mb-2 grid grid-cols-2 gap-2'>
-          <div className='rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
-            <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
-              Customer
-            </p>
-            <p className='truncate text-[12px] font-semibold text-slate-700 dark:text-slate-200'>
-              {contactName || '-'}
-            </p>
-          </div>
-          <div className='rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
-            <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
-              No. Service
-            </p>
-            <p className='truncate text-[12px] font-semibold text-slate-700 dark:text-slate-200'>
-              {serviceNo || '-'}
-            </p>
-          </div>
-        </div>
-        <div className='mb-2 rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
-          <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
-            Alamat
-          </p>
-          <p className='text-[11.5px] leading-snug font-medium text-slate-600 dark:text-slate-300'>
-            {alamat?.trim() || '-'}
-          </p>
-        </div>
+        {!compact && (
+          <>
+            {/* Info pelanggan read-only */}
+            <div className='mb-2 grid grid-cols-2 gap-2'>
+              <div className='rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
+                <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
+                  Customer
+                </p>
+                <p className='truncate text-[12px] font-semibold text-slate-700 dark:text-slate-200'>
+                  {contactName || '-'}
+                </p>
+              </div>
+              <div className='rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
+                <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
+                  No. Service
+                </p>
+                <p className='truncate text-[12px] font-semibold text-slate-700 dark:text-slate-200'>
+                  {serviceNo || '-'}
+                </p>
+              </div>
+            </div>
+            <div className='mb-2 rounded-[10px] bg-slate-50 px-2.5 py-2 dark:bg-slate-800/60'>
+              <p className='mb-0.5 text-[9.5px] font-bold tracking-wide text-slate-400 uppercase'>
+                Alamat
+              </p>
+              <p className='text-[11.5px] leading-snug font-medium text-slate-600 dark:text-slate-300'>
+                {alamat?.trim() || '-'}
+              </p>
+            </div>
+          </>
+        )}
 
         {/* Geolocation */}
         <button
@@ -420,6 +479,7 @@ export default function LocationTagger({
               onPositionChange={(newLat, newLng) => {
                 setLat(newLat);
                 setLng(newLng);
+                suggestAddress(newLat, newLng);
               }}
             />
             <div className='flex items-center justify-between'>
@@ -518,31 +578,34 @@ export default function LocationTagger({
           </div>
         </div>
 
-        {/* Device ODP editable (prefill) */}
-        <div className='mb-2'>
-          <p className='mb-1 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
-            ODP / Device Name
-          </p>
-          <input
-            type='text'
-            value={deviceValue}
-            onChange={(e) => setDeviceValue(e.target.value)}
-            maxLength={100}
-            className='w-full rounded-[12px] border-2 border-slate-200 bg-slate-50 px-3 py-2.5 font-sans text-[13px] font-medium text-slate-800 transition-all outline-none focus:border-blue-600 focus:bg-white'
-          />
-        </div>
+        {/* Device ODP editable (prefill) — hidden in compact mode, ODP dikelola DeviceEditor */}
+        {!compact && (
+          <div className='mb-2'>
+            <p className='mb-1 text-[10px] font-bold tracking-wide text-slate-400 uppercase'>
+              ODP / Device Name
+            </p>
+            <input
+              type='text'
+              value={deviceValue}
+              onChange={(e) => setDeviceValue(e.target.value)}
+              maxLength={100}
+              className='w-full rounded-[12px] border-2 border-slate-200 bg-slate-50 px-3 py-2.5 font-sans text-[13px] font-medium text-slate-800 transition-all outline-none focus:border-blue-600 focus:bg-white'
+            />
+          </div>
+        )}
 
-        {/* Save */}
-        <button
-          onClick={() => {
-            void exposeManualTag();
-          }}
-          disabled={!isCoordsValid(lat, lng)}
-          className='mt-1 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
-        >
-          <MapPin size={14} />
-          Simpan Lokasi
-        </button>
+        {!hideOwnSave && (
+          <button
+            onClick={() => {
+              void exposeManualTag();
+            }}
+            disabled={!isCoordsValid(lat, lng)}
+            className='mt-1 flex h-11 w-full cursor-pointer items-center justify-center gap-1.75 rounded-[14px] border-none bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[13px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none'
+          >
+            <MapPin size={14} />
+            Simpan Lokasi
+          </button>
+        )}
       </div>
     );
   }

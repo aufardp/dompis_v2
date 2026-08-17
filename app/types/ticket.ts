@@ -83,6 +83,17 @@ export interface Ticket {
   subRca?: string | null;
   descriptionSolutionDompis?: string | null;
 
+  serviceLocation?: {
+    latitude: number | null;
+    longitude: number | null;
+    accuracyMeters: number | null;
+    deviceName: string | null;
+    barcodeDc: string | null;
+    source: string | null;
+    taggedAt: string | null;
+    technicianName?: string | null;
+  } | null;
+
   teknisiUserId?: number | null;
   technicianName?: string | null;
 
