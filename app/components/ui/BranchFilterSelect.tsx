@@ -20,12 +20,12 @@ export default function BranchFilterSelect({ initialBranch, className = '' }: Pr
     }
   }, [loading, options.length, branch, setBranch]);
 
-  if (!loading && options.length === 0) return null;
+  if (loading) return null;
 
   return (
     <div className={`relative ${className}`}>
       <select
-        value={branch}
+        value={branch ?? ''}
         onChange={(e) => setBranch(e.target.value)}
         disabled={loading}
         className='bg-surface hover:bg-surface-2 appearance-none rounded-2xl border border-(--border) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors focus:border-blue-500 focus:outline-none'
@@ -37,6 +37,7 @@ export default function BranchFilterSelect({ initialBranch, className = '' }: Pr
             {option.label}
           </option>
         ))}
+        {branch && <option key={branch} value={branch} disabled>{branch}</option>}
       </select>
       <ChevronDown className='pointer-events-none absolute top-3 right-3 h-4 w-4 text-(--text-muted)' />
     </div>

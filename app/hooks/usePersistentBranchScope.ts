@@ -55,9 +55,13 @@ function persistBranch(value: string) {
 }
 
 export function usePersistentBranchScope(initialBranch?: string) {
-  const [branch, setBranchState] = useState(() =>
-    normalizeBranch(initialBranch),
-  );
+  const [branch, setBranchState] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const stored = readStoredBranch();
+    return initialBranch !== undefined && normalizeBranch(initialBranch).length > 0
+      ? normalizeBranch(initialBranch)
+      : stored;
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
