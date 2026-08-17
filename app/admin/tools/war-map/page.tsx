@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import WarMapPageClient from './WarMapPageClient';
 
