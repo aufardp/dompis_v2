@@ -12,6 +12,7 @@ import {
   classifyTechnicianBucket,
   getTechnicianBucketLabel,
 } from '@/app/libs/technician-bucket';
+import { resolveBranchScope } from '@/app/helpers/ticket.helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,6 +144,12 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined;
     const workzone = searchParams.get('workzone') || undefined;
     const status = searchParams.get('status') || 'all';
+    const branchParam = searchParams.get('branch');
+    const branchSas = await resolveBranchScope(
+      decoded.role,
+      currentUserId,
+      branchParam,
+    );
     const includeAbsent = searchParams.get('include_absent') === 'true';
     const includeClosedToday =
       searchParams.get('include_closed_today') === 'true';
@@ -152,7 +159,7 @@ export async function GET(request: NextRequest) {
       Math.min(10, Number(closedTodayLimitRaw || 3) || 3),
     );
 
-    const cacheKey = `technicians:v2:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
+    const cacheKey = `technicians:v2:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${branchSas?.join(',') || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
     const cached = await getCache(cacheKey);
     if (cached) {
       return NextResponse.json({
@@ -171,15 +178,31 @@ export async function GET(request: NextRequest) {
       !includeAbsent ? AttendanceService.getTodayPresentTechnicianIds() : Promise.resolve([] as number[]),
     ]);
 
+    if (branchSas && branchSas.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          technicians: [],
+          summary: { total_active: 0, total_assigned: 0, overload_count: 0, idle_count: 0 },
+          userWorkzones: [],
+        },
+      });
+    }
+
+    const branchSaNames = branchSas ? new Set(branchSas) : null;
     const currentUserSaIds: number[] = [];
     const currentUserWorkzoneNames: string[] = [];
 
     for (const usa of currentUserServiceAreas) {
+      const namaSa = usa.service_area?.nama_sa;
+      if (branchSaNames && (!namaSa || !branchSaNames.has(namaSa))) {
+        continue;
+      }
       if (usa.sa_id !== null && usa.sa_id !== undefined) {
         currentUserSaIds.push(usa.sa_id);
       }
-      if (usa.service_area?.nama_sa) {
-        currentUserWorkzoneNames.push(usa.service_area.nama_sa);
+      if (namaSa) {
+        currentUserWorkzoneNames.push(namaSa);
       }
     }
 

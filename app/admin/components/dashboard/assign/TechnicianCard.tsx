@@ -8,12 +8,36 @@ interface Props {
   onSelect: () => void;
 }
 
+function formatTtr(hours: number | null | undefined): string | null {
+  if (hours === null || hours === undefined || Number.isNaN(Number(hours))) {
+    return null;
+  }
+  const h = Number(hours);
+  if (h <= 0) return null;
+  if (h >= 24) return `${(h / 24).toFixed(1)} hr`;
+  return `${h.toFixed(1)} jam`;
+}
+
+function describeLoad(score: number): string {
+  if (Number.isNaN(Number(score))) return 'tidak diketahui';
+  const s = Number(score);
+  if (s < 34) return 'Ringan';
+  if (s <= 67) return 'Sedang';
+  return 'Berat';
+}
+
 export default function TechnicianCard({
   tech,
   isSelected,
   isCurrent,
   onSelect,
 }: Props) {
+  const hasWorkload =
+    typeof tech.active_tickets === 'number' ||
+    typeof tech.avg_ttr_hours === 'number';
+
+  const ttr = formatTtr(tech.avg_ttr_hours);
+
   return (
     <button
       type='button'
@@ -27,7 +51,16 @@ export default function TechnicianCard({
       aria-pressed={isSelected}
     >
       <div className='min-w-0'>
-        <p className='truncate font-medium text-gray-900'>{tech.nama || '-'}</p>
+        <div className='flex flex-wrap items-center gap-2'>
+          <p className='truncate font-medium text-gray-900'>
+            {tech.nama || '-'}
+          </p>
+          {tech.recommended && (
+            <span className='inline-flex items-center rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white'>
+              Saran
+            </span>
+          )}
+        </div>
         <p className='mt-0.5 text-xs text-gray-500'>NIK: {tech.nik || '-'}</p>
         <div className='mt-1.5 flex flex-wrap items-center gap-1.5'>
           <span
@@ -44,6 +77,43 @@ export default function TechnicianCard({
             <span className='inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700'>
               Currently assigned
             </span>
+          )}
+          {hasWorkload && (
+            <>
+              <span
+                className={
+                  'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ' +
+                  (tech.overloaded
+                    ? 'bg-red-50 text-red-700'
+                    : 'bg-slate-100 text-slate-600')
+                }
+                title='Jumlah tiket yang sedang aktif dikerjakan oleh teknisi ini'
+              >
+                {tech.active_tickets ?? 0} tiket aktif
+                {tech.overloaded ? ' · penuh' : ''}
+              </span>
+              {typeof tech.load_score === 'number' && (
+                <span
+                  className={
+                    'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ' +
+                    (tech.overloaded
+                      ? 'bg-red-50 text-red-700'
+                      : 'bg-indigo-50 text-indigo-700')
+                  }
+                  title='Tingkat kesibukan dari kombinasi tiket aktif, rata-rata waktu kerjakan, dan tiket tertunda'
+                >
+                  beban {describeLoad(tech.load_score)}
+                </span>
+              )}
+              {ttr && (
+                <span
+                  className='inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600'
+                  title='Rata-rata waktu menyelesaikan tiket (30 hari terakhir)'
+                >
+                  TTR {ttr}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>

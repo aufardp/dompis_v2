@@ -46,6 +46,7 @@ export function useTechnicianTickets(
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
       if (filters.workzone) params.append('workzone', filters.workzone);
+      if (filters.branch) params.append('branch', filters.branch);
       if (filters.status && filters.status !== 'all') {
         params.append('status', filters.status);
       }

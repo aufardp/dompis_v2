@@ -53,6 +53,7 @@ export interface TechnicianSummary {
 export interface TechnicianFilters {
   search?: string;
   workzone?: string;
+  branch?: string;
   status?: TechnicianStatus | 'all';
 }
 
