@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/app/libs/query-keys';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
+import { useBranchOptions } from '@/app/hooks/useDropdownOptions';
+import BranchFilterSelect from '@/app/components/ui/BranchFilterSelect';
 import DataFreshnessBadge from '../DataFreshnessBadge';
 import TicketDurationPanel from './TicketDurationPanel';
 import DurationPanelSkeleton from './DurationPanelSkeleton';
@@ -117,14 +120,26 @@ function formatNum(n: number): string {
   return new Intl.NumberFormat('id-ID').format(n);
 }
 
-export default function DashboardDurasiClient() {
+export default function DashboardDurasiClient({
+  initialBranch = '',
+}: {
+  initialBranch?: string;
+}) {
   const [selectedBucket, setSelectedBucket] = useState<DurasiBucketKey>('all');
   const [detailTarget, setDetailTarget] = useState<DurasiDetailTarget | null>(null);
+  const { branch } = usePersistentBranchScope(initialBranch);
 
-  const queryParams = useMemo(() => new URLSearchParams({ bucket: selectedBucket }), [selectedBucket]);
+  const queryParams = useMemo(
+    () =>
+      new URLSearchParams({
+        bucket: selectedBucket,
+        ...(branch ? { branch } : {}),
+      }),
+    [selectedBucket, branch],
+  );
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery<DashboardResponse>({
-    queryKey: queryKeys.dashboard.durasi(selectedBucket),
+    queryKey: queryKeys.dashboard.durasi({ bucket: selectedBucket, branch }),
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/durasi?${queryParams}`);
       if (!res.ok) {
@@ -250,6 +265,15 @@ export default function DashboardDurasiClient() {
                   ))}
                 </select>
               </div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+                  Branch
+                </span>
+                <BranchFilterSelect
+                  className="min-w-36"
+                  initialBranch={branch}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -283,6 +307,7 @@ export default function DashboardDurasiClient() {
         open={Boolean(detailTarget)}
         target={detailTarget}
         onClose={() => setDetailTarget(null)}
+        branch={branch || undefined}
       />
     </div>
   );

@@ -37,6 +37,7 @@ function buildExportCacheKey(
   search: string,
   searchType: string | undefined,
   workzone: string,
+  branchId: string | undefined,
   ctype: string,
   startDate: string,
   endDate: string,
@@ -50,7 +51,7 @@ function buildExportCacheKey(
   flagging: string[],
   validasiOnly: boolean,
 ): string {
-  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}:${validasiOnly ? 'v' : 'm'}`;
+  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${branchId ?? ''}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}:${validasiOnly ? 'v' : 'm'}`;
 }
 
 function getExportColumns() {
@@ -443,6 +444,8 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
+    const branchId =
+      searchParams.get('branchId') || searchParams.get('branch') || undefined;
     const ctype = searchParams.get('ctype') ?? '';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
@@ -476,6 +479,7 @@ export async function GET(request: Request) {
       search,
       searchType,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
@@ -510,6 +514,7 @@ export async function GET(request: Request) {
             search: search || undefined,
             searchType,
             workzone: workzone || undefined,
+            branchId,
             ctype: ctype || undefined,
             startDate: startDate || undefined,
             endDate: endDate || undefined,
@@ -546,6 +551,7 @@ export async function GET(request: Request) {
                   search: search || undefined,
                   searchType,
                   workzone: workzone || undefined,
+                  branchId,
                   ctype: ctype || undefined,
                   startDate: startDate || undefined,
                   endDate: endDate || undefined,
@@ -599,6 +605,7 @@ export async function GET(request: Request) {
           search: search || undefined,
           searchType,
           workzone: workzone || undefined,
+          branchId,
           ctype: ctype || undefined,
           startDate: startDate || undefined,
           endDate: endDate || undefined,
@@ -637,6 +644,7 @@ export async function GET(request: Request) {
               search: search || undefined,
               searchType,
               workzone: workzone || undefined,
+              branchId,
               ctype: ctype || undefined,
               startDate: startDate || undefined,
               endDate: endDate || undefined,

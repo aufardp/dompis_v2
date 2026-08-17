@@ -31,6 +31,7 @@ import {
   FlaggingSummaryRow,
   TicketTypeBreakdownStrip,
 } from './TicketBreakdownComponents';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
 
 const AssignTechnicianModal = dynamic(
   () => import('@/app/admin/components/dashboard/assign/AssignTechnicianModal'),
@@ -149,6 +150,7 @@ export default function TicketManagementBucketPage({
   const [searchQuery, setSearchQuery] = useState('');
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope(initialWorkzone);
+  const { branch } = usePersistentBranchScope();
   const [dateRange, setDateRange] = useState<DateRange>();
   const isUnspecBucket = operationalBucket.includes('non_kpi_unspec');
   const canBypassClose =
@@ -203,7 +205,9 @@ export default function TicketManagementBucketPage({
     undefined,
   );
   const [gamasSortOrder, setGamasSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [validasiDownloadFormat, setValidasiDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
+  const [validasiDownloadFormat, setValidasiDownloadFormat] = useState<
+    'csv' | 'xlsx'
+  >('xlsx');
   const [validasiDownloading, setValidasiDownloading] = useState(false);
   const [assignModalTicket, setAssignModalTicket] = useState<TicketData | null>(
     null,
@@ -331,6 +335,7 @@ export default function TicketManagementBucketPage({
     search: effectiveSearchQuery,
     ticketId: focusTicketId,
     workzone: workzoneFilter || undefined,
+    branch: branch || undefined,
     operationalBucket,
     regulerOnly,
     anomalyBucket,
@@ -385,6 +390,7 @@ export default function TicketManagementBucketPage({
     search: effectiveSearchQuery,
     symptom: extraWorkboard?.symptom,
     workzone: workzoneFilter || undefined,
+    branch: branch || undefined,
     dept: extraWorkboard?.dept ?? 'all',
     operationalBucket,
     regulerOnly,
@@ -410,6 +416,7 @@ export default function TicketManagementBucketPage({
   const closePageData = useDailyTicketPage({
     search: effectiveSearchQuery,
     workzone: workzoneFilter || undefined,
+    branch: branch || undefined,
     dept: 'all',
     operationalBucket,
     regulerOnly,
@@ -449,6 +456,7 @@ export default function TicketManagementBucketPage({
   const gamasPageData = useDailyTicketPage({
     ...sharedFilters,
     dept: 'all',
+    branch: branch || undefined,
     ticketType: ticketTypeFilter,
     statusUpdate: statusUpdateFilter,
     ticketStatus: ticketStatusFilter,
@@ -471,28 +479,37 @@ export default function TicketManagementBucketPage({
     const b2cCust = b2cPageData.customerTypeSummary;
     const b2bCust = b2bPageData.customerTypeSummary;
     const extraCust = extraWorkboardPageData.customerTypeSummary;
+    const includeExtra = Boolean(extraWorkboard) && isUnspecBucket;
     return {
-      total: (b2c.total ?? 0) + (b2b.total ?? 0) + (extra.total ?? 0),
-      open: (b2c.open ?? 0) + (b2b.open ?? 0) + (extra.open ?? 0),
+      total: (b2c.total ?? 0) + (b2b.total ?? 0) + (includeExtra ? extra.total ?? 0 : 0),
+      open: (b2c.open ?? 0) + (b2b.open ?? 0) + (includeExtra ? extra.open ?? 0 : 0),
       assigned:
-        (b2c.assigned ?? 0) + (b2b.assigned ?? 0) + (extra.assigned ?? 0),
+        (b2c.assigned ?? 0) + (b2b.assigned ?? 0) + (includeExtra ? extra.assigned ?? 0 : 0),
       close: closePageData.pagination.total,
       ffgCount:
-        (b2c.ffgCount ?? 0) + (b2b.ffgCount ?? 0) + (extra.ffgCount ?? 0),
+        (b2c.ffgCount ?? 0) + (b2b.ffgCount ?? 0) + (includeExtra ? extra.ffgCount ?? 0 : 0),
       gamasCount:
-        (b2c.gamasCount ?? 0) + (b2b.gamasCount ?? 0) + (extra.gamasCount ?? 0),
-      p1Count: (b2c.p1Count ?? 0) + (b2b.p1Count ?? 0) + (extra.p1Count ?? 0),
+        (b2c.gamasCount ?? 0) + (b2b.gamasCount ?? 0) + (includeExtra ? extra.gamasCount ?? 0 : 0),
+      p1Count: (b2c.p1Count ?? 0) + (b2b.p1Count ?? 0) + (includeExtra ? extra.p1Count ?? 0 : 0),
       pPlusCount:
-        (b2c.pPlusCount ?? 0) + (b2b.pPlusCount ?? 0) + (extra.pPlusCount ?? 0),
+        (b2c.pPlusCount ?? 0) + (b2b.pPlusCount ?? 0) + (includeExtra ? extra.pPlusCount ?? 0 : 0),
       customerTypes: {
         hvcDiamond:
-          (b2cCust?.hvcDiamond ?? 0) + (b2bCust?.hvcDiamond ?? 0) + (extraCust?.hvcDiamond ?? 0),
+          (b2cCust?.hvcDiamond ?? 0) +
+          (b2bCust?.hvcDiamond ?? 0) +
+          (includeExtra ? extraCust?.hvcDiamond ?? 0 : 0),
         hvcPlatinum:
-          (b2cCust?.hvcPlatinum ?? 0) + (b2bCust?.hvcPlatinum ?? 0) + (extraCust?.hvcPlatinum ?? 0),
+          (b2cCust?.hvcPlatinum ?? 0) +
+          (b2bCust?.hvcPlatinum ?? 0) +
+          (includeExtra ? extraCust?.hvcPlatinum ?? 0 : 0),
         hvcGold:
-          (b2cCust?.hvcGold ?? 0) + (b2bCust?.hvcGold ?? 0) + (extraCust?.hvcGold ?? 0),
+          (b2cCust?.hvcGold ?? 0) +
+          (b2bCust?.hvcGold ?? 0) +
+          (includeExtra ? extraCust?.hvcGold ?? 0 : 0),
         reguler:
-          (b2cCust?.reguler ?? 0) + (b2bCust?.reguler ?? 0) + (extraCust?.reguler ?? 0),
+          (b2cCust?.reguler ?? 0) +
+          (b2bCust?.reguler ?? 0) +
+          (includeExtra ? extraCust?.reguler ?? 0 : 0),
       },
     };
   }, [
@@ -503,6 +520,26 @@ export default function TicketManagementBucketPage({
     b2bPageData.customerTypeSummary,
     b2cPageData.customerTypeSummary,
     extraWorkboardPageData.customerTypeSummary,
+    extraWorkboard,
+    isUnspecBucket,
+  ]);
+
+  const adjustedTotals = useMemo(() => {
+    const b2cTotal = b2cPageData.pagination.total ?? 0;
+    const b2bTotal = b2bPageData.pagination.total ?? 0;
+    const b2cValidasi = b2cPageData.validasiCount ?? 0;
+    const b2bValidasi = b2bPageData.validasiCount ?? 0;
+
+    return {
+      b2c: Math.max(0, b2cTotal - b2cValidasi),
+      b2b: Math.max(0, b2bTotal - b2bValidasi),
+      validasi: b2cValidasi + b2bValidasi,
+    };
+  }, [
+    b2cPageData.pagination.total,
+    b2cPageData.validasiCount,
+    b2bPageData.pagination.total,
+    b2bPageData.validasiCount,
   ]);
 
   useEffect(() => {
@@ -700,12 +737,16 @@ export default function TicketManagementBucketPage({
       params.set('format', validasiDownloadFormat);
       params.set('validasiOnly', 'true');
       params.set('dept', 'all');
-      for (const bucket of operationalBucket) params.append('operationalBucket', bucket);
+      for (const bucket of operationalBucket)
+        params.append('operationalBucket', bucket);
       if (regulerOnly) params.set('regulerOnly', 'true');
-      for (const bucket of anomalyBucket) params.append('anomalyBucket', bucket);
-      if (dateRange?.from) params.set('startDate', dateRange.from.toISOString());
+      for (const bucket of anomalyBucket)
+        params.append('anomalyBucket', bucket);
+      if (dateRange?.from)
+        params.set('startDate', dateRange.from.toISOString());
       if (dateRange?.to) params.set('endDate', dateRange.to.toISOString());
       if (effectiveSearchQuery) params.set('search', effectiveSearchQuery);
+      if (branch) params.set('branch', branch);
 
       const res = await fetchWithAuth(
         `/api/tickets/daily/export?${params.toString()}`,
@@ -731,7 +772,15 @@ export default function TicketManagementBucketPage({
     } finally {
       setValidasiDownloading(false);
     }
-  }, [validasiDownloadFormat, dateRange, effectiveSearchQuery, operationalBucket, regulerOnly, anomalyBucket]);
+  }, [
+    validasiDownloadFormat,
+    dateRange,
+    effectiveSearchQuery,
+    branch,
+    operationalBucket,
+    regulerOnly,
+    anomalyBucket,
+  ]);
 
   const invalidateQueries = useCallback(() => {
     queryClient.invalidateQueries({
@@ -810,17 +859,18 @@ export default function TicketManagementBucketPage({
 
   useEffect(() => {
     if (bucketKey && mergedSummary.total > 0) {
-      queryClient.setQueryData(['bucket-count', bucketKey], mergedSummary.total);
+      queryClient.setQueryData(
+        ['bucket-count', bucketKey],
+        mergedSummary.total,
+      );
     }
   }, [bucketKey, mergedSummary.total, queryClient]);
 
   useEffect(() => {
-    console.log('[BUCKET] navKey:', navKey, 'totals.total:', totals.total);
-    if (navKey && totals.total > 0) {
-      console.log('[BUCKET] calling setBucketCount with totals.total');
-      setBucketCount(navKey, totals.total);
+    if (navKey && mergedTotal > 0) {
+      setBucketCount(navKey, mergedTotal);
     }
-  }, [navKey, totals.total]);
+  }, [navKey, mergedTotal]);
 
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;
@@ -966,10 +1016,10 @@ export default function TicketManagementBucketPage({
   return (
     <>
       <AdminLayout
-          onSearch={disableLocalSearch ? undefined : handleSearch}
-          onWorkzoneChange={handleWorkzoneChange}
-          selectedWorkzone={workzoneFilter}
-        >
+        onSearch={disableLocalSearch ? undefined : handleSearch}
+        onWorkzoneChange={handleWorkzoneChange}
+        selectedWorkzone={workzoneFilter}
+      >
         <div className='space-y-5'>
           {searchLoading ? (
             <div className='flex min-h-72 items-center justify-center rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
@@ -1069,10 +1119,10 @@ export default function TicketManagementBucketPage({
 
                     <div className='grid grid-cols-2 gap-2 lg:min-w-70 lg:grid-cols-4'>
                       {[
-                        ['Total', totals.total],
-                        ['Open', totals.open],
-                        ['Assigned', totals.assigned],
-                        ['Close', totals.close],
+                        ['Total', mergedTotal],
+                        ['Open', mergedSummary.open],
+                        ['Assigned', mergedSummary.assigned],
+                        ['Close', closePageData.pagination.total],
                       ].map(([label, value]) => (
                         <div
                           key={label}
@@ -1124,7 +1174,7 @@ export default function TicketManagementBucketPage({
                   <div className='flex overflow-x-auto'>
                     {(
                       [
-                        ['semua', 'Semua (Open)', totals.total],
+                        ['semua', 'Semua (Open)', mergedTotal],
                         ...(isUnspecBucket && extraWorkboard
                           ? [
                               [
@@ -1134,13 +1184,12 @@ export default function TicketManagementBucketPage({
                               ] as const,
                             ]
                           : []),
-                        ['b2c', 'B2C', b2cPageData.pagination.total],
-                        ['b2b', 'B2B', b2bPageData.pagination.total],
+                        ['b2c', 'B2C', adjustedTotals.b2c],
+                        ['b2b', 'B2B', adjustedTotals.b2b],
                         [
                           'validasi',
                           'Validasi',
-                          (b2cPageData.validasiCount ?? 0) +
-                            (b2bPageData.validasiCount ?? 0),
+                          adjustedTotals.validasi,
                         ],
                         ['close', 'Close', closePageData.pagination.total],
                         [
@@ -1222,6 +1271,7 @@ export default function TicketManagementBucketPage({
                       regulerOnly,
                       anomalyBucket,
                       workzone: workzoneFilter || undefined,
+                      branch: branch || undefined,
                       search: effectiveSearchQuery || undefined,
                       ticketType: ticketTypeFilter,
                       statusUpdate: statusUpdateFilter,
@@ -1269,6 +1319,7 @@ export default function TicketManagementBucketPage({
                     regulerOnly,
                     anomalyBucket,
                     workzone: workzoneFilter || undefined,
+                    branch: branch || undefined,
                     search: effectiveSearchQuery || undefined,
                     ticketType: ticketTypeFilter,
                     statusUpdate: statusUpdateFilter,
@@ -1322,6 +1373,7 @@ export default function TicketManagementBucketPage({
                   regulerOnly,
                   anomalyBucket,
                   workzone: workzoneFilter || undefined,
+                  branch: branch || undefined,
                   search: effectiveSearchQuery || undefined,
                   ticketType: ticketTypeFilter,
                   statusUpdate: statusUpdateFilter,
@@ -1344,7 +1396,7 @@ export default function TicketManagementBucketPage({
                   B2C Workboard
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
-                  {b2cPageData.pagination.total} ticket
+                  {adjustedTotals.b2c} ticket
                 </span>
               </div>
               <FilterBarB2C
@@ -1382,7 +1434,7 @@ export default function TicketManagementBucketPage({
                     pagination={{
                       currentPage: b2cPageData.pagination.currentPage,
                       totalPages: b2cPageData.pagination.totalPages,
-                      total: b2cPageData.pagination.total,
+                      total: adjustedTotals.b2c,
                       limit: b2cPageData.pagination.limit,
                       onPageChange: setB2cPage,
                     }}
@@ -1396,6 +1448,7 @@ export default function TicketManagementBucketPage({
                       regulerOnly,
                       anomalyBucket,
                       workzone: workzoneFilter || undefined,
+                      branch: branch || undefined,
                       search: effectiveSearchQuery || undefined,
                       startDate: startDateStr,
                       endDate: endDateStr,
@@ -1408,7 +1461,7 @@ export default function TicketManagementBucketPage({
                 }
                 tickets={b2cPageData.tickets}
                 validasiTickets={b2cPageData.validasiTickets}
-                totalCount={b2cPageData.pagination.total}
+                totalCount={adjustedTotals.b2c}
                 validasiTotalCount={b2cPageData.validasiCount}
                 validasiPagination={{
                   currentPage: b2cPageData.validasiPagination.currentPage,
@@ -1431,7 +1484,7 @@ export default function TicketManagementBucketPage({
                   B2B Workboard
                 </h2>
                 <span className='rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300'>
-                  {b2bPageData.pagination.total} ticket
+                  {adjustedTotals.b2b} ticket
                 </span>
               </div>
               <FilterBarB2B
@@ -1469,7 +1522,7 @@ export default function TicketManagementBucketPage({
                     pagination={{
                       currentPage: b2bPageData.pagination.currentPage,
                       totalPages: b2bPageData.pagination.totalPages,
-                      total: b2bPageData.pagination.total,
+                      total: adjustedTotals.b2b,
                       limit: b2bPageData.pagination.limit,
                       onPageChange: setB2bPage,
                     }}
@@ -1483,6 +1536,7 @@ export default function TicketManagementBucketPage({
                       regulerOnly,
                       anomalyBucket,
                       workzone: workzoneFilter || undefined,
+                      branch: branch || undefined,
                       search: effectiveSearchQuery || undefined,
                       startDate: startDateStr,
                       endDate: endDateStr,
@@ -1495,7 +1549,7 @@ export default function TicketManagementBucketPage({
                 }
                 tickets={b2bPageData.tickets}
                 validasiTickets={b2bPageData.validasiTickets}
-                totalCount={b2bPageData.pagination.total}
+                totalCount={adjustedTotals.b2b}
                 validasiTotalCount={b2bPageData.validasiCount}
                 validasiPagination={{
                   currentPage: b2bPageData.validasiPagination.currentPage,
@@ -1521,7 +1575,9 @@ export default function TicketManagementBucketPage({
                   <select
                     value={validasiDownloadFormat}
                     onChange={(e) =>
-                      setValidasiDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                      setValidasiDownloadFormat(
+                        e.target.value as 'csv' | 'xlsx',
+                      )
                     }
                     className='bg-surface rounded border border-(--border) px-1.5 py-1 text-xs text-(--text-secondary)'
                   >
@@ -1615,6 +1671,7 @@ export default function TicketManagementBucketPage({
                   regulerOnly,
                   anomalyBucket,
                   workzone: workzoneFilter || undefined,
+                  branch: branch || undefined,
                   search: effectiveSearchQuery || undefined,
                   startDate: startDateStr,
                   endDate: endDateStr,
@@ -1660,6 +1717,7 @@ export default function TicketManagementBucketPage({
                   regulerOnly,
                   anomalyBucket,
                   workzone: workzoneFilter || undefined,
+                  branch: branch || undefined,
                   search: effectiveSearchQuery || undefined,
                   startDate: startDateStr,
                   endDate: endDateStr,

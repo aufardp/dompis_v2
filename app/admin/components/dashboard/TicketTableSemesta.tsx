@@ -65,6 +65,7 @@ export interface AdminTicketTableSemestaProps {
     dept: 'all' | 'b2b' | 'b2c';
     search?: string;
     workzone?: string;
+    branch?: string;
     ctype?: string;
     ticketType?: string;
     statusUpdate?: string;
@@ -378,6 +379,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
 
       if (downloadFilters.search) params.set('search', downloadFilters.search);
       if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.branch) params.set('branch', downloadFilters.branch);
       if (downloadFilters.ctype) params.set('ctype', downloadFilters.ctype);
       if (downloadFilters.ticketType) params.set('ticketType', downloadFilters.ticketType);
       if (downloadFilters.statusUpdate) params.set('statusUpdate', downloadFilters.statusUpdate);

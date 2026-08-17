@@ -4,7 +4,7 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
-import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { logger } from '@/lib/observability/logger';
 import { getErrorMessage } from '@/app/libs/apiError';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
@@ -59,6 +59,7 @@ async function fetchAllTickets(
   userId: number,
   bucket: KpiBucketKey,
   visibleWorkzones: Set<string> | null,
+  branchParam?: string | null,
 ): Promise<DurasiDetailTicket[]> {
   const filtersList = BUCKET_FILTERS[bucket];
   const ids = new Set<number>();
@@ -68,6 +69,7 @@ async function fetchAllTickets(
     const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
       ...filters,
       includeClosed: true,
+      branchId: branchParam ? Number(branchParam) : undefined,
     });
     const sql = `
       SELECT
@@ -121,7 +123,21 @@ export async function GET(request: NextRequest) {
 
     const decoded = await protectApi(['superadmin', 'admin', 'helpdesk']);
     const isSuperAdmin = decoded.role === 'superadmin';
-    const visibleWorkzones = isSuperAdmin ? null : new Set(await getWorkzonesForUser(decoded.id_user));
+    const branchParam = request.nextUrl.searchParams.get('branch');
+    const branchSas = await resolveBranchScope(
+      decoded.role,
+      decoded.id_user,
+      branchParam,
+    );
+    const visibleWorkzones = isSuperAdmin
+      ? null
+      : new Set(
+          branchSas
+            ? (await getWorkzonesForUser(decoded.id_user)).filter((w) =>
+                branchSas.includes(w),
+              )
+            : await getWorkzonesForUser(decoded.id_user),
+        );
 
     const requestedBucket = request.nextUrl.searchParams.get('bucket') ?? 'all';
     const bucket: KpiBucketKey = requestedBucket in BUCKET_FILTERS ? (requestedBucket as KpiBucketKey) : 'all';
@@ -132,10 +148,16 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(request.nextUrl.searchParams.get('page') ?? '1') || 1);
     const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get('limit') ?? '20') || 20));
 
-    const cacheKey = `dashboard:durasi:detail:${decoded.role}:${decoded.id_user}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}`;
+    const cacheKey = `dashboard:durasi:detail:${decoded.role}:${decoded.id_user}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}:${branchParam ?? ''}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const allTickets = await fetchAllTickets(decoded.role, decoded.id_user, bucket, visibleWorkzones);
+      const allTickets = await fetchAllTickets(
+        decoded.role,
+        decoded.id_user,
+        bucket,
+        visibleWorkzones,
+        branchParam,
+      );
 
       const filtered = allTickets.filter((ticket) => {
         if (area && normalizeText(ticket.area) !== normalizeText(area)) return false;

@@ -94,12 +94,14 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
+    const branchParam = searchParams.get('branch') ?? '';
     const ctype = searchParams.get('ctype') ?? '';
     const status = searchParams.get('status') ?? 'all';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
     const page = toInt(searchParams.get('page'), 1);
     const limit = Math.min(toInt(searchParams.get('limit'), 100), 100);
+    const branchId = branchParam ? Number(branchParam) : undefined;
     const cacheKey = buildCacheKey(user.role, user.id_user, searchParams);
 
     const result = await getOrSetCache(cacheKey || `tickets_daily_detail_wo_hi:${user.role}:${user.id_user}:uncached`, async () => {
@@ -109,6 +111,7 @@ export async function GET(request: Request) {
         search: search || undefined,
         searchType,
         workzone: workzone || undefined,
+        branchId,
         ctype: ctype || undefined,
         statusUpdate: status === 'assigned' ? 'assigned' : undefined,
         startDate: startDate || undefined,
@@ -124,6 +127,7 @@ export async function GET(request: Request) {
       search: search || undefined,
       searchType,
       workzone: workzone || undefined,
+      branchId,
       ctype: ctype || undefined,
       statusUpdate: status === 'assigned' ? 'assigned' : undefined,
       startDate: startDate || undefined,

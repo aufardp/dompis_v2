@@ -133,6 +133,8 @@ export interface TicketDetailDrawerProps {
   onRetry?: () => void;
   onEdit?: (ticket: TicketDetail) => void;
   onUpdateStatus?: (ticket: TicketDetail) => void;
+  /** Tailwind z-index class for the fixed overlay (default 'z-50'). */
+  zIndexClass?: string;
 }
 
 export type TabKey = 'umum' | 'customer' | 'teknis' | 'sla' | 'tracking';

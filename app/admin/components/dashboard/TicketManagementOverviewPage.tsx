@@ -4,15 +4,19 @@ import Link from 'next/link';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Gem, Flame, Flag, Network, CalendarClock, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useTechnicianTickets } from '@/app/hooks/useTechnicianTickets';
 import { useSyncStatus } from '@/app/hooks/useSyncStatus';
-import { useOperationsSummary } from '@/app/hooks/useOperationsSummary';
+import {
+  useOperationsSummary,
+  type OperationsSummary,
+} from '@/app/hooks/useOperationsSummary';
 import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 import { queryKeys } from '@/app/libs/query-keys';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
 import {
   TICKET_MANAGEMENT_BUCKET_ITEMS,
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
@@ -73,6 +77,12 @@ type BucketSummaryLike = {
   ffgCount?: number;
   gamasCount?: number;
 };
+
+function pctDelta(current: number, h1?: number | null): number | null {
+  if (h1 === null || h1 === undefined) return null;
+  if (h1 === 0) return current > 0 ? null : 0;
+  return ((current - h1) / h1) * 100;
+}
 
 function TechnicianSummaryCards({
   totalTechnicians,
@@ -240,11 +250,17 @@ function HeroMetricCard({
   value,
   helper,
   tone,
+  trendPct,
+  trendPositiveIsGood = true,
+  h1Label = 'vs kemarin',
 }: {
   label: string;
   value: number | string;
   helper: string;
   tone: HeroTone;
+  trendPct?: number | null;
+  trendPositiveIsGood?: boolean;
+  h1Label?: string;
 }) {
   const toneStyles: Record<HeroTone, string> = {
     blue: 'border-blue-500/15 bg-blue-500/[0.06] text-blue-700 dark:text-blue-200',
@@ -259,6 +275,23 @@ function HeroMetricCard({
       'border-violet-500/15 bg-violet-500/[0.06] text-violet-700 dark:text-violet-200',
   };
 
+  const showTrend =
+    typeof trendPct === 'number' && Number.isFinite(trendPct);
+  const neutral = showTrend && Math.abs(trendPct) < 0.05;
+  let trendTone: string;
+  let trendIcon: string;
+  if (neutral) {
+    trendTone = 'text-slate-400 bg-slate-100 dark:bg-slate-800';
+    trendIcon = '→';
+  } else {
+    const up = (trendPct ?? 0) > 0;
+    const isGood = trendPositiveIsGood ? up : !up;
+    trendTone = isGood
+      ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-500/10'
+      : 'text-red-700 bg-red-100 dark:text-red-300 dark:bg-red-500/10';
+    trendIcon = up ? '▲' : '▼';
+  }
+
   return (
     <div
       className={`rounded-2xl border px-3 py-1.5 shadow-sm ${toneStyles[tone]}`}
@@ -272,42 +305,98 @@ function HeroMetricCard({
             {helper}
           </p>
         </div>
-        <p className='shrink-0 text-right text-[1.15rem] leading-none font-semibold text-(--text-primary) md:text-[1.25rem]'>
-          {typeof value === 'number' ? value.toLocaleString('id-ID') : value}
-        </p>
+        <div className='flex shrink-0 flex-col items-end gap-1'>
+          <p className='text-[1.15rem] leading-none font-semibold text-(--text-primary) md:text-[1.25rem]'>
+            {typeof value === 'number' ? value.toLocaleString('id-ID') : value}
+          </p>
+          {showTrend && (
+            <span
+              className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-bold ${trendTone}`}
+              title={h1Label}
+            >
+              {trendIcon} {Math.abs(trendPct).toFixed(0)}% {h1Label}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+const PRIORITY_META: Record<
+  string,
+  {
+    icon: typeof Gem;
+    chip: string;
+    accentBorder: string;
+    accentText: string;
+    dot: string;
+  }
+> = {
+  diamond: {
+    icon: Gem,
+    chip: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+    accentBorder: 'hover:border-blue-300 dark:hover:border-blue-500/40',
+    accentText: 'text-blue-600 dark:text-blue-400',
+    dot: 'bg-blue-500',
+  },
+  p1: {
+    icon: Flame,
+    chip: 'bg-red-500/10 text-red-600 dark:text-red-400',
+    accentBorder: 'hover:border-red-300 dark:hover:border-red-500/40',
+    accentText: 'text-red-600 dark:text-red-400',
+    dot: 'bg-red-500',
+  },
+  pplus: {
+    icon: AlertTriangle,
+    chip: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+    accentBorder: 'hover:border-orange-300 dark:hover:border-orange-500/40',
+    accentText: 'text-orange-600 dark:text-orange-400',
+    dot: 'bg-orange-500',
+  },
+  gamas: {
+    icon: Network,
+    chip: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+    accentBorder: 'hover:border-violet-300 dark:hover:border-violet-500/40',
+    accentText: 'text-violet-600 dark:text-violet-400',
+    dot: 'bg-violet-500',
+  },
+  ffg: {
+    icon: Flag,
+    chip: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    accentBorder: 'hover:border-amber-300 dark:hover:border-amber-500/40',
+    accentText: 'text-amber-600 dark:text-amber-400',
+    dot: 'bg-amber-500',
+  },
+  'carry-over': {
+    icon: CalendarClock,
+    chip: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
+    accentBorder: 'hover:border-slate-300 dark:hover:border-slate-500/40',
+    accentText: 'text-slate-600 dark:text-slate-400',
+    dot: 'bg-slate-500',
+  },
+  default: {
+    icon: Flag,
+    chip: 'bg-(--surface-2) text-(--text-secondary)',
+    accentBorder: 'hover:border-(--border)',
+    accentText: 'text-(--text-primary)',
+    dot: 'bg-(--text-muted)',
+  },
+};
+
 function PriorityTodayPanel({
-  counts,
   items,
   mode,
   bucketLabel,
   bucketSummary,
+  h1Flags,
 }: {
-  counts?: FlaggingCounts;
   items: PriorityItem[];
   mode: 'all' | 'bucket';
   bucketLabel?: string;
   bucketSummary?: BucketSummaryLike;
+  h1Flags?: { p1Count: number; pPlusCount: number; ffgCount: number; gamasCount: number } | null;
 }) {
-  const summary =
-    mode === 'all'
-      ? ([
-          ['Manja HI', counts?.p1Count ?? 0],
-          ['Manja H+', counts?.pPlusCount ?? 0],
-          ['FFG', counts?.ffgCount ?? 0],
-          ['GAMAS', counts?.gamasCount ?? 0],
-        ] as const)
-      : ([
-          ['Manja HI', bucketSummary?.p1Count ?? 0],
-          ['Manja H+', bucketSummary?.pPlusCount ?? 0],
-          ['FFG', bucketSummary?.ffgCount ?? 0],
-          ['GAMAS', bucketSummary?.gamasCount ?? 0],
-        ] as const);
-
   const displayItems =
     mode === 'all'
       ? items
@@ -338,16 +427,32 @@ function PriorityTodayPanel({
           },
         ] satisfies PriorityItem[]);
 
+  const h1ThresholdFor = (key: string): number | null => {
+    if (!h1Flags) return null;
+    switch (key) {
+      case 'p1':
+        return h1Flags.p1Count;
+      case 'pplus':
+        return h1Flags.pPlusCount;
+      case 'ffg':
+        return h1Flags.ffgCount;
+      case 'gamas':
+        return h1Flags.gamasCount;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className='rounded-3xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
+    <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div>
-          <p className='text-[9px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+          <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
             {mode === 'all'
               ? 'Priority Today'
               : `Priority Today · ${bucketLabel ?? 'Bucket'}`}
           </p>
-          <p className='mt-1 text-[10px] font-semibold text-(--text-primary)'>
+          <p className='mt-1 text-[11px] font-semibold text-(--text-primary)'>
             {mode === 'all'
               ? 'Ringkasan prioritas dan fokus harian'
               : 'Ringkasan prioritas bucket terpilih'}
@@ -355,23 +460,148 @@ function PriorityTodayPanel({
         </div>
       </div>
 
-      <div className='mt-2.5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
-        {displayItems.map((item) => (
-          <div
-            key={item.key}
-            className='rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-1.5'
-          >
-            <div className='flex items-center justify-between gap-2'>
-              <p className='truncate text-[8px] font-bold tracking-[0.2em] text-(--text-secondary) uppercase'>
-                {item.label}
-              </p>
-              <p className='shrink-0 text-right text-[1rem] leading-none font-semibold text-(--text-primary)'>
-                {item.count.toLocaleString('id-ID')}
-              </p>
+      <div className='mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5'>
+        {displayItems.map((item) => {
+          const threshold = h1ThresholdFor(item.key);
+          const overThreshold =
+            threshold !== null && threshold > 0 && item.count > threshold;
+          const meta = PRIORITY_META[item.key] ?? PRIORITY_META.default;
+          const Icon = meta.icon;
+          const isZero = item.count === 0;
+
+          return (
+            <div
+              key={item.key}
+              className={clsx(
+                'flex flex-col gap-2.5 rounded-2xl border p-3 transition-colors',
+                overThreshold
+                  ? 'border-red-300 bg-red-50/80 dark:border-red-500/30 dark:bg-red-500/10'
+                  : 'border-(--border) bg-(--surface-2)',
+                !overThreshold && meta.accentBorder,
+              )}
+            >
+              <div className='flex items-center justify-between gap-2'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  <span
+                    className={clsx(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
+                      meta.chip,
+                    )}
+                  >
+                    <Icon size={15} />
+                  </span>
+                  <p className='truncate text-[11px] font-bold tracking-wide text-(--text-secondary) uppercase'>
+                    {item.label}
+                  </p>
+                </div>
+                <span
+                  className={clsx(
+                    'inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                    isZero
+                      ? 'bg-(--surface) text-(--text-muted)'
+                      : overThreshold
+                        ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                        : clsx('bg-white/70 dark:bg-white/5', meta.accentText),
+                  )}
+                >
+                  {item.count.toLocaleString('id-ID')}
+                </span>
+              </div>
+
+              <div className='flex min-w-0 items-center gap-1.5'>
+                <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', isZero ? 'bg-(--text-muted)' : meta.dot)} />
+                <p className='truncate text-[11px] font-medium text-(--text-secondary)'>
+                  {overThreshold
+                    ? `Melebihi ${threshold.toLocaleString('id-ID')} (kemarin)`
+                    : item.sub}
+                </p>
+              </div>
             </div>
-            <p className='mt-1 text-[8px] text-(--text-muted)'>{item.sub}</p>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TopWorkloadPanel({
+  areas,
+  onSelect,
+  activeWorkzone,
+}: {
+  areas: OperationsSummary['serviceAreas'];
+  onSelect?: (name: string) => void;
+  activeWorkzone?: string;
+}) {
+  const top3 = useMemo(
+    () =>
+      [...areas]
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 3),
+    [areas],
+  );
+
+  const max = top3[0]?.total || 1;
+
+  return (
+    <div className='rounded-3xl border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div>
+          <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
+            Beban Per Area
+          </p>
+          <p className='mt-1 text-[11px] font-semibold text-(--text-primary)'>
+            Top 3 Workzone Terpadat
+          </p>
+        </div>
+        <span className='bg-surface-2 rounded-full border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
+          {areas.length} area
+        </span>
+      </div>
+
+      <div className='mt-3 grid gap-2'>
+        {top3.map((area) => {
+          const pct = Math.round((area.total / max) * 100);
+          const isActive = activeWorkzone === area.name;
+          return (
+            <button
+              key={area.name}
+              onClick={() => onSelect?.(area.name)}
+              className={clsx(
+                'w-full rounded-2xl border px-3 py-2 text-left transition-all',
+                isActive
+                  ? 'border-blue-400 bg-blue-50/60 dark:border-blue-500/40 dark:bg-blue-500/10'
+                  : 'border-(--border) bg-(--surface-2) hover:bg-(--surface-hover)',
+              )}
+              title='Klik untuk memfilter workzone ini'
+            >
+              <div className='flex items-center justify-between gap-2'>
+                <p className='truncate text-[11px] font-semibold text-(--text-primary)'>
+                  {area.name}
+                </p>
+                <p className='shrink-0 text-[11px] font-bold text-(--text-secondary)'>
+                  {area.total.toLocaleString('id-ID')}
+                  <span className='ml-1 font-medium text-(--text-muted)'>
+                    · {area.unassigned} unassign
+                  </span>
+                </p>
+              </div>
+              <div className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-(--border)'>
+                <div
+                  className={clsx(
+                    'h-full rounded-full transition-all',
+                    isActive
+                      ? 'bg-blue-500'
+                      : area.unassigned > 0 && area.unassigned / area.total > 0.5
+                        ? 'bg-red-400'
+                        : 'bg-amber-400',
+                  )}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -389,11 +619,14 @@ type ExpiredTicket = {
 
 export default function TicketManagementOverviewPage({
   initialWorkzone = '',
+  initialBranch = '',
 }: {
   initialWorkzone?: string;
+  initialBranch?: string;
 }) {
   const { workzone, setWorkzone } =
     usePersistentWorkzoneScope(initialWorkzone);
+  const { branch } = usePersistentBranchScope(initialBranch);
   const [selectedBucket, setSelectedBucket] = useState('all');
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
@@ -406,9 +639,11 @@ export default function TicketManagementOverviewPage({
 
   const overview = useTicketManagementOverview({
     workzone: workzone || undefined,
+    branch: branch || undefined,
   });
   const overviewData = overview.data;
   const isLoading = overview.isLoading;
+  const h1 = overviewData?.h1 ?? null;
 
   const bucketSummaries = useMemo(
     () => overviewData?.cards ?? null,
@@ -420,7 +655,7 @@ export default function TicketManagementOverviewPage({
     summary: technicianSummary,
     loading: techniciansLoading,
   } = useTechnicianTickets(
-    { search: '', workzone: workzone || '', status: 'all' },
+    { search: '', workzone: workzone || '', status: 'all', branch: branch || '' },
     180,
     true,
     {
@@ -431,6 +666,7 @@ export default function TicketManagementOverviewPage({
   );
   const { data: opsSummary } = useOperationsSummary({
     workzone: workzone || undefined,
+    branch: branch || undefined,
     enabled: showSecondaryPanels,
   });
   const {
@@ -543,6 +779,11 @@ export default function TicketManagementOverviewPage({
     [visibleCardData],
   );
 
+  const totalWorkboardDelta = useMemo(
+    () => pctDelta(totalWorkboard, h1?.total),
+    [totalWorkboard, h1],
+  );
+
   const technicianOrderStats = useMemo(() => {
     return overviewTechnicians.reduce(
       (acc, tech) => ({
@@ -559,45 +800,6 @@ export default function TicketManagementOverviewPage({
       },
     );
   }, [overviewTechnicians]);
-
-  const flaggingTotals = useMemo(() => {
-    if (selectedBucket === 'all') {
-      return {
-        total: bucketOverviewTotals.total,
-        b2c: 0,
-        b2b: 0,
-        unassigned: bucketOverviewTotals.open,
-        assigned: bucketOverviewTotals.assigned,
-        close: bucketOverviewTotals.close,
-        p1Count: overviewData?.totals.p1Count ?? 0,
-        pPlusCount: overviewData?.totals.pPlusCount ?? 0,
-        ffgCount: overviewData?.totals.ffgCount ?? 0,
-        gamasCount: overviewData?.totals.gamasCount ?? 0,
-      };
-    }
-    const s = visibleCardData[0]?.summary;
-    if (!s) return undefined;
-    return {
-      total: s.total,
-      b2c: 0,
-      b2b: 0,
-      unassigned: 0,
-      assigned: s.assigned,
-      close: s.close,
-      p1Count: s.p1Count,
-      pPlusCount: s.pPlusCount,
-      ffgCount: s.ffgCount,
-      gamasCount: s.gamasCount,
-    };
-  }, [
-    bucketOverviewTotals.total,
-    bucketOverviewTotals.open,
-    bucketOverviewTotals.assigned,
-    bucketOverviewTotals.close,
-    overviewData?.totals,
-    selectedBucket,
-    visibleCardData,
-  ]);
 
   const bucketSuffix =
     selectedBucket === 'all'
@@ -681,6 +883,16 @@ export default function TicketManagementOverviewPage({
                       <p className='mt-2 text-xs text-(--text-secondary)'>
                         Seluruh bucket operasional aktif
                       </p>
+
+                      {h1 && (
+                        <p className='mt-1.5 text-[11px] font-semibold text-(--text-muted)'>
+                          {h1.total.toLocaleString('id-ID')} hari kemarin
+                          {totalWorkboardDelta !== null &&
+                            ` · ${totalWorkboardDelta.toFixed(0)}% ${
+                              totalWorkboardDelta > 0 ? '▲' : '▼'
+                            }`}
+                        </p>
+                      )}
                     </div>
 
                     <button
@@ -728,18 +940,23 @@ export default function TicketManagementOverviewPage({
                   value={bucketOverviewTotals.open}
                   helper='Aktif'
                   tone='blue'
+                  trendPct={pctDelta(bucketOverviewTotals.open, h1?.open)}
+                  trendPositiveIsGood={false}
                 />
                 <HeroMetricCard
                   label='Close'
                   value={bucketOverviewTotals.close}
                   helper='Hari Ini'
                   tone='emerald'
+                  trendPct={pctDelta(bucketOverviewTotals.close, h1?.close)}
                 />
                 <HeroMetricCard
                   label='Assigned'
                   value={bucketOverviewTotals.assigned}
                   helper='On Progress'
                   tone='amber'
+                  trendPct={pctDelta(bucketOverviewTotals.assigned, h1?.assigned)}
+                  trendPositiveIsGood={false}
                 />
                 <HeroMetricCard
                   label='Unassigned'
@@ -764,7 +981,7 @@ export default function TicketManagementOverviewPage({
                 />
               </div>
 
-              <div className='grid gap-4 xl:grid-cols-[0.9fr_1.1fr]'>
+              <div className='grid gap-4 xl:grid-cols-[0.9fr_1.1fr_1fr]'>
                 <div className='rounded-3xl border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
                   <div className='flex flex-wrap items-center justify-between gap-2'>
                     <div>
@@ -802,11 +1019,19 @@ export default function TicketManagementOverviewPage({
                 </div>
 
                 <PriorityTodayPanel
-                  counts={flaggingTotals}
                   items={focusItems}
                   mode={selectedBucket === 'all' ? 'all' : 'bucket'}
                   bucketLabel={selectedBucketCard?.label}
                   bucketSummary={selectedBucketSummary}
+                  h1Flags={h1}
+                />
+
+                <TopWorkloadPanel
+                  areas={opsSummary?.serviceAreas ?? []}
+                  activeWorkzone={workzone || undefined}
+                  onSelect={(name) =>
+                    handleWorkzoneChange(workzone === name ? '' : name)
+                  }
                 />
               </div>
 
@@ -886,11 +1111,13 @@ export default function TicketManagementOverviewPage({
 
                   <HourlyChart
                     workzone={workzone || undefined}
+                    branch={branch || undefined}
                     bucket={selectedBucket}
                   />
 
                   <SymptomChart
                     workzone={workzone || undefined}
+                    branch={branch || undefined}
                     bucket={selectedBucket}
                   />
 

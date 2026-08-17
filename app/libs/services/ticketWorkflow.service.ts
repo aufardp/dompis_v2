@@ -21,6 +21,10 @@ import { ApiError } from '@/app/libs/apiError';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { AttendanceService } from './attendance.service';
 import {
+  computeTechnicianWorkload,
+  markRecommendedTechnician,
+} from './technicianWorkload.service';
+import {
   LockedTicket,
   ActorContext,
   TicketUpdatePatch,
@@ -822,15 +826,35 @@ export class TicketWorkflowService {
       await AttendanceService.getTodayPresentTechnicianIds(),
     );
 
+    const workload = await computeTechnicianWorkload(
+      technicians.map((tech) => tech.id_user),
+    );
+    markRecommendedTechnician(workload);
+
     return {
       ticketId,
       workzone: ticket.workzone,
       serviceAreaId: targetSa.id_sa,
       serviceAreaName,
-      technicians: technicians.map((tech) => ({
-        ...tech,
-        checked_in_today: presentIds.has(tech.id_user),
-      })),
+      technicians: technicians.map((tech) => {
+        const load = workload.get(tech.id_user);
+        return {
+          ...tech,
+          checked_in_today: presentIds.has(tech.id_user),
+          ...(load
+            ? {
+                active_tickets: load.active_tickets,
+                assigned_count: load.assigned_count,
+                on_progress_count: load.on_progress_count,
+                pending_count: load.pending_count,
+                avg_ttr_hours: load.avg_ttr_hours,
+                overloaded: load.overloaded,
+                load_score: load.load_score,
+                recommended: load.recommended,
+              }
+            : {}),
+        };
+      }),
     };
   }
 

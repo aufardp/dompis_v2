@@ -755,11 +755,13 @@ export async function GET(request: Request) {
     ]);
 
     const { searchParams } = new URL(request.url);
+    const branchParam = searchParams.get('branch');
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
       dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']) ?? 'all',
       workzone: searchParams.get('workzone') || undefined,
+      branchId: branchParam ? Number(branchParam) : undefined,
       ticketType:
         searchParams.get('ticketType') ||
         searchParams.get('jenisTiket') ||

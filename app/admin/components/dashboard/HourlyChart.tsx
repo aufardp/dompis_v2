@@ -54,18 +54,21 @@ function HourlyChartLoading() {
 
 export default function HourlyChart({
   workzone,
+  branch,
   bucket,
 }: {
   workzone?: string;
+  branch?: string;
   bucket?: string;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.dashboard.operations({
-      scopeVersion: `hourly:${workzone || 'all'}:${bucket || 'all'}`,
+      scopeVersion: `hourly:${workzone || 'all'}:${branch || 'all'}:${bucket || 'all'}`,
     }),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (workzone) params.set('workzone', workzone);
+      if (branch) params.set('branch', branch);
       if (bucket && bucket !== 'all') params.set('bucket', bucket);
       const url = params.toString()
         ? `/api/dashboard/hourly-tickets?${params.toString()}`

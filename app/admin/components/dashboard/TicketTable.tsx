@@ -108,6 +108,7 @@ export interface AdminTicketTableProps {
     excludeSymptom?: string;
     gamasOnly?: boolean;
     workzone?: string;
+    branch?: string;
     search?: string;
     ctype?: string;
     startDate?: string;
@@ -391,6 +392,7 @@ export default function TicketTable({
       }
       if (downloadFilters.gamasOnly) params.set('gamasOnly', 'true');
       if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.branch) params.set('branch', downloadFilters.branch);
       if (downloadFilters.search) params.set('search', downloadFilters.search);
       if (downloadFilters.ctype) params.set('ctype', downloadFilters.ctype);
       if (downloadFilters.startDate) params.set('startDate', downloadFilters.startDate);

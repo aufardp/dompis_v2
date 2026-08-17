@@ -9,6 +9,10 @@ import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getOrSetCache } from '@/lib/cache';
+import {
+  writeAuditLog,
+  extractClientMeta,
+} from '@/app/libs/services/audit-log.service';
 import { getJenisWhereClause } from '@/app/config/jenis-tiket';
 import { buildOperationalBucketWhere } from '@/app/libs/services/ticket-buckets';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
@@ -260,6 +264,21 @@ export async function GET(req: NextRequest) {
         .filter((p) => !hotOnly || p.isHot);
 
       return { points, meta: { total: points.length, limit: MAX_POINTS } };
+    });
+
+    writeAuditLog({
+      actor: { id_user: user.id_user, role: user.role },
+      action: 'WAR_MAP_VIEW',
+      resourceType: 'war_map',
+      resourceId: workzones.length > 0 ? workzones.join(',') : null,
+      meta: {
+        area: areas,
+        pointCount: data.points.length,
+        activeOnly,
+        hotOnly,
+        bucket: bucket ?? null,
+      },
+      ...extractClientMeta(req),
     });
 
     return NextResponse.json({ success: true, data });

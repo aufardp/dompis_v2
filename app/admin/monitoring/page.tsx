@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import DashboardDurasiClient from '@/app/components/dashboard/durasi/DashboardDurasiClient';
 import DashboardPageActions from '@/app/components/dashboard/DashboardPageActions';
 import ThemeToggleButton from '@/app/components/ui/ThemeToggleButton';
+import { getInitialBranchScope } from '@/app/helpers/get-initial-branch-scope';
 
 async function getUser() {
   try {
@@ -28,6 +29,7 @@ export default async function MonitoringPage() {
   }
 
   const homeHref = '/admin';
+  const initialBranch = await getInitialBranchScope();
 
   return (
     <div className="min-h-screen bg-(--bg) p-4 md:p-6">
@@ -84,7 +86,7 @@ export default async function MonitoringPage() {
         </div>
       </div>
       <div className="mx-auto max-w-[1600px]">
-        <DashboardDurasiClient />
+        <DashboardDurasiClient initialBranch={initialBranch} />
       </div>
     </div>
   );

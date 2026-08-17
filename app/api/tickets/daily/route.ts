@@ -29,11 +29,7 @@ export async function GET(request: Request) {
     });
     if (rateLimited) return rateLimited;
 
-    const user = await protectApi([
-      'admin',
-      'superadmin',
-      'super_admin',
-    ]);
+    const user = await protectApi(['admin', 'superadmin', 'super_admin']);
 
     const { searchParams } = new URL(request.url);
 
@@ -47,7 +43,9 @@ export async function GET(request: Request) {
       ...searchParams.getAll('jenisTiket'),
     ].filter(Boolean);
     const ticketGroup = searchParams.getAll('ticketGroup').filter(Boolean);
-    const operationalBucket = searchParams.getAll('operationalBucket').filter(Boolean);
+    const operationalBucket = searchParams
+      .getAll('operationalBucket')
+      .filter(Boolean);
     const anomalyBucket = searchParams.getAll('anomalyBucket').filter(Boolean);
     const ticketStatus = searchParams.getAll('ticketStatus').filter(Boolean);
     const flagging = searchParams.getAll('flagging').filter(Boolean);
@@ -75,6 +73,8 @@ export async function GET(request: Request) {
       anomalyBucket: anomalyBucket.length > 0 ? anomalyBucket : undefined,
       flagging: flagging.length > 0 ? flagging : undefined,
       workzone: searchParams.get('workzone') || undefined,
+      branchId:
+        searchParams.get('branchId') || searchParams.get('branch') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
@@ -82,10 +82,12 @@ export async function GET(request: Request) {
       limit: toPositiveInt(searchParams.get('limit'), 50, 100),
       validasiPage: toPositiveInt(searchParams.get('validasiPage'), 1, 10_000),
       validasiLimit: toPositiveInt(searchParams.get('validasiLimit'), 10, 50),
-      includeValidasi: searchParams.get('includeValidasi') === 'false' ? false : true,
+      includeValidasi:
+        searchParams.get('includeValidasi') === 'false' ? false : true,
       includeValidasiTickets:
         searchParams.get('includeValidasiTickets') === 'false' ? false : true,
-      includeOptions: searchParams.get('includeOptions') === 'false' ? false : true,
+      includeOptions:
+        searchParams.get('includeOptions') === 'false' ? false : true,
       includeClosed: searchParams.get('includeClosed') === 'true',
       gamasOnly: searchParams.get('gamasOnly') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
@@ -99,12 +101,14 @@ export async function GET(request: Request) {
     const CACHE_TTL_SECONDS = 15;
 
     // Fetch from database with route-level single-flight cache
-    const result = await getOrSetCache(cacheKey, () =>
-      DailyTicketService.getDailyTicketTable(
-        user.role,
-        user.id_user,
-        filters,
-      ),
+    const result = await getOrSetCache(
+      cacheKey,
+      () =>
+        DailyTicketService.getDailyTicketTable(
+          user.role,
+          user.id_user,
+          filters,
+        ),
       CACHE_TTL_SECONDS,
     );
 

@@ -13,7 +13,7 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { differenceInCalendarDays, endOfDay, format, startOfDay, startOfMonth, subDays } from 'date-fns';
 import { AttendanceService } from './attendance.service';
 import { CUSTOMER_TYPES } from '@/app/config/customer-types';
-import { toWibString, toWibDateString, getTodayWibRange } from '@/lib/timezone';
+import { toWibString, toWibDateString, getTodayWibRange, nowWib } from '@/lib/timezone';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
 import { buildSqlWhereClause } from './daily-ticket.service';
@@ -42,6 +42,7 @@ type TicketFilters = {
   page?: number;
   limit?: number;
   sort?: 'asc' | 'desc';
+  dateRange?: 'today' | 'thisMonth' | 'all';
 };
 
 function normalizeStatusUpdateFilter(value: unknown): string {
@@ -528,6 +529,7 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      dateRange,
     } = filters ?? {};
 
     const selectedWorkzone = await this.resolveSelectedWorkzone(workzone);
@@ -542,7 +544,22 @@ export class TicketService {
       andClauses.push(searchWhere);
     }
 
-    if (startDate || endDate) {
+    // dateRange filter: 'today' -> reported_date >= today 00:00 WIB
+    //                  'thisMonth' -> closed_at >= first day of month 00:00 WIB
+    //                  'all' or undefined -> no date filter
+    if (dateRange === 'today') {
+      const { start } = getTodayWibRange();
+      andClauses.push({
+        reported_date: { gte: start },
+      });
+    } else if (dateRange === 'thisMonth') {
+      const now = nowWib();
+      const monthStart = startOfDay(startOfMonth(now));
+      andClauses.push({
+        closed_at: { gte: monthStart },
+      });
+    } else if (startDate || endDate) {
+      // Legacy startDate/endDate support
       if (startDate && endDate) {
         andClauses.push({
           reported_date: {
@@ -703,6 +720,79 @@ export class TicketService {
       totalPages: Math.ceil(total / safeLimit),
 
       data: tickets.map(mapTicket),
+    };
+  }
+
+  // ── Stats for Teknisi Dashboard ───────────────────────────────────────────────
+  static async getTicketStats(
+    role: string,
+    userId: number,
+  ) {
+    // Only teknisi role uses this stats endpoint
+    if (role !== 'teknisi') {
+      return {
+        assigned: 0,
+        onProgress: 0,
+        pending: 0,
+        closed: 0,
+        totalAktif: 0,
+      };
+    }
+
+    const where = await this.buildTicketWhere(role, userId);
+
+    const todayRange = getTodayWibRange();
+    const todayStartStr = toWibString(todayRange.start)!; // 'yyyy-MM-dd HH:mm:ss'
+    const todayEndStr = toWibString(todayRange.end)!;
+
+    const now = nowWib();
+    const monthStart = startOfDay(startOfMonth(now));
+
+    // Build base where for teknisi (without status/date filters)
+    const baseWhere = { ...where };
+
+    // Count queries with specific filters
+    const [assigned, onProgress, pending, closed] = await Promise.all([
+      // Menunggu: ASSIGNED, reported_date >= today 00:00
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status_update: 'assigned',
+          reported_date: { gte: todayStartStr, lte: todayEndStr },
+        },
+      }),
+      // Dikerjakan: ON_PROGRESS, reported_date >= today 00:00
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status_update: 'on_progress',
+          reported_date: { gte: todayStartStr, lte: todayEndStr },
+        },
+      }),
+      // Pending: PENDING, reported_date >= today 00:00
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status_update: 'pending',
+          reported_date: { gte: todayStartStr, lte: todayEndStr },
+        },
+      }),
+      // Selesai: CLOSE, closed_at >= first day of month 00:00
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status_update: 'close',
+          closed_at: { gte: monthStart }, // DateTime field accepts Date object
+        },
+      }),
+    ]);
+
+    return {
+      assigned,
+      onProgress,
+      pending,
+      closed,
+      totalAktif: assigned + onProgress,
     };
   }
 

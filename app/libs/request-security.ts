@@ -75,7 +75,7 @@ export function applySecurityHeaders<T extends NextResponse>(response: T): T {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+    'camera=(self), microphone=(self), geolocation=(self), interest-cohort=()',
   );
   response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
   response.headers.set('Cross-Origin-Resource-Policy', 'same-site');
@@ -87,7 +87,9 @@ export function applySecurityHeaders<T extends NextResponse>(response: T): T {
   const scriptSrc = isDev
     ? "'self' 'unsafe-inline' 'unsafe-eval'"
     : "'self' 'unsafe-inline' https://static.cloudflareinsights.com";
-  const connectSrc = isDev ? "'self' ws: wss:" : "'self'";
+  const connectSrc = isDev
+    ? "'self' ws: wss: https://nominatim.openstreetmap.org"
+    : "'self' https://nominatim.openstreetmap.org";
 
   response.headers.set(
     'Content-Security-Policy',
@@ -95,6 +97,8 @@ export function applySecurityHeaders<T extends NextResponse>(response: T): T {
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
       `script-src ${scriptSrc}`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: https://*.tile.openstreetmap.org",

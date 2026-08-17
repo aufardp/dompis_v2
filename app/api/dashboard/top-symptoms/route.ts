@@ -36,11 +36,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
+    const branchParam = searchParams.get('branch');
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
       dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
       workzone: searchParams.get('workzone') || undefined,
+      branchId: branchParam ? Number(branchParam) : undefined,
       operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 

@@ -43,6 +43,10 @@ export async function GET(request: Request) {
       searchParams.get('status') ||
       undefined;
     const searchType = parseSearchType(searchParams.get('searchType'));
+    const dateRange = (searchParams.get('dateRange') as 'today' | 'thisMonth' | 'all' | undefined) || undefined;
+
+    // Role-aware limit: teknisi gets 500 for dashboard pagination, others 100
+    const maxLimit = user.role === 'teknisi' ? 500 : 100;
 
     const filters = {
       search: searchParams.get('search') || '',
@@ -58,8 +62,9 @@ export async function GET(request: Request) {
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
       page: toPositiveInt(searchParams.get('page'), 1, 10_000),
-      limit: toPositiveInt(searchParams.get('limit'), 50, 100),
+      limit: toPositiveInt(searchParams.get('limit'), 50, maxLimit),
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
+      dateRange,
     };
 
     const cacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);

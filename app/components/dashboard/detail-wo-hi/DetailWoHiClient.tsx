@@ -13,6 +13,8 @@ import {
   ListOrdered,
   Clock,
 } from 'lucide-react';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
+import BranchFilterSelect from '@/app/components/ui/BranchFilterSelect';
 
 const COLUMNS = [
   'DURASI OPEN',
@@ -242,7 +244,12 @@ function LoadingState() {
   );
 }
 
-export default function DetailWoHiClient() {
+export default function DetailWoHiClient({
+  initialBranch = '',
+}: {
+  initialBranch?: string;
+}) {
+  const { branch } = usePersistentBranchScope(initialBranch);
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState('all');
   const [status, setStatus] = useState<'all' | 'open' | 'close' | 'assigned'>('all');
@@ -253,12 +260,13 @@ export default function DetailWoHiClient() {
   if (search) queryParams.set('search', search);
   if (dept !== 'all') queryParams.set('dept', dept);
   if (status !== 'all') queryParams.set('status', status);
+  if (branch) queryParams.set('branch', branch);
   queryParams.set('page', String(page));
   queryParams.set('limit', String(limit));
 
   const { data, isLoading, isError, error, refetch, isFetching } =
     useQuery<DetailResponse>({
-      queryKey: ['detail-wo-hi', search, dept, status, page],
+      queryKey: ['detail-wo-hi', search, dept, status, page, branch || 'all'],
       queryFn: async () => {
         const res = await fetch(
           `/api/tickets/daily/detail-wo-hi?${queryParams.toString()}`,
@@ -298,6 +306,7 @@ export default function DetailWoHiClient() {
       if (search) queryParams.set('search', search);
       if (dept !== 'all') queryParams.set('dept', dept);
       if (status !== 'all') queryParams.set('status', status);
+      if (branch) queryParams.set('branch', branch);
       queryParams.set('format', format);
 
       try {
@@ -331,7 +340,7 @@ export default function DetailWoHiClient() {
         alert('Export gagal. Coba lagi.');
       }
     },
-    [search, dept, status],
+    [search, dept, status, branch],
   );
 
   const total = data?.total ?? 0;
@@ -415,6 +424,8 @@ export default function DetailWoHiClient() {
 
             <div className='flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between'>
               <div className='flex flex-wrap items-center gap-3'>
+                <BranchFilterSelect className='py-2.5' />
+
                 <div className='flex items-center gap-1.5 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2'>
                   <span className='mr-1 text-[11px] font-semibold tracking-wider text-(--text-muted) uppercase'>
                     Dept:

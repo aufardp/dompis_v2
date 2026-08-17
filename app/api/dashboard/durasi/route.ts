@@ -4,7 +4,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { getOrSetCache } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { nowWib, toWibDateString } from '@/lib/timezone';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
@@ -163,8 +163,9 @@ function buildDurasiTicketsCacheKey(
   userId: number,
   bucket: KpiBucketKey,
   syncDate: string,
+  branchParam?: string | null,
 ): string {
-  return `dashboard:durasi:raw:${syncDate}:${role}:${userId}:${bucket}`;
+  return `dashboard:durasi:raw:${syncDate}:${role}:${userId}:${bucket}:${branchParam ?? ''}`;
 }
 
 type PanelAccumulator = {
@@ -243,12 +244,25 @@ function finalizePanel(acc: PanelAccumulator): PanelData {
   };
 }
 
-async function getVisibleWorkzones(role: string, userId: number, isSuperAdmin: boolean, userWorkzones: string[] | null): Promise<WorkzoneSeed[]> {
+async function getVisibleWorkzones(
+  role: string,
+  userId: number,
+  isSuperAdmin: boolean,
+  userWorkzones: string[] | null,
+  branchSas?: string[] | null,
+): Promise<WorkzoneSeed[]> {
   const rows = await prisma.service_area.findMany({
     where: isSuperAdmin
-      ? undefined
+      ? branchSas
+        ? { nama_sa: { in: branchSas } }
+        : undefined
       : {
-          nama_sa: { in: userWorkzones ?? [] },
+          nama_sa: {
+            in:
+              branchSas
+                ? (userWorkzones ?? []).filter((w) => branchSas.includes(w))
+                : userWorkzones ?? [],
+          },
         },
     take: 500,
     select: {
@@ -334,8 +348,9 @@ async function getFilteredTickets(
   userId: number,
   bucket: KpiBucketKey,
   syncDate: string,
+  branchParam?: string | null,
 ): Promise<RawDurasiRow[]> {
-  const cacheKey = buildDurasiTicketsCacheKey(role, userId, bucket, syncDate);
+  const cacheKey = buildDurasiTicketsCacheKey(role, userId, bucket, syncDate, branchParam);
   return getOrSetCache(cacheKey, async () => {
     const filtersList = BUCKET_FILTERS[bucket];
     const parts: string[] = [];
@@ -345,6 +360,7 @@ async function getFilteredTickets(
       const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
         ...filters,
         includeClosed: true,
+        branchId: branchParam ? Number(branchParam) : undefined,
       });
       parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause} LIMIT 5000)`);
       allParams.push(...params);
@@ -395,6 +411,12 @@ export async function GET(request: NextRequest) {
     const bucket: KpiBucketKey = requestedBucket in BUCKET_FILTERS
       ? (requestedBucket as KpiBucketKey)
       : 'all';
+    const branchParam = request.nextUrl.searchParams.get('branch');
+    const branchSas = await resolveBranchScope(
+      decoded.role,
+      decoded.id_user,
+      branchParam,
+    );
 
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
       return NextResponse.json({
@@ -417,21 +439,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}`;
+    const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
       const overview = await DailyTicketService.getTicketManagementOverviewSummary(
         decoded.role,
         decoded.id_user,
+        undefined,
+        branchParam ? Number(branchParam) : undefined,
       );
       const kpiSummary = summarizeOverviewBucket(overview, bucket);
-      const tickets = await getFilteredTickets(decoded.role, decoded.id_user, bucket, today);
+      const tickets = await getFilteredTickets(
+        decoded.role,
+        decoded.id_user,
+        bucket,
+        today,
+        branchParam,
+      );
 
       const visibleWorkzones = await getVisibleWorkzones(
         decoded.role,
         decoded.id_user,
         isSuperAdmin,
         workzones,
+        branchSas,
       );
 
       return {

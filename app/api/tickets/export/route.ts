@@ -6,6 +6,10 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 import { getEffectiveMaxTtrLabel } from '@/app/libs/tickets/effective';
 import { parseSearchType } from '@/lib/search-intent';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import {
+  writeAuditLog,
+  extractClientMeta,
+} from '@/app/libs/services/audit-log.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,6 +245,21 @@ export async function GET(request: Request) {
       startDate,
       endDate,
       maxRows: SEMESTA_EXPORT_MAX_ROWS,
+    });
+
+    writeAuditLog({
+      actor: { id_user: user.id_user, role: user.role },
+      action: 'EXPORT',
+      resourceType: 'export',
+      resourceId: 'semesta',
+      meta: {
+        format,
+        workzone: workzone ?? null,
+        dept: dept ?? null,
+        statusUpdate: statusUpdate ?? null,
+        rows: tickets.length,
+      },
+      ...extractClientMeta(request),
     });
 
     const columns = getTicketColumns();

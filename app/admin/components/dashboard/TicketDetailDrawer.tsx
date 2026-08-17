@@ -119,6 +119,7 @@ export default function TicketDetailDrawer({
   onRetry,
   onEdit,
   onUpdateStatus,
+  zIndexClass = 'z-50',
 }: TicketDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('umum');
   const [isVisible, setIsVisible] = useState(false);
@@ -255,7 +256,8 @@ export default function TicketDetailDrawer({
   const content = (
     <div
       className={clsx(
-        'fixed inset-0 z-50 flex justify-end transition-all duration-300 ease-out',
+        'fixed inset-0 flex justify-end transition-all duration-300 ease-out',
+        zIndexClass,
         isVisible ? 'bg-black/40 backdrop-blur-sm' : 'bg-transparent',
       )}
       onClick={handleClose}

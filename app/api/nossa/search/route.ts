@@ -4,6 +4,10 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { toBoundedString } from '@/lib/http-query';
+import {
+  writeAuditLog,
+  extractClientMeta,
+} from '@/app/libs/services/audit-log.service';
 
 export async function GET(req: Request) {
   try {
@@ -60,6 +64,15 @@ export async function GET(req: Request) {
     }
 
     if (!row) {
+      writeAuditLog({
+        actor: { id_user: user.id_user, role: user.role },
+        action: 'SEARCH',
+        resourceType: 'qosmic',
+        resourceId: incident,
+        meta: { found: false, sourceTable: null },
+        ...extractClientMeta(req),
+      });
+
       return NextResponse.json({
         success: true,
         data: null,
@@ -159,6 +172,15 @@ export async function GET(req: Request) {
       _sourceTable: row.sourceTable ?? resource,
       _rawPayload: (row.rawPayload ?? {}) as Record<string, unknown>,
     };
+
+    writeAuditLog({
+      actor: { id_user: user.id_user, role: user.role },
+      action: 'SEARCH',
+      resourceType: 'qosmic',
+      resourceId: incident,
+      meta: { found: true, sourceTable: row.sourceTable ?? resource },
+      ...extractClientMeta(req),
+    });
 
     return NextResponse.json({
       success: true,

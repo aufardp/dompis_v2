@@ -2,6 +2,7 @@ import prisma from '@/app/libs/prisma';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { ApiError } from '@/app/libs/apiError';
+import { writeAuditLog } from '@/app/libs/services/audit-log.service';
 import type { Ticket } from '@/app/types/ticket';
 
 export type TicketDetailActor = {
@@ -48,38 +49,46 @@ export async function getTicketDetailForActor(
   ticketId: number,
   actor: TicketDetailActor,
 ): Promise<Ticket | null> {
-  const [row, tracking, activityLogs, assignmentHistory] = await Promise.all([
-    prisma.ticket.findUnique({
-      where: { id_ticket: ticketId },
-      include: {
-        users: { select: { nama: true } },
-      },
-    }),
-    prisma.ticket_tracking.findFirst({
-      where: { ticket_id: ticketId },
-      include: {
-        assigner: { select: { nama: true } },
-        technician: { select: { nama: true } },
-      },
-    }),
-    prisma.ticket_activity_log.findMany({
-      where: { ticket_id: ticketId },
-      include: {
-        user: { select: { nama: true, role_id: true } },
-      },
-      orderBy: { created_at: 'desc' },
-      take: 50,
-    }),
-    prisma.ticket_assignment_history.findMany({
-      where: { ticket_id: ticketId },
-      include: {
-        assigner: { select: { nama: true } },
-        technician: { select: { nama: true } },
-      },
-      orderBy: { assigned_at: 'desc' },
-      take: 100,
-    }),
-  ]);
+  const [row, tracking, activityLogs, assignmentHistory, locationRow] =
+    await Promise.all([
+      prisma.ticket.findUnique({
+        where: { id_ticket: ticketId },
+        include: {
+          users: { select: { nama: true } },
+        },
+      }),
+      prisma.ticket_tracking.findFirst({
+        where: { ticket_id: ticketId },
+        include: {
+          assigner: { select: { nama: true } },
+          technician: { select: { nama: true } },
+        },
+      }),
+      prisma.ticket_activity_log.findMany({
+        where: { ticket_id: ticketId },
+        include: {
+          user: { select: { nama: true, role_id: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 50,
+      }),
+      prisma.ticket_assignment_history.findMany({
+        where: { ticket_id: ticketId },
+        include: {
+          assigner: { select: { nama: true } },
+          technician: { select: { nama: true } },
+        },
+        orderBy: { assigned_at: 'desc' },
+        take: 100,
+      }),
+      prisma.service_location_history.findFirst({
+        where: { ticket_id: ticketId },
+        include: {
+          teknisi: { select: { nama: true } },
+        },
+        orderBy: { tagged_at: 'desc' },
+      }),
+    ]);
 
   if (!row) return null;
 
@@ -96,7 +105,7 @@ export async function getTicketDetailForActor(
     select: { reported_by: true },
   });
 
-  return {
+  const result = {
     idTicket: row.id_ticket,
     ticket: row.incident,
     summary: row.summary || '',
@@ -169,6 +178,22 @@ export async function getTicketDetailForActor(
     rca: row.rca,
     subRca: row.sub_rca,
     descriptionSolutionDompis: row.description_solution_dompis,
+    serviceLocation: locationRow
+      ? {
+          latitude: locationRow.latitude.toNumber(),
+          longitude: locationRow.longitude.toNumber(),
+          accuracyMeters: locationRow.accuracy_meters
+            ? locationRow.accuracy_meters.toNumber()
+            : null,
+          deviceName: locationRow.device_name,
+          barcodeDc: locationRow.barcode_dc,
+          source: locationRow.source,
+          taggedAt: locationRow.tagged_at
+            ? locationRow.tagged_at.toISOString()
+            : null,
+          technicianName: locationRow.teknisi?.nama ?? null,
+        }
+      : null,
     teknisiUserId: row.teknisi_user_id,
     technicianName: row.users?.nama,
     closedAt: row.closed_at ? row.closed_at.toISOString() : null,
@@ -220,5 +245,15 @@ export async function getTicketDetailForActor(
         isActive: h.is_active,
       }),
     ),
-  } as Ticket;
+  };
+
+  writeAuditLog({
+    actor: { id_user: actor.id_user, role: actor.role },
+    action: 'CUSTOMER_DATA_VIEW',
+    resourceType: 'ticket',
+    resourceId: row.incident,
+    meta: { idTicket: ticketId, serviceNo: row.service_no ?? null },
+  });
+
+  return result as Ticket;
 }

@@ -23,16 +23,21 @@ export async function GET(request: Request) {
       'superadmin',
       'super_admin',
     ]);
-    const workzone = new URL(request.url).searchParams.get('workzone') || undefined;
+    const { searchParams } = new URL(request.url);
+    const workzone = searchParams.get('workzone') || undefined;
+    const branchParam = searchParams.get('branch');
+    const branchId = branchParam ? Number(branchParam) : undefined;
 
-    const cacheKey = `ticket_mgmt_overview:v5:${user.role}:${user.id_user}:${workzone || 'all'}`;
+    const cacheKey = `ticket_mgmt_overview:v6:${user.role}:${user.id_user}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
     const data = await getOrSetCache(cacheKey, async () => {
-      return DailyTicketService.getTicketManagementOverviewSummary(
+      const summary = await DailyTicketService.getTicketManagementOverviewSummary(
         user.role,
         user.id_user,
         workzone,
+        branchId,
       );
+      return { ...summary };
     }, CACHE_TTL_SECONDS);
 
     return NextResponse.json({

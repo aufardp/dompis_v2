@@ -188,10 +188,12 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
+    const branchParam = searchParams.get('branch') ?? '';
     const ctype = searchParams.get('ctype') ?? '';
     const status = searchParams.get('status') ?? 'all';
     const startDate = searchParams.get('startDate') ?? '';
     const endDate = searchParams.get('endDate') ?? '';
+    const branchId = branchParam ? Number(branchParam) : undefined;
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const filenameBase = `Detail_WO_HI_${dateStr}`;
@@ -225,6 +227,7 @@ export async function GET(request: Request) {
         search: search || undefined,
         searchType,
         workzone: workzone || undefined,
+        branchId,
         ctype: ctype || undefined,
         statusUpdate: status === 'assigned' ? 'assigned' : undefined,
         startDate: startDate || undefined,
