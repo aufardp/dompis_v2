@@ -34,15 +34,25 @@ export const queryKeys = {
       filters
         ? ([...queryKeys.dashboard.all, 'ticket-management-overview', filters] as const)
         : ([...queryKeys.dashboard.all, 'ticket-management-overview'] as const),
-    durasi: (bucket?: string) =>
-      bucket
-        ? ([...queryKeys.dashboard.all, 'durasi', bucket] as const)
-        : ([...queryKeys.dashboard.all, 'durasi'] as const),
+    durasi: (filters?: { bucket?: string; branch?: string }) => {
+      const bucket = filters?.bucket ?? '';
+      const branch = filters?.branch ?? '';
+      return [
+        ...queryKeys.dashboard.all,
+        'durasi',
+        bucket || 'all',
+        branch || 'all',
+      ] as const;
+    },
     rekapWorkorder: () => [...queryKeys.dashboard.all, 'rekap-workorder'] as const,
     rekapWorkorderHourly: (bucket?: string) =>
       bucket
         ? ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close', bucket] as const)
         : ([...queryKeys.dashboard.all, 'rekap-workorder', 'hourly-close'] as const),
+    rekapWorkorderTrend: (bucket?: string) =>
+      bucket
+        ? ([...queryKeys.dashboard.all, 'rekap-workorder', 'trend', bucket] as const)
+        : ([...queryKeys.dashboard.all, 'rekap-workorder', 'trend'] as const),
   },
   notifications: {
     all: ['notifications'] as const,
@@ -68,7 +78,9 @@ export const queryKeys = {
   dropdowns: {
     area: () => ['area'] as const,
     serviceArea: (area?: string) => (area ? (['sa', area] as const) : (['sa'] as const)),
-    workzone: () => ['workzone'] as const,
+    workzone: (branch?: string) =>
+      branch ? (['workzone', branch] as const) : (['workzone'] as const),
+    branch: () => ['branch'] as const,
   },
   warMap: {
     all: ['war-map'] as const,

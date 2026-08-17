@@ -102,6 +102,7 @@ export async function middleware(req: NextRequest) {
       pathname === '/api/area' ||
       pathname === '/api/roles' ||
       pathname === '/api/region' ||
+      pathname === '/api/branch/options' ||
       pathname.startsWith('/api/workzone')
     ) {
       res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');

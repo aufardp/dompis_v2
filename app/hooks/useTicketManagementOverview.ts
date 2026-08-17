@@ -35,24 +35,37 @@ export type TicketManagementOverviewData = {
     sqmUpdate: TicketManagementBucketSummary;
     obsolete: TicketManagementBucketSummary;
   };
+  h1: {
+    total: number;
+    open: number;
+    assigned: number;
+    close: number;
+    p1Count: number;
+    pPlusCount: number;
+    ffgCount: number;
+    gamasCount: number;
+  } | null;
 };
 
 type Options = {
   workzone?: string;
+  branch?: string;
   enabled?: boolean;
 };
 
-export function useTicketManagementOverview({ workzone, enabled = true }: Options) {
-  const filters = { workzone: workzone || undefined };
+export function useTicketManagementOverview({ workzone, branch, enabled = true }: Options) {
+  const filters = { workzone: workzone || undefined, branch: branch || undefined };
 
   return useQuery({
     queryKey: queryKeys.dashboard.ticketManagementOverview(filters),
     staleTime: 30_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: false,
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.workzone) params.set('workzone', filters.workzone);
+      if (filters.branch) params.set('branch', filters.branch);
 
       const res = await fetchWithAuth(
         `/api/dashboard/ticket-management-overview?${params.toString()}`,

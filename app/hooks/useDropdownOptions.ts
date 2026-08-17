@@ -116,16 +116,46 @@ export function useWarMapFilterOptions() {
   };
 }
 
-export function useWorkzoneOptions() {
+export function useWorkzoneOptions(branch?: string) {
   const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.dropdowns.workzone(),
+    queryKey: queryKeys.dropdowns.workzone(branch),
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const res = await fetchWithAuth('/api/workzone');
+      const params = new URLSearchParams();
+      if (branch) params.set('branchId', branch);
+      const qs = params.toString();
+      const res = await fetchWithAuth(
+        qs ? `/api/workzone?${qs}` : '/api/workzone',
+      );
       if (!res) throw new Error('Failed to fetch workzones');
       const result = await res.json();
       if (!result.success) throw new Error(result.message || 'Failed to fetch workzones');
       return (result.data || []) as Option[];
+    },
+  });
+
+  return {
+    options: data ?? [],
+    loading: isLoading,
+    error: error ? (error as Error).message : null,
+  };
+}
+
+export function useBranchOptions() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.dropdowns.branch(),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const res = await fetchWithAuth('/api/branch/options');
+      if (!res) throw new Error('Failed to fetch branches');
+      const result = await res.json();
+      if (!result.success) throw new Error(result.message || 'Failed to fetch branches');
+      const raw = (result.data || []) as {
+        value: string;
+        label: string;
+        regionId?: number | null;
+      }[];
+      return raw.map((b) => ({ value: b.value, label: b.label }));
     },
   });
 

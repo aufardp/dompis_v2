@@ -63,6 +63,7 @@ export type OperationsSummary = {
 type OperationsSummaryFilters = {
   search?: string;
   workzone?: string;
+  branch?: string;
   dept?: 'all' | 'b2b' | 'b2c';
   enabled?: boolean;
 };
@@ -70,6 +71,7 @@ type OperationsSummaryFilters = {
 export function useOperationsSummary({
   search,
   workzone,
+  branch,
   dept,
   enabled = true,
 }: OperationsSummaryFilters) {
@@ -80,10 +82,11 @@ export function useOperationsSummary({
       search: normalizedSearch,
       searchType,
       workzone: workzone || undefined,
+      branch: branch || undefined,
       dept: dept || undefined,
       scopeVersion: 'global-v1',
     }),
-    [dept, normalizedSearch, searchType, workzone],
+    [dept, normalizedSearch, searchType, workzone, branch],
   );
 
   return useQuery({
@@ -98,6 +101,7 @@ export function useOperationsSummary({
         if (searchType) params.set('searchType', searchType);
       }
       if (filters.workzone) params.set('workzone', filters.workzone);
+      if (filters.branch) params.set('branch', filters.branch);
       if (filters.dept && filters.dept !== 'all') params.set('dept', filters.dept);
 
       const res = await fetchWithAuth(

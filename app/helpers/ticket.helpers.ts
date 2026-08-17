@@ -3,6 +3,7 @@
 import prisma from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCache } from '@/lib/cache';
+import { normalizeRoleKey } from '@/app/libs/roles';
 
 // ── ActivityType enum (defined locally since Prisma types aren't generated) ──
 export enum ActivityType {
@@ -107,6 +108,110 @@ export async function resolveWorkzoneName(
     },
     3600,
   );
+}
+
+// ── Branch ────────────────────────────────────────────────────────────────────
+export type BranchOption = {
+  id_branch: number;
+  nama_branch: string;
+  kode_branch: string;
+  region_id: number | null;
+};
+
+const BRANCH_SELECT = {
+  id_branch: true,
+  nama_branch: true,
+  kode_branch: true,
+  region_id: true,
+} as const;
+
+export async function getBranchesForUser(
+  userId: number,
+  role: string,
+): Promise<BranchOption[]> {
+  const allBranches = () =>
+    prisma.branch.findMany({
+      select: BRANCH_SELECT,
+      orderBy: { nama_branch: 'asc' },
+    });
+
+  if (normalizeRoleKey(role) === 'superadmin') {
+    return allBranches();
+  }
+
+  return getOrSetCache(
+    `ticket_helpers:branches:${userId}`,
+    async () => {
+      const byId = new Map<number, BranchOption>();
+      const add = (b: BranchOption | null | undefined) => {
+        if (b && !byId.has(b.id_branch)) byId.set(b.id_branch, b);
+      };
+
+      const [directBranches, areaBranches] = await Promise.all([
+        prisma.user_branch.findMany({
+          where: { user_id: userId },
+          select: {
+            branch: { select: BRANCH_SELECT },
+          },
+        }),
+        normalizeRoleKey(role) === 'admin_branch'
+          ? prisma.users.findUnique({
+              where: { id_user: userId },
+              select: {
+                area: { select: { branch: { select: BRANCH_SELECT } } },
+              },
+            })
+          : Promise.resolve(null),
+      ]);
+
+      directBranches.forEach((ub) => add(ub.branch));
+      if (areaBranches) add(areaBranches.area?.branch);
+
+      return [...byId.values()].sort((a, b) => a.nama_branch.localeCompare(b.nama_branch));
+    },
+    3600,
+  );
+}
+
+export async function getBranchServiceAreaNames(branchId: number): Promise<string[]> {
+  return getOrSetCache(
+    `ticket_helpers:branch_sa_names:${branchId}`,
+    async () => {
+      const areas = await prisma.area.findMany({
+        where: { branch_id: branchId },
+        select: {
+          service_area: { select: { nama_sa: true } },
+        },
+      });
+
+      const names = new Set<string>();
+      areas.forEach((a) =>
+        a.service_area.forEach((sa) => {
+          if (sa.nama_sa) names.add(sa.nama_sa);
+        }),
+      );
+      return [...names];
+    },
+    3600,
+  );
+}
+
+export async function resolveBranchScope(
+  role: string,
+  userId: number,
+  branchParam?: string | null,
+): Promise<string[] | null> {
+  if (!branchParam) return null;
+
+  const id = Number(branchParam);
+  if (!Number.isFinite(id) || id <= 0) return [];
+
+  if (normalizeRoleKey(role) !== 'superadmin') {
+    const branches = await getBranchesForUser(userId, role);
+    if (!branches.some((b) => b.id_branch === id)) return [];
+  }
+
+  return getBranchServiceAreaNames(id);
 }
 
 // ── Tracking ──────────────────────────────────────────────────────────────────

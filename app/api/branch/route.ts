@@ -15,12 +15,13 @@ import {
 } from '@/app/libs/validations/branch.schema';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getBranchScope } from '@/app/libs/services/users.service';
+import { getBranchesForUser } from '@/app/helpers/ticket.helpers';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const actor = await protectApi(['superadmin']);
+    const actor = await protectApi(['admin', 'helpdesk', 'superadmin']);
 
     const { searchParams } = new URL(request.url);
     const region_id = searchParams.get('region_id')
@@ -28,8 +29,12 @@ export async function GET(request: Request) {
       : undefined;
 
     const scope = await getBranchScope(actor);
-
-    const branches = await getBranchesByRegion(region_id, scope?.branchIds);
+    const branches =
+      actor.role === 'superadmin'
+        ? await getBranchesByRegion(region_id, scope?.branchIds)
+        : (await getBranchesForUser(actor.id_user, actor.role)).filter((b) =>
+            region_id ? b.region_id === region_id : true,
+          );
 
     return NextResponse.json({ success: true, data: branches });
   } catch (error: any) {

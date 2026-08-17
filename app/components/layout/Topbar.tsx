@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/app/hooks/useOptimizations';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
+import BranchFilterSelect from '@/app/components/ui/BranchFilterSelect';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import TopbarNotifications from './TopbarNotifications';
 import {
@@ -189,10 +191,11 @@ export default function Topbar({
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [workzone, setWorkzone] = useState(selectedWorkzone || '');
+  const { branch } = usePersistentBranchScope();
   const debouncedSearch = useDebounce(searchValue, 500);
   const { isDark, toggleTheme } = useTheme();
   const { options: workzoneOptions, loading: workzoneLoading } =
-    useWorkzoneOptions();
+    useWorkzoneOptions(branch || undefined);
   const urlSearch = searchParams.get('search') || '';
   const isLocalSearch = typeof onSearch === 'function';
   const meta = useMemo(() => getRouteMeta(pathname), [pathname]);
@@ -204,6 +207,15 @@ export default function Topbar({
   useEffect(() => {
     setWorkzone(selectedWorkzone || '');
   }, [selectedWorkzone]);
+
+  useEffect(() => {
+    if (workzoneLoading || !branch) return;
+    const valid = workzoneOptions.some((opt) => opt.value === workzone);
+    if (workzone && !valid) {
+      setWorkzone('');
+      onWorkzoneChange?.('');
+    }
+  }, [branch, workzone, workzoneOptions, workzoneLoading, onWorkzoneChange]);
 
   useEffect(() => {
     setSearchValue(urlSearch);
@@ -428,6 +440,7 @@ export default function Topbar({
             </form>
 
             <div className='flex flex-wrap items-center justify-end gap-1.5'>
+              <BranchFilterSelect />
               <TopbarNotifications selectedWorkzone={workzone || undefined} />
 
               <div className='relative hidden lg:block xl:block'>

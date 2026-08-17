@@ -14,6 +14,7 @@ type DailyTicketPageFilters = {
   symptom?: string;
   excludeSymptom?: string;
   workzone?: string;
+  branch?: string;
   dept: 'all' | 'b2b' | 'b2c';
   ctype?: string;
   ticketType?: string[];
@@ -61,6 +62,7 @@ export function useDailyTicketPage({
   symptom,
   excludeSymptom,
   workzone,
+  branch,
   dept,
   ctype,
   ticketType = [],
@@ -86,7 +88,10 @@ export function useDailyTicketPage({
   countOnly = false,
   sortField,
   sortOrder,
-}: DailyTicketPageFilters & { sortField?: string; sortOrder?: 'asc' | 'desc' }) {
+}: DailyTicketPageFilters & {
+  sortField?: string;
+  sortOrder?: 'asc' | 'desc';
+}) {
   const searchType = detectSearchType(search);
   const queryKey = queryKeys.tickets.daily({
     search,
@@ -95,6 +100,7 @@ export function useDailyTicketPage({
     excludeSymptom,
     searchType,
     workzone,
+    branch,
     dept,
     ctype,
     ticketType,
@@ -136,7 +142,8 @@ export function useDailyTicketPage({
       });
       if (sortField) params.set('sortField', sortField);
       if (!includeValidasi) params.set('includeValidasi', 'false');
-      if (!includeValidasiTickets) params.set('includeValidasiTickets', 'false');
+      if (!includeValidasiTickets)
+        params.set('includeValidasiTickets', 'false');
       if (!includeOptions) params.set('includeOptions', 'false');
       if (includeClosed) params.set('includeClosed', 'true');
       if (gamasOnly) params.set('gamasOnly', 'true');
@@ -147,7 +154,11 @@ export function useDailyTicketPage({
         params.set('search', normalizedSearch);
         if (searchType) params.set('searchType', searchType);
       }
-      if (typeof ticketId === 'number' && Number.isFinite(ticketId) && ticketId > 0) {
+      if (
+        typeof ticketId === 'number' &&
+        Number.isFinite(ticketId) &&
+        ticketId > 0
+      ) {
         params.set('ticketId', String(ticketId));
       }
       const normalizedSymptom = symptom?.trim();
@@ -159,6 +170,7 @@ export function useDailyTicketPage({
         params.set('excludeSymptom', normalizedExcludeSymptom);
       }
       if (workzone) params.set('workzone', workzone);
+      if (branch) params.set('branch', branch);
       if (ctype && ctype !== 'all') params.set('ctype', ctype);
       for (const type of ticketType) params.append('ticketType', type);
       for (const group of ticketGroup) params.append('ticketGroup', group);
@@ -168,7 +180,8 @@ export function useDailyTicketPage({
       if (typeof regulerOnly === 'boolean') {
         params.set('regulerOnly', regulerOnly ? 'true' : 'false');
       }
-      for (const bucket of anomalyBucket) params.append('anomalyBucket', bucket);
+      for (const bucket of anomalyBucket)
+        params.append('anomalyBucket', bucket);
       for (const status of statusUpdate) params.append('statusUpdate', status);
       for (const status of ticketStatus) params.append('ticketStatus', status);
       for (const flag of flagging) params.append('flagging', flag);
@@ -259,10 +272,23 @@ export function useDailyTicketPage({
       validasiCount: Number(data?.validasiCount ?? 0),
       pagination,
       validasiPagination,
-      refresh: () => { refetch(); },
-      refreshSilent: () => { refetch(); },
+      refresh: () => {
+        refetch();
+      },
+      refreshSilent: () => {
+        refetch();
+      },
     };
-  }, [data, isLoading, isFetching, page, limit, validasiPage, validasiLimit, refetch]);
+  }, [
+    data,
+    isLoading,
+    isFetching,
+    page,
+    limit,
+    validasiPage,
+    validasiLimit,
+    refetch,
+  ]);
 
   return result;
 }
