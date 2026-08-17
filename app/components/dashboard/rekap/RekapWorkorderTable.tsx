@@ -9,6 +9,15 @@ import {
   PopoverTrigger,
 } from '@/app/components/ui/popover';
 import type { CaptureFormat } from './captureElementAsImage';
+import ClickableCount from './ClickableCount';
+import {
+  buildBucketCellSpec,
+  buildDetailCellSpec,
+  buildSummaryCellSpec,
+  type BucketCellKey,
+  type RekapCellScope,
+  type RekapCellSpec,
+} from './cellSpec';
 
 interface SegCount {
   open: number;
@@ -101,10 +110,6 @@ const DETAIL_GROUP_STYLE: Record<
   },
 };
 
-function formatCell(value: number): string {
-  return value > 0 ? String(value) : '-';
-}
-
 function loadToneStyle(open: number, teknisi: number): React.CSSProperties {
   if (open === 0) return { color: '#22c55e', fontWeight: 600 };
   if (teknisi === 0) return { color: '#ef4444', fontWeight: 700 };
@@ -132,25 +137,12 @@ interface RekapTableProps {
   captureTargetRef?: RefObject<HTMLTableElement | null>;
   onCapture?: (format: CaptureFormat) => void;
   isCapturing?: boolean;
-  overviewSummary?: {
-    total: number;
-    open: number;
-    assigned: number;
-    close: number;
-  };
+  onCellClick?: (spec: RekapCellSpec) => void;
   bucketSummary?: {
     total: number;
     open: number;
     assigned: number;
     close: number;
-  };
-  bucketBreakdown?: {
-    kpiCustomer: { total: number; open: number; assigned: number; close: number };
-    kpiProactive: { total: number; open: number; assigned: number; close: number };
-    nonKpiUnspec: { total: number; open: number; assigned: number; close: number };
-    nonTechnical: { total: number; open: number; assigned: number; close: number };
-    sqmUpdate: { total: number; open: number; assigned: number; close: number };
-    obsolete: { total: number; open: number; assigned: number; close: number };
   };
 }
 
@@ -160,9 +152,8 @@ export default function RekapWorkorderTable({
   captureTargetRef,
   onCapture,
   isCapturing = false,
-  overviewSummary,
+  onCellClick,
   bucketSummary,
-  bucketBreakdown,
 }: RekapTableProps) {
   const areaNames = useMemo(() => {
     const set = new Set<string>();
@@ -227,10 +218,18 @@ export default function RekapWorkorderTable({
       };
     }
     if (isCustomerMode) {
+      const b2bSet = new Set<string>();
+      for (const row of rows) {
+        for (const key of Object.keys(row.detail.b2b)) b2bSet.add(key);
+      }
+      const b2bKeys = [
+        ...B2B_DETAIL_JENIS.filter((key) => b2bSet.has(key)),
+        ...[...b2bSet].filter((key) => !B2B_DETAIL_JENIS.includes(key)).sort(),
+      ];
       return {
         groups: [
           { label: 'B2C', segment: 'b2c' as const, keys: B2C_DETAIL_TYPES },
-          { label: 'B2B', segment: 'b2b' as const, keys: B2B_DETAIL_JENIS },
+          { label: 'B2B', segment: 'b2b' as const, keys: b2bKeys },
           {
             label: 'SQM',
             segment: 'sqm' as const,
@@ -238,8 +237,7 @@ export default function RekapWorkorderTable({
             subLabels: ['OPN', 'CLS', 'UPD'],
           },
         ],
-        totalCols:
-          B2C_DETAIL_TYPES.length * 2 + B2B_DETAIL_JENIS.length * 2 + 3,
+        totalCols: B2C_DETAIL_TYPES.length * 2 + b2bKeys.length * 2 + 3,
       };
     }
     if (isJenis2Mode) {
@@ -314,35 +312,39 @@ export default function RekapWorkorderTable({
     return close;
   };
 
-  const totals = {
-    open: bucketSummary ? bucketSummary.open : rows.reduce((sum, row) => sum + row.totalOpen, 0),
-    close: bucketSummary ? bucketSummary.close : rows.reduce((sum, row) => sum + row.totalClose, 0),
-    grand: bucketSummary ? bucketSummary.total : rows.reduce((sum, row) => sum + row.grandTotal, 0),
+  let totals = {
+    open: 0,
+    close: 0,
+    grand: 0,
     teknisi: rows.reduce((sum, row) => sum + row.teknisiMasuk, 0),
     buckets: new Map<BucketKey, SegCount>(),
   };
+  if (rows.length > 0) {
+    totals.open = rows.reduce(
+      (sum, row) =>
+        sum +
+        getDisplayedOpen(row.totalOpen, row.totalClose, row.grandTotal),
+      0,
+    );
+    totals.close = rows.reduce(
+      (sum, row) =>
+        sum +
+        getDisplayedClose(row.totalOpen, row.totalClose, row.grandTotal),
+      0,
+    );
+    totals.grand = rows.reduce((sum, row) => sum + row.grandTotal, 0);
+  } else if (bucketSummary) {
+    totals = {
+      open: bucketSummary.open,
+      close: bucketSummary.close,
+      grand: bucketSummary.total,
+      teknisi: totals.teknisi,
+      buckets: totals.buckets,
+    };
+  }
+
   if (isCustomerMode) {
     totals.open = Math.max(totals.grand - totals.close, 0);
-  }
-  if (isAllMode && bucketBreakdown) {
-    totals.open = bucketBreakdown.kpiCustomer.open +
-      bucketBreakdown.kpiProactive.open +
-      bucketBreakdown.nonKpiUnspec.open +
-      bucketBreakdown.nonTechnical.open +
-      bucketBreakdown.sqmUpdate.open +
-      bucketBreakdown.obsolete.open;
-    totals.close = bucketBreakdown.kpiCustomer.close +
-      bucketBreakdown.kpiProactive.close +
-      bucketBreakdown.nonKpiUnspec.close +
-      bucketBreakdown.nonTechnical.close +
-      bucketBreakdown.sqmUpdate.close +
-      bucketBreakdown.obsolete.close;
-    totals.grand = bucketBreakdown.kpiCustomer.total +
-      bucketBreakdown.kpiProactive.total +
-      bucketBreakdown.nonKpiUnspec.total +
-      bucketBreakdown.nonTechnical.total +
-      bucketBreakdown.sqmUpdate.total +
-      bucketBreakdown.obsolete.total;
   }
 
   const displayedTotalClose = isCustomerMode
@@ -352,31 +354,9 @@ export default function RekapWorkorderTable({
   for (const bkt of BUCKETS) {
     totals.buckets.set(bkt.key, { open: 0, close: 0 });
   }
-  if (isAllMode && bucketBreakdown) {
-    const bucketMap = {
-      kpiCustomer: bucketBreakdown.kpiCustomer,
-      kpiProactive: bucketBreakdown.kpiProactive,
-      nonKpiUnspec: bucketBreakdown.nonKpiUnspec,
-      nonTechnical: bucketBreakdown.nonTechnical,
-      sqmUpdate: bucketBreakdown.sqmUpdate,
-      obsolete: bucketBreakdown.obsolete,
-    } satisfies Record<BucketKey, { total: number; open: number; assigned: number; close: number }>;
-
-    for (const bkt of BUCKETS) {
-      const data = bucketMap[bkt.key];
-      const total = totals.buckets.get(bkt.key)!;
-      total.open = data.open;
-      total.close = data.close;
-    }
-  } else {
-    for (const row of rows) {
-      for (const bkt of BUCKETS) {
-        const data = row.buckets[bkt.key];
-        const total = totals.buckets.get(bkt.key)!;
-        total.open += data.open;
-        total.close += data.close;
-      }
-    }
+  const totalBuckets = aggregateTotalBuckets();
+  for (const bkt of BUCKETS) {
+    totals.buckets.set(bkt.key, totalBuckets[bkt.key]);
   }
 
   const maxWorkzoneOpen = useMemo(() => {
@@ -401,6 +381,7 @@ export default function RekapWorkorderTable({
       buckets?: BucketRecord;
     },
     prefix: string,
+    scope: RekapCellScope,
     bold = false,
   ) {
     if (!detailColumns) return null;
@@ -429,16 +410,26 @@ export default function RekapWorkorderTable({
               const color =
                 sub.trim().toUpperCase() === 'OPEN' ||
                 sub.trim().toUpperCase() === 'OPN'
-                  ? 'text-red-600'
+                  ? 'text-red-600 dark:text-red-300'
                   : sub.trim().toUpperCase() === 'CLOSE' ||
                       sub.trim().toUpperCase() === 'CLS'
-                    ? 'text-emerald-600'
-                    : 'text-amber-600';
+                    ? 'text-emerald-600 dark:text-emerald-300'
+                    : 'text-amber-600 dark:text-amber-300';
+              const spec =
+                isDetail && detailMode
+                  ? buildDetailCellSpec(
+                      detailMode,
+                      String(group.segment),
+                      String(key),
+                      sub,
+                      scope,
+                    )
+                  : undefined;
               return (
                 <td
                   key={sub}
                   className={clsx(
-                    'px-1.5 py-1.5 text-center font-mono text-[10px] whitespace-nowrap',
+                    'px-1.5 py-1.5 text-center font-mono text-[11px] whitespace-nowrap',
                     (keyIndex > 0 || groupIndex > 0) &&
                       subIndex === 0 &&
                       'border-l border-(--border)/60 pl-2',
@@ -446,7 +437,12 @@ export default function RekapWorkorderTable({
                     color,
                   )}
                 >
-                  {formatCell(val)}
+                  <ClickableCount
+                    count={val}
+                    spec={spec}
+                    onCellClick={onCellClick}
+                    className={color}
+                  />
                 </td>
               );
             })}
@@ -460,6 +456,7 @@ export default function RekapWorkorderTable({
     bktList: { key: BucketKey }[],
     getValue: (key: BucketKey) => SegCount,
     prefix: string,
+    scope: RekapCellScope,
     bold = false,
   ) {
     return bktList.map((bkt) => {
@@ -473,7 +470,16 @@ export default function RekapWorkorderTable({
               'text-rose-600 dark:text-rose-300',
             )}
           >
-            {formatCell(data.open)}
+            <ClickableCount
+              count={data.open}
+              spec={buildBucketCellSpec(
+                bkt.key as BucketCellKey,
+                'open',
+                scope,
+              )}
+              onCellClick={onCellClick}
+              className='text-rose-600 dark:text-rose-300'
+            />
           </td>
           <td
             className={clsx(
@@ -482,7 +488,16 @@ export default function RekapWorkorderTable({
               'text-emerald-600 dark:text-emerald-300',
             )}
           >
-            {formatCell(data.close)}
+            <ClickableCount
+              count={data.close}
+              spec={buildBucketCellSpec(
+                bkt.key as BucketCellKey,
+                'close',
+                scope,
+              )}
+              onCellClick={onCellClick}
+              className='text-emerald-600 dark:text-emerald-300'
+            />
           </td>
         </Fragment>
       );
@@ -504,7 +519,7 @@ export default function RekapWorkorderTable({
             <th
               key={`${group.segment}-${key}`}
               className={clsx(
-                'px-2 py-2 text-center text-[10px] font-semibold tracking-[0.2em] whitespace-nowrap uppercase',
+                'px-2 py-2 text-center text-[11px] font-semibold tracking-[0.2em] whitespace-nowrap uppercase',
                 style.band,
                 (groupIndex > 0 || keyIndex > 0) && 'border-l border-(--border)/60',
               )}
@@ -532,7 +547,7 @@ export default function RekapWorkorderTable({
           <th
             key={`${group.segment}-${key}-${sub}`}
             className={clsx(
-              'px-2 py-2 text-center text-[10px] font-semibold whitespace-nowrap uppercase',
+              'px-2 py-2 text-center text-[11px] font-semibold whitespace-nowrap uppercase',
               style.subBand,
               style.text,
               (groupIndex > 0 || keyIndex > 0) &&
@@ -552,14 +567,14 @@ export default function RekapWorkorderTable({
     : BUCKETS.length * 2;
   const tableMinWidth = detailColumns
     ? Math.max(
-        isCustomerMode ? 1120 : 1040,
-        420 + detailColCount * (isCustomerMode ? 48 : 44),
+        isCustomerMode ? 1200 : 1120,
+        440 + detailColCount * (isCustomerMode ? 52 : 48),
       )
-    : 920;
+    : 1000;
   const baseColumnWidths = tableCompact
-    ? [182, 64, 64, 64, 60, 68, 60]
-    : [260, 86, 86, 86, 86, 92, 86];
-  const detailColumnWidth = detailColumns ? (isCustomerMode ? 48 : 44) : 84;
+    ? [190, 70, 70, 70, 66, 76, 66]
+    : [268, 90, 90, 90, 90, 96, 90];
+  const detailColumnWidth = detailColumns ? (isCustomerMode ? 52 : 48) : 88;
   const headerRowSpan = isDetail && detailColumns ? 3 : 2;
   const detailGroups = detailColumns?.groups ?? [];
   const captureChoices: { label: string; format: CaptureFormat }[] = [
@@ -568,25 +583,25 @@ export default function RekapWorkorderTable({
     { label: 'JPG', format: 'jpg' },
   ];
   const summaryHeaderClass =
-    'px-2 py-2 text-center text-[10px] font-bold tracking-[0.16em] text-(--text-secondary) uppercase leading-tight';
+    'px-2 py-2 text-center text-[11px] font-bold tracking-[0.16em] text-(--text-secondary) uppercase leading-tight';
   const summaryCellClass =
-    'px-2 py-2 text-center font-mono text-[11px] whitespace-nowrap';
+    'px-2 py-2 text-center font-mono text-[12px] whitespace-nowrap';
   const areaHeaderClass =
-    'sticky left-0 z-30 w-48 bg-(--surface-2)/95 px-4 py-2.5 text-left text-[10px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase backdrop-blur shadow-[10px_0_24px_-20px_rgba(15,23,42,0.45)]';
+    'sticky left-0 z-30 w-52 bg-(--surface-2)/95 px-4 py-2.5 text-left text-[11px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase backdrop-blur shadow-[10px_0_24px_-20px_rgba(15,23,42,0.45)]';
   const areaCellClass =
     'sticky left-0 z-10 bg-(--surface-2)/95 px-4 py-2.5 backdrop-blur shadow-[10px_0_24px_-20px_rgba(15,23,42,0.38)]';
   const workzoneCellClass =
     'bg-(--surface-2)/40 py-2 pr-2.5 pl-24';
   const workzoneLabelClass =
-    'max-w-28 truncate text-[10px] font-semibold tracking-[0.04em] text-(--text-muted)';
+    'max-w-28 truncate text-[11px] font-semibold tracking-[0.04em] text-(--text-muted)';
   const workzoneValueClass =
-    'px-1.5 py-1.5 text-center font-mono text-[10px] whitespace-nowrap text-(--text-secondary)';
+    'px-1.5 py-1.5 text-center font-mono text-[11px] whitespace-nowrap text-(--text-secondary)';
   const bucketGroupBaseClass =
-    'rounded-none px-1.5 py-2 text-center text-[9px] font-semibold tracking-[0.16em] uppercase leading-tight';
+    'rounded-none px-1.5 py-2 text-center text-[10px] font-semibold tracking-[0.16em] uppercase leading-tight';
   const bucketBoundaryClass = 'border-l border-(--border)/70';
-  const totalValueClass = 'text-[12px] font-semibold text-(--text-primary)';
+  const totalValueClass = 'text-[13px] font-semibold text-(--text-primary)';
   const loadValueClass =
-    'inline-flex min-w-11 justify-center rounded-full border border-(--border) bg-(--bg) px-1.5 py-0.5 font-mono text-[10px] font-bold';
+    'inline-flex min-w-12 justify-center rounded-full border border-(--border) bg-(--bg) px-1.5 py-0.5 font-mono text-[11px] font-bold';
 
   function aggregateAreaDetail(areaRows: SARow[]): DetailGroup {
     const acc: DetailGroup = { b2c: {}, b2b: {} };
@@ -685,8 +700,8 @@ export default function RekapWorkorderTable({
             </p>
             {isCustomerMode && (
               <p className='mt-1 text-[11px] text-(--text-muted)'>
-                B2C: DIAMOND / PLATINUM / GOLD / REGULER · B2B: DATIN /
-                NON-DATIN / TSEL · SQM: OPN / CLS / UPD
+                B2C: DIAMOND / PLATINUM / GOLD / REGULER · B2B: per jenis
+                (DATIN / NON-DATIN / TSEL / …) · SQM: OPN / CLS / UPD
               </p>
             )}
           </div>
@@ -766,8 +781,8 @@ export default function RekapWorkorderTable({
                   }),
                 )
               : BUCKETS.flatMap((bkt) => [
-                  <col key={`bucket-${bkt.key}-open`} style={{ width: 84 }} />,
-                  <col key={`bucket-${bkt.key}-close`} style={{ width: 84 }} />,
+                  <col key={`bucket-${bkt.key}-open`} style={{ width: 88 }} />,
+                  <col key={`bucket-${bkt.key}-close`} style={{ width: 88 }} />,
                 ])}
           </colgroup>
           <thead>
@@ -837,7 +852,7 @@ export default function RekapWorkorderTable({
                 : BUCKETS.map((bkt, groupIndex) => (
                     <th
                       key={bkt.key}
-                      className={`px-1.5 py-1.5 text-center text-[9px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase leading-tight ${
+                      className={`px-1.5 py-1.5 text-center text-[10px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase leading-tight ${
                         groupIndex > 0 ? bucketBoundaryClass : ''
                       }`}
                       colSpan={2}
@@ -852,7 +867,7 @@ export default function RekapWorkorderTable({
                 : BUCKETS.flatMap((bkt, groupIndex) => [
                     <th
                       key={`${bkt.key}-open`}
-                      className={`px-1.5 py-1.5 text-center text-[9px] font-semibold whitespace-nowrap text-(--text-secondary) ${
+                      className={`px-1.5 py-1.5 text-center text-[10px] font-semibold whitespace-nowrap text-(--text-secondary) ${
                         groupIndex > 0 ? 'border-l border-(--border)/60' : ''
                       }`}
                     >
@@ -910,13 +925,28 @@ export default function RekapWorkorderTable({
                       </div>
                     </td>
                     <td className={clsx(summaryCellClass, 'font-semibold text-rose-600 dark:text-rose-300')}>
-                      {areaOpen}
+                      <ClickableCount
+                        count={areaOpen}
+                        spec={buildSummaryCellSpec(detailMode, 'open', { area })}
+                        onCellClick={onCellClick}
+                        className='text-[11px] font-semibold text-rose-600 dark:text-rose-300'
+                      />
                     </td>
                     <td className={clsx(summaryCellClass, 'font-semibold text-emerald-600 dark:text-emerald-300')}>
-                      {areaClose}
+                      <ClickableCount
+                        count={areaClose}
+                        spec={buildSummaryCellSpec(detailMode, 'close', { area })}
+                        onCellClick={onCellClick}
+                        className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'
+                      />
                     </td>
                     <td className={clsx(summaryCellClass, totalValueClass)}>
-                      {areaOpen + areaClose}
+                      <ClickableCount
+                        count={areaOpen + areaClose}
+                        spec={buildSummaryCellSpec(detailMode, 'all', { area })}
+                        onCellClick={onCellClick}
+                        className='text-[12px] font-semibold text-(--text-primary)'
+                      />
                     </td>
                     <td className={clsx(summaryCellClass, 'text-(--text-secondary)')}>
                       {areaRows.reduce((sum, r) => sum + r.teknisiMasuk, 0)}
@@ -955,6 +985,7 @@ export default function RekapWorkorderTable({
                               : undefined,
                           },
                           `area-${area}`,
+                          { area },
                           true,
                         )
                       : renderBucketCells(
@@ -968,6 +999,7 @@ export default function RekapWorkorderTable({
                               { open: 0, close: 0 },
                             ),
                           `area-${area}`,
+                          { area },
                           true,
                         )}
                   </tr>
@@ -1006,13 +1038,37 @@ export default function RekapWorkorderTable({
                               </div>
                             </td>
                             <td className={clsx(summaryCellClass, 'font-semibold text-rose-600 dark:text-rose-300')}>
-                              {displayOpen}
+                              <ClickableCount
+                                count={displayOpen}
+                                spec={buildSummaryCellSpec(detailMode, 'open', {
+                                  area: row.area,
+                                  sa: row.saName,
+                                })}
+                                onCellClick={onCellClick}
+                                className='text-[11px] font-semibold text-rose-600 dark:text-rose-300'
+                              />
                             </td>
                             <td className={clsx(summaryCellClass, 'font-semibold text-emerald-600 dark:text-emerald-300')}>
-                              {displayClose}
+                              <ClickableCount
+                                count={displayClose}
+                                spec={buildSummaryCellSpec(detailMode, 'close', {
+                                  area: row.area,
+                                  sa: row.saName,
+                                })}
+                                onCellClick={onCellClick}
+                                className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'
+                              />
                             </td>
                             <td className={clsx(summaryCellClass, totalValueClass)}>
-                              {row.grandTotal}
+                              <ClickableCount
+                                count={row.grandTotal}
+                                spec={buildSummaryCellSpec(detailMode, 'all', {
+                                  area: row.area,
+                                  sa: row.saName,
+                                })}
+                                onCellClick={onCellClick}
+                                className='text-[12px] font-semibold text-(--text-primary)'
+                              />
                             </td>
                             <td className={clsx(summaryCellClass, 'text-(--text-secondary)')}>
                               {row.teknisiMasuk}
@@ -1036,11 +1092,13 @@ export default function RekapWorkorderTable({
                                     ? { ...row, buckets: row.buckets }
                             : row,
                                   row.saName,
+                                  { area: row.area, sa: row.saName },
                                 )
                             : renderBucketCells(
                                   BUCKETS,
                                   (key) => row.buckets[key],
                                   row.saName,
+                                  { area: row.area, sa: row.saName },
                                 )}
                           </tr>
 
@@ -1072,22 +1130,36 @@ export default function RekapWorkorderTable({
                                 </div>
                               </td>
                               <td className={clsx(workzoneValueClass, 'text-rose-500')}>
-                                {formatCell(
-                                  getDisplayedOpen(
+                                <ClickableCount
+                                  count={getDisplayedOpen(
                                     wz.totalOpen,
                                     wz.totalClose,
                                     wz.totalAll,
-                                  ),
-                                )}
+                                  )}
+                                  spec={buildSummaryCellSpec(detailMode, 'open', {
+                                    area: row.area,
+                                    sa: row.saName,
+                                    workzone: wz.workzone,
+                                  })}
+                                  onCellClick={onCellClick}
+                                  className='text-[10px] text-rose-500'
+                                />
                               </td>
                               <td className={clsx(workzoneValueClass, 'text-emerald-500')}>
-                                {formatCell(
-                                  getDisplayedClose(
+                                <ClickableCount
+                                  count={getDisplayedClose(
                                     wz.totalOpen,
                                     wz.totalClose,
                                     wz.totalAll,
-                                  ),
-                                )}
+                                  )}
+                                  spec={buildSummaryCellSpec(detailMode, 'close', {
+                                    area: row.area,
+                                    sa: row.saName,
+                                    workzone: wz.workzone,
+                                  })}
+                                  onCellClick={onCellClick}
+                                  className='text-[10px] text-emerald-500'
+                                />
                               </td>
                               <td colSpan={4 + detailColCount} />
                             </tr>
@@ -1106,13 +1178,28 @@ export default function RekapWorkorderTable({
                 Total
               </td>
               <td className={clsx(summaryCellClass, 'font-bold text-rose-500')}>
-                {totals.open}
+                <ClickableCount
+                  count={totals.open}
+                  spec={buildSummaryCellSpec(detailMode, 'open', {})}
+                  onCellClick={onCellClick}
+                  className='text-[13px] font-bold text-rose-500'
+                />
               </td>
               <td className={clsx(summaryCellClass, 'font-bold text-emerald-500')}>
-                {displayedTotalClose}
+                <ClickableCount
+                  count={displayedTotalClose}
+                  spec={buildSummaryCellSpec(detailMode, 'close', {})}
+                  onCellClick={onCellClick}
+                  className='text-[13px] font-bold text-emerald-500'
+                />
               </td>
               <td className={clsx(summaryCellClass, 'font-bold text-(--text-primary)')}>
-                {totals.grand}
+                <ClickableCount
+                  count={totals.grand}
+                  spec={buildSummaryCellSpec(detailMode, 'all', {})}
+                  onCellClick={onCellClick}
+                  className='text-[15px] font-bold text-(--text-primary)'
+                />
               </td>
               <td className={clsx(summaryCellClass, 'font-bold text-(--text-primary)')}>
                 {totals.teknisi}
@@ -1138,12 +1225,14 @@ export default function RekapWorkorderTable({
                         : undefined,
                     },
                     'total',
+                    {},
                     true,
                   )
                 : renderBucketCells(
                     BUCKETS,
                     (key) => totals.buckets.get(key)!,
                     'total',
+                    {},
                     true,
                   )}
             </tr>

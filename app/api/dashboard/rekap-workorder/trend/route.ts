@@ -14,19 +14,21 @@ function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   const bucket = normalizeOperationalBucketKey(params.get('bucket'));
   const workzone = String(params.get('workzone') || '').trim();
   const branch = String(params.get('branch') || '').trim();
+  const days = parseInt(params.get('days') || '7', 10);
   const filterParams = new URLSearchParams();
 
   if (bucket) filterParams.set('bucket', bucket);
   if (workzone) filterParams.set('workzone', workzone);
   if (branch) filterParams.set('branch', branch);
+  filterParams.set('days', String(Number.isFinite(days) ? days : 7));
 
-  return `dashboard_hourly_close:${role}:${userId}:${filterParams.toString()}`;
+  return `dashboard_rekap_trend:${role}:${userId}:${filterParams.toString()}`;
 }
 
 export async function GET(request: Request) {
   try {
     const rateLimited = await enforceApiRateLimit(request, {
-      namespace: 'rekap-workorder-hourly-close',
+      namespace: 'rekap-workorder-trend',
       limit: 30,
       windowSeconds: 60,
     });
@@ -43,6 +45,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
     const branchParam = searchParams.get('branch') || '';
+    const rawDays = parseInt(searchParams.get('days') || '7', 10);
+    const days = Number.isFinite(rawDays)
+      ? Math.min(30, Math.max(7, rawDays))
+      : 7;
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
@@ -54,28 +60,23 @@ export async function GET(request: Request) {
     };
 
     const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
-    const data = cacheKey
-      ? await getOrSetCache(
-          cacheKey,
-          () =>
-            DailyTicketService.getHourlyCloseCounts(
-              user.role,
-              user.id_user,
-              filters,
-            ),
-          DASHBOARD_CACHE_TTL,
-        )
-      : await DailyTicketService.getHourlyCloseCounts(
+    const data = await getOrSetCache(
+      cacheKey,
+      () =>
+        DailyTicketService.getDailyTrend(
           user.role,
           user.id_user,
           filters,
-        );
+          days,
+        ),
+      DASHBOARD_CACHE_TTL,
+    );
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
     const message = getErrorMessage(
       error,
-      'Failed to fetch hourly close counts',
+      'Failed to fetch daily trend counts',
     );
     const status = getErrorStatus(error, 500);
     return NextResponse.json({ success: false, message }, { status });

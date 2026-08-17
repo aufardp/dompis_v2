@@ -5,8 +5,9 @@ import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCache } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
+import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { toWibDateString, getTodayWibRange } from '@/lib/timezone';
+import { toZonedTime } from 'date-fns-tz';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getTicketCategory } from '@/app/libs/ticket-utils';
 import {
@@ -15,6 +16,12 @@ import {
 } from '@/app/libs/services/kpi-bucket-sql';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { logger } from '@/lib/observability/logger';
+import {
+  classifyBucket,
+  normalizeB2BJenis,
+  normalizeBucketText,
+} from '@/lib/rekap/rekap-classify';
+import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
 
 interface RekapTicketRow {
   area: string;
@@ -30,8 +37,7 @@ interface RekapTicketRow {
   source_ticket: string | null;
   classification_flag: string | null;
   classification_path: string | null;
-  summary: string | null;
-  symptom: string | null;
+  is_sqm_update: boolean;
   jenis_tiket_1: string | null;
   jenis_tiket_2: string | null;
 }
@@ -52,6 +58,23 @@ interface LegacyCustomerBucketRow {
 interface SegCount {
   open: number;
   close: number;
+}
+
+interface StatusCounts {
+  open: number;
+  assigned: number;
+  onProgress: number;
+  pending: number;
+  close: number;
+}
+
+interface AgingRow {
+  saName: string;
+  openCount: number;
+  oldestAt: Date | string | null;
+  g24: number;
+  g48: number;
+  g72: number;
 }
 
 type BucketKey =
@@ -81,6 +104,7 @@ interface WorkzoneRow {
   buckets: BucketRecord;
   detail: DetailGroup;
   sqm: { open: number; close: number; update: number };
+  status: StatusCounts;
   totalOpen: number;
   totalClose: number;
   totalAll: number;
@@ -91,10 +115,13 @@ interface SARow {
   area: string;
   saName: string;
   teknisiMasuk: number;
+  teknisiTerdaftar: number;
+  teknisiCoverage: number;
   woPerTeknisi: string;
   buckets: BucketRecord;
   detail: DetailGroup;
   sqm: { open: number; close: number; update: number };
+  status: StatusCounts;
   workzones: WorkzoneRow[];
   totalOpen: number;
   totalClose: number;
@@ -116,6 +143,8 @@ interface BucketSummaryCounts {
   total: number;
   open: number;
   assigned: number;
+  onProgress: number;
+  pending: number;
   close: number;
 }
 
@@ -132,6 +161,8 @@ interface WorkboardSummaryCounts {
   total: number;
   open: number;
   assigned: number;
+  onProgress: number;
+  pending: number;
   close: number;
 }
 
@@ -147,13 +178,20 @@ function buildBucketSummaryFromRows(
         acc.close += cnt;
       } else {
         acc.open += cnt;
-        if (category === 'assigned') {
-          acc.assigned += cnt;
-        }
+        if (category === 'assigned') acc.assigned += cnt;
+        else if (category === 'on_progress') acc.onProgress += cnt;
+        else if (category === 'pending') acc.pending += cnt;
       }
       return acc;
     },
-    { total: 0, open: 0, assigned: 0, close: 0 },
+    {
+      total: 0,
+      open: 0,
+      assigned: 0,
+      onProgress: 0,
+      pending: 0,
+      close: 0,
+    },
   );
 }
 
@@ -184,12 +222,21 @@ function buildTicketManagementStyleBucketSummaryFromRows(
         statusUpdate === 'escalated'
       ) {
         acc.assigned += cnt;
+        if (statusUpdate === 'on_progress') acc.onProgress += cnt;
+        else if (statusUpdate === 'pending') acc.pending += cnt;
       }
 
       acc.open += cnt;
       return acc;
     },
-    { total: 0, open: 0, assigned: 0, close: 0 },
+    {
+      total: 0,
+      open: 0,
+      assigned: 0,
+      onProgress: 0,
+      pending: 0,
+      close: 0,
+    },
   );
 }
 
@@ -297,10 +344,19 @@ function buildBucketSummaryFromDailySummaries(
       acc.total += item.total;
       acc.open += item.open;
       acc.assigned += item.assigned;
+      acc.onProgress += item.onProgress;
+      acc.pending += item.pending;
       acc.close += item.close;
       return acc;
     },
-    { total: 0, open: 0, assigned: 0, close: 0 },
+    {
+      total: 0,
+      open: 0,
+      assigned: 0,
+      onProgress: 0,
+      pending: 0,
+      close: 0,
+    },
   );
 }
 
@@ -308,7 +364,14 @@ function buildBucketBreakdownFromDailySummaries(
   dailySummaryMap: Partial<Record<KpiBucketKey, BucketSummaryCounts>>,
 ): BucketBreakdownCounts {
   const pick = (bucket: KpiBucketKey): BucketSummaryCounts =>
-    dailySummaryMap[bucket] ?? { total: 0, open: 0, assigned: 0, close: 0 };
+    dailySummaryMap[bucket] ?? {
+      total: 0,
+      open: 0,
+      assigned: 0,
+      onProgress: 0,
+      pending: 0,
+      close: 0,
+    };
 
   return {
     kpiCustomer: pick('kpi_customer'),
@@ -317,6 +380,31 @@ function buildBucketBreakdownFromDailySummaries(
     nonTechnical: pick('non_technical'),
     sqmUpdate: pick('sqm_update'),
     obsolete: pick('obsolete'),
+  };
+}
+
+function buildBucketBreakdownFromRekapRows(
+  rows: RekapTicketRow[],
+): BucketBreakdownCounts {
+  const bucketRows = {
+    kpiCustomer: [] as RekapTicketRow[],
+    kpiProactive: [] as RekapTicketRow[],
+    nonKpiUnspec: [] as RekapTicketRow[],
+    nonTechnical: [] as RekapTicketRow[],
+    sqmUpdate: [] as RekapTicketRow[],
+    obsolete: [] as RekapTicketRow[],
+  };
+  for (const row of rows) {
+    const bucket = classifyBucket(row);
+    if (bucket in bucketRows) bucketRows[bucket].push(row);
+  }
+  return {
+    kpiCustomer: buildBucketSummaryFromRows(bucketRows.kpiCustomer),
+    kpiProactive: buildBucketSummaryFromRows(bucketRows.kpiProactive),
+    nonKpiUnspec: buildBucketSummaryFromRows(bucketRows.nonKpiUnspec),
+    nonTechnical: buildBucketSummaryFromRows(bucketRows.nonTechnical),
+    sqmUpdate: buildBucketSummaryFromRows(bucketRows.sqmUpdate),
+    obsolete: buildBucketSummaryFromRows(bucketRows.obsolete),
   };
 }
 
@@ -330,36 +418,48 @@ function buildBucketBreakdownFromOverviewCards(
       total: cards.kpiCustomer.total,
       open: cards.kpiCustomer.open,
       assigned: cards.kpiCustomer.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.kpiCustomer.close,
     },
     kpiProactive: {
       total: cards.kpiProactive.total,
       open: cards.kpiProactive.open,
       assigned: cards.kpiProactive.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.kpiProactive.close,
     },
     nonKpiUnspec: {
       total: cards.nonKpiUnspec.total,
       open: cards.nonKpiUnspec.open,
       assigned: cards.nonKpiUnspec.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.nonKpiUnspec.close,
     },
     nonTechnical: {
       total: cards.nonTechnical.total,
       open: cards.nonTechnical.open,
       assigned: cards.nonTechnical.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.nonTechnical.close,
     },
     sqmUpdate: {
       total: cards.sqmUpdate.total,
       open: cards.sqmUpdate.open,
       assigned: cards.sqmUpdate.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.sqmUpdate.close,
     },
     obsolete: {
       total: cards.obsolete.total,
       open: cards.obsolete.open,
       assigned: cards.obsolete.assigned,
+      onProgress: 0,
+      pending: 0,
       close: cards.obsolete.close,
     },
   };
@@ -380,6 +480,8 @@ function buildTicketManagementBucketSummary(
     total,
     open: Math.max(total - close, 0),
     assigned: Number(openSummary.assigned ?? 0),
+    onProgress: 0,
+    pending: 0,
     close,
   };
 }
@@ -416,6 +518,8 @@ function buildWorkboardSummary(
     total: overview.totals.total,
     open: overview.totals.unassigned,
     assigned: overview.totals.assigned,
+    onProgress: 0,
+    pending: 0,
     close: overview.totals.close,
   };
 }
@@ -427,134 +531,13 @@ interface RekapResponse {
   syncDate: string;
   rows: SARow[];
   totals: Record<string, number>;
+  aging: AgingRow[];
   kpiSummary: KpiSummaryCounts;
   bucketSummary: BucketSummaryCounts;
   bucketBreakdown: BucketBreakdownCounts;
   workboardSummary: WorkboardSummaryCounts;
   selectedBucket: string;
 }
-
-const KPI_CUSTOMER_JENIS = new Set([
-  'reguler',
-  'datin',
-  'non-datin',
-  'tsel',
-  'vpn-ip',
-  'dwdm',
-  'astinet',
-  'metro-e',
-  'indibiz',
-  'reseller',
-  'wifi-id',
-]);
-
-function normalizeBucketText(value: string | null | undefined): string {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase();
-}
-
-function normalizeBucketCompact(value: string | null | undefined): string {
-  return normalizeBucketText(value).replace(/\s+/g, '');
-}
-
-function textContainsAny(
-  value: string | null | undefined,
-  terms: readonly string[],
-): boolean {
-  const lower = normalizeBucketText(value);
-  const compact = normalizeBucketCompact(value);
-  return terms.some((term) => {
-    const needle = term.toLowerCase();
-    return (
-      lower.includes(needle) || compact.includes(needle.replace(/\s+/g, ''))
-    );
-  });
-}
-
-function isTechnicalFlag(value: string | null | undefined): boolean {
-  return normalizeBucketText(value) === 'technical';
-}
-
-function isNonTechnicalFlag(value: string | null | undefined): boolean {
-  const lower = normalizeBucketText(value);
-  return (
-    lower.includes('nontechnical') ||
-    lower.includes('non technical') ||
-    lower.includes('billing')
-  );
-}
-
-function classifyBucket(row: RekapTicketRow): BucketKey {
-  const st = (row.source_ticket ?? '').toUpperCase();
-  const path = row.classification_path ?? '';
-  const summary = normalizeBucketText(row.summary);
-  const isCust = st === 'CUSTOMER';
-  const isPro = st === 'PROACTIVE';
-
-  if (path === 'Z_PERMINTAAN_044') return 'obsolete';
-
-  const jt1Raw = normalizeBucketText(row.jenis_tiket_1);
-  const jt1 = normalizeJenis(row.jenis_tiket_1);
-  const jt2 = normalizeJenis(row.jenis_tiket_2);
-  const isSqmJt1 =
-    jt1Raw.includes('sqm') || jt1 === 'sqm' || jt1 === 'sqm-ccan';
-
-  const isNonTech =
-    (isCust || isPro) &&
-    (isNonTechnicalFlag(row.classification_flag) ||
-      jt1 === 'unknown' ||
-      jt1 === 'permintaan' ||
-      jt1 === 'infracare' ||
-      jt1 === 'billing' ||
-      jt1 === 'digital-spbu' ||
-      jt1 === 'non-numbering' ||
-      jt2 === 'digital-spbu' ||
-      jt1Raw === '' ||
-      jt1Raw.includes('unknown'));
-  if (isNonTech) return 'nonTechnical';
-
-  if (isPro) {
-    if (isSqmJt1 && summary.startsWith('[sqm-update]')) return 'sqmUpdate';
-    if (isSqmJt1 && !summary.startsWith('[sqm-update]')) return 'kpiProactive';
-    if (jt1 === 'unspec' || jt1 === 'unspec-b2b') return 'nonKpiUnspec';
-  }
-
-  if (
-    isCust &&
-    jt1 &&
-    KPI_CUSTOMER_JENIS.has(jt1) &&
-    !textContainsAny(row.jenis_tiket_1, [
-      'unknown',
-      'permintaan',
-      'billing',
-      'infracare',
-      'digital_spbu',
-      'digital spbu',
-    ]) &&
-    !textContainsAny(row.jenis_tiket_2, [
-      'unknown',
-      'digital_spbu',
-      'digital spbu',
-    ])
-  ) {
-    return 'kpiCustomer';
-  }
-
-  if (isCust) return 'nonTechnical';
-  if (isPro) return 'nonTechnical';
-  return 'nonTechnical';
-}
-
-const BUCKET_FILTER_KEY: Record<string, BucketKey> = {
-  kpi_customer: 'kpiCustomer',
-  kpi_proactive: 'kpiProactive',
-  non_kpi_unspec: 'nonKpiUnspec',
-  non_technical: 'nonTechnical',
-
-  sqm_update: 'sqmUpdate',
-  obsolete: 'obsolete',
-};
 
 const BUCKET_VIEW_MEMBERS: Record<KpiBucketKey, BucketKey[]> = {
   all: [
@@ -574,9 +557,8 @@ const BUCKET_VIEW_MEMBERS: Record<KpiBucketKey, BucketKey[]> = {
 };
 
 // Bump this whenever bucket classification or detail aggregation changes.
-const REKAP_WORKORDER_CACHE_VERSION = 'v25';
-const REKAP_OVERVIEW_CACHE_VERSION = 'v3';
-const REKAP_TEKNISI_CACHE_VERSION = 'v1';
+const REKAP_WORKORDER_CACHE_VERSION = 'v27';
+const REKAP_TEKNISI_CACHE_VERSION = 'v2';
 
 function filterRekapRowsByBucket(
   rows: RekapTicketRow[],
@@ -631,9 +613,15 @@ function buildRekapResponse(
     proactive: RekapTicketRow[];
     sqmUpdate: RekapTicketRow[];
   },
+  expectedSAs?: { area: string; saName: string }[],
+  teknisiRegistered?: { sa_name: string; cnt: bigint }[],
+  aging: AgingRow[] = [],
 ): RekapResponse {
   const teknisiMap = new Map(
     teknisiRows.map((r) => [r.sa_name, Number(r.cnt)]),
+  );
+  const teknisiRegisteredMap = new Map(
+    (teknisiRegistered ?? []).map((r) => [r.sa_name, Number(r.cnt)]),
   );
   const customerLegacyMap = customerLegacyRows
     ? buildCustomerLegacySummaryFromRows(customerLegacyRows)
@@ -656,6 +644,7 @@ function buildRekapResponse(
       buckets: BucketRecord;
       detail: DetailGroup;
       sqm: { open: number; close: number; update: number };
+      status: StatusCounts;
       workzones: Map<string, WorkzoneRow>;
       jenisTiket: Record<string, SegCount>;
       totalOpen: number;
@@ -673,6 +662,13 @@ function buildRekapResponse(
         buckets: emptyBuckets(),
         detail: emptyDetail(),
         sqm: { open: 0, close: 0, update: 0 },
+        status: {
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
         workzones: new Map(),
         jenisTiket: {},
         totalOpen: 0,
@@ -690,8 +686,13 @@ function buildRekapResponse(
     const onProgress = category === 'on_progress' ? cnt : 0;
     const pending = category === 'pending' ? cnt : 0;
     const close = category === 'close' ? cnt : 0;
-    const skipAllCustomerBucket =
-      bucket === 'all' && ticketBucket === 'kpiCustomer';
+    const stOpen = category === 'open' ? cnt : 0;
+
+    sa.status.open += stOpen;
+    sa.status.assigned += assigned;
+    sa.status.onProgress += onProgress;
+    sa.status.pending += pending;
+    sa.status.close += close;
 
     const jtKey = (row.jenis_tiket ?? 'UNKNOWN').toUpperCase();
     if (!sa.jenisTiket[jtKey]) sa.jenisTiket[jtKey] = { open: 0, close: 0 };
@@ -706,6 +707,13 @@ function buildRekapResponse(
         buckets: emptyWzBuckets(),
         detail: emptyDetail(),
         sqm: { open: 0, close: 0, update: 0 },
+        status: {
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
         totalOpen: 0,
         totalClose: 0,
         totalAll: 0,
@@ -713,93 +721,101 @@ function buildRekapResponse(
     }
     const wz = sa.workzones.get(wzCode)!;
     wz.totalAll += cnt;
+    wz.status.open += stOpen;
+    wz.status.assigned += assigned;
+    wz.status.onProgress += onProgress;
+    wz.status.pending += pending;
+    wz.status.close += close;
 
-    if (!skipAllCustomerBucket) {
-      sa.buckets[ticketBucket].open += open;
-      sa.buckets[ticketBucket].close += close;
+    sa.buckets[ticketBucket].open += open;
+    sa.buckets[ticketBucket].close += close;
+    const seg = (row.customer_segment ?? '').toUpperCase();
+    const segKey = seg === 'DCS' || seg === 'PL-TSEL' ? 'b2c' : 'b2b';
+    const detailJenisSource =
+      row.jenis_tiket_1 ?? row.jenis_tiket_2 ?? row.jenis_tiket;
 
-      const seg = (row.customer_segment ?? '').toUpperCase();
-      const segKey = seg === 'DCS' || seg === 'PL-TSEL' ? 'b2c' : 'b2b';
-      const detailJenisSource =
-        row.jenis_tiket_1 ?? row.jenis_tiket_2 ?? row.jenis_tiket;
-
-      if (useJenis2) {
-        const dtJenis = normalizeJenis(detailJenisSource);
-        if (dtJenis) {
-          const grp = sa.detail[segKey];
-          if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
-          grp[dtJenis].open += open;
-          grp[dtJenis].close += close;
-        }
-      } else if (useUnspec) {
-        const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
+    if (useJenis2) {
+      const dtJenis =
+        segKey === 'b2b'
+          ? normalizeB2BJenis(detailJenisSource)
+          : normalizeJenis(detailJenisSource);
+      if (dtJenis) {
         const grp = sa.detail[segKey];
-        if (!grp[key]) grp[key] = { open: 0, close: 0 };
-        grp[key].open += open;
-        grp[key].close += close;
-      } else if (segKey === 'b2c') {
-        const ct = (row.customer_type ?? '').toUpperCase();
-        let ctKey = 'reguler';
-        if (ct.includes('DIAMOND')) ctKey = 'diamond';
-        else if (ct.includes('PLATINUM')) ctKey = 'platinum';
-        else if (ct.includes('GOLD')) ctKey = 'gold';
-        const grp = sa.detail.b2c;
-        if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
-        grp[ctKey].open += open;
-        grp[ctKey].close += close;
-      } else {
-        const dtJenis = normalizeJenis(row.jenis_tiket_1);
-        if (dtJenis) {
-          const grp = sa.detail.b2b;
-          if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
-          grp[dtJenis].open += open;
-          grp[dtJenis].close += close;
-        }
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
       }
-
-      wz.buckets[ticketBucket].open += open;
-      wz.buckets[ticketBucket].close += close;
-
-      if (useJenis2) {
-        const dtJenis = normalizeJenis(detailJenisSource);
-        if (dtJenis) {
-          const grp = wz.detail[segKey];
-          if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
-          grp[dtJenis].open += open;
-          grp[dtJenis].close += close;
-        }
-      } else if (useUnspec) {
-        const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
-        const grp = wz.detail[segKey];
-        if (!grp[key]) grp[key] = { open: 0, close: 0 };
-        grp[key].open += open;
-        grp[key].close += close;
-      } else if (segKey === 'b2c') {
-        const ct = (row.customer_type ?? '').toUpperCase();
-        let ctKey = 'reguler';
-        if (ct.includes('DIAMOND')) ctKey = 'diamond';
-        else if (ct.includes('PLATINUM')) ctKey = 'platinum';
-        else if (ct.includes('GOLD')) ctKey = 'gold';
-        const grp = wz.detail.b2c;
-        if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
-        grp[ctKey].open += open;
-        grp[ctKey].close += close;
-      } else {
-        const dtJenis = normalizeJenis(row.jenis_tiket_1);
-        if (dtJenis) {
-          const grp = wz.detail.b2b;
-          if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
-          grp[dtJenis].open += open;
-          grp[dtJenis].close += close;
-        }
+    } else if (useUnspec) {
+      const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
+      const grp = sa.detail[segKey];
+      if (!grp[key]) grp[key] = { open: 0, close: 0 };
+      grp[key].open += open;
+      grp[key].close += close;
+    } else if (segKey === 'b2c') {
+      const ct = (row.customer_type ?? '').toUpperCase();
+      let ctKey = 'reguler';
+      if (ct.includes('DIAMOND')) ctKey = 'diamond';
+      else if (ct.includes('PLATINUM')) ctKey = 'platinum';
+      else if (ct.includes('GOLD')) ctKey = 'gold';
+      const grp = sa.detail.b2c;
+      if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
+      grp[ctKey].open += open;
+      grp[ctKey].close += close;
+    } else {
+      const dtJenis = normalizeB2BJenis(row.jenis_tiket_1);
+      if (dtJenis) {
+        const grp = sa.detail.b2b;
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
       }
-
-      wz.totalOpen += open;
-      wz.totalClose += close;
     }
+
+    wz.buckets[ticketBucket].open += open;
+    wz.buckets[ticketBucket].close += close;
+
+    if (useJenis2) {
+      const dtJenis =
+        segKey === 'b2b'
+          ? normalizeB2BJenis(detailJenisSource)
+          : normalizeJenis(detailJenisSource);
+      if (dtJenis) {
+        const grp = wz.detail[segKey];
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
+      }
+    } else if (useUnspec) {
+      const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
+      const grp = wz.detail[segKey];
+      if (!grp[key]) grp[key] = { open: 0, close: 0 };
+      grp[key].open += open;
+      grp[key].close += close;
+    } else if (segKey === 'b2c') {
+      const ct = (row.customer_type ?? '').toUpperCase();
+      let ctKey = 'reguler';
+      if (ct.includes('DIAMOND')) ctKey = 'diamond';
+      else if (ct.includes('PLATINUM')) ctKey = 'platinum';
+      else if (ct.includes('GOLD')) ctKey = 'gold';
+      const grp = wz.detail.b2c;
+      if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
+      grp[ctKey].open += open;
+      grp[ctKey].close += close;
+    } else {
+      const dtJenis = normalizeB2BJenis(row.jenis_tiket_1);
+      if (dtJenis) {
+        const grp = wz.detail.b2b;
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
+      }
+    }
+
+    wz.totalOpen += open;
+    wz.totalClose += close;
   }
 
-  if (customerLegacyMap) {
+  if (bucket === 'kpi_customer' && customerLegacyMap) {
     let customerOpenTotal = 0;
     let customerCloseTotal = 0;
 
@@ -873,6 +889,31 @@ function buildRekapResponse(
     }
   }
 
+  if (expectedSAs) {
+    for (const { area, saName } of expectedSAs) {
+      if (saMap.has(saName)) continue;
+      saMap.set(saName, {
+        area,
+        saName,
+        buckets: emptyBuckets(),
+        detail: emptyDetail(),
+        sqm: { open: 0, close: 0, update: 0 },
+        status: {
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
+        workzones: new Map(),
+        jenisTiket: {},
+        totalOpen: 0,
+        totalClose: 0,
+        totalAll: 0,
+      });
+    }
+  }
+
   const hasCustomerSqmOverlay =
     bucket === 'kpi_customer' &&
     Boolean(customerSqmProactiveMap || customerSqmUpdateMap);
@@ -916,11 +957,17 @@ function buildRekapResponse(
       area: data.area,
       saName,
       teknisiMasuk,
+      teknisiTerdaftar: teknisiRegisteredMap.get(saName) ?? 0,
+      teknisiCoverage:
+        (teknisiRegisteredMap.get(saName) ?? 0) > 0
+          ? Math.round((teknisiMasuk / (teknisiRegisteredMap.get(saName) ?? 0)) * 100)
+          : (teknisiMasuk > 0 ? 100 : 0),
       woPerTeknisi:
         teknisiMasuk > 0 ? (totalOpen / teknisiMasuk).toFixed(1) : '—',
       buckets: data.buckets,
       detail: data.detail,
       sqm: data.sqm,
+      status: data.status,
       workzones: workzoneRows,
       totalOpen,
       totalClose,
@@ -940,6 +987,7 @@ function buildRekapResponse(
     syncDate,
     rows,
     totals: {},
+    aging,
     kpiSummary,
     bucketSummary,
     bucketBreakdown,
@@ -954,17 +1002,10 @@ function buildRekapTicketsCacheKey(
   syncDate: string,
   bucket: KpiBucketKey,
   workzone?: string,
+  branchId?: number | string,
+  dept: 'all' | 'b2c' | 'b2b' = 'all',
 ): string {
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}:${workzone || 'all'}`;
-}
-
-function buildRekapOverviewCacheKey(
-  role: string,
-  userId: number,
-  syncDate: string,
-  workzone?: string,
-): string {
-  return `dashboard:rekap:${REKAP_OVERVIEW_CACHE_VERSION}:overview:${syncDate}:${role}:${userId}:${workzone || 'all'}`;
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}:${dept}:${workzone || 'all'}:${branchId ?? ''}`;
 }
 
 function buildRekapTeknisiCacheKey(
@@ -975,16 +1016,21 @@ function buildRekapTeknisiCacheKey(
   return `dashboard:rekap:${REKAP_TEKNISI_CACHE_VERSION}:teknisi:${syncDate}:${userId}:${scope}`;
 }
 
-function buildRekapBucketFilterSql(bucket: KpiBucketKey): string {
-  if (bucket === 'all') return '1=1';
-  if (bucket === 'kpi_customer') {
-    return `(
-      (LOWER(source_ticket) = 'customer' AND (classification_path IS NULL OR classification_path != 'Z_PERMINTAAN_044'))
-      OR (${buildKpiBucketFilterSql('kpi_proactive')})
-      OR (${buildKpiBucketFilterSql('sqm_update')})
-    )`;
-  }
-  return buildKpiBucketFilterSql(bucket);
+function buildRekapTeknisiRegisteredCacheKey(
+  userId: number,
+  scope: string,
+): string {
+  return `dashboard:rekap:${REKAP_TEKNISI_CACHE_VERSION}:teknisi-registered:${userId}:${scope}`;
+}
+
+function buildRekapAgingCacheKey(
+  role: string,
+  userId: number,
+  bucket: string,
+  workzone: string | undefined,
+  branchId?: number | string,
+): string {
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:aging:${role}:${userId}:${bucket}:${workzone || 'all'}:${branchId ?? ''}`;
 }
 
 async function getFilteredRekapTickets(
@@ -993,6 +1039,7 @@ async function getFilteredRekapTickets(
   syncDate: string,
   bucket: KpiBucketKey,
   workzone?: string,
+  branchId?: number | string,
   dept: 'all' | 'b2c' | 'b2b' = 'all',
 ): Promise<RekapTicketRow[]> {
   const cacheKey = buildRekapTicketsCacheKey(
@@ -1001,6 +1048,8 @@ async function getFilteredRekapTickets(
     syncDate,
     bucket,
     workzone,
+    branchId,
+    dept,
   );
   return getOrSetCache(
     cacheKey,
@@ -1011,62 +1060,36 @@ async function getFilteredRekapTickets(
           dept,
           includeClosed: true,
           workzone,
+          branchId,
         });
       const bucketWhere = buildRekapBucketFilterSql(bucket);
       const fullSql = `
-    WITH ranked AS (
-      SELECT
-        a.nama_area                     AS area,
-        sa.nama_sa                      AS sa_name,
-        t.workzone,
-        t.customer_type,
-        t.customer_segment,
-        COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
-        t.status,
-        LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-        t.closed_at,
-        t.source_ticket,
-        t.classification_flag,
-        t.classification_path,
-        t.summary,
-        t.symptom,
-        t.jenis_tiket_1,
-        t.jenis_tiket_2,
-        t.id_ticket,
-        ROW_NUMBER() OVER (
-          PARTITION BY t.id_ticket
-          ORDER BY COALESCE(t.synced_at, t.closed_at, t.reported_date) DESC, t.id_ticket DESC
-        ) AS rn
-      FROM ticket t
-      JOIN service_area sa ON sa.nama_sa = t.workzone
-      JOIN area a          ON a.id_area = sa.area_id
-      WHERE ${whereClause}
-    )
-    SELECT
-      area,
-      sa_name,
-      workzone,
-      customer_type,
-      customer_segment,
-      jenis_tiket,
-      status,
-      status_update,
-      closed_at,
-      source_ticket,
-      classification_flag,
-      classification_path,
-      summary,
-      symptom,
-      jenis_tiket_1,
-      jenis_tiket_2,
+    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+      a.nama_area                     AS area,
+      sa.nama_sa                      AS sa_name,
+      t.workzone,
+      t.customer_type,
+      t.customer_segment,
+      COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
+      t.status,
+      LOWER(COALESCE(t.status_update, 'open')) AS status_update,
+      t.closed_at,
+      t.source_ticket,
+      t.classification_flag,
+      t.classification_path,
+      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      t.jenis_tiket_1,
+      t.jenis_tiket_2,
       COUNT(*) AS cnt
-    FROM ranked
-    WHERE rn = 1
+    FROM ticket t
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a          ON a.id_area = sa.area_id
+    WHERE ${whereClause}
       AND (${bucketWhere})
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
              jenis_tiket, status, status_update, closed_at,
              source_ticket, classification_flag, classification_path,
-             summary, symptom, jenis_tiket_1, jenis_tiket_2
+             is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
   `;
       return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...params);
@@ -1080,6 +1103,7 @@ async function getCustomerSqmOverlayTickets(
   userId: number,
   syncDate: string,
   workzone?: string,
+  branchId?: number | string,
 ): Promise<{ proactive: RekapTicketRow[]; sqmUpdate: RekapTicketRow[] }> {
   const cacheKey = buildRekapTicketsCacheKey(
     role,
@@ -1087,6 +1111,7 @@ async function getCustomerSqmOverlayTickets(
     syncDate,
     'customer_sqm' as KpiBucketKey,
     workzone,
+    branchId,
   );
   return getOrSetCache(
     cacheKey,
@@ -1096,6 +1121,7 @@ async function getCustomerSqmOverlayTickets(
           dept: 'all',
           includeClosed: true,
           workzone,
+          branchId,
         });
       const proactiveWhere = buildKpiBucketFilterSql('kpi_proactive');
       const sqmWhere = `LOWER(source_ticket) = 'proactive'
@@ -1104,63 +1130,36 @@ async function getCustomerSqmOverlayTickets(
          AND (LOWER(jenis_tiket_1) LIKE '%sqm%' OR LOWER(jenis_tiket_1) LIKE '%sqm-ccan%')`;
 
       const fullSql = `
-    WITH ranked AS (
-      SELECT
-        a.nama_area                     AS area,
-        sa.nama_sa                      AS sa_name,
-        t.workzone,
-        t.customer_type,
-        t.customer_segment,
-        COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
-        t.status,
-        LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-        t.closed_at,
-        t.source_ticket,
-        t.classification_flag,
-        t.classification_path,
-        t.summary,
-        t.symptom,
-        t.jenis_tiket_1,
-        t.jenis_tiket_2,
-        t.id_ticket,
-        ROW_NUMBER() OVER (
-          PARTITION BY t.id_ticket
-          ORDER BY COALESCE(t.synced_at, t.closed_at, t.reported_date) DESC, t.id_ticket DESC
-        ) AS rn
-      FROM ticket t
-      JOIN service_area sa ON sa.nama_sa = t.workzone
-      JOIN area a          ON a.id_area = sa.area_id
-      WHERE ${whereClause}
-    )
-    SELECT
+    SELECT /*+ MAX_EXECUTION_TIME(120000) */
       CASE
         WHEN (${proactiveWhere}) THEN 'proactive'
         WHEN (${sqmWhere}) THEN 'sqm_update'
       END AS overlay_kind,
-      area,
-      sa_name,
-      workzone,
-      customer_type,
-      customer_segment,
-      jenis_tiket,
-      status,
-      status_update,
-      closed_at,
-      source_ticket,
-      classification_flag,
-      classification_path,
-      summary,
-      symptom,
-      jenis_tiket_1,
-      jenis_tiket_2,
+      a.nama_area                     AS area,
+      sa.nama_sa                      AS sa_name,
+      t.workzone,
+      t.customer_type,
+      t.customer_segment,
+      COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
+      t.status,
+      LOWER(COALESCE(t.status_update, 'open')) AS status_update,
+      t.closed_at,
+      t.source_ticket,
+      t.classification_flag,
+      t.classification_path,
+      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      t.jenis_tiket_1,
+      t.jenis_tiket_2,
       COUNT(*) AS cnt
-    FROM ranked
-    WHERE rn = 1
+    FROM ticket t
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a          ON a.id_area = sa.area_id
+    WHERE ${whereClause}
       AND ((${proactiveWhere}) OR (${sqmWhere}))
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
              jenis_tiket, status, status_update, closed_at,
              source_ticket, classification_flag, classification_path, overlay_kind,
-             summary, symptom, jenis_tiket_1, jenis_tiket_2
+             is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
   `;
       const rows = await prisma.$queryRawUnsafe<CustomerSqmOverlayRow[]>(
@@ -1189,6 +1188,7 @@ async function getLegacyCustomerBucketRows(
   role: string,
   userId: number,
   workzone?: string,
+  branchId?: number | string,
   dept: 'all' | 'b2c' | 'b2b' = 'all',
 ): Promise<LegacyCustomerBucketRow[]> {
   const [whereClause, params] =
@@ -1197,35 +1197,21 @@ async function getLegacyCustomerBucketRows(
       operationalBucket: ['kpi_customer'],
       includeClosed: true,
       workzone,
+      branchId,
     });
 
   const fullSql = `
-    WITH ranked AS (
-      SELECT
-        a.nama_area AS area,
-        sa.nama_sa AS sa_name,
-        t.workzone,
-        t.status,
-        LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-        t.id_ticket,
-        ROW_NUMBER() OVER (
-          PARTITION BY t.id_ticket
-          ORDER BY COALESCE(t.synced_at, t.closed_at, t.reported_date) DESC, t.id_ticket DESC
-        ) AS rn
-      FROM ticket t
-      JOIN service_area sa ON sa.nama_sa = t.workzone
-      JOIN area a ON a.id_area = sa.area_id
-      WHERE ${whereClause}
-    )
-    SELECT
-      area,
-      sa_name,
-      workzone,
-      status,
-      status_update,
+    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+      a.nama_area AS area,
+      sa.nama_sa AS sa_name,
+      t.workzone,
+      t.status,
+      LOWER(COALESCE(t.status_update, 'open')) AS status_update,
       COUNT(*) AS cnt
-    FROM ranked
-    WHERE rn = 1
+    FROM ticket t
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a ON a.id_area = sa.area_id
+    WHERE ${whereClause}
     GROUP BY area, sa_name, workzone, status, status_update
     ORDER BY area, sa_name, workzone
   `;
@@ -1237,6 +1223,7 @@ async function getLegacyCustomerRekapTickets(
   role: string,
   userId: number,
   workzone?: string,
+  branchId?: number | string,
   dept: 'all' | 'b2c' | 'b2b' = 'all',
 ): Promise<RekapTicketRow[]> {
   const [whereClause, params] =
@@ -1245,59 +1232,35 @@ async function getLegacyCustomerRekapTickets(
       operationalBucket: ['kpi_customer'],
       includeClosed: true,
       workzone,
+      branchId,
     });
 
   const fullSql = `
-    WITH ranked AS (
-      SELECT
-        a.nama_area                     AS area,
-        sa.nama_sa                      AS sa_name,
-        t.workzone,
-        t.customer_type,
-        t.customer_segment,
-        COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
-        t.status,
-        LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-        t.closed_at,
-        t.source_ticket,
-        t.classification_flag,
-        t.classification_path,
-        t.summary,
-        t.jenis_tiket_1,
-        t.jenis_tiket_2,
-        t.id_ticket,
-        ROW_NUMBER() OVER (
-          PARTITION BY t.id_ticket
-          ORDER BY COALESCE(t.synced_at, t.closed_at, t.reported_date) DESC, t.id_ticket DESC
-        ) AS rn
-      FROM ticket t
-      JOIN service_area sa ON sa.nama_sa = t.workzone
-      JOIN area a          ON a.id_area = sa.area_id
-      WHERE ${whereClause}
-    )
-    SELECT
-      area,
-      sa_name,
-      workzone,
-      customer_type,
-      customer_segment,
-      jenis_tiket,
-      status,
-      status_update,
-      closed_at,
-      source_ticket,
-      classification_flag,
-      classification_path,
-      summary,
-      jenis_tiket_1,
-      jenis_tiket_2,
+    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+      a.nama_area                     AS area,
+      sa.nama_sa                      AS sa_name,
+      t.workzone,
+      t.customer_type,
+      t.customer_segment,
+      COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
+      t.status,
+      LOWER(COALESCE(t.status_update, 'open')) AS status_update,
+      t.closed_at,
+      t.source_ticket,
+      t.classification_flag,
+      t.classification_path,
+      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      t.jenis_tiket_1,
+      t.jenis_tiket_2,
       COUNT(*) AS cnt
-    FROM ranked
-    WHERE rn = 1
+    FROM ticket t
+    JOIN service_area sa ON sa.nama_sa = t.workzone
+    JOIN area a          ON a.id_area = sa.area_id
+    WHERE ${whereClause}
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
              jenis_tiket, status, status_update, closed_at,
              source_ticket, classification_flag, classification_path,
-             summary, jenis_tiket_1, jenis_tiket_2
+             is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
   `;
 
@@ -1309,11 +1272,12 @@ async function getCustomerRekapTicketsSafe(
   userId: number,
   today: string,
   workzone?: string,
+  branchId?: number | string,
 ): Promise<RekapTicketRow[]> {
   try {
     const [b2cRows, b2bRows] = await Promise.all([
-      getLegacyCustomerRekapTickets(role, userId, workzone, 'b2c'),
-      getLegacyCustomerRekapTickets(role, userId, workzone, 'b2b'),
+      getLegacyCustomerRekapTickets(role, userId, workzone, branchId, 'b2c'),
+      getLegacyCustomerRekapTickets(role, userId, workzone, branchId, 'b2b'),
     ]);
     return [...b2cRows, ...b2bRows];
   } catch (error) {
@@ -1333,6 +1297,7 @@ async function getCustomerRekapTicketsSafe(
         today,
         'kpi_customer',
         workzone,
+        branchId,
         'b2c',
       ),
       getFilteredRekapTickets(
@@ -1341,34 +1306,12 @@ async function getCustomerRekapTicketsSafe(
         today,
         'kpi_customer',
         workzone,
+        branchId,
         'b2b',
       ),
     ]);
     return [...b2cRows, ...b2bRows];
   }
-}
-
-async function getRekapOverview(
-  role: string,
-  userId: number,
-  syncDate: string,
-  workzone?: string,
-): Promise<
-  Awaited<
-    ReturnType<typeof DailyTicketService.getTicketManagementOverviewSummary>
-  >
-> {
-  const cacheKey = buildRekapOverviewCacheKey(role, userId, syncDate, workzone);
-  return getOrSetCache(
-    cacheKey,
-    () =>
-      DailyTicketService.getTicketManagementOverviewSummary(
-        role,
-        userId,
-        workzone,
-      ),
-    120,
-  );
 }
 
 async function getRekapTeknisiRows(
@@ -1397,6 +1340,161 @@ async function getRekapTeknisiRows(
   );
 }
 
+async function getRekapTeknisiRegistered(
+  userId: number,
+  workzones: string[] | null,
+): Promise<{ sa_name: string; cnt: bigint }[]> {
+  const scope =
+    workzones && workzones.length > 0
+      ? workzones.slice().sort().join(',')
+      : 'all';
+  const cacheKey = buildRekapTeknisiRegisteredCacheKey(userId, scope);
+  return getOrSetCache(
+    cacheKey,
+    async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
+      SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT u.id_user) AS cnt
+      FROM user_sa usa
+      JOIN service_area sa ON sa.id_sa = usa.sa_id
+      JOIN users u ON u.id_user = usa.user_id
+      WHERE u.role_id = 4
+      ${workzones && workzones.length > 0 ? Prisma.sql`AND sa.nama_sa IN (${Prisma.join(workzones)})` : Prisma.sql``}
+      GROUP BY sa.nama_sa
+    `,
+    300,
+  );
+}
+
+async function getRekapAging(
+  role: string,
+  userId: number,
+  bucket: string,
+  workzone?: string,
+  branchId?: number | string,
+): Promise<AgingRow[]> {
+  const cacheKey = buildRekapAgingCacheKey(
+    role,
+    userId,
+    bucket,
+    workzone,
+    branchId,
+  );
+  return getOrSetCache(
+    cacheKey,
+    async () => {
+      try {
+        const [whereClause, params] =
+          await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
+            dept: 'all',
+            includeClosed: true,
+            workzone,
+            branchId,
+          });
+        const bucketWhere = buildRekapBucketFilterSql(bucket);
+        const closeStatusSql = CLOSE_STATUS_VALUES.map(
+          (status) => `'${status.replace(/'/g, "''")}'`,
+        ).join(', ');
+        const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
+        const nowTs = wibNow.getTime();
+        const threshold = (hours: number) => new Date(nowTs - hours * 3_600_000);
+
+        const sql = `
+          SELECT
+            sa.nama_sa                         AS saName,
+            COUNT(*)                           AS openCount,
+            MIN(t.booking_date)                AS oldestAt,
+            SUM(CASE WHEN t.booking_date < ? THEN 1 ELSE 0 END) AS g24,
+            SUM(CASE WHEN t.booking_date < ? THEN 1 ELSE 0 END) AS g48,
+            SUM(CASE WHEN t.booking_date < ? THEN 1 ELSE 0 END) AS g72
+          FROM ticket t
+          JOIN service_area sa ON sa.nama_sa = t.workzone
+          WHERE ${whereClause}
+            AND (${bucketWhere})
+            AND NOT (UPPER(TRIM(COALESCE(t.status, ''))) IN (${closeStatusSql}))
+          GROUP BY sa.nama_sa
+        `;
+        const rows = await prisma.$queryRawUnsafe<
+          Array<{
+            saName: string;
+            openCount: bigint;
+            oldestAt: Date | null;
+            g24: bigint;
+            g48: bigint;
+            g72: bigint;
+          }>
+        >(sql, ...params, threshold(24), threshold(48), threshold(72));
+        return rows.map((r) => ({
+          saName: r.saName,
+          openCount: Number(r.openCount ?? 0),
+          oldestAt: r.oldestAt,
+          g24: Number(r.g24 ?? 0),
+          g48: Number(r.g48 ?? 0),
+          g72: Number(r.g72 ?? 0),
+        }));
+      } catch (error) {
+        logger.warn('Rekap aging query failed', {
+          role,
+          userId,
+          bucket,
+          workzone,
+          branchId,
+          error: String((error as Error)?.message ?? error),
+        });
+        return [];
+      }
+    },
+    300,
+  );
+}
+
+async function getRekapExpectedServiceAreas(
+  branchId?: number | string,
+  workzone?: string,
+): Promise<{ area: string; saName: string }[]> {
+  if (workzone) {
+    return getOrSetCache(
+      `rekap:sa-area:${workzone}`,
+      async () =>
+        prisma.$queryRaw<{ area: string; saName: string }[]>`
+          SELECT a.nama_area AS area, sa.nama_sa AS saName
+          FROM service_area sa
+          JOIN area a ON a.id_area = sa.area_id
+          WHERE sa.nama_sa = ${workzone}
+          ORDER BY a.nama_area, sa.nama_sa
+        `,
+      3600,
+    );
+  }
+
+  if (branchId) {
+    const id = Number(branchId);
+    if (!Number.isFinite(id) || id <= 0) return [];
+    return getOrSetCache(
+      `rekap:branch-sa-areas:${id}`,
+      async () =>
+        prisma.$queryRaw<{ area: string; saName: string }[]>`
+          SELECT a.nama_area AS area, sa.nama_sa AS saName
+          FROM service_area sa
+          JOIN area a ON a.id_area = sa.area_id
+          WHERE a.branch_id = ${id}
+          ORDER BY a.nama_area, sa.nama_sa
+        `,
+      3600,
+    );
+  }
+
+  return getOrSetCache(
+    'rekap:all-sa-areas',
+    async () =>
+      prisma.$queryRaw<{ area: string; saName: string }[]>`
+        SELECT a.nama_area AS area, sa.nama_sa AS saName
+        FROM service_area sa
+        JOIN area a ON a.id_area = sa.area_id
+        ORDER BY a.nama_area, sa.nama_sa
+      `,
+    3600,
+  );
+}
+
 async function getDailyOpenSummary(
   role: string,
   userId: number,
@@ -1418,6 +1516,8 @@ async function getDailyOpenSummary(
     total: result.summary.total,
     open: result.summary.open,
     assigned: result.summary.assigned,
+    onProgress: 0,
+    pending: 0,
     close: result.summary.close,
   };
 }
@@ -1427,12 +1527,14 @@ async function getTicketManagementBucketSummary(
   userId: number,
   bucket: KpiBucketKey,
   workzone?: string,
+  branchId?: number | string,
 ): Promise<BucketSummaryCounts> {
   const [openResult, closeResult] = await Promise.all([
     DailyTicketService.getDailyTicketTable(role, userId, {
       dept: 'all',
       operationalBucket: [bucket],
       workzone,
+      branchId,
       includeValidasi: false,
       includeValidasiTickets: false,
       includeOptions: false,
@@ -1445,6 +1547,7 @@ async function getTicketManagementBucketSummary(
       ticketStatus: CLOSE_STATUS_VALUES,
       includeClosed: true,
       workzone,
+      branchId,
       includeValidasi: false,
       includeValidasiTickets: false,
       includeOptions: false,
@@ -1462,12 +1565,16 @@ async function getTicketManagementBucketSummary(
 async function getDailyBucketSummaryMatrix(
   role: string,
   userId: number,
+  workzone?: string,
+  branchId?: number | string,
 ): Promise<
   Awaited<ReturnType<typeof DailyTicketService.getKpiBucketSummaryMatrix>>
 > {
   return DailyTicketService.getKpiBucketSummaryMatrix(role, userId, {
     dept: 'all',
     includeClosed: true,
+    workzone,
+    branchId,
   });
 }
 
@@ -1503,6 +1610,63 @@ export async function GET(request: NextRequest) {
     const selectedWorkzone =
       requestedWorkzone.length > 0 ? requestedWorkzone : undefined;
 
+    const branchParam = request.nextUrl.searchParams.get('branch');
+    const branchSas = await resolveBranchScope(
+      decoded.role,
+      decoded.id_user,
+      branchParam,
+    );
+
+    if (
+      branchParam &&
+      branchSas &&
+      branchSas.length === 0 &&
+      !isSuperAdmin
+    ) {
+      return NextResponse.json({
+        rows: [],
+        totals: {},
+        timestamp: new Date().toISOString(),
+        syncDate: today,
+        title: 'REKAP WORKORDER ASSURANCE',
+        subtitle: '',
+        kpiSummary: {
+          total: 0,
+          kpiCustomer: 0,
+          kpiProactive: 0,
+          nonKpiUnspec: 0,
+          nonTechnical: 0,
+          sqmUpdate: 0,
+          obsolete: 0,
+        },
+        bucketSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
+        bucketBreakdown: {
+          kpiCustomer: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          kpiProactive: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonKpiUnspec: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonTechnical: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          sqmUpdate: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          obsolete: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+        },
+        workboardSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
+        selectedBucket: bucket,
+      });
+    }
+
     if (
       !isSuperAdmin &&
       selectedWorkzone &&
@@ -1524,21 +1688,54 @@ export async function GET(request: NextRequest) {
           sqmUpdate: 0,
           obsolete: 0,
         },
-        bucketSummary: { total: 0, open: 0, assigned: 0, close: 0 },
-        bucketBreakdown: {
-          kpiCustomer: { total: 0, open: 0, assigned: 0, close: 0 },
-          kpiProactive: { total: 0, open: 0, assigned: 0, close: 0 },
-          nonKpiUnspec: { total: 0, open: 0, assigned: 0, close: 0 },
-          nonTechnical: { total: 0, open: 0, assigned: 0, close: 0 },
-          sqmUpdate: { total: 0, open: 0, assigned: 0, close: 0 },
-          obsolete: { total: 0, open: 0, assigned: 0, close: 0 },
+        bucketSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
         },
-        workboardSummary: { total: 0, open: 0, assigned: 0, close: 0 },
+        bucketBreakdown: {
+          kpiCustomer: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          kpiProactive: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonKpiUnspec: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonTechnical: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          sqmUpdate: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          obsolete: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+        },
+        workboardSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
         selectedBucket: bucket,
       });
     }
 
     const scopeWorkzones = selectedWorkzone ? [selectedWorkzone] : workzones;
+    const teknisiWorkzones = branchSas
+      ? isSuperAdmin
+        ? branchSas
+        : branchSas.filter((w) => (workzones ?? []).includes(w))
+      : scopeWorkzones;
+
+    const expectedSAs = await (async () => {
+      if (branchSas && branchSas.length > 0) {
+        const all = await getRekapExpectedServiceAreas(branchParam ?? undefined);
+        return isSuperAdmin
+          ? all
+          : all.filter((s) => (workzones ?? []).includes(s.saName));
+      }
+      if (selectedWorkzone) {
+        return getRekapExpectedServiceAreas(undefined, selectedWorkzone);
+      }
+      const all = await getRekapExpectedServiceAreas();
+      return isSuperAdmin ? all : all.filter((s) => (workzones ?? []).includes(s.saName));
+    })();
 
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
       return NextResponse.json({
@@ -1557,21 +1754,35 @@ export async function GET(request: NextRequest) {
           sqmUpdate: 0,
           obsolete: 0,
         },
-        bucketSummary: { total: 0, open: 0, assigned: 0, close: 0 },
-        bucketBreakdown: {
-          kpiCustomer: { total: 0, open: 0, assigned: 0, close: 0 },
-          kpiProactive: { total: 0, open: 0, assigned: 0, close: 0 },
-          nonKpiUnspec: { total: 0, open: 0, assigned: 0, close: 0 },
-          nonTechnical: { total: 0, open: 0, assigned: 0, close: 0 },
-          sqmUpdate: { total: 0, open: 0, assigned: 0, close: 0 },
-          obsolete: { total: 0, open: 0, assigned: 0, close: 0 },
+        bucketSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
         },
-        workboardSummary: { total: 0, open: 0, assigned: 0, close: 0 },
+        bucketBreakdown: {
+          kpiCustomer: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          kpiProactive: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonKpiUnspec: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          nonTechnical: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          sqmUpdate: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+          obsolete: { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0 },
+        },
+        workboardSummary: {
+          total: 0,
+          open: 0,
+          assigned: 0,
+          onProgress: 0,
+          pending: 0,
+          close: 0,
+        },
         selectedBucket: bucket,
       });
     }
 
-    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (scopeWorkzones ?? []).sort().join(',')}:${bucket}`;
+    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (scopeWorkzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
 
     const data = await getOrSetCache(
       cacheKey,
@@ -1580,9 +1791,10 @@ export async function GET(request: NextRequest) {
         const [
           ticketRowsAll,
           teknisiRows,
+          teknisiRegisteredRows,
+          agingRows,
           customerLegacyRows,
           customerSqmOverlayRows,
-          dailySummaryEntries,
         ] = await Promise.all([
           bucket === 'kpi_customer'
             ? getCustomerRekapTicketsSafe(
@@ -1590,6 +1802,7 @@ export async function GET(request: NextRequest) {
                 decoded.id_user,
                 today,
                 selectedWorkzone,
+                branchParam ? Number(branchParam) : undefined,
               )
             : getFilteredRekapTickets(
                 decoded.role,
@@ -1597,20 +1810,31 @@ export async function GET(request: NextRequest) {
                 today,
                 bucket,
                 selectedWorkzone,
+                branchParam ? Number(branchParam) : undefined,
               ),
-          getRekapTeknisiRows(today, decoded.id_user, scopeWorkzones),
+          getRekapTeknisiRows(today, decoded.id_user, teknisiWorkzones),
+          getRekapTeknisiRegistered(decoded.id_user, teknisiWorkzones),
+          getRekapAging(
+            decoded.role,
+            decoded.id_user,
+            bucket,
+            selectedWorkzone,
+            branchParam ? Number(branchParam) : undefined,
+          ),
           bucket === 'all' || bucket === 'kpi_customer'
             ? Promise.all([
                 getLegacyCustomerBucketRows(
                   decoded.role,
                   decoded.id_user,
                   selectedWorkzone,
+                  branchParam ? Number(branchParam) : undefined,
                   'b2c',
                 ),
                 getLegacyCustomerBucketRows(
                   decoded.role,
                   decoded.id_user,
                   selectedWorkzone,
+                  branchParam ? Number(branchParam) : undefined,
                   'b2b',
                 ),
               ]).then(([b2cRows, b2bRows]) => [...b2cRows, ...b2bRows])
@@ -1621,6 +1845,7 @@ export async function GET(request: NextRequest) {
                 decoded.id_user,
                 today,
                 selectedWorkzone,
+                branchParam ? Number(branchParam) : undefined,
               ).catch((error) => {
                 logger.warn('Customer sqm overlay failed', {
                   role: decoded.role,
@@ -1637,62 +1862,25 @@ export async function GET(request: NextRequest) {
                 proactive: [] as RekapTicketRow[],
                 sqmUpdate: [] as RekapTicketRow[],
               }),
-          Promise.all(
-            [
-              { key: 'kpi_customer', bucket: 'kpi_customer' as const },
-              { key: 'kpi_proactive', bucket: 'kpi_proactive' as const },
-              { key: 'non_kpi_unspec', bucket: 'non_kpi_unspec' as const },
-              { key: 'non_technical', bucket: 'non_technical' as const },
-              { key: 'sqm_update', bucket: 'sqm_update' as const },
-              { key: 'obsolete', bucket: 'obsolete' as const },
-            ].map(async ({ key, bucket: bucketKey }) => {
-              const summary = await getTicketManagementBucketSummary(
-                decoded.role,
-                decoded.id_user,
-                bucketKey,
-                selectedWorkzone,
-              );
-              return [key, summary] as const;
-            }),
-          ),
-        ]);
+          ]);
         const fetchedAt = Date.now();
-        const dailySummaryMap = Object.fromEntries(
-          dailySummaryEntries,
-        ) as Partial<Record<KpiBucketKey, BucketSummaryCounts>>;
-        const workboardSummary = buildBucketSummaryFromDailySummaries(
-          dailySummaryMap,
-          'all',
-        );
-        const bucketBreakdown =
-          buildBucketBreakdownFromDailySummaries(dailySummaryMap);
+        const bucketBreakdown = buildBucketBreakdownFromRekapRows(ticketRowsAll);
+        const workboardSummary = buildBucketSummaryFromRows(ticketRowsAll);
         const kpiSummary = {
           total: workboardSummary.total,
-          kpiCustomer: dailySummaryMap.kpi_customer?.total ?? 0,
-          kpiProactive: dailySummaryMap.kpi_proactive?.total ?? 0,
-          nonKpiUnspec: dailySummaryMap.non_kpi_unspec?.total ?? 0,
-          nonTechnical: dailySummaryMap.non_technical?.total ?? 0,
-          sqmUpdate: dailySummaryMap.sqm_update?.total ?? 0,
-          obsolete: dailySummaryMap.obsolete?.total ?? 0,
+          kpiCustomer: bucketBreakdown.kpiCustomer.total,
+          kpiProactive: bucketBreakdown.kpiProactive.total,
+          nonKpiUnspec: bucketBreakdown.nonKpiUnspec.total,
+          nonTechnical: bucketBreakdown.nonTechnical.total,
+          sqmUpdate: bucketBreakdown.sqmUpdate.total,
+          obsolete: bucketBreakdown.obsolete.total,
         };
 
         const ticketRows = filterRekapRowsByBucket(ticketRowsAll, bucket);
-        const customerCustomerRows =
-          bucket === 'all'
-            ? await getCustomerRekapTicketsSafe(
-                decoded.role,
-                decoded.id_user,
-                today,
-                selectedWorkzone,
-              )
-            : ticketRows;
         const bucketSummary =
           bucket === 'all'
             ? buildBucketSummaryFromRows(ticketRowsAll)
-            : bucket === 'kpi_customer'
-              ? (dailySummaryMap.kpi_customer ??
-                buildBucketSummaryFromRows(ticketRows))
-              : buildBucketSummaryFromRows(ticketRows);
+            : buildBucketSummaryFromRows(ticketRows);
 
         const selectedBucketSummary = buildSelectedBucketSummary(
           bucket,
@@ -1703,6 +1891,8 @@ export async function GET(request: NextRequest) {
           total: workboardSummary.total,
           open: workboardSummary.open,
           assigned: workboardSummary.assigned,
+          onProgress: workboardSummary.onProgress,
+          pending: workboardSummary.pending,
           close: workboardSummary.close,
         };
 
@@ -1733,6 +1923,8 @@ export async function GET(request: NextRequest) {
                 sqmUpdate: customerSqmOverlayRows.sqmUpdate,
               }
             : undefined,
+          expectedSAs,
+          teknisiRegisteredRows,
         );
       },
       120,

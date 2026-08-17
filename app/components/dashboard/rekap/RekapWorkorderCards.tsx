@@ -5,6 +5,11 @@ import { useMemo, useState, useCallback } from 'react';
 import { ChevronDown, ChevronRight, MapPin, Users } from 'lucide-react';
 import clsx from 'clsx';
 import MobileDetailDrawer from './MobileDetailDrawer';
+import ClickableCount from './ClickableCount';
+import {
+  buildSummaryCellSpec,
+  type RekapCellSpec,
+} from './cellSpec';
 
 interface SegCount {
   open: number;
@@ -52,11 +57,14 @@ interface SARow {
 interface RekapCardsProps {
   rows: SARow[];
   captureTargetRef?: RefObject<HTMLDivElement | null>;
+  detailMode?: string;
+  onCellClick?: (spec: RekapCellSpec) => void;
 }
 
-function closeRate(row: SARow): number {
+function closeRate(row: SARow, close?: number): number {
+  const closeValue = close ?? row.totalClose;
   return row.grandTotal > 0
-    ? Math.round((row.totalClose / row.grandTotal) * 100)
+    ? Math.round((closeValue / row.grandTotal) * 100)
     : 0;
 }
 
@@ -69,9 +77,38 @@ function loadToneColor(open: number, teknisi: number): string {
   return '#3b82f6';
 }
 
+function getDisplayedOpen(
+  open: number,
+  close: number,
+  total: number | undefined,
+  isCustomerMode: boolean,
+): number {
+  if (isCustomerMode) {
+    return Math.max((total ?? open + close) - close, 0);
+  }
+  return open;
+}
+
+function getDisplayedClose(
+  open: number,
+  close: number,
+  total: number | undefined,
+  isCustomerMode: boolean,
+): number {
+  if (isCustomerMode) {
+    return Math.max(
+      (total ?? open + close) - getDisplayedOpen(open, close, total, true),
+      0,
+    );
+  }
+  return close;
+}
+
 export default function RekapWorkorderCards({
   rows,
   captureTargetRef,
+  detailMode,
+  onCellClick,
 }: RekapCardsProps) {
   const [selectedRow, setSelectedRow] = useState<SARow | null>(null);
   const areaNames = useMemo(() => {
@@ -101,6 +138,8 @@ export default function RekapWorkorderCards({
     return Array.from(map.entries());
   }, [rows]);
 
+  const isCustomerMode = detailMode === 'kpi_customer';
+
   if (rows.length === 0) {
     return (
       <div className='py-12 text-center text-sm text-(--text-muted)'>
@@ -119,11 +158,25 @@ export default function RekapWorkorderCards({
         {groupedRows.map(([area, areaRows]) => {
           const isOpen = openAreas.has(area);
           const areaOpen = areaRows.reduce(
-            (sum, row) => sum + row.totalOpen,
+            (sum, row) =>
+              sum +
+              getDisplayedOpen(
+                row.totalOpen,
+                row.totalClose,
+                row.grandTotal,
+                isCustomerMode,
+              ),
             0,
           );
           const areaClose = areaRows.reduce(
-            (sum, row) => sum + row.totalClose,
+            (sum, row) =>
+              sum +
+              getDisplayedClose(
+                row.totalOpen,
+                row.totalClose,
+                row.grandTotal,
+                isCustomerMode,
+              ),
             0,
           );
           const areaTotal = areaOpen + areaClose;
@@ -171,16 +224,36 @@ export default function RekapWorkorderCards({
                 <div className='min-h-0 overflow-hidden'>
                   <div className='space-y-3 p-3'>
                     {areaRows.map((row) => {
-                      const toneColor = loadToneColor(
+                      const displayOpen = getDisplayedOpen(
                         row.totalOpen,
+                        row.totalClose,
+                        row.grandTotal,
+                        isCustomerMode,
+                      );
+                      const displayClose = getDisplayedClose(
+                        row.totalOpen,
+                        row.totalClose,
+                        row.grandTotal,
+                        isCustomerMode,
+                      );
+                      const toneColor = loadToneColor(
+                        displayOpen,
                         row.teknisiMasuk,
                       );
-                      const cr = closeRate(row);
+                      const cr = closeRate(row, displayClose);
                       return (
-                        <button
+                        <div
                           key={row.saName}
+                          role='button'
+                          tabIndex={0}
                           onClick={() => setSelectedRow(row)}
-                          className='group w-full rounded-[22px] border border-(--border) bg-(--bg) p-3.5 text-left transition-colors hover:border-blue-500/20 hover:bg-(--surface-2)'
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedRow(row);
+                            }
+                          }}
+                          className='group w-full cursor-pointer rounded-[22px] border border-(--border) bg-(--bg) p-3.5 text-left transition-colors hover:border-blue-500/20 hover:bg-(--surface-2) focus:ring-2 focus:ring-blue-500/40 focus:outline-none'
                         >
                           <div className='flex items-start justify-between gap-3'>
                             <div className='min-w-0'>
@@ -207,17 +280,29 @@ export default function RekapWorkorderCards({
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Open
                               </p>
-                              <p className='mt-1 text-[1.05rem] leading-none font-semibold text-rose-600 dark:text-rose-300 tabular-nums'>
-                                {row.totalOpen}
-                              </p>
+                              <ClickableCount
+                                count={displayOpen}
+                                spec={buildSummaryCellSpec(detailMode, 'open', {
+                                  area: row.area,
+                                  sa: row.saName,
+                                })}
+                                onCellClick={onCellClick}
+                                className='mt-1 block text-[1.05rem] leading-none font-semibold text-rose-600 dark:text-rose-300 tabular-nums'
+                              />
                             </div>
                             <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
                                 Close
                               </p>
-                              <p className='mt-1 text-[1.05rem] leading-none font-semibold text-emerald-600 dark:text-emerald-300 tabular-nums'>
-                                {row.totalClose}
-                              </p>
+                              <ClickableCount
+                                count={displayClose}
+                                spec={buildSummaryCellSpec(detailMode, 'close', {
+                                  area: row.area,
+                                  sa: row.saName,
+                                })}
+                                onCellClick={onCellClick}
+                                className='mt-1 block text-[1.05rem] leading-none font-semibold text-emerald-600 dark:text-emerald-300 tabular-nums'
+                              />
                             </div>
                             <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
@@ -242,7 +327,7 @@ export default function RekapWorkorderCards({
                               </span>
                             </div>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>

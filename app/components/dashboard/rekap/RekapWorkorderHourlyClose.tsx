@@ -145,20 +145,23 @@ function HourChip({
 
 export default function RekapWorkorderHourlyClose({
   bucket,
+  branch,
 }: {
   bucket?: string;
+  branch?: string;
 }) {
   const [selectedWorkzone, setSelectedWorkzone] = useState('');
   const { options: workzoneOptions, loading: workzoneLoading } =
     useWorkzoneOptions();
   const { data, isLoading, isFetching } = useQuery({
     queryKey: queryKeys.dashboard.rekapWorkorderHourly(
-      `${bucket || 'all'}:${selectedWorkzone || 'all'}`,
+      `${bucket || 'all'}:${selectedWorkzone || 'all'}:${branch || 'all'}`,
     ),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (bucket && bucket !== 'all') params.set('bucket', bucket);
       if (selectedWorkzone) params.set('workzone', selectedWorkzone);
+      if (branch) params.set('branch', branch);
       const url = params.toString()
         ? `/api/dashboard/rekap-workorder/hourly-close?${params.toString()}`
         : '/api/dashboard/rekap-workorder/hourly-close';
