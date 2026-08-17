@@ -31,6 +31,7 @@ import ExpandableMenuGroup from '@/app/components/layout/ExpandableMenuGroup';
 import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
 import Image from 'next/image';
 
 type MenuIcon = ComponentType<{ className?: string }>;
@@ -107,6 +108,13 @@ const MENU_ITEMS: Array<{
     hint: 'User & hierarki region',
     superadminOnly: true,
     adminBranchVisible: true,
+  },
+  {
+    label: 'Audit Log',
+    path: '/admin/audit-log',
+    icon: ShieldCheck,
+    hint: 'Trail akses & compliance',
+    superadminOnly: true,
   },
 ];
 
@@ -273,83 +281,108 @@ export default function Sidebar({
   const pathname = usePathname();
   const { options: workzoneOptions } = useWorkzoneOptions();
   const { user } = useCurrentUser();
+  const { branch } = usePersistentBranchScope();
   const roleName = String(user?.role_name ?? '').toLowerCase();
   const roleKey = String(user?.role_key ?? '').toLowerCase();
 
-  const kpiCustomerFallback = useDailyTicketPage({
+  const kpiCustomerQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_customer'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
-  const kpiProactiveFallback = useDailyTicketPage({
+  const kpiProactiveQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['kpi_proactive'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
-  const nonKpiUnspecFallback = useDailyTicketPage({
+  const nonKpiUnspecQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_kpi_unspec'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
-  const nonTechnicalFallback = useDailyTicketPage({
+  const nonTechnicalQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['non_technical'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
-  const sqmUpdateFallback = useDailyTicketPage({
+  const sqmUpdateQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['sqm_update'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
-  const obsoleteFallback = useDailyTicketPage({
+  const obsoleteQuery = useDailyTicketPage({
     dept: 'all',
     operationalBucket: ['obsolete'],
     page: 1,
     limit: 1,
     workzone: selectedWorkzone || undefined,
+    branch: branch || undefined,
     includeValidasiTickets: false,
     includeOptions: false,
     countOnly: true,
-  }).summary.total;
+  });
 
   const syncedCounts = useSyncExternalStore(subscribe, getSnapshot);
 
-  const kpiCustomerTotal = syncedCounts['kpi-customer'] ?? kpiCustomerFallback;
-  const kpiProactiveTotal = syncedCounts['kpi-proactive'] ?? kpiProactiveFallback;
-  const nonKpiUnspecTotal = syncedCounts['non-kpi-unspec'] ?? nonKpiUnspecFallback;
-  const nonTechnicalTotal = syncedCounts['non-technical'] ?? nonTechnicalFallback;
-  const sqmUpdateTotal = syncedCounts['sqm-update'] ?? sqmUpdateFallback;
-  const obsoleteTotal = syncedCounts['obsolete'] ?? obsoleteFallback;
+  const kpiCustomerTotal =
+    kpiCustomerQuery.loading
+      ? (syncedCounts['kpi-customer'] ?? kpiCustomerQuery.summary.total)
+      : kpiCustomerQuery.summary.total;
+  const kpiProactiveTotal =
+    kpiProactiveQuery.loading
+      ? (syncedCounts['kpi-proactive'] ?? kpiProactiveQuery.summary.total)
+      : kpiProactiveQuery.summary.total;
+  const nonKpiUnspecTotal =
+    nonKpiUnspecQuery.loading
+      ? (syncedCounts['non-kpi-unspec'] ?? nonKpiUnspecQuery.summary.total)
+      : nonKpiUnspecQuery.summary.total;
+  const nonTechnicalTotal =
+    nonTechnicalQuery.loading
+      ? (syncedCounts['non-technical'] ?? nonTechnicalQuery.summary.total)
+      : nonTechnicalQuery.summary.total;
+  const sqmUpdateTotal =
+    sqmUpdateQuery.loading
+      ? (syncedCounts['sqm-update'] ?? sqmUpdateQuery.summary.total)
+      : sqmUpdateQuery.summary.total;
+  const obsoleteTotal =
+    obsoleteQuery.loading
+      ? (syncedCounts['obsolete'] ?? obsoleteQuery.summary.total)
+      : obsoleteQuery.summary.total;
 
   const handleNavigate = (path: string) => {
     router.push(path);
