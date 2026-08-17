@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
+import { resolveBranchScope } from '@/app/helpers/ticket.helpers';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await protectApi([
       'admin',
@@ -13,6 +14,22 @@ export async function GET() {
       'superadmin',
       'super_admin',
     ]);
+
+    const { searchParams } = new URL(request.url);
+    const branchParam =
+      searchParams.get('branchId') ?? searchParams.get('branch');
+
+    const branchSas = await resolveBranchScope(
+      user.role,
+      user.id_user,
+      branchParam,
+    );
+
+    if (branchSas && branchSas.length === 0) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
+    const branchSaNames = branchSas ? new Set(branchSas) : null;
 
     if (user.role === 'super_admin' || user.role === 'superadmin') {
       const serviceAreas = await prisma.service_area.findMany({
@@ -22,10 +39,11 @@ export async function GET() {
         distinct: ['id_sa'],
       });
 
-      const rows = serviceAreas.map((sa) => ({
-        value: String(sa.id_sa),
-        label: sa.nama_sa,
-      }));
+      const rows = serviceAreas
+        .filter(
+          (sa) => !branchSaNames || (sa.nama_sa && branchSaNames.has(sa.nama_sa)),
+        )
+        .map((sa) => ({ value: String(sa.id_sa), label: sa.nama_sa }));
 
       return NextResponse.json({ success: true, data: rows });
     }
@@ -45,6 +63,12 @@ export async function GET() {
     const rows: { value: string; label: string | null }[] = [];
     for (const us of userSas) {
       if (!us.service_area) continue;
+      if (
+        branchSaNames &&
+        (!us.service_area.nama_sa || !branchSaNames.has(us.service_area.nama_sa))
+      ) {
+        continue;
+      }
       rows.push({
         value: String(us.service_area.id_sa),
         label: us.service_area.nama_sa,
