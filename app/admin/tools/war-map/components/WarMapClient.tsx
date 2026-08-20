@@ -15,7 +15,15 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Supercluster from 'supercluster';
-import { Funnel, Layers, X, ExternalLink, ChevronDown } from 'lucide-react';
+import {
+  Funnel,
+  Layers,
+  X,
+  ExternalLink,
+  ChevronDown,
+  LocateFixed,
+  Network,
+} from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { useWarMapFilterOptions } from '@/app/hooks/useDropdownOptions';
 import { JENIS_TIKET_LIST } from '@/app/config/jenis-tiket';
@@ -25,6 +33,7 @@ import type { KmlIconKey, KmlLayerItem } from '@/app/libs/kml/client-types';
 import {
   computeOdpAlerts,
   DEFAULT_ODP_ALERT_OPTIONS,
+  nearestOdp,
   type DisturbancePointLike,
   type OdpAlert,
   type OdpNearbyPoint,
@@ -268,14 +277,22 @@ function kmlIcon({
 
 function BboxReporter({
   onBboxChange,
+  enabled = true,
+  nonce = 0,
 }: {
   onBboxChange: (
     bbox: { south: number; west: number; north: number; east: number },
     zoom: number,
   ) => void;
+  enabled?: boolean;
+  nonce?: number;
 }) {
   const map = useMap();
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
   const report = useCallback(() => {
+    if (!enabledRef.current) return;
     const bounds = map.getBounds();
     onBboxChange(
       {
@@ -291,6 +308,13 @@ function BboxReporter({
   useEffect(() => {
     report();
   }, [report]);
+
+  // Dipakai jalur fallback (geolokasi ditolak/timeout): laporan viewport
+  // otomatis setelah "hold" dilepas, tanpa menunggu moveend dari flyTo.
+  useEffect(() => {
+    if (enabled && nonce > 0) report();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
 
   useMapEvents({
     moveend: report,
@@ -388,6 +412,55 @@ function PointFitter({
     map.setView([lat, lng], zoom, { animate: true });
   }, [seq]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
+}
+
+const LOCATE_ZOOM = 13;
+
+// Arahkan peta ke posisi user (geolokasi). Dipicu via seq agar identik
+// dengan pola PointFitter/NetworkFitter (tidak memaksa re-render anak).
+function LocateController({
+  target,
+  seq,
+}: {
+  target: { latitude: number; longitude: number } | null;
+  seq: number;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!target || seq === 0) return;
+    map.flyTo([target.latitude, target.longitude], LOCATE_ZOOM, {
+      duration: 0.8,
+    });
+  }, [seq]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+// Penanda ODP terdekat dari lokasi user saat "Lihat jaringan" difokuskan.
+// CircleMarker pulse (independen dari KmlPointMarker agar tidak mengganggu
+// ikon ODP asli / alert tier).
+function NearestOdpMarker({
+  odpId,
+  odpPoints,
+}: {
+  odpId: number | null;
+  odpPoints: Array<{ id: number; latitude: number; longitude: number }>;
+}) {
+  if (!odpId) return null;
+  const odp = odpPoints.find((p) => p.id === odpId);
+  if (!odp) return null;
+  return (
+    <CircleMarker
+      center={[odp.latitude, odp.longitude]}
+      radius={14}
+      pathOptions={{
+        color: '#0891b2',
+        weight: 3,
+        fillColor: '#06b6d4',
+        fillOpacity: 0.25,
+        opacity: 0.9,
+      }}
+    />
+  );
 }
 
 // ── Filter panel ────────────────────────────────────────────────
@@ -661,6 +734,27 @@ function coordsEqual(
   );
 }
 
+// Apakah bbox `a` berada di dalam area yang sudah dimuat `b`.
+// Dipakai untuk skip refetch saat zoom-in / pan kecil (perf).
+function isBboxContained(
+  a: { south: number; west: number; north: number; east: number },
+  b: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null,
+): boolean {
+  if (!b) return false;
+  const e = 1e-4; // toleransi epsilon koordinat
+  return (
+    a.west >= b.west - e &&
+    a.east <= b.east + e &&
+    a.south >= b.south - e &&
+    a.north <= b.north + e
+  );
+}
+
 // ── KML feature rendering ───────────────────────────────────────
 
 function KmlCoordsFooter({
@@ -735,13 +829,16 @@ function KmlPointMarker({
       interactive={!measuring}
       zIndexOffset={alert ? (alert.tier === 'critical' ? 300 : 200) : zBase}
     >
-      <Tooltip direction='top' offset={[0, -16]} opacity={1} interactive={false}>
-        <span className='text-[11px] font-bold'>
-          {feature.name}
-        </span>
+      <Tooltip
+        direction='top'
+        offset={[0, -16]}
+        opacity={1}
+        interactive={false}
+      >
+        <span className='text-[11px] font-bold'>{feature.name}</span>
       </Tooltip>
-      {!measuring && (
-        alert ? (
+      {!measuring &&
+        (alert ? (
           <OdpAlertPopup
             alert={alert}
             isOdc={isOdc}
@@ -763,7 +860,7 @@ function KmlPointMarker({
                 {feature.folderPath}
               </p>
               {feature.descriptionRaw && (
-                <pre className='mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+                <pre className='mt-2 max-h-48 overflow-auto rounded-lg bg-slate-50 p-2 text-[10px] leading-4 whitespace-pre-wrap text-slate-600 dark:bg-white/5 dark:text-slate-300'>
                   {feature.descriptionRaw}
                 </pre>
               )}
@@ -773,8 +870,7 @@ function KmlPointMarker({
               />
             </div>
           </Popup>
-        )
-      )}
+        ))}
     </Marker>
   );
 }
@@ -786,12 +882,15 @@ function OdpRows({ items }: { items: OdpNearbyPoint[] }) {
         <div
           key={`${n.serviceNo}-${i}`}
           className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
-            i % 2 === 0 ? 'bg-slate-50 dark:bg-white/5' : 'bg-white dark:bg-transparent'
+            i % 2 === 0
+              ? 'bg-slate-50 dark:bg-white/5'
+              : 'bg-white dark:bg-transparent'
           }`}
         >
           <span
             className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-              n.status && ['open', 'assigned', 'on_progress', 'pending'].includes(n.status)
+              n.status &&
+              ['open', 'assigned', 'on_progress', 'pending'].includes(n.status)
                 ? 'bg-red-500'
                 : 'bg-slate-300 dark:bg-slate-600'
             }`}
@@ -834,7 +933,10 @@ function OdpSection({
         {count !== undefined && items.length > 0 && (
           <span
             className='rounded-full px-1.5 py-0.5 text-[9px] font-bold'
-            style={{ background: `${accent ?? '#475569'}20`, color: accent ?? '#475569' }}
+            style={{
+              background: `${accent ?? '#475569'}20`,
+              color: accent ?? '#475569',
+            }}
           >
             {count}
           </span>
@@ -868,7 +970,10 @@ function OdpAlertPopup({
           <p className='text-sm font-bold text-slate-900 dark:text-white'>
             {alert.name}
           </p>
-          <span className='rounded-full px-2 py-0.5 text-[9px] font-bold text-white' style={{ background: tierColor }}>
+          <span
+            className='rounded-full px-2 py-0.5 text-[9px] font-bold text-white'
+            style={{ background: tierColor }}
+          >
             {alert.tier === 'critical' ? '⚠ BERISIKO' : 'WASPADA'}
           </span>
         </div>
@@ -876,22 +981,31 @@ function OdpAlertPopup({
 
         <div className='grid grid-cols-3 gap-1.5'>
           <div className='rounded-lg bg-slate-50 px-2 py-1.5 text-center dark:bg-white/5'>
-            <p className='text-base font-extrabold tabular-nums' style={{ color: tierColor }}>
+            <p
+              className='text-base font-extrabold tabular-nums'
+              style={{ color: tierColor }}
+            >
               {alert.totalPoints}
             </p>
-            <p className='text-[9px] font-bold text-slate-400 uppercase'>Gangguan</p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>
+              Gangguan
+            </p>
           </div>
           <div className='rounded-lg bg-blue-50 px-2 py-1.5 text-center dark:bg-blue-500/10'>
             <p className='text-base font-extrabold text-blue-600 tabular-nums dark:text-blue-400'>
               {alert.activeCount}
             </p>
-            <p className='text-[9px] font-bold text-slate-400 uppercase'>Aktif</p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>
+              Aktif
+            </p>
           </div>
           <div className='rounded-lg bg-purple-50 px-2 py-1.5 text-center dark:bg-purple-500/10'>
             <p className='text-base font-extrabold text-purple-600 tabular-nums dark:text-purple-400'>
               {alert.hotCount}
             </p>
-            <p className='text-[9px] font-bold text-slate-400 uppercase'>Berulang</p>
+            <p className='text-[9px] font-bold text-slate-400 uppercase'>
+              Berulang
+            </p>
           </div>
         </div>
 
@@ -904,7 +1018,8 @@ function OdpAlertPopup({
           />
         )}
 
-        {alert.nearby.filter((n) => !attributedSet.has(n.serviceNo)).length > 0 && (
+        {alert.nearby.filter((n) => !attributedSet.has(n.serviceNo)).length >
+          0 && (
           <OdpSection
             label={`Gangguan di sekitar ${isOdc ? 'ODC' : 'ODP'} (radius)`}
             items={alert.nearby.filter((n) => !attributedSet.has(n.serviceNo))}
@@ -912,7 +1027,7 @@ function OdpAlertPopup({
         )}
 
         {descriptionRaw && (
-          <pre className='max-h-24 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+          <pre className='max-h-24 overflow-auto rounded-lg bg-slate-50 p-2 text-[10px] leading-4 whitespace-pre-wrap text-slate-600 dark:bg-white/5 dark:text-slate-300'>
             {descriptionRaw}
           </pre>
         )}
@@ -937,9 +1052,8 @@ function KmlLinePolyline({
   feature: KmlLineFeature;
   measuring?: boolean;
 }) {
-  const weight = feature.lineWidth != null
-    ? Math.min(Math.max(feature.lineWidth, 1), 5)
-    : 2;
+  const weight =
+    feature.lineWidth != null ? Math.min(Math.max(feature.lineWidth, 1), 5) : 2;
   const color = feature.lineColor ?? feature.styleColor ?? '#94a3b8';
   return (
     <Polyline
@@ -955,7 +1069,10 @@ function KmlLinePolyline({
           ? undefined
           : {
               mouseover: (e) => {
-                e.target.setStyle({ weight: Math.min(weight + 1, 6), opacity: 1 });
+                e.target.setStyle({
+                  weight: Math.min(weight + 1, 6),
+                  opacity: 1,
+                });
               },
               mouseout: (e) => {
                 e.target.setStyle({ weight, opacity: 0.85 });
@@ -983,27 +1100,29 @@ function KmlLinePolyline({
             </p>
             {feature.parsedMetadata && (
               <div className='overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700'>
-                {Object.entries(feature.parsedMetadata).map(([key, value], i) => (
-                  <div
-                    key={key}
-                    className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
-                      i % 2 === 0
-                        ? 'bg-slate-50 dark:bg-white/5'
-                        : 'bg-white dark:bg-transparent'
-                    }`}
-                  >
-                    <span className='w-32 shrink-0 font-semibold text-slate-500 dark:text-slate-400'>
-                      {key}
-                    </span>
-                    <span className='min-w-0 flex-1 text-slate-700 dark:text-slate-200'>
-                      {value}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(feature.parsedMetadata).map(
+                  ([key, value], i) => (
+                    <div
+                      key={key}
+                      className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
+                        i % 2 === 0
+                          ? 'bg-slate-50 dark:bg-white/5'
+                          : 'bg-white dark:bg-transparent'
+                      }`}
+                    >
+                      <span className='w-32 shrink-0 font-semibold text-slate-500 dark:text-slate-400'>
+                        {key}
+                      </span>
+                      <span className='min-w-0 flex-1 text-slate-700 dark:text-slate-200'>
+                        {value}
+                      </span>
+                    </div>
+                  ),
+                )}
               </div>
             )}
             {!feature.parsedMetadata && feature.descriptionRaw && (
-              <pre className='max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+              <pre className='max-h-40 overflow-auto rounded-lg bg-slate-50 p-2 text-[10px] leading-4 whitespace-pre-wrap text-slate-600 dark:bg-white/5 dark:text-slate-300'>
                 {feature.descriptionRaw}
               </pre>
             )}
@@ -1098,7 +1217,11 @@ function MobileSheet({
 
 // ── Main component ──────────────────────────────────────────────
 
-export default function WarMapClient() {
+export default function WarMapClient({
+  defaultToLocation = false,
+}: {
+  defaultToLocation?: boolean;
+}) {
   const [points, setPoints] = useState<WarMapPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1152,7 +1275,9 @@ export default function WarMapClient() {
   const [kmlExpanded, setKmlExpanded] = useState<number[]>([]);
   const [kmlSearch, setKmlSearch] = useState('');
   // sublayerId -> visible (toggle aktif user)
-  const [sublayerVisible, setSublayerVisible] = useState<Record<number, boolean>>({});
+  const [sublayerVisible, setSublayerVisible] = useState<
+    Record<number, boolean>
+  >({});
   // layerId -> visible (master view/hide per skema; default semua tersembunyi)
   const [layerVisible, setLayerVisible] = useState<Record<number, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -1180,16 +1305,121 @@ export default function WarMapClient() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kmlFetchIdRef = useRef(0);
 
+  // ── Geolokasi (auto-center saat buka + tombol "Lokasi Saya") ──
+  const [myLocation, setMyLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [locSeq, setLocSeq] = useState(0);
+  const [locating, setLocating] = useState(false);
+  const [locNotice, setLocNotice] = useState<string | null>(null);
+  // Paksa laporan viewport saat geolokasi dibatalkan (fallback fetch provinsi).
+  const [bboxNonce, setBboxNonce] = useState(0);
+  // Tahan laporan viewport (fetch awal) sampai geolokasi selesai,
+  // agar tidak fetch satu provinsi dulu saat akan langsung pindah ke user.
+  const holdBboxRef = useRef(defaultToLocation);
+  // Highlight ODP terdekat saat "Lihat jaringan" difokuskan ke lokasi user.
+  const [nearestOdpId, setNearestOdpId] = useState<number | null>(null);
+
+  // Proses geolokasi bersama (dipakai auto-center & tombol).
+  const locateToCurrent = useCallback(() => {
+    if (locating) return;
+    setLocNotice(null);
+    setNearestOdpId(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocNotice('Geolokasi tidak didukung browser ini.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const loc = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        };
+        setMyLocation(loc);
+        setLocSeq((s) => s + 1);
+      },
+      () => {
+        setLocating(false);
+        setLocNotice(
+          'Lokasi tidak dapat ditemukan. Periksa izin lokasi lalu coba lagi.',
+        );
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }, [locating]);
+
+  // Auto-center sekali saat map pertama dibuka (semua role, jika diaktifkan).
+  useEffect(() => {
+    if (!defaultToLocation) return;
+    const timeout = setTimeout(() => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        holdBboxRef.current = false;
+        setLocating(false);
+        setBboxNonce((n) => n + 1);
+        setLocNotice('Geolokasi tidak didukung browser ini.');
+        return;
+      }
+      setLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          holdBboxRef.current = false;
+          setLocating(false);
+          const loc = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          };
+          setMyLocation(loc);
+          setLocSeq((s) => s + 1);
+        },
+        () => {
+          holdBboxRef.current = false;
+          setLocating(false);
+          setBboxNonce((n) => n + 1);
+          setLocNotice(
+            'Lokasi tidak dapat ditemukan. Gunakan tombol "Lokasi Saya".',
+          );
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+      );
+    }, 400);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-hilangkan notifikasi lokasi.
+  useEffect(() => {
+    if (!locNotice) return;
+    const t = setTimeout(() => setLocNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [locNotice]);
+
+  // bbox yang benar-benar sudah dimuat (untuk skip refetch saat zoom-in).
+  const loadedBboxRef = useRef<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null>(null);
+  const loadingRef = useRef(false);
+  const sseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const filtersKey = `${workzone}|${area}|${status}|${jenis}|${bucket}|${fromDate}|${toDate}|${activeOnly}|${hotOnly}`;
 
   const loadPoints = useCallback(
-    async (currentBbox: {
-      south: number;
-      west: number;
-      north: number;
-      east: number;
-    }) => {
+    async (
+      currentBbox: {
+        south: number;
+        west: number;
+        north: number;
+        east: number;
+      },
+      opts?: { force?: boolean },
+    ) => {
       setLoading(true);
+      loadingRef.current = true;
       const id = ++fetchIdRef.current;
       try {
         const params = new URLSearchParams();
@@ -1221,6 +1451,7 @@ export default function WarMapClient() {
         if (json?.success) {
           setPoints(json.data?.points ?? []);
           setError(null);
+          loadedBboxRef.current = currentBbox;
         } else {
           setPoints([]);
           setError(json?.message ?? 'Gagal mengambil data titik');
@@ -1243,7 +1474,10 @@ export default function WarMapClient() {
           setError('Terjadi kesalahan saat memuat peta');
         }
       } finally {
-        if (id === fetchIdRef.current) setLoading(false);
+        if (id === fetchIdRef.current) {
+          setLoading(false);
+          loadingRef.current = false;
+        }
       }
     },
     [
@@ -1275,12 +1509,11 @@ export default function WarMapClient() {
 
   const bboxKey = bbox ? JSON.stringify(bbox) : null;
 
-  // Reload gangguan saat bbox / filter berubah (debounced)
+  // Reload gangguan saat bbox / filter berubah (debounced + coalesced)
   useEffect(() => {
     if (!bboxKey) return;
-    const changed =
+    const filtersChanged =
       lastFetched === null ||
-      lastFetched.bboxKey !== bboxKey ||
       lastFetched.workzone !== workzone ||
       lastFetched.area !== area ||
       lastFetched.status !== status ||
@@ -1290,12 +1523,19 @@ export default function WarMapClient() {
       lastFetched.toDate !== toDate ||
       lastFetched.activeOnly !== activeOnly ||
       lastFetched.hotOnly !== hotOnly;
-    if (!changed) return;
+    const bboxChanged =
+      lastFetched === null || lastFetched.bboxKey !== bboxKey;
+    if (!filtersChanged && !bboxChanged) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      if (bboxRef.current) void loadPoints(bboxRef.current);
-    }, 400);
+      const cur = bboxRef.current;
+      if (!cur) return;
+      // Zoom-in / pan kecil di dalam area yang sudah dimuat → pakai data memori,
+      // tidak perlu refetch (klustering memakai points + zoom yang sudah ada).
+      if (!filtersChanged && isBboxContained(cur, loadedBboxRef.current)) return;
+      void loadPoints(cur);
+    }, 500);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -1363,8 +1603,7 @@ export default function WarMapClient() {
     if (!bboxKey) return;
     const hasVisible = kmlLayers.some(
       (l) =>
-        layerVisible[l.id] &&
-        l.sublayers.some((s) => sublayerVisible[s.id]),
+        layerVisible[l.id] && l.sublayers.some((s) => sublayerVisible[s.id]),
     );
     if (!hasVisible) {
       setKmlPoints([]);
@@ -1378,6 +1617,7 @@ export default function WarMapClient() {
     const doFetch = async () => {
       const allPoints: KmlPointFeature[] = [];
       const allLines: KmlLineFeature[] = [];
+      const viewport = bboxRef.current;
       try {
         for (const layer of kmlLayers) {
           if (!layerVisible[layer.id]) continue;
@@ -1388,6 +1628,17 @@ export default function WarMapClient() {
 
           const params = new URLSearchParams();
           params.set('sublayer', visibleSublayerIds.join(','));
+          if (viewport) {
+            params.set(
+              'bbox',
+              [
+                viewport.south,
+                viewport.west,
+                viewport.north,
+                viewport.east,
+              ].join(','),
+            );
+          }
 
           const res = await fetchWithAuth(
             `/api/war-map/kml-layers/${layer.id}/geojson?${params.toString()}`,
@@ -1442,7 +1693,7 @@ export default function WarMapClient() {
 
     void doFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleSublayerKey, kmlLayers]);
+  }, [visibleSublayerKey, kmlLayers, bboxKey]);
 
   const kmlLayerTitleById = useMemo(
     () => new Map(kmlLayers.map((l) => [l.id, l.title])),
@@ -1501,16 +1752,21 @@ export default function WarMapClient() {
     return ids;
   }, [kmlLayers]);
 
+  const odpPoints = useMemo(
+    () =>
+      kmlPoints
+        .filter((p) => odpSublayerIds.has(p.sublayerId))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+        })),
+    [kmlPoints, odpSublayerIds],
+  );
+
   const odpAlerts = useMemo<OdpAlert[]>(() => {
     if (!odpAlertEnabled) return [];
-    const odpPoints = kmlPoints
-      .filter((p) => odpSublayerIds.has(p.sublayerId))
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        latitude: p.latitude,
-        longitude: p.longitude,
-      }));
     if (odpPoints.length === 0 || points.length === 0) return [];
     const disturbances: DisturbancePointLike[] = points.map((p) => ({
       id: p.id,
@@ -1534,7 +1790,7 @@ export default function WarMapClient() {
       criticalCount: DEFAULT_ODP_ALERT_OPTIONS.criticalCount,
       warnCount: DEFAULT_ODP_ALERT_OPTIONS.warnCount,
     });
-  }, [odpAlertEnabled, odpSublayerIds, kmlPoints, points, odpRadiusKm]);
+  }, [odpAlertEnabled, odpPoints, points, odpRadiusKm]);
 
   const odpAlertById = useMemo(() => {
     const m = new Map<number, OdpAlert>();
@@ -1553,6 +1809,46 @@ export default function WarMapClient() {
     );
     return active?.bbox ?? kmlLayers[0]?.bbox ?? null;
   }, [kmlLayers, layerVisible, sublayerVisible]);
+
+  // "Lihat jaringan": dengan lokasi user → fokus ke ODP + area jaringan
+  // terdekat; tanpa lokasi → fit seluruh layer (perilaku lama).
+  const handleViewNetwork = useCallback(() => {
+    const fallback = () => {
+      if (!primaryLayerBbox) return;
+      setNearestOdpId(null);
+      setFitTarget(primaryLayerBbox);
+      setFitNonce((n) => n + 1);
+    };
+    if (!myLocation) {
+      setLocNotice('Lokasi belum diketahui — menampilkan seluruh jaringan.');
+      fallback();
+      return;
+    }
+    const nearest = nearestOdp(myLocation, odpPoints);
+    if (!nearest) {
+      setLocNotice('Tidak ada ODP di sekitar lokasi — menampilkan seluruh jaringan.');
+      fallback();
+      return;
+    }
+    const { odp, distKm } = nearest;
+    setNearestOdpId(odp.id);
+    // Bbox ±1.5km di sekitar ODP — cukup tampak jaringan/kabel lokal tanpa
+    // harus zoom-out ke seluruh provinsi.
+    const latPad = 1.5 / 111;
+    const lngPad = 1.5 / (111 * Math.cos((odp.latitude * Math.PI) / 180));
+    setFitTarget({
+      south: odp.latitude - latPad,
+      west: odp.longitude - lngPad,
+      north: odp.latitude + latPad,
+      east: odp.longitude + lngPad,
+    });
+    setFitNonce((n) => n + 1);
+    setLocNotice(
+      distKm < 1
+        ? `ODP terdekat: ${odp.name} (±${Math.round(distKm * 1000)} m)`
+        : `ODP terdekat: ${odp.name} (±${distKm.toFixed(1)} km)`,
+    );
+  }, [myLocation, odpPoints, primaryLayerBbox]);
 
   const index = useMemo(() => {
     const sc = new Supercluster({
@@ -1578,7 +1874,7 @@ export default function WarMapClient() {
     );
   }, [index, bbox, zoom]);
 
-  // SSE: refresh titik saat ada tag baru
+  // SSE: refresh titik saat ada tag baru (debounced agar burst tidak bikin jank)
   useEffect(() => {
     if (!bbox) return;
     let es: EventSource | null = null;
@@ -1587,9 +1883,15 @@ export default function WarMapClient() {
       es.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data) as { type: string };
-          if (event.type === 'war-map:new-point') {
-            void loadPoints(bboxRef.current ?? bbox);
-          }
+          if (event.type !== 'war-map:new-point') return;
+          // Coalesce burst + jangan ganggu saat sedang memuat/mnegukur.
+          if (loadingRef.current) return;
+          if (sseDebounceRef.current) clearTimeout(sseDebounceRef.current);
+          sseDebounceRef.current = setTimeout(() => {
+            if (bboxRef.current && !loadingRef.current) {
+              void loadPoints(bboxRef.current, { force: true });
+            }
+          }, 2000);
         } catch {
           /* ignore */
         }
@@ -1599,6 +1901,10 @@ export default function WarMapClient() {
     }
     return () => {
       if (es) es.close();
+      if (sseDebounceRef.current) {
+        clearTimeout(sseDebounceRef.current);
+        sseDebounceRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtersKey, bbox !== null]);
@@ -1708,7 +2014,10 @@ export default function WarMapClient() {
   }, []);
 
   const toggleSublayer = useCallback((sublayerId: number) => {
-    setSublayerVisible((prev) => ({ ...prev, [sublayerId]: !prev[sublayerId] }));
+    setSublayerVisible((prev) => ({
+      ...prev,
+      [sublayerId]: !prev[sublayerId],
+    }));
   }, []);
 
   const toggleLayer = useCallback((id: number) => {
@@ -1839,6 +2148,7 @@ export default function WarMapClient() {
   return (
     <>
       <div className='relative'>
+        {/* Layout responsive: desktop = grid sidebar+map, mobile = full-screen map */}
         <div className='grid gap-3 lg:grid-cols-[300px_1fr]'>
           {/* Kolom kiri — desktop */}
           <div className='hidden lg:block'>
@@ -1893,15 +2203,27 @@ export default function WarMapClient() {
               )}
 
               {/* Fit-network (PRD §A4) — kiri atas, di bawah zoom control topleft */}
-              <div className='absolute top-[86px] left-3 z-1000 flex flex-col items-start gap-1.5'>
+              <div className='absolute top-21.5 left-3 z-1000 flex flex-col items-start gap-1.5'>
+                <button
+                  type='button'
+                  onClick={locateToCurrent}
+                  disabled={locating}
+                  className='flex items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-blue-600 shadow-sm transition hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-60'
+                >
+                  {locating ? (
+                    <span className='h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600' />
+                  ) : (
+                    <LocateFixed size={13} />
+                  )}
+                  {locating ? 'Mencari lokasi...' : 'Lokasi Saya'}
+                </button>
                 {kmlLayers.length > 0 && primaryLayerBbox && (
                   <button
-                    onClick={() => {
-                      setFitTarget(primaryLayerBbox);
-                      setFitNonce((n) => n + 1);
-                    }}
-                    className='rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-indigo-600 shadow-sm transition hover:bg-(--surface-2)'
+                    onClick={handleViewNetwork}
+                    disabled={locating}
+                    className='flex items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-indigo-600 shadow-sm transition hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-60'
                   >
+                    <Network size={13} />
                     Lihat jaringan
                   </button>
                 )}
@@ -1911,6 +2233,13 @@ export default function WarMapClient() {
                   onToggle={measure.toggle}
                 />
               </div>
+
+              {/* Notifikasi transient geolokasi */}
+              {locNotice && (
+                <div className='absolute top-24 left-1/2 z-1000 -translate-x-1/2 rounded-full border border-slate-200 bg-(--surface)/95 px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary) shadow-md'>
+                  {locNotice}
+                </div>
+              )}
 
               {/* Insight ribbon alert ODP (PRD §B3) */}
               {odpAlertEnabled && (criticalCount > 0 || warningCount > 0) && (
@@ -2010,7 +2339,11 @@ export default function WarMapClient() {
                   maxZoom={19}
                 />
 
-                <BboxReporter onBboxChange={handleBboxChange} />
+                <BboxReporter
+                  onBboxChange={handleBboxChange}
+                  enabled={!holdBboxRef.current}
+                  nonce={bboxNonce}
+                />
 
                 <NetworkFitter bbox={fitTarget} nonce={fitNonce} />
 
@@ -2019,6 +2352,8 @@ export default function WarMapClient() {
                   lng={alertFocus?.lng ?? null}
                   seq={alertFocus?.seq ?? 0}
                 />
+
+                <LocateController target={myLocation} seq={locSeq} />
 
                 <MeasureMapEvents
                   ctrl={measure}
@@ -2070,7 +2405,7 @@ export default function WarMapClient() {
                     );
                     return (
                       <ZoomToCluster
-                        key={`c-${props.cluster_id}-${idx}`}
+                        key={`c-${props.cluster_id}`}
                         cluster={{
                           latitude: lat,
                           longitude: lng,
@@ -2089,7 +2424,7 @@ export default function WarMapClient() {
 
                   return showHistory ? (
                     <CircleMarker
-                      key={`p-${point.id}-${idx}`}
+                      key={`p-${point.id}`}
                       center={[point.latitude, point.longitude]}
                       radius={isHot ? 10 : 7}
                       interactive={!measuring}
@@ -2118,7 +2453,7 @@ export default function WarMapClient() {
                     </CircleMarker>
                   ) : (
                     <Marker
-                      key={`p-${point.id}-${idx}`}
+                      key={`p-${point.id}`}
                       position={[point.latitude, point.longitude]}
                       icon={markerIcon(point)}
                       interactive={!measuring}
@@ -2141,14 +2476,18 @@ export default function WarMapClient() {
                     </Marker>
                   );
                 })}
-</MapContainer>
 
-            {measure.active && <MeasurePanel ctrl={measure} />}
-             </div>
+                {/* Highlight ODP terdekat — dirender paling akhir agar berada
+                    di atas layer marker/KML lain (SVG append order). */}
+                <NearestOdpMarker odpId={nearestOdpId} odpPoints={odpPoints} />
+              </MapContainer>
+
+              {measure.active && <MeasurePanel ctrl={measure} />}
+            </div>
 
             {/* Legenda jaringan (PRD §A4) */}
             {kmlLayers.length > 0 && (
-              <div className='absolute bottom-3 left-3 z-1000 hidden max-w-[200px] rounded-xl border border-(--border) bg-(--surface)/95 p-2.5 shadow-sm backdrop-blur lg:block'>
+              <div className='absolute bottom-3 left-3 z-1000 hidden max-w-50 rounded-xl border border-(--border) bg-(--surface)/95 p-2.5 shadow-sm backdrop-blur lg:block'>
                 <p className='text-[9px] font-bold tracking-widest text-(--text-tertiary) uppercase'>
                   Legenda
                 </p>

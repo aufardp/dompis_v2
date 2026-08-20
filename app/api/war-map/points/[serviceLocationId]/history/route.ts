@@ -26,6 +26,7 @@ export async function GET(
       'super_admin',
       'senior_leader',
       'admin_branch',
+      'teknisi',
     ]);
 
     const { serviceLocationId: idParam } = await params;

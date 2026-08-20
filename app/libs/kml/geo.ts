@@ -32,6 +32,32 @@ export interface OdpPointLike {
   longitude: number;
 }
 
+/**
+ * ODP terdekat dari koordinat acuan (mis. lokasi user). Mengembalikan
+ * `null` bila tidak ada ODP sama sekali. Dipakai tombol "Lihat jaringan"
+ * untuk memusat peta ke jaringan/ODP terdekat lokasi pengguna.
+ */
+export function nearestOdp(
+  ref: { latitude: number; longitude: number },
+  odpPoints: OdpPointLike[],
+): { odp: OdpPointLike; distKm: number } | null {
+  let best: OdpPointLike | null = null;
+  let bestDist = Infinity;
+  for (const odp of odpPoints) {
+    const d = haversineKm(
+      ref.latitude,
+      ref.longitude,
+      odp.latitude,
+      odp.longitude,
+    );
+    if (d < bestDist) {
+      bestDist = d;
+      best = odp;
+    }
+  }
+  return best ? { odp: best, distKm: bestDist } : null;
+}
+
 export interface OdpAlert {
   odpId: number;
   name: string;
@@ -108,16 +134,26 @@ export function computeOdpAlerts(
   const { radiusKm, criticalCount, warnCount } = options;
   const alerts: OdpAlert[] = [];
 
-  for (const odp of odpPoints) {
+  // Token nama ODP/device_name disiapkan SEKALI (per ODP & per gangguan),
+  // bukan dihitung ulang per pasangan (perf — dataset bisa ribuan titik).
+  const odpNameTokens = odpPoints.map((o) => odpToken(o.name));
+  const disturbanceTokens = points.map((p) => odpToken(p.deviceName ?? ''));
+
+  for (let oi = 0; oi < odpPoints.length; oi++) {
+    const odp = odpPoints[oi];
+    const odpNameToken = odpNameTokens[oi];
     const nearby: OdpNearbyPoint[] = [];
     const attributed: OdpNearbyPoint[] = [];
     const seenServiceNo = new Set<string>();
     let activeCount = 0;
     let hotCount = 0;
 
-    for (const p of points) {
+    for (let pi = 0; pi < points.length; pi++) {
+      const p = points[pi];
       if (seenServiceNo.has(p.serviceNo)) continue;
-      const inAttribution = odpMatches(p.deviceName, odp.name);
+      const inAttribution =
+        disturbanceTokens[pi].length > 0 &&
+        disturbanceTokens[pi] === odpNameToken;
       const dLat = Math.abs(p.latitude - odp.latitude);
       const dLng = Math.abs(p.longitude - odp.longitude);
       // Prefilter kotak-batas kasar sebelum haversine (perf)

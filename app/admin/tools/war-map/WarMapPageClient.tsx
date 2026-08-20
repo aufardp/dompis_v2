@@ -13,5 +13,5 @@ const WarMapClient = dynamic(() => import('./components/WarMapClient'), {
 });
 
 export default function WarMapPageClient() {
-  return <WarMapClient />;
+  return <WarMapClient defaultToLocation />;
 }

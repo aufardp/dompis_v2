@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
       'super_admin',
       'senior_leader',
       'admin_branch',
+      'teknisi',
     ]);
 
     const { searchParams } = req.nextUrl;

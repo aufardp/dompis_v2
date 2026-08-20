@@ -14,6 +14,7 @@ const WAR_MAP_ROLES = [
   'super_admin',
   'senior_leader',
   'admin_branch',
+  'teknisi',
 ];
 
 export async function GET(req: NextRequest) {

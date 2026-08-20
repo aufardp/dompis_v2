@@ -25,6 +25,7 @@ export async function GET(req: Request) {
       'super_admin',
       'senior_leader',
       'admin_branch',
+      'teknisi',
     ]);
 
     const isRootRole = ROOT_ROLES.includes(user.role);
