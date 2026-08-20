@@ -15,7 +15,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
-  MapPin,
+  Mic,
   PauseCircle,
   Phone,
   Search,
@@ -53,11 +53,37 @@ import { fetchWithAuth } from '@/app/libs/fetcher';
 import { rcaMapping } from '@/app/types/rca';
 import { useRcaSuggestions } from '@/app/hooks/useRcaSuggestions';
 import RcaSuggestionChips from './detail-modal/RcaSuggestionChips';
+import QuickReplyChips from './detail-modal/QuickReplyChips';
+import CloseConfirmationSheet from './detail-modal/CloseConfirmationSheet';
 import clsx from 'clsx';
 
 interface TicketDetailContentProps {
   ticket: Ticket;
   isClosed: boolean;
+  readOnly?: boolean;
+}
+
+// ── Speech recognition (Web Speech API, optional) ─────────────
+type SpeechRecognitionCtor = new () => {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  abort: () => void;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+};
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionCtor;
+  webkitSpeechRecognition?: SpeechRecognitionCtor;
+}
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  const w = window as SpeechRecognitionWindow;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
 // ── Step mapping ──────────────────────────────────────────────
@@ -161,6 +187,7 @@ function isFilled(value: string | null | undefined): boolean {
 export default function TicketDetailContent({
   ticket,
   isClosed: isTicketClosed,
+  readOnly = false,
 }: TicketDetailContentProps) {
   const router = useRouter();
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
@@ -268,6 +295,11 @@ export default function TicketDetailContent({
 
   const [currentAddress, setCurrentAddress] = useState(ticket.alamat || '');
   const [currentDevice, setCurrentDevice] = useState(ticket.deviceName || '');
+  const [draftAddress, setDraftAddress] = useState<string | null>(null);
+  const [draftDevice, setDraftDevice] = useState<string | null>(null);
+  const [draftLocation, setDraftLocation] = useState<LocationTagState | null>(
+    null,
+  );
 
   const addressEditorRef = useRef<AddressEditorHandle>(null);
   const locationTaggerRef = useRef<LocationTaggerHandle>(null);
@@ -276,12 +308,15 @@ export default function TicketDetailContent({
   const [addressSuggestion, setAddressSuggestion] = useState<string | null>(
     null,
   );
-  const [combinedSaving, setCombinedSaving] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [detailVoiceListening, setDetailVoiceListening] = useState(false);
+  const [detailVoiceSupported, setDetailVoiceSupported] = useState(false);
+  const detailVoiceRef = useRef<{ abort: () => void } | null>(null);
 
-  const geotagRequired =
-    process.env.NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED === 'true';
+  const closingRedesign =
+    process.env.NEXT_PUBLIC_TEKNISI_CLOSING_REDESIGN_ENABLED === 'true';
 
-  const canEditDetails = isOnProgress(status) || isPending(status);
+  const canEditDetails = !readOnly && (isOnProgress(status) || isPending(status));
 
   const isLocationEmpty = useMemo(() => {
     if (!locationTag) return true;
@@ -297,6 +332,10 @@ export default function TicketDetailContent({
   }, [ticket.alamat]);
 
   useEffect(() => {
+    setDetailVoiceSupported(Boolean(getSpeechRecognition()));
+  }, []);
+
+  useEffect(() => {
     setCurrentDevice(ticket.deviceName || '');
   }, [ticket.deviceName]);
 
@@ -310,6 +349,18 @@ export default function TicketDetailContent({
         if (parsed.selectedRca) setSelectedRca(parsed.selectedRca);
         if (parsed.selectedSubRca) setSelectedSubRca(parsed.selectedSubRca);
         if (parsed.detailPerbaikan) setDetailPerbaikan(parsed.detailPerbaikan);
+        if (parsed.alamat) {
+          setDraftAddress(parsed.alamat);
+          setCurrentAddress(parsed.alamat);
+        }
+        if (parsed.device) {
+          setDraftDevice(parsed.device);
+          setCurrentDevice(parsed.device);
+        }
+        if (parsed.locationTag) {
+          setDraftLocation(parsed.locationTag);
+          setLocationTag(parsed.locationTag);
+        }
       } catch {}
       sessionStorage.removeItem(key);
     }
@@ -323,7 +374,7 @@ export default function TicketDetailContent({
       !!selectedSubRca &&
       detailPerbaikan.trim().length >= 10 &&
       closeEvidenceCount >= 2 &&
-      !(geotagRequired && isLocationEmpty)
+      !isLocationEmpty
     );
   }, [
     currentAddress,
@@ -332,7 +383,6 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
-    geotagRequired,
     isLocationEmpty,
   ]);
 
@@ -343,7 +393,7 @@ export default function TicketDetailContent({
     if (!selectedRca || !selectedSubRca) missing.push('RCA');
     if (detailPerbaikan.trim().length < 10) missing.push('Detail Perbaikan');
     if (closeEvidenceCount < 2) missing.push('Evidence (min 2 foto)');
-    if (geotagRequired && isLocationEmpty) missing.push('Lokasi');
+    if (isLocationEmpty) missing.push('Lokasi');
     return missing;
   }, [
     currentAddress,
@@ -352,7 +402,6 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
-    geotagRequired,
     isLocationEmpty,
   ]);
 
@@ -408,28 +457,94 @@ export default function TicketDetailContent({
   }, [ticket.idTicket, router]);
 
   // ── Navigate to evidence page ──────────────────────────────
-  const handleGoToEvidence = useCallback(() => {
+  const saveFormDraft = useCallback(() => {
     sessionStorage.setItem(
       `ticket_form_${ticket.idTicket}`,
-      JSON.stringify({ selectedRca, selectedSubRca, detailPerbaikan }),
+      JSON.stringify({
+        selectedRca,
+        selectedSubRca,
+        detailPerbaikan,
+        alamat: currentAddress.trim(),
+        device: currentDevice.trim(),
+        locationTag,
+      }),
     );
+  }, [
+    ticket.idTicket,
+    selectedRca,
+    selectedSubRca,
+    detailPerbaikan,
+    currentAddress,
+    currentDevice,
+    locationTag,
+  ]);
+
+  const handleGoToEvidence = useCallback(() => {
+    saveFormDraft();
     router.push(`/teknisi/ticket/${ticket.idTicket}/evidence`);
-  }, [router, ticket.idTicket, selectedRca, selectedSubRca, detailPerbaikan]);
+  }, [router, ticket.idTicket, saveFormDraft]);
 
   // ── Navigate to evidence page (pending mode) ─────────────
   const handleGoToEvidencePending = useCallback(() => {
-    sessionStorage.setItem(
-      `ticket_form_${ticket.idTicket}`,
-      JSON.stringify({ selectedRca, selectedSubRca, detailPerbaikan }),
-    );
+    saveFormDraft();
     router.push(`/teknisi/ticket/${ticket.idTicket}/evidence?mode=pending`);
-  }, [router, ticket.idTicket, selectedRca, selectedSubRca, detailPerbaikan]);
+  }, [router, ticket.idTicket, saveFormDraft]);
 
   // ── Scroll to section ─────────────────────────────────────
   const handleScrollToSection = useCallback((sectionId: string) => {
     const el = document.getElementById(sectionId);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
+
+  // ── Pick RCA suggestion (shared by chips in both positions) ─
+  const handlePickRca = useCallback(
+    (rca: string, subRca: string, description: string) => {
+      setSelectedRca(rca);
+      setSelectedSubRca(subRca);
+      if (description) setDetailPerbaikan(description);
+      setRcaFocusRequested(false);
+    },
+    [],
+  );
+
+  // ── Voice-to-text for detail perbaikan (Fitur D, optional) ─
+  const handleDetailVoiceInput = useCallback(() => {
+    const recognition = getSpeechRecognition();
+    if (!recognition) {
+      setError('Voice-to-text tidak didukung browser ini.');
+      return;
+    }
+
+    if (detailVoiceListening) {
+      detailVoiceRef.current?.abort();
+      setDetailVoiceListening(false);
+      return;
+    }
+
+    setError(null);
+    const rec = new recognition();
+    rec.lang = 'id-ID';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (event: any) => {
+      const transcript = String(
+        event?.results?.[0]?.[0]?.transcript ?? '',
+      ).trim();
+      if (transcript) {
+        setDetailPerbaikan((prev) =>
+          prev.trim() ? `${prev.trim()} ${transcript}` : transcript,
+        );
+      }
+    };
+    rec.onerror = () => setDetailVoiceListening(false);
+    rec.onend = () => setDetailVoiceListening(false);
+
+    detailVoiceRef.current = rec;
+    setDetailVoiceListening(true);
+    rec.start();
+  }, [detailVoiceListening, setError]);
 
   // ── Close Ticket ───────────────────────────────────────────
   const handleCloseTicket = useCallback(async () => {
@@ -455,13 +570,15 @@ export default function TicketDetailContent({
       );
       return;
     }
-    if (geotagRequired && isLocationEmpty) {
+    const finalizedLocation = locationTaggerRef.current?.finalize(true);
+    if (!finalizedLocation) {
       setError('Lokasi penanganan wajib ditag sebelum close.');
       return;
     }
     setError(null);
     setActionLoading('close');
     try {
+      const loc = finalizedLocation ?? locationTag;
       const res = await fetchWithAuth('/api/tickets/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -470,11 +587,13 @@ export default function TicketDetailContent({
           rca: selectedRca,
           subRca: selectedSubRca,
           descriptionSolutionDompis: detailPerbaikan.trim(),
-          latitude: locationTag?.latitude ?? undefined,
-          longitude: locationTag?.longitude ?? undefined,
-          accuracyMeters: locationTag?.accuracyMeters ?? undefined,
-          barcodeDc: locationTag?.barcodeDc ?? undefined,
-          locationSource: locationTag?.locationSource ?? undefined,
+          alamat: currentAddress.trim(),
+          deviceName: currentDevice.trim(),
+          latitude: loc?.latitude ?? undefined,
+          longitude: loc?.longitude ?? undefined,
+          accuracyMeters: loc?.accuracyMeters ?? undefined,
+          barcodeDc: loc?.barcodeDc ?? undefined,
+          locationSource: loc?.locationSource ?? undefined,
         }),
       });
       if (!res) throw new Error('Tidak ada respon');
@@ -497,42 +616,16 @@ export default function TicketDetailContent({
     selectedSubRca,
     detailPerbaikan,
     closeEvidenceCount,
-    geotagRequired,
-    isLocationEmpty,
-    locationTag?.latitude,
-    locationTag?.longitude,
-    locationTag?.accuracyMeters,
-    locationTag?.barcodeDc,
-    locationTag?.locationSource,
+    locationTag,
     ticket.idTicket,
     router,
   ]);
 
-  // ── Combined save (device + alamat + lokasi) ─────────────────
-  const handleCombinedSave = useCallback(async () => {
-    setError(null);
-    if (!canEditDetails) return;
-
-    setCombinedSaving(true);
-    try {
-      const deviceOk = await deviceEditorRef.current?.save();
-      const addressOk = await addressEditorRef.current?.save();
-      const locationOk = locationTaggerRef.current?.finalize();
-
-      if (deviceOk && addressOk && locationOk) {
-        setError(null);
-        handleScrollToSection('rca-section');
-      } else if (deviceOk === false) {
-        handleScrollToSection('device-editor-section');
-      } else if (addressOk === false) {
-        handleScrollToSection('address-editor-section');
-      } else {
-        handleScrollToSection('location-tagger-section');
-      }
-    } finally {
-      setCombinedSaving(false);
-    }
-  }, [canEditDetails, handleScrollToSection]);
+  // ── Confirm close from sheet (Fitur E) ─────────────────────
+  const handleConfirmClose = useCallback(() => {
+    setShowCloseConfirm(false);
+    void handleCloseTicket();
+  }, [handleCloseTicket]);
 
   return (
     <div className='flex h-dvh flex-col bg-(--bg)'>
@@ -554,6 +647,15 @@ export default function TicketDetailContent({
           </p>
         </div>
       </div>
+
+      {/* ── Read-Only banner (mode lihat) ──────────────────────── */}
+      {readOnly && (
+        <div className='flex items-center gap-2 bg-amber-500 px-4 py-2.5 text-sm font-bold text-white'>
+          <AlertTriangle size={16} />
+          Mode Lihat — Ticket ini ditangani oleh teknisi lain. Anda tidak dapat
+          mengubah data ticket ini.
+        </div>
+      )}
 
       {/* ── Progress Stepper ──────────────────────────────────── */}
       <div className='overflow-hidden border-b border-(--border) bg-(--surface) px-4 py-4'>
@@ -708,49 +810,53 @@ export default function TicketDetailContent({
                       )}
                     </div>
                   </div>
-                  <div
-                    className='border-t border-(--border) pt-2'
-                    id='location-tagger-section'
-                  >
-                    <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
-                      Lokasi Penanganan
-                      {canEditDetails && geotagRequired && isLocationEmpty && (
-                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
-                          <AlertTriangle size={10} className='mr-1 inline' />
-                          WAJIB
-                        </span>
+                  {!(isTicketClosed && ticket.rca) && (
+                    <div
+                      className='border-t border-(--border) pt-2'
+                      id='location-tagger-section'
+                    >
+                      <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                        Lokasi Penanganan
+                        {canEditDetails && isLocationEmpty && (
+                          <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                            <AlertTriangle size={10} className='mr-1 inline' />
+                            WAJIB
+                          </span>
+                        )}
+                      </p>
+                      {ticket.serviceLocation && !canEditDetails ? (
+                        <LocationSummary location={ticket.serviceLocation} />
+                      ) : (
+                        <LocationTagger
+                          ticketId={ticket.idTicket}
+                          serviceNo={ticket.serviceNo}
+                          contactName={ticket.contactName}
+                          alamat={ticket.alamat}
+                          deviceName={ticket.deviceName}
+                          canEdit={canEditDetails}
+                          hideOwnSave={canEditDetails}
+                          compact={canEditDetails}
+                          initialLocation={draftLocation}
+                          ref={locationTaggerRef}
+                          onError={setError}
+                          onLocationChange={setLocationTag}
+                          onAddressSuggestion={setAddressSuggestion}
+                        />
                       )}
-                    </p>
-                    {ticket.serviceLocation && !canEditDetails ? (
-                      <LocationSummary location={ticket.serviceLocation} />
-                    ) : (
-                      <LocationTagger
-                        ticketId={ticket.idTicket}
-                        serviceNo={ticket.serviceNo}
-                        contactName={ticket.contactName}
-                        alamat={ticket.alamat}
-                        deviceName={ticket.deviceName}
-                        canEdit={canEditDetails}
-                        hideOwnSave={canEditDetails}
-                        compact={canEditDetails}
-                        ref={locationTaggerRef}
-                        onError={setError}
-                        onLocationChange={setLocationTag}
-                        onAddressSuggestion={setAddressSuggestion}
-                      />
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div className='border-t border-(--border) pt-2'>
                     <AddressEditor
                       ticketId={ticket.idTicket}
                       serviceNo={ticket.serviceNo}
-                      initialAddress={ticket.alamat}
+                      initialAddress={draftAddress ?? ticket.alamat}
                       suggestion={addressSuggestion}
                       canEdit={canEditDetails}
                       hideOwnSave={canEditDetails}
                       ref={addressEditorRef}
                       onError={setError}
-                      onAddressSaved={(addr) => setCurrentAddress(addr)}
+                      onAddressChange={setCurrentAddress}
+                      onAddressSaved={setCurrentAddress}
                     />
                   </div>
                   <div
@@ -768,12 +874,13 @@ export default function TicketDetailContent({
                     </p>
                     <DeviceEditor
                       ticketId={ticket.idTicket}
-                      initialDevice={ticket.deviceName}
+                      initialDevice={draftDevice ?? ticket.deviceName}
                       canEdit={canEditDetails}
                       hideOwnSave={canEditDetails}
                       ref={deviceEditorRef}
                       onError={setError}
-                      onDeviceSaved={(device) => setCurrentDevice(device)}
+                      onDeviceChange={setCurrentDevice}
+                      onDeviceSaved={setCurrentDevice}
                     />
                   </div>
                 </div>
@@ -822,7 +929,7 @@ export default function TicketDetailContent({
 
             {/* RCA & Close form (when on progress) */}
             <div id='rca-section'>
-              {isOnProgress(status) && (
+              {isOnProgress(status) && !readOnly && (
                 <SectionCard
                   title='RCA & Closing'
                   icon={Search}
@@ -833,6 +940,19 @@ export default function TicketDetailContent({
                       <label className='mb-1.5 block text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
                         Root Cause Analysis (RCA)
                       </label>
+                      {closingRedesign &&
+                        rcaSuggestionState.status === 'loaded' &&
+                        rcaSuggestionState.suggestions.length > 0 && (
+                          <>
+                            <RcaSuggestionChips
+                              state={rcaSuggestionState}
+                              onPick={handlePickRca}
+                            />
+                            <p className='mb-1.5 mt-1 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                              Atau pilih manual:
+                            </p>
+                          </>
+                        )}
                       <select
                         value={selectedRca}
                         onFocus={() => {
@@ -851,15 +971,14 @@ export default function TicketDetailContent({
                           </option>
                         ))}
                       </select>
-                      <RcaSuggestionChips
-                        state={rcaSuggestionState}
-                        onPick={(rca, subRca, description) => {
-                          setSelectedRca(rca);
-                          setSelectedSubRca(subRca);
-                          if (description) setDetailPerbaikan(description);
-                          setRcaFocusRequested(false);
-                        }}
-                      />
+                      {(!closingRedesign ||
+                        rcaSuggestionState.status !== 'loaded' ||
+                        rcaSuggestionState.suggestions.length === 0) && (
+                        <RcaSuggestionChips
+                          state={rcaSuggestionState}
+                          onPick={handlePickRca}
+                        />
+                      )}
                     </div>
                     {selectedRca && (
                       <div>
@@ -895,14 +1014,43 @@ export default function TicketDetailContent({
                         Detail Perbaikan{' '}
                         <span className='text-red-500'>(wajib)</span>
                       </label>
-                      <textarea
-                        value={detailPerbaikan}
-                        onChange={(e) => setDetailPerbaikan(e.target.value)}
-                        placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
-                        rows={4}
-                        maxLength={500}
-                        className='w-full resize-none rounded-xl border border-(--border) bg-(--surface) px-4 py-3 text-sm font-medium text-(--text-primary) shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
-                      />
+                      {closingRedesign && (
+                        <QuickReplyChips
+                          onPick={(text) =>
+                            setDetailPerbaikan((prev) =>
+                              prev ? `${prev}, ${text}` : text,
+                            )
+                          }
+                        />
+                      )}
+                      <div className='relative'>
+                        <textarea
+                          value={detailPerbaikan}
+                          onChange={(e) => setDetailPerbaikan(e.target.value)}
+                          placeholder='Jelaskan detail perbaikan yang sudah dilakukan...'
+                          rows={4}
+                          maxLength={500}
+                          className='w-full resize-none rounded-xl border border-(--border) bg-(--surface) px-4 py-3 pr-10 text-sm font-medium text-(--text-primary) shadow-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none'
+                        />
+                        {closingRedesign && detailVoiceSupported && (
+                          <button
+                            type='button'
+                            onClick={handleDetailVoiceInput}
+                            title={
+                              detailVoiceListening
+                                ? 'Hentikan perekaman'
+                                : 'Isi detail pakai suara'
+                            }
+                            className={`absolute top-2 right-2 flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all ${
+                              detailVoiceListening
+                                ? 'animate-pulse bg-red-500 text-white'
+                                : 'bg-slate-100 text-slate-400 hover:bg-purple-100 hover:text-purple-600'
+                            }`}
+                          >
+                            <Mic size={13} />
+                          </button>
+                        )}
+                      </div>
                       <div className='mt-1 flex justify-between'>
                         <span className='text-[10px] text-(--text-tertiary)'>
                           Minimal 10 karakter
@@ -917,30 +1065,9 @@ export default function TicketDetailContent({
               )}
             </div>
 
-            {isOnProgress(status) && canEditDetails && (
-              <button
-                type='button'
-                onClick={() => void handleCombinedSave()}
-                disabled={combinedSaving}
-                className='flex h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-blue-600 to-indigo-600 font-sans text-[14px] font-semibold text-white shadow-[0_4px_12px_rgba(99,102,241,0.3)] transition-opacity hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none'
-              >
-                {combinedSaving ? (
-                  <>
-                    <span className='h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <MapPin size={17} />
-                    Simpan Semua
-                  </>
-                )}
-              </button>
-            )}
-
             {/* Evidence upload (when on progress) */}
             <div id='evidence-section'>
-              {isOnProgress(status) && (
+              {isOnProgress(status) && !readOnly && (
                 <button
                   type='button'
                   onClick={handleGoToEvidence}
@@ -1104,7 +1231,8 @@ export default function TicketDetailContent({
       )}
 
       {/* ── Fixed Footer ──────────────────────────────────────── */}
-      <div className='fixed right-0 bottom-0 left-0 z-20 border-t border-(--border) bg-(--surface) px-4 pt-2 pb-3'>
+      {!readOnly && (
+        <div className='fixed right-0 bottom-0 left-0 z-20 border-t border-(--border) bg-(--surface) px-4 pt-2 pb-3'>
         <div className='mx-auto flex max-w-2xl flex-col gap-2'>
           {isOnProgress(status) && (
             <div className='flex items-center justify-between gap-1 border-b border-(--border) pb-2'>
@@ -1181,13 +1309,19 @@ export default function TicketDetailContent({
                   </button>
                   <button
                     type='button'
-                    onClick={handleCloseTicket}
+                    onClick={() => {
+                      if (closingRedesign) {
+                        setShowCloseConfirm(true);
+                        return;
+                      }
+                      void handleCloseTicket();
+                    }}
                     disabled={!canClose || actionLoading === 'close'}
                     className={clsx(
-                      'flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition-all active:scale-95',
+                      'flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
                       canClose
                         ? 'bg-green-500 hover:bg-green-600'
-                        : 'cursor-not-allowed bg-green-500/40',
+                        : 'bg-green-500/40',
                       actionLoading === 'close' && 'opacity-60',
                     )}
                     title={
@@ -1251,6 +1385,25 @@ export default function TicketDetailContent({
           </div>
         </div>
       </div>
+      )}
+
+      {/* ── Close confirmation sheet (Fitur E) ─────────────────── */}
+      {closingRedesign && (
+        <CloseConfirmationSheet
+          isOpen={showCloseConfirm}
+          loading={actionLoading === 'close'}
+          summary={{
+            alamat: currentAddress,
+            deviceName: currentDevice,
+            rca: selectedRca,
+            subRca: selectedSubRca,
+            detailPerbaikan,
+            photoCount: closeEvidenceCount,
+          }}
+          onCancel={() => setShowCloseConfirm(false)}
+          onConfirm={handleConfirmClose}
+        />
+      )}
     </div>
   );
 }

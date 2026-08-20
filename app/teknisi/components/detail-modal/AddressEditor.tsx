@@ -1,6 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useImperativeHandle } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useImperativeHandle,
+} from 'react';
+import { MapPin } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 
 export interface AddressEditorHandle {
@@ -39,22 +46,26 @@ interface AddressEditorProps {
   ref?: React.Ref<AddressEditorHandle>;
   onError: (error: string | null) => void;
   onAddressSaved?: (address: string) => void;
+  onAddressChange?: (address: string) => void;
 }
 
 export default function AddressEditor({
-    ticketId,
-    serviceNo,
-    initialAddress,
-    suggestion,
-    canEdit,
-    hideOwnSave = false,
-    ref,
-    onError,
-    onAddressSaved,
-  }: AddressEditorProps) {
+  ticketId,
+  serviceNo,
+  initialAddress,
+  suggestion,
+  canEdit,
+  hideOwnSave = false,
+  ref,
+  onError,
+  onAddressSaved,
+  onAddressChange,
+}: AddressEditorProps) {
   const [alamatInitial, setAlamatInitial] = useState(initialAddress || '');
   const [alamatValue, setAlamatValue] = useState(initialAddress || '');
-  const [alamatEditing, setAlamatEditing] = useState(!initialAddress?.trim());
+  const [alamatEditing, setAlamatEditing] = useState(
+    canEdit && !initialAddress?.trim(),
+  );
   const [alamatSaving, setAlamatSaving] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [bankDraft, setBankDraft] = useState<string | null>(null);
@@ -64,6 +75,8 @@ export default function AddressEditor({
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const voiceRecRef = useRef<{ abort: () => void } | null>(null);
+  const onAddressSavedRef = useRef(onAddressSaved);
+  onAddressSavedRef.current = onAddressSaved;
 
   const alamatTrim = alamatValue.trim();
   const alamatInitialTrim = alamatInitial.trim();
@@ -82,6 +95,10 @@ export default function AddressEditor({
   const MAX_LENGTH = 255;
 
   useEffect(() => {
+    onAddressChange?.(alamatValue);
+  }, [alamatValue, onAddressChange]);
+
+  useEffect(() => {
     const recognition = getSpeechRecognition();
     setVoiceSupported(Boolean(recognition));
   }, []);
@@ -93,7 +110,7 @@ export default function AddressEditor({
     const init = String(initialAddress ?? '');
     setAlamatInitial(init);
     setAlamatValue(init);
-    setAlamatEditing(init.trim().length === 0);
+    setAlamatEditing(canEdit && init.trim().length === 0);
     setAlamatSaving(false);
 
     if (ticketId && init.trim().length === 0) {
@@ -109,7 +126,7 @@ export default function AddressEditor({
             setAlamatInitial(remoteAlamat);
             setAlamatValue(remoteAlamat);
             setAlamatEditing(false);
-            onAddressSaved?.(remoteAlamat);
+            onAddressSavedRef.current?.(remoteAlamat);
           }
         } catch {
           // ignore
@@ -120,7 +137,7 @@ export default function AddressEditor({
     return () => {
       cancelled = true;
     };
-  }, [ticketId, initialAddress, onAddressSaved]);
+  }, [ticketId, initialAddress, canEdit]);
 
   // Fetch bank-location draft (riwayat alamat per service_no)
   useEffect(() => {
@@ -278,9 +295,12 @@ export default function AddressEditor({
   );
 
   // State 1: Empty State
-  if (!isFilled && !alamatEditing) {
+  if (!isFilled && (!alamatEditing || !canEdit)) {
     return (
       <div className='flex flex-col gap-2'>
+        <p className='mb-1 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+          Alamat
+        </p>
         <div className='addr-empty flex items-center justify-between gap-2'>
           <div className='addr-empty-left flex items-center gap-2'>
             <div className='addr-empty-dot box-shadow-[0_0_0_3px_rgba(251,191,36,0.2)] h-1.75 w-1.75 shrink-0 rounded-full bg-amber-500' />
@@ -310,10 +330,10 @@ export default function AddressEditor({
         </div>
 
         {(activeSuggestion || bankDraft) && canEdit && (
-          <div className='addr-suggestion flex items-start justify-between gap-2 rounded-[12px] border border-blue-200 bg-blue-50/70 p-2.5 dark:border-blue-500/25 dark:bg-blue-500/10'>
+          <div className='addr-suggestion flex items-start justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 dark:border-blue-500/25 dark:bg-blue-500/10'>
             <div className='min-w-0 flex-1'>
               <p className='mb-1 flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300'>
-                <span>📍</span>
+                <MapPin size={12} className='shrink-0' />
                 {activeSuggestion
                   ? 'Perkiraan alamat dari GPS'
                   : 'Alamat dari tag lokasi sebelumnya'}
@@ -340,7 +360,7 @@ export default function AddressEditor({
   }
 
   // State 2: Editing State
-  if (alamatEditing) {
+  if (alamatEditing && canEdit) {
     return (
       <div className='addr-expand-wrap flex animate-[expandDown_0.25s_cubic-bezier(0.32,0.72,0,1)] flex-col gap-0'>
         <style>{`
@@ -391,7 +411,9 @@ export default function AddressEditor({
               type='button'
               onClick={handleVoiceInput}
               disabled={alamatSaving}
-              title={voiceListening ? 'Hentikan perekaman' : 'Isi alamat pakai suara'}
+              title={
+                voiceListening ? 'Hentikan perekaman' : 'Isi alamat pakai suara'
+              }
               className={`absolute top-2 right-2 flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-full transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                 voiceListening
                   ? 'animate-pulse bg-red-500 text-white'
@@ -401,7 +423,16 @@ export default function AddressEditor({
               {voiceListening ? (
                 <span className='h-2 w-2 rounded-full bg-white' />
               ) : (
-                <svg width='13' height='13' viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round'>
+                <svg
+                  width='13'
+                  height='13'
+                  viewBox='0 0 16 16'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='1.8'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
                   <rect x='5.5' y='2' width='5' height='8' rx='2.5' />
                   <path d='M3 8a5 5 0 0 0 10 0M8 13v2' />
                 </svg>
@@ -414,7 +445,7 @@ export default function AddressEditor({
         {activeSuggestion && (
           <div className='mt-1.5 flex items-start justify-between gap-2 rounded-[10px] border border-blue-200 bg-blue-50/70 px-2.5 py-2 dark:border-blue-500/25 dark:bg-blue-500/10'>
             <p className='min-w-0 flex-1 truncate text-[11.5px] font-semibold text-slate-700 dark:text-slate-200'>
-              <span className='mr-1'>📍</span>
+              <MapPin size={12} className='mr-1 inline shrink-0' />
               {activeSuggestion}
             </p>
             <button
@@ -423,7 +454,7 @@ export default function AddressEditor({
                 useDraft(activeSuggestion);
                 setDismissedSuggestion(activeSuggestion);
               }}
-              className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[8px] bg-blue-600 px-2 py-1 text-[10.5px] font-bold text-white transition-opacity hover:opacity-90'
+              className='inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-2 py-1 text-[10.5px] font-bold text-white transition-opacity hover:opacity-90'
             >
               Pakai
             </button>

@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import { MapPin, ScanLine, ChevronLeft, Crosshair } from 'lucide-react';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { reverseGeocode, formatAddressSuggestion } from '@/app/libs/reverse-geocode';
-import MiniMap from './MiniMap';
+
+const MiniMap = dynamic(() => import('./MiniMap'), { ssr: false });
 
 const Scanner = dynamic(
   () => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner),
@@ -38,7 +39,7 @@ interface BankLocationData {
 }
 
 export interface LocationTaggerHandle {
-  finalize: () => boolean;
+  finalize: (silent?: boolean) => LocationTagState | null;
 }
 
 interface LocationTaggerProps {
@@ -50,6 +51,7 @@ interface LocationTaggerProps {
   canEdit: boolean;
   hideOwnSave?: boolean;
   compact?: boolean;
+  initialLocation?: LocationTagState | null;
   ref?: React.Ref<LocationTaggerHandle>;
   onError: (err: string | null) => void;
   onLocationChange?: (location: LocationTagState | null) => void;
@@ -92,6 +94,7 @@ export default function LocationTagger({
   canEdit,
   hideOwnSave = false,
   compact = false,
+  initialLocation,
   ref,
   onError,
   onLocationChange,
@@ -111,10 +114,39 @@ export default function LocationTagger({
   const [locating, setLocating] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanningError, setScanningError] = useState(false);
+  const [tagSource, setTagSource] = useState<
+    'manual_tag' | 'reused_bank_data'
+  >('manual_tag');
+  const restoredRef = useRef(false);
+  const editedRef = useRef(false);
+  const immediateCommitRef = useRef(false);
+  const finalizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
+  // Restore previously tagged location (from draft when navigating back)
+  useEffect(() => {
+    if (!initialLocation) return;
+    restoredRef.current = true;
+    setLat(initialLocation.latitude);
+    setLng(initialLocation.longitude);
+    setAccuracy(initialLocation.accuracyMeters);
+    setBarcodeDc(initialLocation.barcodeDc);
+    setDeviceValue(initialLocation.deviceName || deviceName || '');
+    setTagSource(initialLocation.locationSource ?? 'manual_tag');
+    setMode('filled');
+    onLocationChange?.(initialLocation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocation]);
 
   // Fetch bank data on mount
   useEffect(() => {
     let cancelled = false;
+    if (initialLocation) {
+      return;
+    }
     if (!ticketId || !serviceNo) {
       if (!cancelled) setMode('idle');
       return;
@@ -123,14 +155,15 @@ export default function LocationTagger({
     setBankLoading(true);
     (async () => {
       try {
-        const res = await fetchWithAuth(
-          `/api/tickets/${ticketId}/location-bank?serviceNo=${encodeURIComponent(serviceNo)}`,
-        );
-        if (cancelled || !res) return;
-        const data = await res.json().catch(() => null);
-        if (cancelled) return;
+const res = await fetchWithAuth(
+            `/api/tickets/${ticketId}/location-bank?serviceNo=${encodeURIComponent(serviceNo)}`,
+          );
+          if (cancelled || !res) return;
+          const data = await res.json().catch(() => null);
+          if (cancelled) return;
+          if (restoredRef.current) return;
 
-        if (data?.success && data?.found && data?.data) {
+          if (data?.success && data?.found && data?.data) {
           setBank(data.data as BankLocationData);
           setLat(data.data.latitude ?? null);
           setLng(data.data.longitude ?? null);
@@ -156,6 +189,7 @@ export default function LocationTagger({
   const handleOpenFromEmpty = useCallback(() => {
     onError(null);
     onAddressSuggestion?.(null);
+    editedRef.current = false;
     if (bank) {
       setMode('confirm');
     } else {
@@ -211,6 +245,7 @@ export default function LocationTagger({
     setAccuracy(bank.accuracyMeters);
     setBarcodeDc(bank.barcodeDc ?? '');
     setDeviceValue(bank.deviceName ?? deviceName ?? '');
+    setTagSource('reused_bank_data');
     setMode('filled');
     emitChange(rebuilt);
     onAddressSuggestion?.(bank.alamat?.trim() || null);
@@ -220,6 +255,7 @@ export default function LocationTagger({
   const handleEditOpen = useCallback(() => {
     onError(null);
     onAddressSuggestion?.(null);
+    editedRef.current = false;
     setMode('editing');
   }, [onError, onAddressSuggestion]);
 
@@ -237,6 +273,7 @@ export default function LocationTagger({
         const freshLat = pos.coords.latitude;
         const freshLng = pos.coords.longitude;
         const freshAccuracy = Math.round(pos.coords.accuracy);
+        editedRef.current = true;
         setLat(freshLat);
         setLng(freshLng);
         setAccuracy(freshAccuracy);
@@ -252,38 +289,143 @@ export default function LocationTagger({
     );
   }, [onError, suggestAddress]);
 
-  const exposeManualTag = useCallback(() => {
-    if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      onError('Ambil atau koreksi titik lokasi di peta terlebih dahulu.');
-      return false;
+  const buildTaggedState = useCallback(
+    (
+      source: 'manual_tag' | 'reused_bank_data',
+    ): LocationTagState | null => {
+      if (
+        lat === null ||
+        lng === null ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      )
+        return null;
+      if (!barcodeDc.trim()) return null;
+      return {
+        latitude: lat,
+        longitude: lng,
+        accuracyMeters: accuracy,
+        barcodeDc: barcodeDc.trim(),
+        deviceName: deviceValue.trim() || deviceName || '',
+        locationSource: source,
+      };
+    },
+    [lat, lng, accuracy, barcodeDc, deviceValue, deviceName],
+  );
+
+  const exposeManualTag = useCallback((): LocationTagState | null => {
+    const rebuilt = buildTaggedState('manual_tag');
+    if (!rebuilt) {
+      if (
+        lat === null ||
+        lng === null ||
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        onError('Ambil atau koreksi titik lokasi di peta terlebih dahulu.');
+      } else {
+        onError('Barcode DC wajib diisi (scan atau ketik manual).');
+      }
+      return null;
     }
-    if (!barcodeDc.trim()) {
-      onError('Barcode DC wajib diisi (scan atau ketik manual).');
-      return false;
+    setMode('filled');
+    setTagSource('manual_tag');
+    emitChange(rebuilt);
+    return rebuilt;
+  }, [buildTaggedState, lat, lng, onError, emitChange]);
+
+  // Commit manual tag saat data lengkap (pemicu: debounce, blur, Enter, scan)
+  const commitManualTag = useCallback(() => {
+    if (modeRef.current !== 'editing') return;
+    const rebuilt = buildTaggedState('manual_tag');
+    if (!rebuilt) return;
+    if (finalizeDebounceRef.current) {
+      clearTimeout(finalizeDebounceRef.current);
+      finalizeDebounceRef.current = null;
+    }
+    setMode('filled');
+    setTagSource('manual_tag');
+    emitChange(rebuilt);
+  }, [buildTaggedState, emitChange]);
+
+  // Auto-finalize: devounce 1.5s setelah input terakhir, agar ketikan
+  // manual tidak tersimpan premature (cukup 1 huruf) dan tak terpotong
+  // untuk barcode panjang. Scan menghasilkan kode penuh → commit langsung.
+  useEffect(() => {
+    if (mode !== 'editing' || !editedRef.current || barcodeDc.trim().length === 0) {
+      if (finalizeDebounceRef.current) {
+        clearTimeout(finalizeDebounceRef.current);
+        finalizeDebounceRef.current = null;
+      }
+      return;
+    }
+    const rebuilt = buildTaggedState('manual_tag');
+    if (!rebuilt) {
+      if (finalizeDebounceRef.current) {
+        clearTimeout(finalizeDebounceRef.current);
+        finalizeDebounceRef.current = null;
+      }
+      return;
     }
 
-    const rebuilt: LocationTagState = {
-      latitude: lat,
-      longitude: lng,
-      accuracyMeters: accuracy,
-      barcodeDc: barcodeDc.trim(),
-      deviceName: deviceValue.trim() || deviceName || '',
-      locationSource: 'manual_tag',
-    };
-    setMode('filled');
-    emitChange(rebuilt);
-    return true;
-  }, [lat, lng, accuracy, barcodeDc, deviceValue, deviceName, onError, emitChange]);
+    if (immediateCommitRef.current) {
+      immediateCommitRef.current = false;
+      if (finalizeDebounceRef.current) {
+        clearTimeout(finalizeDebounceRef.current);
+        finalizeDebounceRef.current = null;
+      }
+      commitManualTag();
+      return;
+    }
+
+    if (finalizeDebounceRef.current) clearTimeout(finalizeDebounceRef.current);
+    finalizeDebounceRef.current = setTimeout(() => {
+      finalizeDebounceRef.current = null;
+      commitManualTag();
+    }, 1500);
+  }, [mode, lat, lng, barcodeDc, buildTaggedState, commitManualTag]);
 
   useImperativeHandle(
     ref,
     () => ({
-      finalize: () => {
-        if (mode === 'filled' && lat !== null && lng !== null) return true;
-        return exposeManualTag();
+      finalize: (silent?: boolean) => {
+        if (
+          mode === 'filled' &&
+          lat !== null &&
+          lng !== null &&
+          Number.isFinite(lat) &&
+          Number.isFinite(lng)
+        ) {
+          const rebuilt = buildTaggedState(tagSource);
+          if (rebuilt) {
+            emitChange(rebuilt);
+            return rebuilt;
+          }
+        }
+        const source = mode === 'confirm' ? 'reused_bank_data' : 'manual_tag';
+        const rebuilt = buildTaggedState(source);
+        if (!rebuilt) {
+          if (!silent) {
+            if (
+              lat === null ||
+              lng === null ||
+              !Number.isFinite(lat) ||
+              !Number.isFinite(lng)
+            ) {
+              onError('Ambil atau koreksi titik lokasi di peta terlebih dahulu.');
+            } else {
+              onError('Barcode DC wajib diisi (scan atau ketik manual).');
+            }
+          }
+          return null;
+        }
+        setMode('filled');
+        setTagSource(source);
+        emitChange(rebuilt);
+        return rebuilt;
       },
     }),
-    [mode, lat, lng, exposeManualTag],
+    [mode, lat, lng, accuracy, tagSource, buildTaggedState, emitChange, onError],
   );
 
   const handleCancel = useCallback(() => {
@@ -312,6 +454,8 @@ export default function LocationTagger({
     (results: Array<{ rawValue: string }>) => {
       const first = results?.[0];
       if (!first?.rawValue) return;
+      editedRef.current = true;
+      immediateCommitRef.current = true;
       setBarcodeDc(first.rawValue);
       setScanOpen(false);
       setScanningError(false);
@@ -352,7 +496,7 @@ export default function LocationTagger({
       <div className='flex flex-col gap-2.5'>
         <div className='rounded-[14px] border border-blue-200 bg-blue-50/70 p-3 dark:border-blue-500/25 dark:bg-blue-500/10'>
           <p className='mb-1 flex items-start gap-1.5 text-[12px] font-bold text-blue-700 dark:text-blue-300'>
-            <span className='mt-0.5'>📍</span>
+            <MapPin size={14} className='mt-0.5 shrink-0' />
             Lokasi tersedia dari tagging sebelumnya
           </p>
           <p className='mb-1 text-[11px] leading-relaxed text-slate-500'>
@@ -477,6 +621,7 @@ export default function LocationTagger({
               draggable
               className='mb-1 h-40!'
               onPositionChange={(newLat, newLng) => {
+                editedRef.current = true;
                 setLat(newLat);
                 setLng(newLng);
                 suggestAddress(newLat, newLng);
@@ -556,7 +701,17 @@ export default function LocationTagger({
           <input
             type='text'
             value={barcodeDc}
-            onChange={(e) => setBarcodeDc(e.target.value)}
+            onChange={(e) => {
+              editedRef.current = true;
+              setBarcodeDc(e.target.value);
+            }}
+            onBlur={() => commitManualTag()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitManualTag();
+              }
+            }}
             placeholder={
               scanningError
                 ? 'Kamera tidak tersedia, ketik barcode manual di sini'

@@ -1,9 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { MapPin } from 'lucide-react';
 import type { Ticket } from '@/app/types/ticket';
 import { formatDateTimeWIB } from '@/app/utils/datetime';
-import MiniMap from './MiniMap';
+
+const MiniMap = dynamic(() => import('./MiniMap'), { ssr: false });
 
 interface Props {
   location: NonNullable<Ticket['serviceLocation']>;

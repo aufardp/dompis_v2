@@ -2,29 +2,27 @@
 
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Ticket } from '@/app/types/ticket';
+import { fetchWithAuth } from '@/app/libs/fetcher';
 import { useToast } from './hooks/useToast';
 import {
   CheckCircle2,
   ClipboardList,
-  Heart,
+  Eye,
   Home,
   LayoutGrid,
+  MapPin,
   Search,
   Ticket as TicketIcon,
+  Wrench,
   X,
 } from 'lucide-react';
 
-import {
-  useTickets,
-  usePullToRefresh,
-} from './TeknisiDashboard/hooks';
-import {
-  PullToRefresh,
-} from './TeknisiDashboard/components';
+import { useTickets, usePullToRefresh } from './TeknisiDashboard/hooks';
+import { PullToRefresh } from './TeknisiDashboard/components';
 import { TicketFilter } from './TeknisiDashboard/constants/ticket';
 import DashboardHeader from './DashboardHeader';
 import StatusGrid from './StatusGrid';
@@ -50,6 +48,30 @@ interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
 }
+
+interface GlobalSearchResult {
+  id_ticket: number;
+  incident: string;
+  service_no: string | null;
+  contact_phone: string | null;
+  contact_name: string | null;
+  ticket_id_gamas: string | null;
+  customer_name: string | null;
+  workzone: string | null;
+  status: string | null;
+  status_update: string | null;
+  reported_date: string | Date | null;
+  matched_on: string | null;
+  users?: { nama: string | null } | null;
+}
+
+const MATCHED_LABELS: Record<string, string> = {
+  service: 'No. SLA/Service',
+  phone: 'No. Telepon',
+  incident: 'Nomor Tiket',
+  gamas: 'Nomor Gamas (SLA)',
+  name: 'Nama Pelanggan',
+};
 
 function SearchBar({ value, onChange }: SearchBarProps) {
   const [inputValue, setInputValue] = useState(value);
@@ -216,6 +238,48 @@ export default function TeknisiDashboard() {
     disabled: showDetailModal || showUpdateModal,
   });
 
+  // ── Global search (ticket teknisi lain, read-only) ──────────
+  const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 3) {
+      setGlobalResults([]);
+      setGlobalSearchLoading(false);
+      return;
+    }
+    setGlobalSearchLoading(true);
+    let cancelled = false;
+    const debounce = setTimeout(async () => {
+      try {
+        const res = await fetchWithAuth(
+          `/api/tickets/global-search?q=${encodeURIComponent(q)}`,
+        );
+        const data = await res?.json();
+        if (cancelled) return;
+        if (data?.success) {
+          setGlobalResults(data.data.data || []);
+        }
+      } catch {
+        if (cancelled) return;
+        setGlobalResults([]);
+      } finally {
+        if (!cancelled) setGlobalSearchLoading(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
+  }, [searchQuery]);
+
+  const globalResultsFiltered = useMemo(() => {
+    if (globalResults.length === 0) return [];
+    const ownedIncidents = new Set(tickets.map((t) => t.ticket));
+    return globalResults.filter((r) => !ownedIncidents.has(r.incident));
+  }, [globalResults, tickets]);
+
   const handleSelectTicket = useCallback(
     (ticket: Ticket) => {
       router.push(`/teknisi/ticket/${ticket.idTicket}`);
@@ -282,10 +346,22 @@ export default function TeknisiDashboard() {
 
   // Dynamic empty state message
   const emptyMessage = (() => {
-    if (searchQuery.trim()) {
+    const q = searchQuery.trim();
+    if (q) {
+      // Tiket ditemukan lewat Pencarian Global (milk teknisi lain) → jangan
+      // bilang "tidak ditemukan"; arahkan ke section global di atas.
+      if (globalResultsFiltered.length > 0) {
+        return {
+          icon: Search,
+          title: `Tiket "${q}" tidak ada di daftar Anda`,
+          subtitle:
+            'Ditemukan di hasil Pencarian Global di atas (tiket teknisi lain)',
+          showClearButton: true,
+        };
+      }
       return {
         icon: Search,
-        title: `Tiket "${searchQuery}" tidak ditemukan`,
+        title: `Tiket "${q}" tidak ditemukan`,
         subtitle: 'Coba cek nomor tiket kembali atau hapus pencarian',
         showClearButton: true,
       };
@@ -382,13 +458,78 @@ export default function TeknisiDashboard() {
           </div>
         )}
 
+        {globalResultsFiltered.length > 0 && (
+          <section className='space-y-3'>
+            <div>
+              <p className='text-[10px] font-bold tracking-[0.32em] text-(--text-tertiary) uppercase'>
+                Pencarian Global
+              </p>
+              <h2 className='mt-1 text-lg font-semibold text-(--text-primary)'>
+                Ticket teknisi lain · mode lihat
+              </h2>
+            </div>
+            <div className='space-y-3'>
+              {globalResultsFiltered.map((r) => {
+                const handlerName = r.users?.nama || 'Teknisi lain';
+                const matchedLabel = r.matched_on
+                  ? MATCHED_LABELS[r.matched_on]
+                  : null;
+                return (
+                  <button
+                    key={r.id_ticket}
+                    type='button'
+                    onClick={() =>
+                      router.push(`/teknisi/ticket/${r.id_ticket}?readonly=1`)
+                    }
+                    className='w-full rounded-2xl border border-(--border) bg-(--surface) p-4 text-left shadow-sm transition-all active:scale-[0.98]'
+                  >
+                    <div className='flex items-center justify-between gap-2'>
+                      <p className='font-mono text-sm font-bold text-(--text-primary)'>
+                        {r.incident}
+                      </p>
+                      <span className='inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'>
+                        <Eye size={13} />
+                        Mode Lihat
+                      </span>
+                    </div>
+                    <p className='mt-1 text-xs text-(--text-secondary)'>
+                      {[r.service_no, r.workzone, r.customer_name]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                    {matchedLabel && (
+                      <span className='mt-1.5 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-500/15 dark:text-sky-400'>
+                        Cocok: {matchedLabel}
+                      </span>
+                    )}
+                    <p className='mt-2 flex items-center gap-1 text-xs font-semibold text-(--text-secondary)'>
+                      {/* <Wrench size={13} /> */}
+                      Ditangani:{' '}
+                      <span className='text-(--text-primary)'>
+                        {handlerName}
+                      </span>
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {globalSearchLoading && globalResultsFiltered.length === 0 && (
+          <div className='flex items-center justify-center gap-2 py-4 text-xs text-(--text-tertiary)'>
+            <span className='h-3.5 w-3.5 animate-spin rounded-full border-2 border-(--border) border-t-current' />
+            Mencari di seluruh ticket...
+          </div>
+        )}
+
         <section className='space-y-4'>
           {loading ? (
             <div className='flex items-center justify-center py-16'>
               <div className='h-10 w-10 animate-spin rounded-full border-4 border-black border-t-transparent dark:border-white dark:border-t-transparent' />
             </div>
           ) : tickets.length === 0 ? (
-            <div className='rounded-4xl border border-dashed border-(--border) bg-(--surface) py-16 text-center shadow-sm'>
+            <div className='rounded-4xl border border-dashed border-(--border) bg-(--surface) px-5 py-16 text-center shadow-sm'>
               <div className='mb-3 flex justify-center'>
                 <emptyMessage.icon className='h-12 w-12 text-(--text-tertiary)' />
               </div>
@@ -446,10 +587,10 @@ export default function TeknisiDashboard() {
               onClick: () => setFilter('assigned') as void,
             },
             {
-              key: 'favorite',
-              icon: Heart,
-              label: 'Favorite',
-              onClick: () => setFilter('pending') as void,
+              key: 'war-map',
+              icon: MapPin,
+              label: 'War Map',
+              onClick: () => router.push('/teknisi/war-map') as void,
             },
             {
               key: 'grid',

@@ -936,37 +936,39 @@ export default function TicketDetailModal({
                     />
                   </div>
 
-                  <div
-                    className='border-t border-(--border) pt-2'
-                    id='location-tagger-section'
-                  >
-                    <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
-                      Lokasi Penanganan
-                      {isOnProgress && geotagRequired && isLocationEmpty && (
-                        <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
-                          <AlertTriangle size={10} className='mr-1 inline' />
-                          WAJIB
-                        </span>
+                  {!(isClosed && ticket.serviceLocation) && (
+                    <div
+                      className='border-t border-(--border) pt-2'
+                      id='location-tagger-section'
+                    >
+                      <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
+                        Lokasi Penanganan
+                        {isOnProgress && geotagRequired && isLocationEmpty && (
+                          <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
+                            <AlertTriangle size={10} className='mr-1 inline' />
+                            WAJIB
+                          </span>
+                        )}
+                      </p>
+                      {ticket.serviceLocation && !canUpdateAlamat ? (
+                        <LocationSummary location={ticket.serviceLocation} />
+                      ) : (
+                        <LocationTagger
+                          ticketId={ticket.idTicket}
+                          serviceNo={ticket.serviceNo}
+                          contactName={ticket.contactName}
+                          alamat={ticket.alamat}
+                          deviceName={ticket.deviceName}
+                          canEdit={canUpdateAlamat}
+                          hideOwnSave={canUpdateAlamat}
+                          ref={locationTaggerRef}
+                          onError={setError}
+                          onLocationChange={setLocationTag}
+                          onAddressSuggestion={setAddressSuggestion}
+                        />
                       )}
-                    </p>
-                    {ticket.serviceLocation && !canUpdateAlamat ? (
-                      <LocationSummary location={ticket.serviceLocation} />
-                    ) : (
-                      <LocationTagger
-                        ticketId={ticket.idTicket}
-                        serviceNo={ticket.serviceNo}
-                        contactName={ticket.contactName}
-                        alamat={ticket.alamat}
-                        deviceName={ticket.deviceName}
-                        canEdit={canUpdateAlamat}
-                        hideOwnSave={canUpdateAlamat}
-                        ref={locationTaggerRef}
-                        onError={setError}
-                        onLocationChange={setLocationTag}
-                        onAddressSuggestion={setAddressSuggestion}
-                      />
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   <InfoField label='Workzone' value={ticket.workzone} />
 

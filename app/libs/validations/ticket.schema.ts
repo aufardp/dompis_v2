@@ -44,6 +44,8 @@ export const closeTicketSchema = z.object({
   accuracyMeters: z.coerce.number().min(0).optional(),
   barcodeDc: optionalTrimmedString(150),
   locationSource: z.enum(['manual_tag', 'reused_bank_data']).optional(),
+  alamat: optionalTrimmedString(65535),
+  deviceName: optionalTrimmedString(100),
 });
 
 export const updateTicketSchema = z.object({
@@ -109,4 +111,9 @@ export interface CloseLocationInput {
   accuracyMeters?: number;
   barcodeDc?: string;
   locationSource?: 'manual_tag' | 'reused_bank_data';
+}
+
+export interface CloseTicketFields {
+  alamat?: string;
+  deviceName?: string;
 }

@@ -6,7 +6,10 @@ export interface ReverseGeocodeResult {
   houseNumber: string | null;
   village: string | null;
   suburb: string | null;
+  district: string | null;
   city: string | null;
+  state: string | null;
+  postcode: string | null;
 }
 
 export async function reverseGeocode(
@@ -56,24 +59,65 @@ export async function reverseGeocode(
         : typeof addr.town === 'string'
           ? addr.town
           : null;
+    const district =
+      typeof addr.district === 'string'
+        ? addr.district
+        : typeof addr.county === 'string'
+          ? addr.county
+          : null;
     const city =
       typeof addr.city === 'string'
         ? addr.city
         : typeof addr.municipality === 'string'
           ? addr.municipality
           : null;
+    const state =
+      typeof addr.state === 'string'
+        ? addr.state
+        : typeof addr.state_district === 'string'
+          ? addr.state_district
+          : null;
+    const postcode = typeof addr.postcode === 'string' ? addr.postcode : null;
 
-    return { displayName: data.display_name, road, houseNumber, village, suburb, city };
+    return {
+      displayName: data.display_name,
+      road,
+      houseNumber,
+      village,
+      suburb,
+      district,
+      city,
+      state,
+      postcode,
+    };
   } catch {
     return null;
   }
 }
 
+function uniq(parts: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    const v = (part ?? '').trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
 export function formatAddressSuggestion(r: ReverseGeocodeResult): string {
-  const parts: string[] = [];
-  if (r.road) parts.push(r.houseNumber ? `${r.road} No. ${r.houseNumber}` : r.road);
-  if (r.village) parts.push(r.village);
-  if (r.suburb && r.suburb !== r.village) parts.push(r.suburb);
-  if (r.city) parts.push(r.city);
-  return parts.filter(Boolean).join(', ') || r.displayName;
+  const base = [r.village, r.suburb, r.district, r.city, r.state, r.postcode];
+  if (r.road) {
+    return uniq([
+      r.houseNumber ? `${r.road} No. ${r.houseNumber}` : r.road,
+      ...base,
+    ]).join(', ');
+  }
+  const draft = uniq(base);
+  if (draft.length >= 2) return draft.join(', ');
+  return r.displayName.replace(/, Indonesia$/i, '');
 }

@@ -36,6 +36,7 @@ module.exports = {
         NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED: 'false',
         WAR_MAP_ENABLED: 'true',
         KML_IMPORT_ENABLED: 'true',
+        NEXT_PUBLIC_TEKNISI_CLOSING_REDESIGN_ENABLED: 'true',
       },
       autorestart: true,
       watch: false,

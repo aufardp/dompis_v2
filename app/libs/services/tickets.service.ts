@@ -95,6 +95,59 @@ function buildTicketSearchWhere(
   return { incident: { equals: term } };
 }
 
+// Deteksi field mana yang membuat sebuah baris cocok dengan query pencarian.
+// Meniru branch `buildTicketSearchWhere` — dipakai untuk menampilkan label
+// "Cocok: …" pada hasil pencarian global.
+export function describeTicketMatch(
+  row: {
+    incident: string;
+    service_no?: string | null;
+    contact_phone?: string | null;
+    ticket_id_gamas?: string | null;
+    contact_name?: string | null;
+    customer_name?: string | null;
+  },
+  search: string,
+): 'service' | 'phone' | 'incident' | 'gamas' | 'name' | null {
+  const term = normalizeSearchInput(search);
+  if (!term) return null;
+
+  const isNumericLike = /^[\d\s+().-]+$/.test(term);
+  const compactNumber = term.replace(/[^\d]/g, '');
+  const compactService = row.service_no?.replace(/[^\d]/g, '') ?? '';
+
+  if (isNumericLike && compactNumber.length >= 4) {
+    if (compactService && compactService.startsWith(compactNumber)) {
+      return 'service';
+    }
+    if (row.contact_phone && row.contact_phone.startsWith(compactNumber)) {
+      return 'phone';
+    }
+    return null;
+  }
+
+  const isTicketCodeLike = /^[a-z0-9_-]{3,}$/i.test(term) && !term.includes(' ');
+  if (isTicketCodeLike) {
+    if (row.incident === term || row.incident.startsWith(term)) return 'incident';
+    if (row.ticket_id_gamas === term || row.ticket_id_gamas?.startsWith(term)) {
+      return 'gamas';
+    }
+    return null;
+  }
+
+  if (term.length >= 3) {
+    if (
+      row.contact_name?.toLowerCase().includes(term.toLowerCase()) ||
+      row.customer_name?.toLowerCase().includes(term.toLowerCase())
+    ) {
+      return 'name';
+    }
+    return null;
+  }
+
+  return null;
+}
+
 function buildTicketSearchPhases(
   search: string,
   searchType?: SearchType,
@@ -250,6 +303,10 @@ function applyStatusUpdateWhere(
 
     case 'close':
       where.status_update = 'close';
+      break;
+
+    case 'active':
+      where.status_update = { notIn: ['close', 'closed'] };
       break;
 
     default:
@@ -792,7 +849,7 @@ export class TicketService {
       onProgress,
       pending,
       closed,
-      totalAktif: assigned + onProgress,
+      totalAktif: assigned + onProgress + pending,
     };
   }
 
@@ -1752,5 +1809,51 @@ export class TicketService {
       contactName: t.contact_name,
       serviceNo: t.service_no,
     }));
+  }
+
+static async globalSearchForTeknisi(
+    query: string,
+    pagination: { page: number; limit: number },
+  ) {
+    const searchWhere = buildTicketSearchWhere(query, undefined) ?? { incident: { equals: '' } };
+    const { page, limit } = pagination;
+    const offset = (page - 1) * limit;
+
+    const [total, tickets] = await Promise.all([
+      prisma.ticket.count({ where: searchWhere }),
+      prisma.ticket.findMany({
+        where: searchWhere,
+        orderBy: [{ reported_date: 'desc' }],
+        skip: offset,
+        take: limit,
+        select: {
+          id_ticket: true,
+          incident: true,
+          service_no: true,
+          contact_phone: true,
+          customer_name: true,
+          contact_name: true,
+          ticket_id_gamas: true,
+          workzone: true,
+          status: true,
+          status_update: true,
+          teknisi_user_id: true,
+          reported_date: true,
+          users: { select: { nama: true } },
+        },
+      }),
+    ]);
+
+    const data = tickets.map((t) => ({
+      ...t,
+      matched_on: describeTicketMatch(t, query),
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 }

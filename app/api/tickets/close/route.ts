@@ -31,6 +31,8 @@ export async function POST(req: Request) {
       accuracyMeters: body?.accuracyMeters,
       barcodeDc: body?.barcodeDc,
       locationSource: body?.locationSource,
+      alamat: body?.alamat,
+      deviceName: body?.deviceName,
     });
 
     if (!parsed.success) {
@@ -63,6 +65,8 @@ export async function POST(req: Request) {
       accuracyMeters,
       barcodeDc,
       locationSource,
+      alamat,
+      deviceName,
     } = parsed.data;
 
     const result = (await TicketWorkflowService.closeTicket(
@@ -77,6 +81,10 @@ export async function POST(req: Request) {
         accuracyMeters: accuracyMeters as number | undefined,
         barcodeDc: barcodeDc as string | undefined,
         locationSource: locationSource as 'manual_tag' | 'reused_bank_data' | undefined,
+      },
+      {
+        alamat: alamat as string | undefined,
+        deviceName: deviceName as string | undefined,
       },
     )) as { message: string; warMapPoint?: { serviceNo: string; incident: string; latitude: number; longitude: number; workzone: string | null; taggedAt: string } | null };
 

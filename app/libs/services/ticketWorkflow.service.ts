@@ -31,7 +31,10 @@ import {
   TicketUpdateWorkflow,
   UpdateTicketInput,
 } from '@/app/types/ticket';
-import { CloseLocationInput } from '@/app/libs/validations/ticket.schema';
+import {
+  CloseLocationInput,
+  CloseTicketFields,
+} from '@/app/libs/validations/ticket.schema';
 
 type TechnicianSnapshot = {
   id_user: number;
@@ -1246,6 +1249,7 @@ export class TicketWorkflowService {
     subRca: string,
     descriptionSolutionDompis: string,
     location: CloseLocationInput = {},
+    closing: CloseTicketFields = {},
   ) {
     if (!Number.isFinite(ticketId) || ticketId <= 0)
       throw new Error('Ticket ID wajib diisi');
@@ -1273,15 +1277,12 @@ export class TicketWorkflowService {
     )
       throw new Error('Detail perbaikan wajib diisi minimal 10 karakter');
 
-    const geotagRequired = process.env.GEOTAG_REQUIRED_ENABLED === 'true';
     const hasGeo =
       Number.isFinite(location?.latitude) && Number.isFinite(location?.longitude);
-    if (geotagRequired) {
-      if (!hasGeo)
-        throw new Error('Lokasi wajib ditandai sebelum close');
-      if (!location?.barcodeDc || !String(location.barcodeDc).trim())
-        throw new Error('Barcode DC wajib diisi sebelum close');
-    }
+    if (!hasGeo)
+      throw new Error('Lokasi wajib ditandai sebelum close');
+    if (!location?.barcodeDc || !String(location.barcodeDc).trim())
+      throw new Error('Barcode DC wajib diisi sebelum close');
 
     return commitAndInvalidate(
       prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -1299,11 +1300,15 @@ export class TicketWorkflowService {
 
         assertTransition('CLOSE', current);
 
-        const alamat = cleanNullableString(ticket.alamat);
+        const alamat =
+          cleanNullableString(closing.alamat) ||
+          cleanNullableString(ticket.alamat);
 
         if (!alamat) throw new Error('Alamat wajib diisi sebelum close');
 
-        const deviceNameValue = cleanNullableString(ticket.device_name);
+        const deviceNameValue =
+          cleanNullableString(closing.deviceName) ||
+          cleanNullableString(ticket.device_name);
 
         if (!deviceNameValue)
           throw new Error('Device Name (ODP) wajib diisi sebelum close');
@@ -1322,6 +1327,8 @@ export class TicketWorkflowService {
             rca: rcaValue,
             sub_rca: subRcaValue,
             description_solution_dompis: descriptionSolutionDompis.trim(),
+            alamat,
+            device_name: deviceNameValue,
             closed_at: now,
           },
         });

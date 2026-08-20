@@ -15,6 +15,7 @@ interface DeviceEditorProps {
   ref?: React.Ref<DeviceEditorHandle>;
   onError: (error: string | null) => void;
   onDeviceSaved?: (device: string) => void;
+  onDeviceChange?: (device: string) => void;
 }
 
 const DEVICE_EMPTY_VALUES = [
@@ -42,11 +43,12 @@ export default function DeviceEditor({
   ref,
   onError,
   onDeviceSaved,
+  onDeviceChange,
 }: DeviceEditorProps) {
   const [deviceInitial, setDeviceInitial] = useState(initialDevice || '');
   const [deviceValue, setDeviceValue] = useState(initialDevice || '');
   const [deviceEditing, setDeviceEditing] = useState(
-    isDeviceEmpty(initialDevice),
+    canEdit && isDeviceEmpty(initialDevice),
   );
   const [deviceSaving, setDeviceSaving] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
@@ -64,9 +66,13 @@ export default function DeviceEditor({
     const init = String(initialDevice ?? '');
     setDeviceInitial(init);
     setDeviceValue(init);
-    setDeviceEditing(isDeviceEmpty(init));
+    setDeviceEditing(canEdit && isDeviceEmpty(init));
     setDeviceSaving(false);
-  }, [initialDevice]);
+  }, [initialDevice, canEdit]);
+
+  useEffect(() => {
+    onDeviceChange?.(deviceValue);
+  }, [deviceValue, onDeviceChange]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!canEdit) return true;
@@ -143,7 +149,7 @@ export default function DeviceEditor({
   }, []);
 
   // State 1: Empty State
-  if (!isFilled && !deviceEditing) {
+  if (!isFilled && (!deviceEditing || !canEdit)) {
     return (
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
@@ -176,7 +182,7 @@ export default function DeviceEditor({
   }
 
   // State 2: Editing State
-  if (deviceEditing) {
+  if (deviceEditing && canEdit) {
     return (
       <div className='flex flex-col gap-0'>
         {/* Header */}
@@ -281,7 +287,7 @@ export default function DeviceEditor({
   return (
     <>
       <p className='mb-1 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
-        ODP
+        ODP Actual pelanggan
       </p>
       <div className='flex items-start justify-between gap-2.5'>
         <span className='flex-1 text-[13.5px] leading-relaxed font-semibold text-gray-900 dark:text-gray-100'>
