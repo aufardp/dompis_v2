@@ -44,7 +44,7 @@ function getFilterParams(filter: TicketFilter) {
       return { statusUpdate: 'close', dateRange: 'thisMonth' };
     case 'all':
     default:
-      return { statusUpdate: undefined, dateRange: 'today' };
+      return { statusUpdate: 'active', dateRange: 'today' };
   }
 }
 
@@ -67,6 +67,14 @@ export function useTickets(
   });
   const [highlightedIncidents, setHighlightedIncidents] = useState<Set<string>>(new Set());
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Nilai terbaru agar coalescing reload selalu memakai kondisi terkini.
+  const currentPageRef = useRef(currentPage);
+  const searchQueryRef = useRef(searchQuery);
+  const filterRef = useRef(filter);
+  useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
+  useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
+  useEffect(() => { filterRef.current = filter; }, [filter]);
 
   const buildQueryParams = useCallback(
     (page: number, search: string, filterParams: ReturnType<typeof getFilterParams>) => {
@@ -125,17 +133,92 @@ export function useTickets(
     [buildQueryParams],
   );
 
-  // Initial load and when filter/search/page changes
+  // Coalescing reload: gulingkan burst (SSE, motansi ganda, refresh) menjadi
+  // SATU gelombang stats+list, mencegah refetch storm ~4x konkurren seperti
+  // yang terekam di network log. Caller yang menunggu (mis. pull-to-refresh)
+  // di-resolve begitu batch yang dia ikuti selesai.
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadInFlightRef = useRef(false);
+  const reloadPendingRef = useRef(false);
+  const tailResolversRef = useRef<Array<() => void>>([]);
+
+  const runReload = useCallback(
+    async (
+      target: { page: number; search: string; filter: TicketFilter },
+      onDone?: () => void,
+    ) => {
+      reloadInFlightRef.current = true;
+      reloadPendingRef.current = false;
+      try {
+        await Promise.all([
+          fetchStats(),
+          fetchPage(target.page, target.search, target.filter),
+        ]);
+      } finally {
+        reloadInFlightRef.current = false;
+        const resolvers = tailResolversRef.current.splice(0);
+        tailResolversRef.current = [];
+        if (reloadPendingRef.current) {
+          reloadPendingRef.current = false;
+          await runReload(
+            {
+              page: currentPageRef.current,
+              search: searchQueryRef.current,
+              filter: filterRef.current,
+            },
+            () => {
+              resolvers.forEach((r) => r());
+              onDone?.();
+            },
+          );
+        } else {
+          resolvers.forEach((r) => r());
+          onDone?.();
+        }
+      }
+    },
+    [fetchStats, fetchPage],
+  );
+
+  const scheduleReload = useCallback(
+    (page: number, search: string, filter: TicketFilter, delay = 150) => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => {
+        resolve = r;
+      });
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null;
+        if (reloadInFlightRef.current) {
+          reloadPendingRef.current = true;
+          tailResolversRef.current.push(resolve);
+          return;
+        }
+        void runReload({ page, search, filter }, resolve);
+      }, delay);
+      return promise;
+    },
+    [runReload],
+  );
+
+  useEffect(() => () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+  }, []);
+
+  // Initial load and when filter/search changes (reset ke halaman 1)
   useEffect(() => {
-    fetchStats();
-    fetchPage(1, searchQuery, filter);
-  }, [filter, searchQuery, fetchPage, fetchStats]);
+    void scheduleReload(1, searchQueryRef.current, filterRef.current, 0);
+  }, [filter, searchQuery, scheduleReload]);
 
   // SSE for real-time updates
   useTicketEvents({
     onInvalidate: () => {
-      fetchStats();
-      fetchPage(currentPage, searchQuery, filter);
+      scheduleReload(
+        currentPageRef.current,
+        searchQueryRef.current,
+        filterRef.current,
+        200,
+      );
     },
     onTicketUpdated: useCallback((payload: TicketUpdatedPayload) => {
       const inc = payload.incident;
@@ -164,14 +247,18 @@ export function useTickets(
   const setPage = useCallback((page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
-      fetchPage(page, searchQuery, filter);
+      scheduleReload(page, searchQueryRef.current, filterRef.current, 0);
     }
-  }, [currentPage, totalPages, searchQuery, filter, fetchPage]);
+  }, [totalPages, scheduleReload]);
 
   const refresh = useCallback(async () => {
-    await fetchStats();
-    await fetchPage(currentPage, searchQuery, filter);
-  }, [currentPage, searchQuery, filter, fetchStats, fetchPage]);
+    await scheduleReload(
+      currentPageRef.current,
+      searchQueryRef.current,
+      filterRef.current,
+      0,
+    );
+  }, [scheduleReload]);
 
   return {
     tickets,
