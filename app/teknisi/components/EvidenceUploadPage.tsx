@@ -27,7 +27,7 @@ import {
   getSlaHours,
   parseWIBDateInput,
 } from '@/app/utils/datetime';
-import { fetchWithAuth } from '@/app/libs/fetcher';
+import { fetchWithAuth, uploadWithAuth } from '@/app/libs/fetcher';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { filesToDataUrls } from './detail-modal/file-preview';
 
@@ -110,8 +110,48 @@ const PENDING_PHOTO_TYPES = [
 const MIN_FILES = 2;
 const MAX_FILES = 5;
 
+interface TicketFormDraft {
+  selectedRca?: string;
+  selectedSubRca?: string;
+  detailPerbaikan?: string;
+  alamat?: string;
+  device?: string;
+  locationTag?: {
+    latitude?: number;
+    longitude?: number;
+    accuracyMeters?: number;
+    barcodeDc?: string;
+    locationSource?: string;
+  } | null;
+}
+
+const EMPTY_VALUES = [
+  'tidak ada',
+  'tidak tersedia',
+  '-',
+  'n/a',
+  'none',
+  '.',
+  'null',
+  'undefined',
+];
+
+function isFilled(value: string | null | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return v.length > 0 && !EMPTY_VALUES.includes(v);
+}
+
+function isLocationFilled(loc: TicketFormDraft['locationTag']): boolean {
+  if (!loc) return false;
+  if (!Number.isFinite(loc.latitude)) return false;
+  if (!Number.isFinite(loc.longitude)) return false;
+  return String(loc.barcodeDc ?? '').trim().length > 0;
+}
+
 // ── Image compression ────────────────────────────────────────
 const MAX_FILE_SIZE_RAW = 15 * 1024 * 1024;
+// Sinkron dengan batas upload server (app/api/tickets/upload-evidence).
+const MAX_FILE_SIZE_SERVER = 4 * 1024 * 1024;
 const TARGET_SIZE = 500 * 1024;
 const HARD_CAP = 4 * 1024 * 1024;
 
@@ -224,12 +264,17 @@ export default function EvidenceUploadPage({
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [existingCount, setExistingCount] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    index: number;
+    total: number;
+    percent: number;
+  } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPendingMode, setIsPendingMode] = useState(false);
   const [pendingReason, setPendingReason] = useState('');
   const [showAddMember, setShowAddMember] = useState(false);
+  const [formDraft, setFormDraft] = useState<TicketFormDraft | null>(null);
 
   // ── Sync pending mode dari URL ──────────────────────────────
   useEffect(() => {
@@ -246,6 +291,48 @@ export default function EvidenceUploadPage({
   const totalFiles = existingCount + selectedFiles.length;
   const isComplete = totalFiles >= MIN_FILES;
   const availableSlots = Math.max(0, MAX_FILES - totalFiles);
+
+  // ── Read form state saved from detail page ──────────────────
+  useEffect(() => {
+    const key = `ticket_form_${ticket.idTicket}`;
+    const saved = sessionStorage.getItem(key);
+    if (!saved) return;
+    try {
+      const p = JSON.parse(saved);
+      setFormDraft({
+        selectedRca: p.selectedRca || '',
+        selectedSubRca: p.selectedSubRca || '',
+        detailPerbaikan: p.detailPerbaikan || '',
+        alamat: p.alamat || '',
+        device: p.device || '',
+        locationTag: p.locationTag || null,
+      });
+    } catch {}
+  }, [ticket.idTicket]);
+
+  const canCloseTicket = Boolean(
+    formDraft &&
+      isFilled(formDraft.alamat) &&
+      isFilled(formDraft.device) &&
+      !!formDraft.selectedRca &&
+      !!formDraft.selectedSubRca &&
+      (formDraft.detailPerbaikan ?? '').trim().length >= 10 &&
+      isLocationFilled(formDraft.locationTag) &&
+      totalFiles >= MIN_FILES,
+  );
+
+  const missingItems = useMemo(() => {
+    const missing: string[] = [];
+    if (!isFilled(formDraft?.alamat)) missing.push('Alamat');
+    if (!isFilled(formDraft?.device)) missing.push('Device');
+    if (!formDraft?.selectedRca || !formDraft?.selectedSubRca)
+      missing.push('RCA');
+    if ((formDraft?.detailPerbaikan ?? '').trim().length < 10)
+      missing.push('Detail Perbaikan');
+    if (totalFiles < MIN_FILES) missing.push('Evidence (min 2 foto)');
+    if (!isLocationFilled(formDraft?.locationTag)) missing.push('Lokasi');
+    return missing;
+  }, [formDraft, totalFiles]);
 
   // ── Fetch existing evidence count ───────────────────────────
   useEffect(() => {
@@ -270,10 +357,10 @@ export default function EvidenceUploadPage({
     };
   }, [ticket.idTicket]);
 
-  // ── Back to home ────────────────────────────────────────────
+  // ── Back to form ────────────────────────────────────────────
   const handleBack = useCallback(() => {
-    router.push('/teknisi');
-  }, [router]);
+    router.push(`/teknisi/ticket/${ticket.idTicket}`);
+  }, [router, ticket.idTicket]);
 
   // ── File handlers ──────────────────────────────────────────
   const handleCompressAndAdd = useCallback(
@@ -285,9 +372,22 @@ export default function EvidenceUploadPage({
           continue;
         }
         try {
-          const compressed = f.type.startsWith('image/')
-            ? await withTimeout(compressImage(f), 15000).catch(() => f)
-            : f;
+          let compressed = f;
+          if (f.type.startsWith('image/')) {
+            try {
+              compressed = await withTimeout(compressImage(f), 15000);
+            } catch {
+              // Kompresi gagal/timeout — jangan diam-diam kirim file mentah
+              // besar; beritahu user supaya memilih foto lain / coba lagi.
+              if (f.size > MAX_FILE_SIZE_SERVER) {
+                setError(
+                  `${f.name} gagal dikompres dan ukurannya melebihi batas server (4 MB). Pilih foto lain atau coba lagi.`,
+                );
+                continue;
+              }
+              compressed = f;
+            }
+          }
           valid.push(compressed);
         } catch {
           valid.push(f);
@@ -324,28 +424,62 @@ export default function EvidenceUploadPage({
   // ── Upload evidence (reusable) ──────────────────────────────
   const uploadAllFiles = useCallback(
     async (actionType: 'close' | 'pending') => {
-      if (!selectedFiles.length) return;
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        setUploadProgress(
-          `Mengupload foto ${i + 1}/${selectedFiles.length}...`,
-        );
-        const formData = new FormData();
-        formData.append('incident', ticket.ticket);
-        formData.append('ticketId', String(ticket.idTicket));
-        formData.append('actionType', actionType);
-        formData.append('files', file);
-        const res = await fetchWithAuth('/api/tickets/upload-evidence', {
-          method: 'POST',
-          body: formData,
-          timeoutMs: 120_000,
-        });
-        if (!res) throw new Error('Upload gagal: tidak ada respon');
-        if (!res.ok) {
-          const err = await res.json().catch(() => null);
-          throw new Error(err?.message || `Upload foto ${i + 1} gagal`);
+      const files = selectedFiles;
+      if (!files.length) return;
+
+      const total = files.length;
+      let next = 0;
+      const worker = async () => {
+        while (next < files.length) {
+          const i = next++;
+          const file = files[i];
+          const formData = new FormData();
+          formData.append('incident', ticket.ticket);
+          formData.append('ticketId', String(ticket.idTicket));
+          formData.append('actionType', actionType);
+          formData.append('files', file);
+
+          // Retry sekali (jeda singkat) saat gagal transien/rate-limit
+          for (let attempt = 0; attempt < 2; attempt++) {
+            setUploadProgress({ index: i + 1, total, percent: 0 });
+            try {
+              const res = await uploadWithAuth(
+                '/api/tickets/upload-evidence',
+                formData,
+                {
+                  timeoutMs: 120_000,
+                  onProgress: (p) =>
+                    setUploadProgress({ index: i + 1, total, percent: p.percent }),
+                },
+              );
+              if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                const msg =
+                  err?.message || `Upload foto ${i + 1} gagal (HTTP ${res.status})`;
+                if (res.status === 429 && attempt === 0) {
+                  await new Promise((r) => setTimeout(r, 1200));
+                  continue;
+                }
+                throw new Error(msg);
+              }
+              setUploadProgress({ index: i + 1, total, percent: 100 });
+              break;
+            } catch (e) {
+              if (attempt === 1) throw e;
+              await new Promise((r) => setTimeout(r, 800));
+            }
+          }
         }
-      }
+      };
+
+      // Batas 2 request berjalan bersamaan — total file maks 5 jadi tetap
+      // aman di bawah rate limit server (10/menit).
+      const workers = Array.from(
+        { length: Math.min(2, files.length) },
+        () => worker(),
+      );
+      await Promise.all(workers);
+      setUploadProgress(null);
     },
     [selectedFiles, ticket.ticket, ticket.idTicket],
   );
@@ -367,17 +501,29 @@ export default function EvidenceUploadPage({
       setPreviewUrls([]);
       setExistingCount((prev) => prev + selectedFiles.length);
 
-      // Baca form state dari detail page (RCA, subRCA, detail perbaikan)
+      // Baca form state dari detail page (RCA, subRCA, detail perbaikan, alamat, device)
       const saved = sessionStorage.getItem(`ticket_form_${ticket.idTicket}`);
       let rca = '';
       let subRca = '';
       let detailPerbaikan = '';
+      let alamat: string | undefined;
+      let deviceName: string | undefined;
+      let locationDraft: {
+        latitude?: number;
+        longitude?: number;
+        accuracyMeters?: number;
+        barcodeDc?: string;
+        locationSource?: string;
+      } | null = null;
       if (saved) {
         try {
           const p = JSON.parse(saved);
           rca = p.selectedRca || '';
           subRca = p.selectedSubRca || '';
           detailPerbaikan = p.detailPerbaikan || '';
+          if (p.alamat) alamat = String(p.alamat);
+          if (p.device) deviceName = String(p.device);
+          if (p.locationTag) locationDraft = p.locationTag;
         } catch {}
       }
 
@@ -389,6 +535,13 @@ export default function EvidenceUploadPage({
           rca,
           subRca,
           descriptionSolutionDompis: detailPerbaikan,
+          alamat,
+          deviceName,
+          latitude: locationDraft?.latitude,
+          longitude: locationDraft?.longitude,
+          accuracyMeters: locationDraft?.accuracyMeters,
+          barcodeDc: locationDraft?.barcodeDc,
+          locationSource: locationDraft?.locationSource,
         }),
       });
       if (!res) throw new Error('Tidak ada respon');
@@ -749,9 +902,20 @@ export default function EvidenceUploadPage({
 
         {/* Upload progress */}
         {uploading && uploadProgress && (
-          <div className='flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'>
-            <span className='h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent' />
-            {uploadProgress}
+          <div className='rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10'>
+            <div className='flex items-center justify-between gap-2 text-sm font-bold text-blue-700 dark:text-blue-300'>
+              <span className='flex items-center gap-2'>
+                <span className='h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent' />
+                Mengupload foto {uploadProgress.index}/{uploadProgress.total}
+              </span>
+              <span>{uploadProgress.percent}%</span>
+            </div>
+            <div className='mt-2 h-1.5 w-full overflow-hidden rounded-full bg-blue-200/60 dark:bg-blue-500/20'>
+              <div
+                className='h-full rounded-full bg-blue-500 transition-all duration-200'
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -823,9 +987,18 @@ export default function EvidenceUploadPage({
                   disabled={
                     actionLoading === 'close' ||
                     uploading ||
-                    selectedFiles.length === 0
+                    selectedFiles.length === 0 ||
+                    !canCloseTicket
                   }
-                  className='flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#10b981] py-3 text-sm font-bold text-white transition-all active:scale-95 disabled:opacity-60'
+                  className={clsx(
+                    'flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
+                    canCloseTicket ? 'bg-[#10b981]' : 'bg-[#10b981]/40',
+                  )}
+                  title={
+                    !canCloseTicket
+                      ? `Lengkapi: ${missingItems.join(', ')}`
+                      : undefined
+                  }
                 >
                   {actionLoading === 'close' || uploading ? (
                     <span className='h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent' />
@@ -839,6 +1012,11 @@ export default function EvidenceUploadPage({
                       : 'Close Tiket'}
                 </button>
               </div>
+              {!canCloseTicket && missingItems.length > 0 && (
+                <p className='text-center text-[10px] font-medium text-red-500'>
+                  Lengkapi: {missingItems.join(', ')}
+                </p>
+              )}
             </>
           )}
         </div>

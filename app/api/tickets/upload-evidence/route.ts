@@ -38,6 +38,8 @@ const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB per file (after compress, konsiste
 const MAX_FILES = 1; // Sequential upload - 1 foto per request
 
 export async function POST(req: NextRequest) {
+  const tStart = Date.now();
+  const timing = { formData: 0, validate: 0, stage: 0, tx: 0, commit: 0 };
   try {
     const user = await protectApi([
       'teknisi',
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
       }
       throw formError;
     }
+    timing.formData = Date.now() - tStart;
 
     const files = formData.getAll('files') as File[];
     const incident = formData.get('incident') as string;
@@ -110,6 +113,7 @@ export async function POST(req: NextRequest) {
     }
 
     await validateEvidenceFiles(files);
+    timing.validate = Date.now() - tStart - timing.formData;
 
     const roleId = roleKeyToRoleId(normalizeRoleKey(user.role));
 
@@ -123,6 +127,7 @@ export async function POST(req: NextRequest) {
     }
 
     const stagedFiles = await stageFiles(files, incident, actionType);
+    timing.stage = Date.now() - tStart - timing.formData - timing.validate;
     let evidencePersisted = false;
     let activityLogId: number | null = null;
 
@@ -161,6 +166,7 @@ export async function POST(req: NextRequest) {
     };
 
     try {
+      const tTxStart = Date.now();
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         await tx.ticket_evidence.createMany({
           data: evidenceData,
@@ -172,9 +178,12 @@ export async function POST(req: NextRequest) {
         });
         activityLogId = activityLog.id;
       }, { maxWait: 10000, timeout: 15000, isolationLevel: 'ReadCommitted' });
+      timing.tx = Date.now() - tTxStart;
 
       evidencePersisted = true;
+      const tCommitStart = Date.now();
       await commitStagedFiles(stagedFiles);
+      timing.commit = Date.now() - tCommitStart;
     } catch (error) {
       await cleanupStagedFiles(stagedFiles);
       await cleanupCommittedFiles(stagedFiles);
@@ -198,6 +207,18 @@ export async function POST(req: NextRequest) {
 
       throw error;
     }
+
+    logger.info('upload-evidence:timing', {
+      incident,
+      actionType,
+      fileSize: stagedFiles[0]?.fileSize ?? 0,
+      tFormDataMs: timing.formData,
+      tValidateMs: timing.validate,
+      tStageMs: timing.stage,
+      tTxMs: timing.tx,
+      tCommitMs: timing.commit,
+      totalMs: Date.now() - tStart,
+    });
 
     return NextResponse.json({
       success: true,

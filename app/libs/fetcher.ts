@@ -170,3 +170,89 @@ export async function logoutUser(): Promise<boolean> {
     return false;
   }
 }
+
+// Upload dengan progres (fetch tidak menyediakan upload progress). Mengerjakan
+// streaming multipart via XMLHttpRequest + cookie yang sama seperti fetchWithAuth.
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
+export interface UploadWithAuthResult {
+  ok: boolean;
+  status: number;
+  json: () => Promise<any>;
+}
+
+export function uploadWithAuth(
+  input: string | URL,
+  formData: FormData,
+  opts: {
+    method?: string;
+    onProgress?: (p: UploadProgress) => void;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<UploadWithAuthResult> {
+  const { method = 'POST', onProgress, timeoutMs = 120_000, signal } = opts;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, String(input));
+    xhr.withCredentials = true;
+
+    const timer = setTimeout(() => xhr.abort(), timeoutMs);
+    const onAbort = () => xhr.abort();
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        xhr.abort();
+      } else {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress?.({
+          loaded: e.loaded,
+          total: e.total,
+          percent: e.total > 0 ? Math.round((e.loaded / e.total) * 100) : 0,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      cleanup();
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      resolve({
+        ok,
+        status: xhr.status,
+        json: () => {
+          try {
+            return Promise.resolve(JSON.parse(xhr.responseText || '{}'));
+          } catch {
+            return Promise.resolve({});
+          }
+        },
+      });
+    };
+
+    xhr.onerror = () => {
+      cleanup();
+      reject(new Error('Upload gagal: tidak ada respon'));
+    };
+
+    xhr.onabort = () => {
+      cleanup();
+      reject(new Error('Upload gagal: request dibatalkan'));
+    };
+
+    xhr.send(formData);
+  });
+}
