@@ -364,6 +364,7 @@ model ticket_activity_log {
 
   @@index([ticket_id])
   @@index([user_id])
+  @@index([ticket_id, created_at], map: "idx_activity_log_ticket_created")
 }
 
 model ticket_assignment_history {
@@ -383,6 +384,7 @@ model ticket_assignment_history {
   @@index([ticket_id])
   @@index([ticket_id, is_active], map: "idx_assignment_history_ticket_active")
   @@index([assigned_to, assigned_at, is_active], map: "idx_assignment_history_technician_range")
+  @@index([ticket_id, assigned_at], map: "idx_assignment_history_ticket_assigned")
 }
 
 model ticket_evidence {
@@ -1077,6 +1079,7 @@ model service_location_history {
   @@index([service_no, tagged_at], map: "idx_slh_service_no_tagged_at")
   @@index([workzone, tagged_at], map: "idx_slh_workzone_tagged_at")
   @@index([latitude, longitude], map: "idx_slh_geo")
+  @@index([ticket_id, tagged_at], map: "idx_slh_ticket_tagged")
 }
 
 model audit_log {

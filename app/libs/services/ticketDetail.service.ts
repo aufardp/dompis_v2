@@ -3,6 +3,7 @@ import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { ApiError } from '@/app/libs/apiError';
 import { writeAuditLog } from '@/app/libs/services/audit-log.service';
+import { logger } from '@/lib/observability/logger';
 import type { Ticket } from '@/app/types/ticket';
 
 export type TicketDetailActor = {
@@ -48,7 +49,9 @@ async function canAccessTicket(ticket: {
 export async function getTicketDetailForActor(
   ticketId: number,
   actor: TicketDetailActor,
-): Promise<Ticket | null> {
+  options?: { allowGlobalReadOnly?: boolean },
+): Promise<(Ticket & { isReadOnlyView?: boolean }) | null> {
+  const t0 = Date.now();
   const [row, tracking, activityLogs, assignmentHistory, locationRow] =
     await Promise.all([
       prisma.ticket.findUnique({
@@ -92,18 +95,37 @@ export async function getTicketDetailForActor(
 
   if (!row) return null;
 
-  const allowed = await canAccessTicket(
+  const tCoreMs = Date.now() - t0;
+
+  const hasOwnedAccess = await canAccessTicket(
     { teknisi_user_id: row.teknisi_user_id, workzone: row.workzone },
     actor,
   );
-  if (!allowed) {
-    throw new ApiError(403, 'Unauthorized');
+
+  if (!hasOwnedAccess) {
+    // Hanya izinkan lewat jika caller EKSPLISIT minta mode read-only DAN actor adalah teknisi
+    if (!(options?.allowGlobalReadOnly && actor.role === 'teknisi')) {
+      return null; // perilaku lama persis, tidak berubah untuk semua caller lain
+    }
+    // lanjut ke bawah, tapi ticket ini akan ditandai read-only
   }
 
   const rawRow = await prisma.ticket_raw.findFirst({
     where: { incident: row.incident },
     select: { reported_by: true },
   });
+
+  const totalMs = Date.now() - t0;
+  // Instrumentasi: hanya direkam saat lambat (>=1s) agar tidak mengotori log.
+  if (totalMs >= 1000) {
+    logger.info('ticketDetail:slow', {
+      ticketId,
+      role: actor.role,
+      coreQueriesMs: tCoreMs,
+      rawLookupMs: totalMs - tCoreMs,
+      totalMs,
+    });
+  }
 
   const result = {
     idTicket: row.id_ticket,
@@ -245,6 +267,7 @@ export async function getTicketDetailForActor(
         isActive: h.is_active,
       }),
     ),
+    isReadOnlyView: !hasOwnedAccess, // flag baru: true kalau diakses lewat allowGlobalReadOnly
   };
 
   writeAuditLog({
