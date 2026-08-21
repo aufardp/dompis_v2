@@ -57,6 +57,9 @@ dompis-*.json
 .DS_Store
 .qwen
 .blackboxcli/
+.agents/
+.claude/
+.opencode/
 
 # Runtime logs & generated results
 logs/

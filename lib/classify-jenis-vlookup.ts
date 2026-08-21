@@ -141,13 +141,17 @@ function like(str: string | null, pattern: string): boolean {
 }
 
 /**
- * Jika service_type = SITE atau customer_segment = DWS → TSEL.
+ * Jika service_type = SITE → TSEL.
+ * Jika customer_segment = DWS AND service_type != SITE → TOP OLO.
  */
 function checkTselOverride(input: JenisVlookupInput): JenisVlookupResult | null {
   const st = (input.service_type ?? '').trim().toUpperCase();
   const cs = (input.customer_segment ?? '').trim().toUpperCase();
-  if (st === 'SITE' || cs === 'DWS') {
+  if (st === 'SITE') {
     return { jenis_tiket_1: 'TSEL', jenis_tiket_2: 'TSEL' };
+  }
+  if (cs === 'DWS' && st !== 'SITE') {
+    return { jenis_tiket_1: 'TOP OLO', jenis_tiket_2: 'TOP OLO' };
   }
   return null;
 }
