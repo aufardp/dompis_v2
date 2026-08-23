@@ -1306,6 +1306,7 @@ function UserListPanel() {
     { areaId: number; areaName: string; sas: SaOption[] }[]
   >([]);
   const [addingArea, setAddingArea] = useState<number>(0);
+  const [addAreaQuery, setAddAreaQuery] = useState('');
   const [editRegions, setEditRegions] = useState<Region[]>([]);
   const [editBranches, setEditBranches] = useState<Branch[]>([]);
   const [editAreaOptions, setEditAreaOptions] = useState<AreaOption[]>([]);
@@ -1367,6 +1368,19 @@ function UserListPanel() {
     [editAreaOptions],
   );
 
+  const addAreaOptions = useMemo(() => {
+    const remaining = editAreaOptions.filter(
+      (a) => !editSaGroups.some((g) => g.areaId === a.value),
+    );
+    const q = addAreaQuery.trim().toLowerCase();
+    if (!q) return remaining;
+    return remaining.filter(
+      (a) =>
+        a.label.toLowerCase().includes(q) ||
+        (a.branch ?? '').toLowerCase().includes(q),
+    );
+  }, [editAreaOptions, editSaGroups, addAreaQuery]);
+
   const openEdit = async (user: UserRow) => {
     setEditUser(user);
     setScopeExpanded(false);
@@ -1381,6 +1395,7 @@ function UserListPanel() {
     });
     setEditSaGroups([]);
     setAddingArea(0);
+    setAddAreaQuery('');
     const detail = await requestJson(`/api/users/${user.id_user}`);
     if (detail.success) {
       const d = detail.data ?? {};
@@ -1439,6 +1454,7 @@ function UserListPanel() {
       },
     ]);
     setAddingArea(0);
+    setAddAreaQuery('');
   };
 
   const removeEditAreaGroup = (areaId: number) => {
@@ -1757,29 +1773,43 @@ function UserListPanel() {
                     ))}
                   </div>
                 )}
-                <div className="mt-2 flex items-center gap-2">
-                  <select
-                    value={addingArea}
-                    onChange={(e) => setAddingArea(Number(e.target.value))}
-                    className={inputCls}
-                  >
-                    <option value={0}>+ Pilih area lain untuk menambah SA…</option>
-                    {editAreaOptions
-                      .filter((a) => !editSaGroups.some((g) => g.areaId === a.value))
-                      .map((a) => (
+                <div className="mt-2 space-y-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={addAreaQuery}
+                      onChange={(e) => setAddAreaQuery(e.target.value)}
+                      placeholder="Cari area untuk ditambahkan…"
+                      className={clsx(inputCls, 'pl-8')}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={addingArea}
+                      onChange={(e) => setAddingArea(Number(e.target.value))}
+                      className={inputCls}
+                    >
+                      <option value={0}>
+                        {addAreaOptions.length > 0
+                          ? '+ Pilih area lain untuk menambah SA…'
+                          : 'Tidak ada area yang cocok'}
+                      </option>
+                      {addAreaOptions.map((a) => (
                         <option key={a.value} value={a.value}>
                           {a.label}
                         </option>
                       ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => addEditAreaGroup(addingArea)}
-                    disabled={!addingArea}
-                    className={btnGhost}
-                  >
-                    Tambah
-                  </button>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => addEditAreaGroup(addingArea)}
+                      disabled={!addingArea}
+                      className={btnGhost}
+                    >
+                      Tambah
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
                   {editFields.sa_ids.length > 0
