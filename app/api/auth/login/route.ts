@@ -2,38 +2,20 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
-import {
-  signAccessToken,
-  signRefreshToken,
-  createDefaultAttendancePayload,
-  AccessTokenPayload,
-} from '@/app/libs/auth';
-
-import { AttendanceService } from '@/app/libs/services/attendance.service';
-import { roleKeyToRoleId, NormalizedRoleKey } from '@/app/libs/roles';
-import {
-  findUserByUsername,
-  findUserWorkzones,
-} from '@/app/libs/services/users.service';
+import { findUserByUsername } from '@/app/libs/services/users.service';
 import { checkRateLimit } from '@/lib/ratelimit';
 import { buildRateLimitIdentifier } from '@/lib/rate-limit-identifiers';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import {
-  assertSameOriginRequest,
-  getSecureCookieOptions,
-} from '@/app/libs/request-security';
+import { assertSameOriginRequest } from '@/app/libs/request-security';
+import { createLoginCaptchaChallenge } from '@/lib/auth/login-captcha';
 import { logger } from '@/lib/observability/logger';
-
-type LoginRequest = {
-  username: string;
-  password: string;
-};
 
 export async function POST(req: Request) {
   try {
     const loginSchema = z.object({
       username: z.string().min(1, 'Username required'),
       password: z.string().min(1, 'Password required'),
+      remember: z.boolean().optional().default(false),
     });
 
     const sameOrigin = assertSameOriginRequest(req);
@@ -56,7 +38,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ success: false, message: 'Validation failed', errors: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
-    const { username, password } = parsed.data;
+    const { username, password, remember } = parsed.data;
 
     const rateLimitResult = await checkRateLimit(
       buildRateLimitIdentifier(req, 'auth-login', { username }),
@@ -114,82 +96,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const role = user.role_key ?? '';
-
-    const role_id = roleKeyToRoleId(role as NormalizedRoleKey);
-
     /**
-     * Workzone (only for teknisi)
+     * Kredensial valid — jangan terbitkan sesi dulu. Minta user menyelesaikan
+     * slider captcha lewat /api/auth/login/verify-captcha; sesi baru terbit
+     * setelah captcha itu benar.
      */
-    let workzone: string[] = [];
-
-    if (role === 'teknisi') {
-      workzone = await findUserWorkzones(user.id_user);
-    }
-
-    /**
-     * Attendance
-     */
-    const attendancePayload = createDefaultAttendancePayload();
-    const today = AttendanceService.getTodayDateString();
-
-    if (role === 'teknisi') {
-      const todayStatus = await AttendanceService.getOwnStatus(user.id_user);
-
-      if (todayStatus.checked_in) {
-        attendancePayload.attendance_checked_in = true;
-        attendancePayload.attendance_date = today;
-        attendancePayload.attendance_status = todayStatus.status;
-        attendancePayload.attendance_check_in_at = todayStatus.check_in_at;
-      } else {
-        attendancePayload.attendance_date = today;
-      }
-    }
-
-    /**
-     * JWT Payload
-     */
-    const payload: AccessTokenPayload = {
+    const challenge = await createLoginCaptchaChallenge({
       id_user: user.id_user,
-      role,
-      role_id,
-      workzone: workzone.length ? workzone : undefined,
-      ...attendancePayload,
-    };
+      remember,
+    });
 
-    /**
-     * Generate Tokens
-     */
-    const accessToken = await signAccessToken(payload);
-    const refreshToken = await signRefreshToken(payload);
-
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
-      accessToken,
-      role,
-      needsAttendanceCheck:
-        role === 'teknisi' && !attendancePayload.attendance_checked_in,
+      requiresCaptcha: true,
+      ...challenge,
     });
-
-    /**
-     * Access Token Cookie
-     */
-    response.cookies.set({
-      name: 'token',
-      value: accessToken,
-      ...getSecureCookieOptions(60 * 60),
-    });
-
-    /**
-     * Refresh Token Cookie
-     */
-    response.cookies.set({
-      name: 'refreshToken',
-      value: refreshToken,
-      ...getSecureCookieOptions(60 * 60 * 24 * 7),
-    });
-
-    return response;
   } catch (error) {
     logger.error('[LOGIN_ERROR]', error);
 

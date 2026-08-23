@@ -669,13 +669,7 @@ export default function TicketManagementOverviewPage({
     branch: branch || undefined,
     enabled: showSecondaryPanels,
   });
-  const {
-    lastSyncLabel,
-    nextSyncLabel,
-    isSyncOverdue,
-    isInProgress,
-    triggerSync,
-  } = useSyncStatus(30_000);
+  const { isInProgress, triggerSync } = useSyncStatus(30_000);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -908,29 +902,13 @@ export default function TicketManagementOverviewPage({
                     </button>
                   </div>
 
-                  <div className='mt-4 flex items-center justify-between gap-3 rounded-2xl bg-(--bg)/60 px-3 py-2'>
-                    <div className='flex min-w-0 items-center gap-2'>
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          isInProgress
-                            ? 'animate-pulse bg-amber-500'
-                            : 'bg-emerald-500'
-                        }`}
-                      />
-
+                  {isInProgress && (
+                    <div className='mt-4 flex items-center gap-3 rounded-2xl bg-(--bg)/60 px-3 py-2'>
                       <p className='truncate text-[11px] text-(--text-secondary)'>
-                        {isInProgress
-                          ? 'Sinkronisasi berjalan...'
-                          : lastSyncLabel}
+                        Sinkronisasi berjalan...
                       </p>
                     </div>
-
-                    {nextSyncLabel && (
-                      <p className='hidden shrink-0 text-[11px] text-(--text-muted) sm:block'>
-                        {nextSyncLabel}
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
 

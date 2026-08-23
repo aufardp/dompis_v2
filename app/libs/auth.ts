@@ -2,7 +2,8 @@ import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest } from 'next/server';
 
 const ACCESS_EXPIRY = '4h';
-const REFRESH_EXPIRY = '7d';
+export const REFRESH_EXPIRY_SHORT = '1d';
+export const REFRESH_EXPIRY_LONG = '30d';
 type TokenType = 'access' | 'refresh';
 
 export interface AccessTokenPayload {
@@ -30,10 +31,13 @@ export function signAccessToken(payload: AccessTokenPayload) {
     .sign(getAccessSecret());
 }
 
-export function signRefreshToken(payload: AccessTokenPayload) {
+export function signRefreshToken(
+  payload: AccessTokenPayload,
+  expiresIn: string = REFRESH_EXPIRY_SHORT,
+) {
   return new SignJWT({ ...payload, token_type: 'refresh' satisfies TokenType })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime(REFRESH_EXPIRY)
+    .setExpirationTime(expiresIn)
     .sign(getRefreshSecret());
 }
 
