@@ -521,6 +521,56 @@ model ticket_raw_finalized {
   @@map("ticket_raw_finalized")
 }
 
+// QOSMIC Bridge-only fields with no home in ticket_raw (which is already at
+// InnoDB's row-size ceiling). Only the bridge ever writes these — piloting_tickets
+// and the direct-MySQL scrap source don't have them — so this is a simple
+// overwrite-on-write upsert, no multi-source conflict resolution needed.
+model ticket_raw_bridge_ext {
+  incident String @id @db.VarChar(50)
+  segment String? @db.Text
+  osm_resolved_code String? @db.Text
+  assigned_owner_group String? @db.Text
+  rca String? @db.Text
+  tknode String? @db.Text
+  hostname String? @db.Text
+  ticket_details String? @db.Text
+  isobsolete String? @db.Text
+  c_pending_status String? @db.Text
+  c_description_serviceid String? @db.Text
+  c_mycx_result String? @db.Text
+  c_hostname_olt String? @db.Text
+  c_service_category String? @db.Text
+  c_slg_ttr String? @db.Text
+  c_working_hour String? @db.Text
+  c_package String? @db.Text
+  c_ibooster_alert_id String? @db.Text
+  total_service_indibiz String? @db.Text
+  total_service_indihome String? @db.Text
+  total_service_nodeb String? @db.Text
+  total_all_service String? @db.Text
+  total_lis_indihome String? @db.Text
+  total_lis_indibiz String? @db.Text
+  total_service_datin String? @db.Text
+  total_service_vula String? @db.Text
+  total_service_sdwan String? @db.Text
+  total_service_wifi String? @db.Text
+  c_area_tif String? @db.Text
+  c_district_tif String? @db.Text
+  c_regional_tif String? @db.Text
+  c_tsc_result_category String? @db.Text
+  c_slg_ncx String? @db.Text
+  inserted_date String? @db.Text
+  c_cts_cause String? @db.Text
+  c_cts_resolution String? @db.Text
+  jml_tiket_anak_gamas String? @db.Text
+  c_solution_code String? @db.Text
+  solution_segment String? @db.Text
+  sourceTable String? @db.VarChar(50)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@map("ticket_raw_bridge_ext")
+}
+
 model ingestion_checkpoint {
   id                    Int       @id @default(autoincrement())
   tableName             String    @unique @db.VarChar(100)

@@ -61,6 +61,9 @@ const FIELDS_TO_REMOVE = new Set([
   'col_0',
   'col_83',
   'c_parent_id',
+  // QOSMIC Bridge sends this as "C_PARENT_ID" — this check runs on the raw
+  // (pre-normalization) key, so both casings need to be listed.
+  'C_PARENT_ID',
   'status_validasi',
   'id',
   'created_at',
@@ -102,10 +105,20 @@ const COLUMN_MAPPING: Record<string, string> = {
   C_BOOKING_DATE: 'booking_date',
   C_PRIORITY: 'urgency',
   C_SOLUTION_DESCRIPTION: 'solution',
+  // TTR_Regional's snake_case ("ttr_regional") doesn't match the DB column
+  // name ("ttr_region") — needs an explicit mapping, not just correct casing.
+  TTR_Regional: 'ttr_region',
+  // Bridge sends this with no underscore at all.
+  reportedpriority: 'reported_priority',
 };
 
 function toSnakeCase(str: string): string {
   // Convert camelCase or PascalCase/PascalCase_With_Underscore to snake_case.
+  //
+  // Runs of consecutive capitals (acronyms like "TTR", "GAUL", or ALL-CAPS
+  // keys like "INCIDENT_DOMAIN") are treated as one unit instead of one
+  // underscore per letter — otherwise "TTR_Customer" becomes "t_t_r_customer"
+  // instead of "ttr_customer".
   //
   // FIX (QOSMIC Bridge integration): field seperti "Status_Date" dari bridge
   // sebelumnya jadi "status__date" (underscore ganda) karena regex di bawah
@@ -116,7 +129,8 @@ function toSnakeCase(str: string): string {
   // di akhir. Ini aman utk kolom lama (all-lowercase dari MySQL langsung)
   // karena mereka tidak pernah punya underscore ganda ke depannya.
   return str
-    .replace(/([A-Z])/g, '_$1')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .replace(/^_/, '')
     .replace(/_+/g, '_')
     .toLowerCase();
@@ -129,7 +143,11 @@ export function normalizeExternalRow(
   const normalized: Record<string, unknown> = {};
   const rawPayload: Record<string, unknown> = {};
 
-  for (const [key, value] of Object.entries(row)) {
+  for (const [rawKey, value] of Object.entries(row)) {
+    // QOSMIC Bridge occasionally sends a key with stray leading whitespace
+    // (observed: "\r\nJML_TIKET_ANAK_GAMAS") — trim before matching so it
+    // doesn't silently fail to map.
+    const key = rawKey.trim();
     if (FIELDS_TO_REMOVE.has(key)) {
       continue;
     }

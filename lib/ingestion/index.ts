@@ -32,7 +32,7 @@ import {
 } from '@/lib/observability/gauge-counters';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
-import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
+import { isQosmicBridgeConfigured, isQosmicBridgeDown } from '@/lib/external-db/qosmic-bridge/client';
 import { broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
 import {
   iterateNossaOpen,
@@ -164,6 +164,24 @@ const FIELDS_TO_MAP: Array<keyof NormalizedExternalRow> = [
   'urgency_description',
   'street_address',
 ];
+
+// QOSMIC Bridge-only fields with no column on ticket_raw (it's already at
+// InnoDB's row-size ceiling) — stored in the companion ticket_raw_bridge_ext
+// table instead. Only nossa/nossa_closed ever provide these.
+const EXT_COLUMNS = [
+  'segment', 'osm_resolved_code', 'assigned_owner_group', 'rca',
+  'tknode', 'hostname', 'ticket_details', 'isobsolete',
+  'c_pending_status', 'c_description_serviceid', 'c_mycx_result',
+  'c_hostname_olt', 'c_service_category', 'c_slg_ttr', 'c_working_hour',
+  'c_package', 'c_ibooster_alert_id', 'total_service_indibiz',
+  'total_service_indihome', 'total_service_nodeb', 'total_all_service',
+  'total_lis_indihome', 'total_lis_indibiz', 'total_service_datin',
+  'total_service_vula', 'total_service_sdwan', 'total_service_wifi',
+  'c_area_tif', 'c_district_tif', 'c_regional_tif',
+  'c_tsc_result_category', 'c_slg_ncx', 'inserted_date', 'c_cts_cause',
+  'c_cts_resolution', 'jml_tiket_anak_gamas', 'c_solution_code',
+  'solution_segment',
+] as const;
 
 const TICKET_RAW_BULK_COLUMNS = [
   'incident',
@@ -570,6 +588,21 @@ export function buildRawData(
   return data as Prisma.ticket_rawUncheckedCreateInput;
 }
 
+function buildExtData(
+  row: NormalizedExternalRow,
+  sourceTable: string,
+  incidentIdentity: string,
+): Record<string, unknown> {
+  const data: Record<string, unknown> = { incident: incidentIdentity, sourceTable };
+  for (const field of EXT_COLUMNS) {
+    const value = (row as unknown as Record<string, unknown>)[field];
+    if (value !== null && value !== undefined) {
+      data[field] = value instanceof Date ? value.toISOString() : String(value);
+    }
+  }
+  return data;
+}
+
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -618,6 +651,7 @@ function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow
 async function bulkUpsertTicketRaw(
   rows: TicketRawBulkRow[],
   updateColumns: readonly TicketRawBulkColumn[],
+  nossaDown: boolean,
 ): Promise<void> {
   if (rows.length === 0) return;
 
@@ -631,21 +665,32 @@ async function bulkUpsertTicketRaw(
   );
   const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
 
-  // DATA columns from bridge (nossa/nossa_closed): only fill NULL gaps
-  // DATA columns from other sources (piloting, import_tiket): update normal
-  // META columns (timestamps, version, etc.): update normal
+  // Bridge (nossa/nossa_closed) self-updating its own rows always fully
+  // overwrites (same as the single-ticket refresh path) — a bulk bridge
+  // scan is just as authoritative as a per-incident one, no reason to
+  // restrict it to fill-null-only.
+  // A piloting-sourced incoming row hitting a bridge-owned existing row
+  // only fills NULL gaps — UNLESS nossaDown (failover), in which case it
+  // may overwrite bridge-owned non-null columns too.
+  // DATA columns from other sources (piloting, import_tiket) as EXISTING
+  // owner: update normal. META columns (timestamps, version, etc.): normal.
   const dataOnly = new Set<string>(FIELDS_TO_MAP.filter(f => f !== 'incident'));
+  const incomingIsBridge = Prisma.sql`VALUES(sourceTable) IN ('nossa','nossa_closed')`;
+  const keepOldGuard = nossaDown
+    ? Prisma.sql`FALSE`
+    : Prisma.sql`sourceTable IN ('nossa','nossa_closed') AND NOT (${incomingIsBridge})`;
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
     .map((column) => {
       if (dataOnly.has(column)) {
         return Prisma.sql`${sqlIdentifier(column)} = IF(
           sourceTable IN ('nossa','nossa_closed')
+          AND NOT (${incomingIsBridge})
           AND VALUES(${sqlIdentifier(column)}) IS NOT NULL
           AND ${sqlIdentifier(column)} IS NULL,
           VALUES(${sqlIdentifier(column)}),
           IF(
-            sourceTable IN ('nossa','nossa_closed'),
+            ${keepOldGuard},
             ${sqlIdentifier(column)},
             IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})
           )
@@ -653,8 +698,7 @@ async function bulkUpsertTicketRaw(
       }
       if (column === 'sourceTable') {
         return Prisma.sql`sourceTable = IF(
-          sourceTable IN ('nossa','nossa_closed')
-          AND VALUES(sourceTable) NOT IN ('nossa','nossa_closed'),
+          ${keepOldGuard},
           sourceTable,
           VALUES(sourceTable)
         )`;
@@ -678,6 +722,44 @@ async function bulkUpsertTicketRaw(
         ),
       )}
       ON DUPLICATE KEY UPDATE ${Prisma.join(assignments)}
+    `;
+  }
+}
+
+async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Promise<void> {
+  if (rows.length === 0) return;
+
+  const insertColumns = ['incident', 'sourceTable', ...EXT_COLUMNS];
+  const maxRowsByPlaceholderLimit = Math.max(
+    1,
+    Math.floor(
+      (MYSQL_MAX_PREPARED_STATEMENT_PLACEHOLDERS - MYSQL_PLACEHOLDER_SAFETY_MARGIN) /
+        insertColumns.length,
+    ),
+  );
+  const sqlBatchSize = Math.min(DEFAULT_BATCH_SIZE, maxRowsByPlaceholderLimit);
+  const setClause = Prisma.join(
+    EXT_COLUMNS.map(
+      (col) =>
+        Prisma.sql`${sqlIdentifier(col)} = IF(VALUES(${sqlIdentifier(col)}) IS NOT NULL, VALUES(${sqlIdentifier(col)}), ${sqlIdentifier(col)})`,
+    ),
+    ',\n',
+  );
+
+  for (const chunk of chunkArray(rows, sqlBatchSize)) {
+    await prismaBulk.$executeRaw`
+      INSERT INTO ${sqlIdentifier('ticket_raw_bridge_ext')}
+        (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
+      VALUES ${Prisma.join(
+        chunk.map((row) =>
+          Prisma.sql`(${Prisma.join(
+            insertColumns.map((column) => toSqlValue(row[column])),
+          )})`,
+        ),
+      )}
+      ON DUPLICATE KEY UPDATE
+        sourceTable = VALUES(sourceTable),
+        ${setClause}
     `;
   }
 }
@@ -790,6 +872,7 @@ async function processBatch(
   }
 
   const identities = processable.map((item) => item.identity);
+  const nossaDown = await isQosmicBridgeDown();
 
   const {
     changedRows,
@@ -825,6 +908,8 @@ async function processBatch(
       : new Map();
     const changedRows: TicketRawBulkRow[] = [];
     const heartbeatRows: TicketRawBulkRow[] = [];
+    const extRows: Array<Record<string, unknown>> = [];
+    const isBridgeSource = sourceTable === 'nossa' || sourceTable === 'nossa_closed';
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
@@ -856,9 +941,11 @@ async function processBatch(
 
       if (!existing) {
         changedRows.push(data as TicketRawBulkRow);
+        if (isBridgeSource) extRows.push(buildExtData(item.row, sourceTable, item.identity));
         inserted++;
       } else if (conflict.shouldUpdate) {
         changedRows.push(data as TicketRawBulkRow);
+        if (isBridgeSource) extRows.push(buildExtData(item.row, sourceTable, item.identity));
         updated++;
       } else {
         heartbeatRows.push(data as TicketRawBulkRow);
@@ -871,7 +958,8 @@ async function processBatch(
     const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
     assertNotAborted(signal);
-    await bulkUpsertTicketRaw(sortedChangedRows, TICKET_RAW_BULK_COLUMNS);
+    await bulkUpsertTicketRaw(sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
+    await bulkUpsertTicketRawExt(extRows);
     // Skip heartbeat upsert — hash & status unchanged, no data to write.
     // lastSeenAt tracking is not critical; stale detection uses updated_at.
     if (quarantined.length > 0) {
@@ -1166,14 +1254,40 @@ async function processTable(
           component: 'ingestion', tableName, batchId, mode,
         });
       } else {
-        logger.info('[Ingestion] Pushing bridge ingestion job', {
-          component: 'ingestion', tableName, batchId, mode,
-        });
-        const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
-        await ingestionQueue.add(
-          tableName === 'nossa' ? 'ingest-nossa' : 'ingest-nossa_closed',
-          { table: tableName, correlationId: batchId },
-        );
+        const jobName = tableName === 'nossa' ? 'ingest-nossa' : 'ingest-nossa_closed';
+        const cooldownKey = `ingestion:bridge:${tableName}:cooldown`;
+        // `nossa` (open tickets) now fully self-overwrites on every bulk
+        // scan (see bulkUpsertTicketRaw) — a single paginated scan refreshes
+        // up to 1000 tickets/request, ~1000x cheaper per ticket than the
+        // per-incident refresh path, so it's the PRIMARY freshness driver
+        // and should run essentially back-to-back, paced only by the shared
+        // rate limiter and jobId-based BullMQ dedup (no artificial cooldown).
+        // `nossa_closed` tickets rarely change once closed — keep it on a
+        // longer cooldown so it doesn't compete for budget every cycle.
+        const cooldownMinutes =
+          tableName === 'nossa'
+            ? parsePositiveIntEnv('INGESTION_NOSSA_MIN_INTERVAL_MINUTES', 1)
+            : parsePositiveIntEnv('INGESTION_NOSSA_CLOSED_MIN_INTERVAL_MINUTES', 10);
+        const cooldownMs = cooldownMinutes * 60_000;
+        const acquired = !isRedisReady()
+          ? true // fail-open: don't block ingestion if Redis is unavailable
+          : await redis.set(cooldownKey, '1', 'PX', cooldownMs, 'NX').then((r) => r === 'OK');
+
+        if (!acquired) {
+          logger.info('[Ingestion] Bridge rescan skipped (cooldown active)', {
+            component: 'ingestion', tableName, batchId, mode,
+          });
+        } else {
+          logger.info('[Ingestion] Pushing bridge ingestion job', {
+            component: 'ingestion', tableName, batchId, mode,
+          });
+          const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+          await ingestionQueue.add(
+            jobName,
+            { table: tableName, correlationId: batchId },
+            { jobId: jobName },
+          );
+        }
       }
 
       activeCursor = { lastCursorId: null, lastModifiedAt: nowWib() };
@@ -1637,6 +1751,14 @@ export async function retryQuarantinedItems(options?: {
             isActive: true,
           },
         });
+        if (item.sourceTable === 'nossa' || item.sourceTable === 'nossa_closed') {
+          const extData = buildExtData(normalizedRow, item.sourceTable, identity.primaryIdentity!);
+          await tx.ticket_raw_bridge_ext.upsert({
+            where: { incident: identity.primaryIdentity! },
+            create: extData as Prisma.ticket_raw_bridge_extUncheckedCreateInput,
+            update: extData as Prisma.ticket_raw_bridge_extUncheckedUpdateInput,
+          });
+        }
         await tx.ingestion_quarantine.delete({ where: { id: item.id } });
       });
       await decrIngestionQuarantine(1);

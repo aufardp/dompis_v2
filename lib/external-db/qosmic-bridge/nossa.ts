@@ -96,14 +96,19 @@ export async function fetchByIncidentAnyStatus<T = QosmicRawRow>(
   return null;
 }
 
-/**
- * Iterasi seluruh nossa (tiket berjalan) yang cocok filter, dibatasi offset
- * maksimal 5.000 baris TOTAL (bukan per-window, karena nossa tidak wajib
- * date_from/date_to). Kalau volume tiket berjalan Area-3 REG-4/REG-5 pernah
- * mendekati 5.000, pertimbangkan tambah filter `status` utk mempersempit.
- */
-export async function* iterateNossaOpen<T = QosmicRawRow>(
-  params: ListQueryParams = {},
+// Status enum dikenal sistem (lihat lib/ingestion/normalizer.ts normalizeStatus).
+// Volume nossa REG-4/REG-5 saat ini (~18rb) sudah jauh melewati batas
+// offset 5000 utk scan tanpa filter, jadi kita langsung pecah per status
+// alih-alih coba scan tanpa filter dulu (yang akan overflow tiap kali dan
+// cuma buang request re-fetch data yang sama).
+const NOSSA_OPEN_FALLBACK_STATUSES = [
+  'OPEN', 'NEW', 'ANALYSIS', 'BACKEND', 'PENDING',
+  'FINALCHECK', 'MEDIACARE', 'SALAMSIM', 'DRAFT',
+];
+
+async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
+  status: string,
+  params: ListQueryParams,
 ): AsyncGenerator<T[], void, void> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
   let offset = 0;
@@ -111,23 +116,55 @@ export async function* iterateNossaOpen<T = QosmicRawRow>(
   while (offset <= NOSSA_CLOSED_MAX_OFFSET) {
     const res = await listPage<T>(
       'nossa',
-      { ...params, limit, offset },
-      'nossa.list',
+      { ...params, status, limit, offset },
+      'nossa.list_by_status',
     );
     if (res.data.length === 0) return;
     yield res.data;
 
-    if (res.data.length < limit) return; // halaman terakhir
+    if (res.data.length < limit) return; // halaman terakhir untuk status ini
 
     const nextOffset = offset + limit;
     if (nextOffset > NOSSA_CLOSED_MAX_OFFSET) {
       logger.warn(
-        '[QosmicBridge] nossa (open) mencapai offset maksimal 5.000 — kemungkinan ADA tiket yang tidak terambil. Pertimbangkan tambah filter status.',
-        { offset, limit },
+        '[QosmicBridge] nossa (open) status tunggal masih > 5.000 baris — kemungkinan ADA tiket yang tidak terambil.',
+        { status, offset, limit },
       );
       return;
     }
     offset = nextOffset;
+  }
+}
+
+/**
+ * Iterasi seluruh nossa (tiket berjalan) yang cocok filter. Kalau caller
+ * sudah mempersempit lewat `params.status`, cukup satu scan langsung utk
+ * status itu. Kalau tidak (kasus umum: full coverage scan):
+ *   1. SATU halaman tanpa filter (limit 1000, offset 0) dulu — jaring
+ *      pengaman murah (1 request) utk tiket dengan status yang TIDAK ada
+ *      di `NOSSA_OPEN_FALLBACK_STATUSES`, yang kalau tidak akan lolos sama
+ *      sekali dari langkah 2.
+ *   2. Pecah per status yang dikenal, masing-masing paginasi penuh sendiri
+ *      — ini yang memberi cakupan lengkap (volume real ~18rb sudah jauh di
+ *      atas batas offset 5000 utk scan tanpa filter, jadi paginasi tanpa
+ *      filter sampai habis tidak pernah benar-benar selesai).
+ * Baris dari langkah 1 mungkin ke-yield ulang di langkah 2 — aman, upsert
+ * di sisi penulis bersifat idempotent (ON DUPLICATE KEY UPDATE).
+ */
+export async function* iterateNossaOpen<T = QosmicRawRow>(
+  params: ListQueryParams = {},
+): AsyncGenerator<T[], void, void> {
+  if (params.status) {
+    yield* iterateNossaOpenByStatus<T>(params.status, params);
+    return;
+  }
+
+  const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  const safetyNet = await listPage<T>('nossa', { ...params, limit, offset: 0 }, 'nossa.list_safety_net');
+  if (safetyNet.data.length > 0) yield safetyNet.data;
+
+  for (const status of NOSSA_OPEN_FALLBACK_STATUSES) {
+    yield* iterateNossaOpenByStatus<T>(status, params);
   }
 }
 

@@ -56,7 +56,8 @@ const DATA_COLUMNS = [
   'resolution', 'gaul', 'contact_email', 'resolve_date',
   'description_assignment', 'ttr_end_to_end', 'guarantee_status',
   'related_to_gamas', 'booking_date', 'urgency', 'solution',
-  'closed_by', 'street_address',
+  'closed_by', 'street_address', 'summary', 'service_id',
+  'reported_priority',
   'lastSeenAt', 'importedAt', 'import_batch',
   'syncBatchId', 'sync_date',
 ];
@@ -201,9 +202,13 @@ async function handleIngestNossa(job: any): Promise<{ processed: number }> {
   await runWithCorrelationContext(correlationId, async () => {
     logger.info('[Bridge] Ingest starting', { tableName, batchId, jobId: job.id });
 
+    const nossaClosedIncrementalDays = Math.max(
+      1,
+      Number.parseInt(process.env.NOSSA_CLOSED_INCREMENTAL_DAYS || '', 10) || 2,
+    );
     const iterator = tableName === 'nossa'
       ? iterateNossaOpen()
-      : iterateNossaClosedIncremental(7);
+      : iterateNossaClosedIncremental(nossaClosedIncrementalDays);
 
     const cursor: ExternalCursorDefinition = {
       idColumn: null,
@@ -351,6 +356,7 @@ const MAX_COLUMN_LENGTH: Record<string, number> = {
   status: 50, status_date: 100, date_modified: 50,
   worklog_summary: 100, last_update_worklog: 100,
   sourceTable: 50, import_batch: 100, syncBatchId: 50,
+  summary: 1000,
 };
 
 function sqlVal(value: unknown, col?: string): Prisma.Sql {
@@ -371,6 +377,52 @@ const UPSERT_META_COLS = [
   'sourceUpdatedAt', 'lastSeenAt', 'importedAt', 'syncBatchId',
   'sync_date', 'synced_at', 'import_batch', 'isActive',
 ];
+
+// Fields the bridge sends that have no column on ticket_raw (already at
+// InnoDB's row-size ceiling) — stored in the companion table instead.
+// Only the bridge writes these, so a plain overwrite-if-not-null upsert is
+// enough; no cross-source conflict resolution like ticket_raw needs.
+const EXT_COLUMNS = [
+  'segment', 'osm_resolved_code', 'assigned_owner_group', 'rca',
+  'tknode', 'hostname', 'ticket_details', 'isobsolete',
+  'c_pending_status', 'c_description_serviceid', 'c_mycx_result',
+  'c_hostname_olt', 'c_service_category', 'c_slg_ttr', 'c_working_hour',
+  'c_package', 'c_ibooster_alert_id', 'total_service_indibiz',
+  'total_service_indihome', 'total_service_nodeb', 'total_all_service',
+  'total_lis_indihome', 'total_lis_indibiz', 'total_service_datin',
+  'total_service_vula', 'total_service_sdwan', 'total_service_wifi',
+  'c_area_tif', 'c_district_tif', 'c_regional_tif',
+  'c_tsc_result_category', 'c_slg_ncx', 'inserted_date', 'c_cts_cause',
+  'c_cts_resolution', 'jml_tiket_anak_gamas', 'c_solution_code',
+  'solution_segment',
+];
+
+async function upsertTicketRawExt(
+  normalized: Record<string, unknown>,
+  incident: string,
+  sourceTable: string,
+): Promise<void> {
+  const cols = ['incident', 'sourceTable', ...EXT_COLUMNS];
+  const values = cols.map((col) => {
+    if (col === 'incident') return sqlVal(incident);
+    if (col === 'sourceTable') return sqlVal(sourceTable);
+    return sqlVal(normalized[col]);
+  });
+  const colIdentifiers = cols.map((c) => sqlId(c));
+  const setClause = EXT_COLUMNS.map(
+    (col) => `${col} = IF(VALUES(${col}) IS NOT NULL, VALUES(${col}), ${col})`,
+  ).join(',\n');
+
+  await prisma.$executeRaw`
+    INSERT INTO ticket_raw_bridge_ext
+      (${Prisma.join(colIdentifiers)})
+    VALUES
+      (${Prisma.join(values)})
+    ON DUPLICATE KEY UPDATE
+      sourceTable = VALUES(sourceTable),
+      ${Prisma.raw(setClause)}
+  `;
+}
 
 async function upsertTicketRaw(
   raw: QosmicRawRow,
@@ -413,6 +465,8 @@ async function upsertTicketRaw(
     ON DUPLICATE KEY UPDATE
       ${Prisma.raw(UPSERT_SET_CLAUSE)}
   `;
+
+  await upsertTicketRawExt(normalized as unknown as Record<string, unknown>, incident, sourceTable);
 }
 
 // ── Worker refs (null until startBridgeWorkers) ─────────────────────────

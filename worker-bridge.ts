@@ -29,7 +29,7 @@ async function checkDLQ(): Promise<void> {
   try {
     const counts = await getDLQCounts();
     if (counts.total > DLQ_THRESHOLD) {
-      logger.error('[Bridge] DLQ threshold exceeded', {
+      logger.error('[Bridge] DLQ threshold exceeded', undefined, {
         total: counts.total,
         interactive: counts.interactive,
         ingestion: counts.ingestion,

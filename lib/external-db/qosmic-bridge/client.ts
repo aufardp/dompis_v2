@@ -14,7 +14,7 @@
 // aktif bersamaan, tapi saat ini cuma data-worker yang panggil bridge.
 
 import { checkRateLimit } from '@/lib/ratelimit';
-import { isRedisReady } from '@/lib/redis';
+import { redis, isRedisReady } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 
 const BASE_URL = process.env.QOSMIC_BRIDGE_BASE_URL;
@@ -52,6 +52,51 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 
 export function isQosmicBridgeConfigured(): boolean {
   return Boolean(BASE_URL && TOKEN);
+}
+
+// ── Heartbeat / failover detection ───────────────────────────────────
+// Set on every successful bridge response; other code (piloting_tickets
+// ownership guards) reads this to decide whether piloting may temporarily
+// become source of truth while the bridge is down.
+const HEALTH_KEY = 'qosmic-bridge:healthy';
+const HEALTH_TTL_MS = parsePositiveIntEnv('QOSMIC_BRIDGE_HEALTH_TTL_MS', 900_000);
+
+let lastKnownDown = false;
+
+function markBridgeHealthy(): void {
+  if (!isRedisReady()) return;
+  // Fire-and-forget — never block the request on this.
+  redis.set(HEALTH_KEY, '1', 'PX', HEALTH_TTL_MS).catch(() => {});
+}
+
+/**
+ * Fail-closed: if we can't confirm Redis is reachable, assume the bridge is
+ * NOT down (avoids flapping piloting_tickets into "source of truth" mode
+ * just because Redis hiccuped).
+ */
+export async function isQosmicBridgeDown(): Promise<boolean> {
+  if (!isRedisReady()) {
+    if (lastKnownDown) {
+      logger.warn('[QosmicBridge] Redis tidak siap, tidak bisa cek heartbeat — anggap TIDAK down (fail-closed)');
+      lastKnownDown = false;
+    }
+    return false;
+  }
+
+  let down: boolean;
+  try {
+    const value = await redis.get(HEALTH_KEY);
+    down = value === null;
+  } catch {
+    down = false; // fail-closed on Redis errors too
+  }
+
+  if (down !== lastKnownDown) {
+    logger.warn(down ? '[QosmicBridge] Failover AKTIF — bridge dianggap down' : '[QosmicBridge] Bridge pulih — failover nonaktif');
+    lastKnownDown = down;
+  }
+
+  return down;
 }
 
 export class QosmicBridgeError extends Error {
@@ -307,6 +352,7 @@ export async function qosmicBridgeGet<T = unknown>(
         path,
         durationMs,
       });
+      markBridgeHealthy();
       return (await res.json()) as T;
     } catch (error) {
       clearTimeout(timeout);

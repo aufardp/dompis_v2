@@ -20,7 +20,7 @@ import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { fetchExternalRowsViaBridge } from '@/lib/external-db/qosmic-bridge/status-refresh-adapter';
-import { isQosmicBridgeConfigured } from '@/lib/external-db/qosmic-bridge/client';
+import { isQosmicBridgeConfigured, isQosmicBridgeDown } from '@/lib/external-db/qosmic-bridge/client';
 
 export interface StatusRefreshResult {
   batchId: string;
@@ -68,6 +68,18 @@ type ExternalStatusRow = {
 const CONFIGURED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_BATCH_SIZE', 300);
 const MIN_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_MIN_BATCH_SIZE', 100);
 const MAX_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_MAX_BATCH_SIZE', 800);
+// Bridge-sourced candidates (nossa/nossa_closed) share the 20 req/min QOSMIC
+// rate limit with bulk ingestion, search, and backfill — this pool must stay
+// small. Piloting/import_tiket candidates hit direct MySQL with no external
+// rate limit, so they get a much larger pool of their own instead of
+// competing with bridge candidates for the same small combined batch.
+const BRIDGE_SOURCE_TABLES = ['nossa', 'nossa_closed'];
+// Small on purpose: bulk /nossa scanning is now the primary freshness driver
+// (self-overwrites on every scan, ~1000x cheaper per ticket than a per-incident
+// fetch) — this pool is just a supplementary safety net for tickets bulk
+// scan's status-based coverage might still miss, not the main mechanism.
+const BRIDGE_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_BRIDGE_BATCH_SIZE', 5);
+const PILOTING_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_PILOTING_BATCH_SIZE', 300);
 const FAST_RUN_THRESHOLD_MS = parsePositiveIntEnv(
   'STATUS_REFRESH_FAST_RUN_THRESHOLD_MS',
   10_000,
@@ -628,6 +640,7 @@ async function fetchExternalRows(
 async function updateChangedRows(
   changedRows: ExternalStatusRow[],
   batchId: string,
+  nossaDown: boolean,
 ): Promise<number> {
   if (changedRows.length === 0) return 0;
   let updated = 0;
@@ -659,6 +672,14 @@ async function updateChangedRows(
           )`,
         );
 
+        // Ownership guard: a piloting_tickets-sourced row must not overwrite
+        // columns already owned by bridge (nossa/nossa_closed) unless the
+        // bridge is confirmed down (failover). Bridge-sourced incoming rows
+        // always overwrite (self-update) — the guard only ever blocks a
+        // non-bridge VALUES(sourceTable) from clobbering a bridge-owned row.
+        const guardActive = nossaDown ? Prisma.sql`FALSE` : Prisma.sql`TRUE`;
+        const ownershipGuard = Prisma.sql`sourceTable IN ('nossa','nossa_closed') AND VALUES(sourceTable) NOT IN ('nossa','nossa_closed') AND ${guardActive}`;
+
         const updatedCount = await withStatusRefreshRetry(
           () => prisma.$executeRaw`
           INSERT INTO ticket_raw
@@ -680,13 +701,13 @@ async function updateChangedRows(
             )
           VALUES ${Prisma.join(values)}
           ON DUPLICATE KEY UPDATE
-            sourceTable = VALUES(sourceTable),
-            status = VALUES(status),
-            status_date = VALUES(status_date),
-            date_modified = VALUES(date_modified),
-            worklog_summary = VALUES(worklog_summary),
-            last_update_worklog = VALUES(last_update_worklog),
-            sourceUpdatedAt = VALUES(sourceUpdatedAt),
+            sourceTable = IF(${ownershipGuard}, sourceTable, VALUES(sourceTable)),
+            status = IF(${ownershipGuard}, status, VALUES(status)),
+            status_date = IF(${ownershipGuard}, status_date, VALUES(status_date)),
+            date_modified = IF(${ownershipGuard}, date_modified, VALUES(date_modified)),
+            worklog_summary = IF(${ownershipGuard}, worklog_summary, VALUES(worklog_summary)),
+            last_update_worklog = IF(${ownershipGuard}, last_update_worklog, VALUES(last_update_worklog)),
+            sourceUpdatedAt = IF(${ownershipGuard}, sourceUpdatedAt, VALUES(sourceUpdatedAt)),
             lastSeenAt = VALUES(lastSeenAt),
             importedAt = VALUES(importedAt),
             syncBatchId = VALUES(syncBatchId),
@@ -951,8 +972,6 @@ export async function runStatusRefresh(
   const batchId = `status-refresh-${Date.now()}`;
   const effectiveBatchSize = await getAdaptiveBatchSize();
   const hotWindowStart = getHotWindowStart();
-  const hotLimit = Math.max(1, Math.ceil(effectiveBatchSize * 0.7));
-  const safetyLimit = Math.max(1, effectiveBatchSize - hotLimit);
   const result: StatusRefreshResult = {
     batchId,
     scanned: 0,
@@ -976,6 +995,10 @@ export async function runStatusRefresh(
   await withPrismaReconnect(() => createRunLog(batchId, effectiveBatchSize));
 
   try {
+    // Computed once per cycle: whether piloting_tickets is allowed to
+    // overwrite bridge-owned (nossa/nossa_closed) columns right now.
+    const nossaDown = await isQosmicBridgeDown();
+
     await seedRefreshState(effectiveBatchSize, sourceTables).catch((error) =>
       logger.warn('[StatusRefresh] Seed skipped', {
         error: error instanceof Error ? error.message : String(error),
@@ -990,10 +1013,39 @@ export async function runStatusRefresh(
       return result;
     }
 
-    const [hotCandidates, safetyCandidates] = await Promise.all([
-      fetchHotCandidates(hotLimit, hotWindowStart, sourceTables),
-      fetchSafetyCandidates(safetyLimit, hotWindowStart, sourceTables),
+    // Split the candidate pool by source: bridge-sourced (nossa/nossa_closed)
+    // candidates share the 20 req/min QOSMIC rate limit with bulk ingestion,
+    // search, and backfill, so they get a small dedicated budget. Piloting
+    // candidates hit direct MySQL with no external rate limit, so they get a
+    // much larger budget instead of competing for the same small pool.
+    const bridgeSourceTables = sourceTables.filter((t) => BRIDGE_SOURCE_TABLES.includes(t));
+    const pilotingSourceTables = sourceTables.filter((t) => !BRIDGE_SOURCE_TABLES.includes(t));
+    const bridgeHotLimit = Math.max(1, Math.ceil(BRIDGE_BATCH_SIZE * 0.7));
+    const bridgeSafetyLimit = Math.max(1, BRIDGE_BATCH_SIZE - bridgeHotLimit);
+    const pilotingHotLimit = Math.max(1, Math.ceil(PILOTING_BATCH_SIZE * 0.7));
+    const pilotingSafetyLimit = Math.max(1, PILOTING_BATCH_SIZE - pilotingHotLimit);
+
+    const [
+      bridgeHotCandidates,
+      bridgeSafetyCandidates,
+      pilotingHotCandidates,
+      pilotingSafetyCandidates,
+    ] = await Promise.all([
+      bridgeSourceTables.length > 0
+        ? fetchHotCandidates(bridgeHotLimit, hotWindowStart, bridgeSourceTables)
+        : Promise.resolve([]),
+      bridgeSourceTables.length > 0
+        ? fetchSafetyCandidates(bridgeSafetyLimit, hotWindowStart, bridgeSourceTables)
+        : Promise.resolve([]),
+      pilotingSourceTables.length > 0
+        ? fetchHotCandidates(pilotingHotLimit, hotWindowStart, pilotingSourceTables)
+        : Promise.resolve([]),
+      pilotingSourceTables.length > 0
+        ? fetchSafetyCandidates(pilotingSafetyLimit, hotWindowStart, pilotingSourceTables)
+        : Promise.resolve([]),
     ]);
+    const hotCandidates = [...bridgeHotCandidates, ...pilotingHotCandidates];
+    const safetyCandidates = [...bridgeSafetyCandidates, ...pilotingSafetyCandidates];
 
     const candidateMap = new Map<string, CandidateRow>();
     for (const candidate of [...hotCandidates, ...safetyCandidates]) {
@@ -1069,7 +1121,7 @@ export async function runStatusRefresh(
       }
     }
 
-    result.changed = await updateChangedRows(changedRows, batchId);
+    result.changed = await updateChangedRows(changedRows, batchId, nossaDown);
 
     // Broadcast per-ticket updates (batch limit to avoid flood)
     if (changedRows.length <= 50) {
