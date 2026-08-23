@@ -121,6 +121,8 @@ export interface JenisVlookupInput {
   realm: string | null;
   summary: string | null;
   symptom?: string | null;
+  /** Dari ticket_raw_bridge_ext.c_description_serviceid — nilai "K1"/"K2"/lainnya. */
+  c_description_serviceid?: string | null;
 }
 
 export interface JenisVlookupResult {
@@ -141,19 +143,70 @@ function like(str: string | null, pattern: string): boolean {
 }
 
 /**
- * Jika service_type = SITE → TSEL.
+ * Sama seperti `like()`, tapi tidak peduli pemisah kata (spasi, underscore,
+ * strip) di kedua sisi — "PREMIUM SITE", "PREMIUM_SITE", "premium-site"
+ * semuanya dianggap cocok dengan pattern "PREMIUM SITE".
+ */
+function likeFlexible(str: string | null, pattern: string): boolean {
+  if (!str) return false;
+  const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  return normalize(str).includes(normalize(pattern));
+}
+
+/**
+ * Jika service_type = SITE → TSEL. jenis_tiket_2 dipersempit lagi kalau
+ * summary mengandung kata kunci severity (urutan ini jadi prioritas kalau
+ * lebih dari satu kata kunci muncul sekaligus): CRITICAL, LOW, MAJOR, MINOR,
+ * PREMIUM SITE. Pencarian kata kunci tidak peduli besar/kecil huruf maupun
+ * underscore/spasi/strip di summary.
  * Jika customer_segment = DWS AND service_type != SITE → TOP OLO.
  */
 function checkTselOverride(input: JenisVlookupInput): JenisVlookupResult | null {
   const st = (input.service_type ?? '').trim().toUpperCase();
   const cs = (input.customer_segment ?? '').trim().toUpperCase();
   if (st === 'SITE') {
+    const severityKeywords: Array<[string, string]> = [
+      ['CRITICAL', 'TSEL CRITICAL'],
+      ['LOW', 'TSEL LOW'],
+      ['MAJOR', 'TSEL MAJOR'],
+      ['MINOR', 'TSEL MINOR'],
+      ['PREMIUM SITE', 'TSEL PREMIUM SITE'],
+    ];
+    for (const [keyword, jenis2] of severityKeywords) {
+      if (likeFlexible(input.summary, keyword)) {
+        return { jenis_tiket_1: 'TSEL', jenis_tiket_2: jenis2 };
+      }
+    }
     return { jenis_tiket_1: 'TSEL', jenis_tiket_2: 'TSEL' };
   }
   if (cs === 'DWS' && st !== 'SITE') {
     return { jenis_tiket_1: 'TOP OLO', jenis_tiket_2: 'TOP OLO' };
   }
   return null;
+}
+
+/**
+ * source_ticket = GAMAS → GAMAS. Kata kunci di summary mempersempit
+ * jenis_tiket_2 (FEEDER/GPON/DISTRIBUSI/ODP, urutan ini jadi prioritas kalau
+ * summary mengandung lebih dari satu kata kunci sekaligus).
+ */
+function checkGamasOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  const sourceTicket = (input.source_ticket ?? '').trim().toUpperCase();
+  if (sourceTicket !== 'GAMAS') return null;
+
+  if (like(input.summary, 'FEEDER')) {
+    return { jenis_tiket_1: 'GAMAS', jenis_tiket_2: 'GAMAS FEEDER' };
+  }
+  if (like(input.summary, 'GPON')) {
+    return { jenis_tiket_1: 'GAMAS', jenis_tiket_2: 'GAMAS GPON' };
+  }
+  if (like(input.summary, 'DISTRIBUSI')) {
+    return { jenis_tiket_1: 'GAMAS', jenis_tiket_2: 'GAMAS DISTRIBUSI' };
+  }
+  if (like(input.summary, 'ODP')) {
+    return { jenis_tiket_1: 'GAMAS', jenis_tiket_2: 'GAMAS ODP' };
+  }
+  return { jenis_tiket_1: 'GAMAS', jenis_tiket_2: 'GAMAS' };
 }
 
 /**
@@ -373,11 +426,7 @@ function classifyB2B(input: JenisVlookupInput): JenisVlookupResult {
     } else if (st) {
       const vlookup = vlookupCache.byRealmB2b.get(st);
       if (vlookup?.flag1) {
-        if (vlookup.flag1.toUpperCase() === 'DATIN') {
-          jenis2 = like(service_no, 'K2') ? 'DATIN - K2' : 'DATIN';
-        } else {
-          jenis2 = vlookup.flag1;
-        }
+        jenis2 = vlookup.flag1;
       }
     }
   }
@@ -429,6 +478,15 @@ function classifyB2B(input: JenisVlookupInput): JenisVlookupResult {
     }
   }
 
+  // Semua sub-jenis DATIN (DATIN polos, ASTINET, VPN IP, SIP_TRUNK, METRO-E,
+  // IP_TRANSIT) dapat suffix K1/K2/K3 dari C_DESCRIPTION_SERVICEID.
+  // K1 -> K1, K2 -> K2, null/lainnya -> K3 (default).
+  if (jenis1 === 'DATIN' && jenis2) {
+    const serviceId = (input.c_description_serviceid ?? '').trim().toUpperCase();
+    const suffix = serviceId === 'K1' ? 'K1' : serviceId === 'K2' ? 'K2' : 'K3';
+    jenis2 = `${jenis2} ${suffix}`;
+  }
+
   // Fallback: if classification could not determine a value, use UNKNOWN
   if (!jenis1) jenis1 = 'UNKNOWN';
   if (!jenis2) jenis2 = 'UNKNOWN';
@@ -451,6 +509,9 @@ export async function classifyJenisFromVlookup(
 
   const override = checkTselOverride(input);
   if (override) return override;
+
+  const gamasOverride = checkGamasOverride(input);
+  if (gamasOverride) return gamasOverride;
 
   const infraCareOverride = checkInfraCareOverride(input);
   if (infraCareOverride) return infraCareOverride;
@@ -489,6 +550,9 @@ export async function batchClassifyJenisFromVlookup(
 
     const override = checkTselOverride(input);
     if (override) return override;
+
+    const gamasOverride = checkGamasOverride(input);
+    if (gamasOverride) return gamasOverride;
 
     const infraCareOverride = checkInfraCareOverride(input);
     if (infraCareOverride) return infraCareOverride;

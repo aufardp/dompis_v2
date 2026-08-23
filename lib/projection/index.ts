@@ -710,8 +710,10 @@ async function fetchBatch(
       tr.solution,
       tr.tsc_result,
       tr.scc_result,
-      tr.pending_reason
+      tr.pending_reason,
+      ext.c_description_serviceid
     FROM ticket_raw tr
+    LEFT JOIN ticket_raw_bridge_ext ext ON ext.incident = tr.incident
     WHERE tr.isActive = TRUE
       AND tr.importedAt IS NOT NULL
       AND NOT EXISTS (
@@ -746,6 +748,7 @@ async function prepareProjectionItems(
       realm: r.realm as string | null,
       summary: r.summary as string | null,
       symptom: r.symptom as string | null,
+      c_description_serviceid: r.c_description_serviceid as string | null,
     })),
   );
 
@@ -1720,6 +1723,12 @@ export async function backfillJenisTiket(
     });
     if (tickets.length === 0) break;
 
+    const extRows = await prisma.ticket_raw_bridge_ext.findMany({
+      where: { incident: { in: tickets.map((t) => t.incident) } },
+      select: { incident: true, c_description_serviceid: true },
+    });
+    const extByIncident = new Map(extRows.map((e) => [e.incident, e.c_description_serviceid]));
+
     const inputs = tickets.map((t) => ({
       channel: t.channel,
       classification_path: t.classification_path,
@@ -1731,6 +1740,7 @@ export async function backfillJenisTiket(
       realm: t.realm,
       summary: t.summary,
       symptom: t.symptom ?? null,
+      c_description_serviceid: extByIncident.get(t.incident) ?? null,
     }));
 
     const results = await batchClassifyJenisFromVlookup(inputs);

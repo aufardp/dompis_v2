@@ -275,6 +275,15 @@ async function main() {
 
     if (rawRecords.length === 0) break;
 
+    const incidents = rawRecords.map((r) => r.incident).filter(Boolean) as string[];
+    const extRows = incidents.length > 0
+      ? await prisma.ticket_raw_bridge_ext.findMany({
+          where: { incident: { in: incidents } },
+          select: { incident: true, c_description_serviceid: true },
+        })
+      : [];
+    const extByIncident = new Map(extRows.map((e) => [e.incident, e.c_description_serviceid]));
+
     const jenisResults = await batchClassifyJenisFromVlookup(
       rawRecords.map((r) => ({
         channel: r.channel as string | null,
@@ -286,10 +295,9 @@ async function main() {
         source_ticket: r.source_ticket as string | null,
         realm: r.realm as string | null,
         summary: r.summary as string | null,
+        c_description_serviceid: r.incident ? (extByIncident.get(r.incident) ?? null) : null,
       })),
     );
-
-    const incidents = rawRecords.map((r) => r.incident).filter(Boolean) as string[];
     const existingTickets = await prisma.ticket.findMany({
       where: { incident: { in: incidents } },
       select: {

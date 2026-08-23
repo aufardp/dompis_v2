@@ -55,6 +55,15 @@ async function main() {
 
       if (rawTickets.length === 0) break;
 
+      const rawIncidents = rawTickets.map((t) => t.incident).filter((s): s is string => s !== null);
+      const extRows = rawIncidents.length > 0
+        ? await prisma.ticket_raw_bridge_ext.findMany({
+            where: { incident: { in: rawIncidents } },
+            select: { incident: true, c_description_serviceid: true },
+          })
+        : [];
+      const extByIncident = new Map(extRows.map((e) => [e.incident, e.c_description_serviceid]));
+
       const inputs = rawTickets.map((t) => ({
         channel: t.channel,
         classification_flag: t.classification_flag,
@@ -67,6 +76,7 @@ async function main() {
         realm: t.realm,
         summary: t.summary,
         symptom: t.symptom ?? null,
+        c_description_serviceid: t.incident ? (extByIncident.get(t.incident) ?? null) : null,
       }));
 
       const results = await batchClassifyJenisFromVlookup(inputs);

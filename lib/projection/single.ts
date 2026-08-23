@@ -171,6 +171,13 @@ async function findExistingTicket(
 async function classifySingle(
   raw: RawSelectResult,
 ): Promise<{ jenis_tiket_1: string | null; jenis_tiket_2: string | null }> {
+  const ext = raw.incident
+    ? await prisma.ticket_raw_bridge_ext.findUnique({
+        where: { incident: raw.incident },
+        select: { c_description_serviceid: true },
+      })
+    : null;
+
   const results = await batchClassifyJenisFromVlookup([
     {
       channel: raw.channel as string | null,
@@ -184,6 +191,7 @@ async function classifySingle(
       realm: raw.realm as string | null,
       summary: raw.summary as string | null,
       symptom: raw.symptom as string | null,
+      c_description_serviceid: ext?.c_description_serviceid ?? null,
     },
   ]);
   return results[0] ?? { jenis_tiket_1: null, jenis_tiket_2: null };
