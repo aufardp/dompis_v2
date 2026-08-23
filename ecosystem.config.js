@@ -317,11 +317,12 @@ module.exports = {
         PRISMA_CONNECTION_LIMIT: '4',
         PRISMA_POOL_TIMEOUT: '10',
       },
-      autorestart: true,
+      // Job one-shot (dijadwalkan lewat cron_restart), bukan long-running
+      // worker — autorestart harus false supaya exit normal setelah purge
+      // selesai tidak dianggap crash oleh PM2.
+      autorestart: false,
       watch: false,
       kill_timeout: 30000,
-      max_restarts: 3,
-      min_uptime: '60s',
       error_file: '/var/log/dompis/audit-log-purge-error.log',
       out_file: '/var/log/dompis/audit-log-purge-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
