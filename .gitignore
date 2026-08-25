@@ -57,11 +57,14 @@ dompis-*.json
 .vscode/
 .idea/
 .DS_Store
-.qwen
-.blackboxcli/
+
+# AI Tooling & Local Configuration
 .agents/
 .claude/
 .opencode/
+*.claude
+.qwen
+.blackboxcli/
 
 # Runtime logs & generated results
 logs/
