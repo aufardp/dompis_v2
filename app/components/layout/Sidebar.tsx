@@ -24,6 +24,7 @@ import {
   MapPinned,
   Ticket,
   Layers,
+  Target,
 } from 'lucide-react';
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
@@ -108,6 +109,13 @@ const MENU_ITEMS: Array<{
     hint: 'User & hierarki region',
     superadminOnly: true,
     adminBranchVisible: true,
+  },
+  {
+    label: 'Target KPI',
+    path: '/superadmin/kpi-targets',
+    icon: Target,
+    hint: 'TTR Compliance & Assurance Guarantee',
+    superadminOnly: true,
   },
   {
     label: 'Audit Log',

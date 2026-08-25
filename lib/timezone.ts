@@ -1,5 +1,5 @@
 import { toZonedTime, fromZonedTime, format } from 'date-fns-tz';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { parseWIBDateInput } from '@/app/utils/datetime';
 
 const TIMEZONE = 'Asia/Jakarta';
@@ -54,6 +54,26 @@ export function getTodayWibRange(): { start: Date; end: Date } {
   const wibNow = toZonedTime(new Date(), TIMEZONE);
   const wibStart = startOfDay(wibNow);
   const wibEnd = endOfDay(wibNow);
+  return {
+    start: fromZonedTime(wibStart, TIMEZONE),
+    end: fromZonedTime(wibEnd, TIMEZONE),
+  };
+}
+
+export function getWeekWibRange(): { start: Date; end: Date } {
+  const wibNow = toZonedTime(new Date(), TIMEZONE);
+  const wibStart = startOfWeek(wibNow, { weekStartsOn: 1 });
+  const wibEnd = endOfWeek(wibNow, { weekStartsOn: 1 });
+  return {
+    start: fromZonedTime(wibStart, TIMEZONE),
+    end: fromZonedTime(wibEnd, TIMEZONE),
+  };
+}
+
+export function getMonthWibRange(): { start: Date; end: Date } {
+  const wibNow = toZonedTime(new Date(), TIMEZONE);
+  const wibStart = startOfMonth(wibNow);
+  const wibEnd = endOfMonth(wibNow);
   return {
     start: fromZonedTime(wibStart, TIMEZONE),
     end: fromZonedTime(wibEnd, TIMEZONE),

@@ -32,6 +32,7 @@ export interface Technician {
   id_user: number;
   nama: string;
   nik: string | null;
+  technicianSegment?: 'B2B' | 'B2C' | 'BOTH' | null;
   workzone: string;
   cluster_today?: string[];
   avatar_url?: string | null;
@@ -55,6 +56,7 @@ export interface TechnicianFilters {
   workzone?: string;
   branch?: string;
   status?: TechnicianStatus | 'all';
+  segment?: string;
 }
 
 export interface TechnicianApiResponse {

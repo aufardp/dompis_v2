@@ -869,6 +869,7 @@ model users {
   nik                                               String?                     @unique(map: "nik") @db.VarChar(50)
   nama                                              String?                     @db.VarChar(100)
   jabatan                                           String?                     @db.VarChar(100)
+  technician_segment                                String?                     @db.VarChar(10)
   username                                          String?                     @unique(map: "username") @db.VarChar(50)
   password                                          String?                     @db.VarChar(255)
   role_id                                           Int?
@@ -1077,6 +1078,20 @@ model DashboardSummarySnapshot {
   @@unique([aggDate, workzone])
   @@index([aggDate])
   @@map("dashboard_summary_snapshot")
+}
+
+// Target KPI yang bisa diatur lewat halaman admin (app/superadmin/kpi-targets),
+// dipakai untuk menghitung % achievement di section TTR Compliance/Assurance
+// Guarantee di halaman overview. Satu nilai berlaku sampai diubah lagi
+// (belum per-periode).
+model KpiTarget {
+  id          Int      @id @default(autoincrement())
+  metricKey   String   @unique @db.VarChar(50) @map("metric_key")
+  targetValue Decimal  @db.Decimal(6, 2) @map("target_value")
+  updatedBy   Int?     @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("kpi_target")
 }
 
 model service_location {

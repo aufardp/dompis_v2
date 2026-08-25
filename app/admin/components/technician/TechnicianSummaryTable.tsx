@@ -99,6 +99,12 @@ const STATUS_STYLE = {
   OVERLOAD: 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-300',
 };
 
+const SEGMENT_BADGE_STYLE: Record<'B2B' | 'B2C' | 'BOTH', string> = {
+  B2B: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300',
+  B2C: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
+  BOTH: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300',
+};
+
 function getStatusLabel(total: number): 'IDLE' | 'AKTIF' | 'OVERLOAD' {
   if (total === 0) return 'IDLE';
   if (total > 5) return 'OVERLOAD';
@@ -145,8 +151,16 @@ function formatJenisLabel(raw: string | undefined | null): string {
   return labels[key] ?? (raw?.trim() || 'Unknown');
 }
 
+const KNOWN_BUCKET_KEYS: readonly BucketKey[] = BUCKET_COLUMNS.map((c) => c.key);
+
+// Tiket yang bucket-nya di luar 6 kategori resmi (mis. source_ticket GAMAS,
+// yang tidak match kriteria manapun di classifyTechnicianBucket) tetap
+// dihitung, dilipat ke Non Technical, supaya tidak diam-diam hilang dari
+// total & status teknisi.
 function getBucketKey(ticket: TechnicianTicket): BucketKey {
-  return (ticket.operationalBucket as BucketKey | undefined) ?? 'non_technical';
+  const bucket = ticket.operationalBucket as BucketKey | undefined;
+  if (bucket && KNOWN_BUCKET_KEYS.includes(bucket)) return bucket;
+  return 'non_technical';
 }
 
 function emptyBucketGroup(key: BucketKey): BucketGroup {
@@ -169,10 +183,10 @@ function groupTicketsByBucket(
 
   const pushJenis = (bucket: BucketGroup, ticket: TechnicianTicket) => {
     const jenisKey = normalizeJenisKey(
-      ticket.jenisTiket1 ?? ticket.jenisTiket ?? null,
+      ticket.jenisTiket ?? ticket.jenisTiket1 ?? null,
     );
     const jenisLabel = formatJenisLabel(
-      ticket.jenisTiket1 ?? ticket.jenisTiket ?? null,
+      ticket.jenisTiket ?? ticket.jenisTiket1 ?? null,
     );
     const existing = bucket.jenis.find((item) => item.key === jenisKey);
     if (existing) existing.count += 1;
@@ -334,7 +348,7 @@ export default function TechnicianSummaryTable({
               <th
                 rowSpan={2}
                 onClick={() => handleSort('total')}
-                className='sticky right-21 z-30 cursor-pointer border-r border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-bold tracking-wide whitespace-nowrap text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                className='sticky right-24 z-30 cursor-pointer border-r border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-bold tracking-wide whitespace-nowrap text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
               >
                 <div className='flex items-center justify-center gap-1'>
                   Total
@@ -344,7 +358,7 @@ export default function TechnicianSummaryTable({
               <th
                 rowSpan={2}
                 onClick={() => handleSort('status')}
-                className='sticky right-0 z-30 cursor-pointer border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-bold tracking-wide whitespace-nowrap text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                className='sticky right-0 z-30 w-24 cursor-pointer border-l border-slate-200 bg-slate-50 px-2 py-2 text-center font-bold tracking-wide whitespace-nowrap text-slate-700 uppercase transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
               >
                 <div className='flex items-center justify-center gap-1'>
                   Status
@@ -396,9 +410,18 @@ export default function TechnicianSummaryTable({
                       href={`/admin/technicians/${tech.id_user}`}
                       className='block'
                     >
-                      <p className='truncate font-semibold text-slate-900 hover:text-blue-700 dark:text-slate-50 dark:hover:text-blue-300'>
-                        {tech.nama}
-                      </p>
+                      <span className='flex items-center gap-1.5'>
+                        <p className='truncate font-semibold text-slate-900 hover:text-blue-700 dark:text-slate-50 dark:hover:text-blue-300'>
+                          {tech.nama}
+                        </p>
+                        {tech.technicianSegment && (
+                          <span
+                            className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${SEGMENT_BADGE_STYLE[tech.technicianSegment]}`}
+                          >
+                            {tech.technicianSegment}
+                          </span>
+                        )}
+                      </span>
                     </Link>
                     <p className='truncate text-[10px] font-medium text-slate-500 dark:text-slate-400'>
                       {tech.workzone}
@@ -470,13 +493,13 @@ export default function TechnicianSummaryTable({
                     ));
                   })}
 
-                  <td className='sticky right-21 z-20 border-l border-slate-200 bg-white px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-900'>
+                  <td className='sticky right-24 z-20 border-l border-slate-200 bg-white px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-900'>
                     <span className='inline-flex min-w-8 items-center justify-center rounded-full bg-slate-200 px-1 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100'>
                       {total}
                     </span>
                   </td>
 
-                  <td className='sticky right-0 z-20 border-l border-slate-200 bg-white px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-900'>
+                  <td className='sticky right-0 z-20 w-24 border-l border-slate-200 bg-white px-2 py-2 text-center dark:border-slate-700 dark:bg-slate-900'>
                     <span
                       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide ${STATUS_STYLE[status]}`}
                     >

@@ -34,6 +34,18 @@ export const queryKeys = {
       filters
         ? ([...queryKeys.dashboard.all, 'ticket-management-overview', filters] as const)
         : ([...queryKeys.dashboard.all, 'ticket-management-overview'] as const),
+    ttrComplianceOverview: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'ttr-compliance-overview', filters] as const)
+        : ([...queryKeys.dashboard.all, 'ttr-compliance-overview'] as const),
+    sqmDailyTrend: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'sqm-daily-trend', filters] as const)
+        : ([...queryKeys.dashboard.all, 'sqm-daily-trend'] as const),
+    assuranceGuarantee: (filters?: Record<string, unknown>) =>
+      filters
+        ? ([...queryKeys.dashboard.all, 'assurance-guarantee', filters] as const)
+        : ([...queryKeys.dashboard.all, 'assurance-guarantee'] as const),
     durasi: (filters?: { bucket?: string; branch?: string }) => {
       const bucket = filters?.bucket ?? '';
       const branch = filters?.branch ?? '';

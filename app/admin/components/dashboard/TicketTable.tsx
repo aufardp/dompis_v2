@@ -277,6 +277,7 @@ function TicketTableLoadingDesktop({
                 <th className='px-3 py-2.5 text-center'>Teknisi</th>
                 <th className='px-3 py-2.5 text-center'>Status Insera</th>
                 <th className='px-3 py-2.5 text-center'>Status Dompis</th>
+                <th className='px-3 py-2.5 text-center'>Comply</th>
                 <th className='px-3 py-2.5 text-center'>Aksi</th>
               </tr>
             </thead>
@@ -286,7 +287,7 @@ function TicketTableLoadingDesktop({
                   <td className='px-3 py-4'>
                     <div className='h-3.5 w-6 rounded-full bg-slate-200 dark:bg-slate-800' />
                   </td>
-                  {Array.from({ length: 14 }).map((__, cellIndex) => (
+                  {Array.from({ length: 15 }).map((__, cellIndex) => (
                     <td key={cellIndex} className='px-3 py-4'>
                       <div className='space-y-2'>
                         <div className='h-3 w-5/6 rounded-full bg-slate-200 dark:bg-slate-800' />
@@ -678,13 +679,14 @@ export default function TicketTable({
                     {renderSortableHeader('Teknisi', 'technicianName')}
                     <th className='px-3 py-2.5 text-center'>Status Insera</th>
                     <th className='px-3 py-2.5 text-center'>Status Dompis</th>
+                    <th className='px-3 py-2.5 text-center'>Comply</th>
                     <th className='px-3 py-2.5 text-center'>Aksi</th>
                   </tr>
                 </thead>
                 <tbody className='divide-y divide-(--border)'>
                   {sortedTickets.length === 0 ? (
                     <TableEmptyState
-                      colSpan={15}
+                      colSpan={16}
                       message='Tidak ada tiket ditemukan'
                     />
                   ) : (

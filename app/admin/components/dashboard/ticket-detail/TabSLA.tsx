@@ -1,10 +1,11 @@
 'use client';
 
-import { Clock, Gauge, Layers, Calendar } from 'lucide-react';
+import { Clock, Gauge, Layers, Calendar, CheckCircle2 } from 'lucide-react';
 import type { TicketDetail } from './types';
 import { formatShortDistance, formatDateTime, formatDate } from './helpers';
 import { Field, Section } from './FieldSection';
 import { TTRCard } from './TTRCard';
+import { StatusBadge } from './Badges';
 
 interface TabSLAProps {
   ticket: TicketDetail;
@@ -32,6 +33,41 @@ export function TabSLA({ ticket, ttrLabel, ttrDeadline }: TabSLAProps) {
               {ticket.closedAt ? formatShortDistance(ticket.closedAt) : '—'}
             </p>
             <p className='mt-0.5 text-xs text-slate-500 dark:text-slate-400'>{formatDateTime(ticket.closedAt)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className='mb-5'>
+        <div className='mb-3 flex items-center gap-2 border-b border-slate-200 pb-2 dark:border-slate-700'>
+          <CheckCircle2 size={14} className='text-slate-400' />
+          <h3 className='text-xs font-semibold tracking-wider text-slate-600 uppercase dark:text-slate-400'>
+            Status Comply (Retrospektif)
+          </h3>
+        </div>
+        <div className='flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800'>
+          <div>
+            {ticket.ttrComplyStatus === 'comply' ? (
+              <StatusBadge
+                label='Comply'
+                color='text-emerald-700 dark:text-emerald-400'
+                bg='bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30'
+                dot='bg-emerald-500'
+              />
+            ) : ticket.ttrComplyStatus === 'not_comply' ? (
+              <StatusBadge
+                label='Not Comply'
+                color='text-red-700 dark:text-red-400'
+                bg='bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/30'
+                dot='bg-red-500'
+              />
+            ) : (
+              <span className='text-xs text-slate-400 dark:text-slate-500'>
+                Belum dievaluasi
+              </span>
+            )}
+            <p className='mt-1.5 text-[11px] text-slate-500 dark:text-slate-400'>
+              Deadline dievaluasi: {ticket.ttrDeadlineAt ? formatDateTime(ticket.ttrDeadlineAt) : '—'}
+            </p>
           </div>
         </div>
       </div>

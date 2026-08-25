@@ -73,6 +73,9 @@ export interface Ticket {
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
 
+  ttrComplyStatus?: string | null;
+  ttrDeadlineAt?: string | null;
+
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
 

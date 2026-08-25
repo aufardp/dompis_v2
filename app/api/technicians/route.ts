@@ -144,6 +144,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined;
     const workzone = searchParams.get('workzone') || undefined;
     const status = searchParams.get('status') || 'all';
+    const segment = searchParams.get('segment') || 'all';
     const branchParam = searchParams.get('branch');
     const branchSas = await resolveBranchScope(
       decoded.role,
@@ -159,7 +160,7 @@ export async function GET(request: NextRequest) {
       Math.min(10, Number(closedTodayLimitRaw || 3) || 3),
     );
 
-    const cacheKey = `technicians:v2:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${branchSas?.join(',') || 'none'}:${status}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
+    const cacheKey = `technicians:v2:${currentUserId}:${search || 'none'}:${workzone || 'none'}:${branchSas?.join(',') || 'none'}:${status}:${segment}:${includeAbsent}:${includeClosedToday}:${closedTodayLimit}`;
     const cached = await getCache(cacheKey);
     if (cached) {
       return NextResponse.json({
@@ -262,7 +263,7 @@ export async function GET(request: NextRequest) {
       prisma.users.findMany({
         take: 1000,
         where: technicianWhere,
-        select: { id_user: true, nama: true, nik: true },
+        select: { id_user: true, nama: true, nik: true, technician_segment: true },
         orderBy: { nama: 'asc' },
       }),
       prisma.user_sa.findMany({
@@ -385,7 +386,7 @@ export async function GET(request: NextRequest) {
     let idleCount = 0;
 
     const mappedTechnicians = filteredTechnicians
-      .map((tech: { id_user: number; nama: any; nik: any }) => {
+      .map((tech: { id_user: number; nama: any; nik: any; technician_segment: string | null }) => {
         const tickets = ticketsByTech.get(tech.id_user) || [];
 
         const pendingList = tickets.filter(
@@ -429,6 +430,19 @@ export async function GET(request: NextRequest) {
           return null;
         }
 
+        if (segment === 'b2b' && tech.technician_segment !== 'B2B' && tech.technician_segment !== 'BOTH') {
+          return null;
+        }
+        if (segment === 'b2c' && tech.technician_segment !== 'B2C' && tech.technician_segment !== 'BOTH') {
+          return null;
+        }
+        if (segment === 'both' && tech.technician_segment !== 'BOTH') {
+          return null;
+        }
+        if (segment === 'unset' && tech.technician_segment !== null) {
+          return null;
+        }
+
         if (techStatus === 'IDLE') idleCount++;
         if (techStatus === 'OVERLOAD') overloadCount++;
         if (techStatus !== 'IDLE') totalActive++;
@@ -438,6 +452,7 @@ export async function GET(request: NextRequest) {
           id_user: tech.id_user,
           nama: tech.nama,
           nik: tech.nik,
+          technicianSegment: tech.technician_segment,
           workzone: workzoneName,
           cluster_today: clusterMap.get(tech.id_user) || [],
           avatar_url: null,

@@ -255,7 +255,7 @@ function getTicketJenisBadge(ticket: {
   jenisTiket1?: string | null;
   jenisTiket?: string | undefined;
 }) {
-  return getJenisBadge(ticket.jenisTiket1 ?? ticket.jenisTiket);
+  return getJenisBadge(ticket.jenisTiket ?? ticket.jenisTiket1);
 }
 
 function getTicketBadgeTone(raw: string | undefined | null): string {
@@ -340,7 +340,7 @@ function TechnicianCard({
   const jenisSummary = useMemo(() => {
     const result: Record<string, number> = {};
     for (const t of technician.assigned_tickets) {
-      const key = normalizeJenisKey(t.jenisTiket1 ?? t.jenisTiket);
+      const key = normalizeJenisKey(t.jenisTiket ?? t.jenisTiket1);
       result[key] = (result[key] ?? 0) + 1;
     }
     return result;
@@ -556,7 +556,7 @@ function TechnicianCard({
                     #1
                   </span>
                   <span
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getTicketBadgeTone(featuredTicket.jenisTiket1 ?? featuredTicket.jenisTiket)}`}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getTicketBadgeTone(featuredTicket.jenisTiket ?? featuredTicket.jenisTiket1)}`}
                   >
                     {getTicketJenisBadge(featuredTicket).label}
                   </span>

@@ -40,11 +40,20 @@ type UserRow = {
   nik: string | null;
   nama: string | null;
   jabatan: string | null;
+  technician_segment: string | null;
   username: string | null;
   role_id: number | null;
   area_id: number | null;
   roles?: { key: string | null; name: string | null } | null;
+  sa_names?: string[] | null;
 };
+
+const SEGMENT_OPTIONS: { value: '' | 'B2B' | 'B2C' | 'BOTH'; label: string }[] = [
+  { value: '', label: 'Belum Diatur' },
+  { value: 'B2B', label: 'B2B' },
+  { value: 'B2C', label: 'B2C' },
+  { value: 'BOTH', label: 'Both' },
+];
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500';
@@ -834,6 +843,7 @@ function CreateUserPanel() {
     nik: '',
     nama: '',
     jabatan: '',
+    technicianSegment: '' as '' | 'B2B' | 'B2C' | 'BOTH',
     username: '',
     password: '',
     roleId: 2,
@@ -984,6 +994,7 @@ function CreateUserPanel() {
         nik: form.nik.trim(),
         nama: form.nama.trim(),
         jabatan: form.jabatan.trim(),
+        technician_segment: form.technicianSegment || null,
         username: form.username.trim(),
         password: form.password,
         role_id: form.roleId,
@@ -998,7 +1009,15 @@ function CreateUserPanel() {
 
     if (res.success) {
       showSuccess('User berhasil dibuat', `${form.username.trim()} berhasil dibuat`);
-      setForm({ nik: '', nama: '', jabatan: '', username: '', password: '', roleId: form.roleId });
+      setForm({
+        nik: '',
+        nama: '',
+        jabatan: '',
+        technicianSegment: '',
+        username: '',
+        password: '',
+        roleId: form.roleId,
+      });
       setSaIds([]);
       setScopeRegionIds([]);
       setScopeBranchIds([]);
@@ -1089,6 +1108,27 @@ function CreateUserPanel() {
               placeholder="Jabatan"
               className={inputCls}
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Spesialisasi Teknisi
+            </label>
+            <select
+              value={form.technicianSegment}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  technicianSegment: e.target.value as '' | 'B2B' | 'B2C' | 'BOTH',
+                }))
+              }
+              className={selectCls}
+            >
+              {SEGMENT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -1296,6 +1336,7 @@ function UserListPanel() {
   const [editFields, setEditFields] = useState({
     role_id: 0,
     area_id: 0,
+    technician_segment: '' as '' | 'B2B' | 'B2C' | 'BOTH',
     sa_ids: [] as number[],
     region_ids: [] as number[],
     branch_ids: [] as number[],
@@ -1387,6 +1428,7 @@ function UserListPanel() {
     setEditFields({
       role_id: user.role_id ?? 0,
       area_id: user.area_id ?? 0,
+      technician_segment: (user.technician_segment ?? '') as '' | 'B2B' | 'B2C' | 'BOTH',
       sa_ids: [],
       region_ids: [],
       branch_ids: [],
@@ -1488,6 +1530,7 @@ function UserListPanel() {
     const body: Record<string, any> = {
       role_id: editFields.role_id,
       area_id: editFields.area_id,
+      technician_segment: editFields.technician_segment || null,
       sa_ids: editFields.sa_ids,
       region_ids: editFields.region_ids,
       branch_ids: editFields.branch_ids,
@@ -1584,19 +1627,21 @@ function UserListPanel() {
               <th className="px-4 py-3">NIK</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Area</th>
+              <th className="px-4 py-3">SA</th>
+              <th className="px-4 py-3">Spesialisasi</th>
               <th className="px-4 py-3 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                   Memuat...
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                   Tidak ada user
                 </td>
               </tr>
@@ -1630,6 +1675,39 @@ function UserListPanel() {
                   </td>
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     {user.area_id ? areaNameMap[user.area_id] ?? `Area #${user.area_id}` : '-'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.sa_names && user.sa_names.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.sa_names.map((sa, i) => (
+                          <span
+                            key={`${user.id_user}-sa-${i}`}
+                            className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+                          >
+                            {sa}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.technician_segment === 'B2B' ? (
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                        B2B
+                      </span>
+                    ) : user.technician_segment === 'B2C' ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        B2C
+                      </span>
+                    ) : user.technician_segment === 'BOTH' ? (
+                      <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-semibold text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
+                        Both
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {canManageTargetClient(actorRoleKey, user.role_id) ? (
@@ -1710,6 +1788,27 @@ function UserListPanel() {
                     {Object.entries(areaNameMap).map(([id, label]) => (
                       <option key={id} value={id}>
                         {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Spesialisasi Teknisi
+                  </label>
+                  <select
+                    value={editFields.technician_segment}
+                    onChange={(e) =>
+                      setEditFields((f) => ({
+                        ...f,
+                        technician_segment: e.target.value as '' | 'B2B' | 'B2C' | 'BOTH',
+                      }))
+                    }
+                    className={inputCls}
+                  >
+                    {SEGMENT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </select>

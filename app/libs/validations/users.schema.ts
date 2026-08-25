@@ -18,6 +18,8 @@ export const userSchema = z.object({
       .min(3, "Jabatan minimal 3 karakter")
       .max(100, "Jabatan maksimal 100 karakter"),
 
+   technician_segment: z.enum(["B2B", "B2C", "BOTH"]).nullable().optional(),
+
    username: z
       .string()
       .min(4, "Username minimal 4 karakter")

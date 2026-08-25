@@ -50,6 +50,9 @@ export function useTechnicianTickets(
       if (filters.status && filters.status !== 'all') {
         params.append('status', filters.status);
       }
+      if (filters.segment && filters.segment !== 'all') {
+        params.append('segment', filters.segment);
+      }
       if (includeAbsent) {
         params.append('include_absent', 'true');
       }

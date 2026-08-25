@@ -58,6 +58,7 @@ export interface TicketRowProps {
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
     sqmUpdateReason?: string | null;
+    ttrComplyStatus?: string | null;
   };
   onAssign: (ticketId: string | number) => void;
   onDetail?: (ticketId: string | number) => void;
@@ -529,6 +530,26 @@ function TicketRow({
         >
           {(ticket.status_update ?? ticket.status_update) || '-'}
         </span>
+      </td>
+
+      {/* TTR Comply */}
+      <td className='px-4 py-3 text-center'>
+        {ticket.ttrComplyStatus === 'comply' ? (
+          <span className='inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'>
+            Comply
+          </span>
+        ) : ticket.ttrComplyStatus === 'not_comply' ? (
+          <span className='inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-600 dark:bg-red-500/15 dark:text-red-400'>
+            Not Comply
+          </span>
+        ) : (
+          <span
+            className='text-(--text-muted)'
+            title='Belum closed atau kategori tidak punya TTR'
+          >
+            -
+          </span>
+        )}
       </td>
 
       {/* Action Button */}

@@ -77,6 +77,8 @@ export interface TicketDetail {
   maxTtrGold?: string | null;
   maxTtrPlatinum?: string | null;
   maxTtrDiamond?: string | null;
+  ttrComplyStatus?: string | null;
+  ttrDeadlineAt?: string | null;
   pendingDompis?: string | null;
   rca?: string | null;
   subRca?: string | null;

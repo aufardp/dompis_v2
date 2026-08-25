@@ -25,6 +25,11 @@ import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import HourlyChart from './HourlyChart';
 import SymptomChart from './SymptomChart';
 import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
+import TtrComplianceHeaderRow from './overview/TtrComplianceHeaderRow';
+import SqmDailyTrendTable from './overview/SqmDailyTrendTable';
+import AssuranceGuaranteeCard from './overview/AssuranceGuaranteeCard';
+import TtrComplianceTierRow from './overview/TtrComplianceTierRow';
+import type { TtrPeriod } from '@/app/hooks/useTtrComplianceOverview';
 
 const BUCKET_OPTIONS = [
   { value: 'all', label: 'All' },
@@ -32,6 +37,13 @@ const BUCKET_OPTIONS = [
     value: item.key,
     label: item.label,
   })),
+];
+
+const TECHNICIAN_SEGMENT_OPTIONS = [
+  { value: 'all', label: 'Semua' },
+  { value: 'b2b', label: 'B2B' },
+  { value: 'b2c', label: 'B2C' },
+  { value: 'unset', label: 'Belum Diatur' },
 ];
 
 const CARD_TONES: Record<string, string> = {
@@ -628,6 +640,8 @@ export default function TicketManagementOverviewPage({
     usePersistentWorkzoneScope(initialWorkzone);
   const { branch } = usePersistentBranchScope(initialBranch);
   const [selectedBucket, setSelectedBucket] = useState('all');
+  const [technicianSegmentFilter, setTechnicianSegmentFilter] = useState('all');
+  const [ttrPeriod, setTtrPeriod] = useState<TtrPeriod>('today');
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
   const [assignTarget, setAssignTarget] = useState<{
@@ -655,7 +669,13 @@ export default function TicketManagementOverviewPage({
     summary: technicianSummary,
     loading: techniciansLoading,
   } = useTechnicianTickets(
-    { search: '', workzone: workzone || '', status: 'all', branch: branch || '' },
+    {
+      search: '',
+      workzone: workzone || '',
+      status: 'all',
+      branch: branch || '',
+      segment: technicianSegmentFilter,
+    },
     180,
     true,
     {
@@ -1046,6 +1066,29 @@ export default function TicketManagementOverviewPage({
 
               {showSecondaryPanels ? (
                 <>
+                  <TtrComplianceHeaderRow
+                    period={ttrPeriod}
+                    onPeriodChange={setTtrPeriod}
+                    workzone={workzone || undefined}
+                    branch={branch || undefined}
+                  />
+
+                  <SqmDailyTrendTable
+                    workzone={workzone || undefined}
+                    branch={branch || undefined}
+                  />
+
+                  <AssuranceGuaranteeCard
+                    workzone={workzone || undefined}
+                    branch={branch || undefined}
+                  />
+
+                  <TtrComplianceTierRow
+                    period={ttrPeriod}
+                    workzone={workzone || undefined}
+                    branch={branch || undefined}
+                  />
+
                   <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
                     <div className='mb-3 flex flex-wrap items-end justify-between gap-2'>
                       <div>
@@ -1060,6 +1103,26 @@ export default function TicketManagementOverviewPage({
                         {technicianSummary.idle_count.toLocaleString('id-ID')}{' '}
                         idle
                       </p>
+                    </div>
+
+                    <div className='mb-4 flex flex-wrap gap-1.5'>
+                      {TECHNICIAN_SEGMENT_OPTIONS.map((opt) => {
+                        const active = opt.value === technicianSegmentFilter;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setTechnicianSegmentFilter(opt.value)}
+                            className={clsx(
+                              'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all',
+                              active
+                                ? 'bg-blue-500 text-white shadow-sm'
+                                : 'bg-surface-2 border border-(--border) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)',
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <TechnicianSummaryCards

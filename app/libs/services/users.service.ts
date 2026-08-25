@@ -7,6 +7,7 @@ export interface CreateUserDTO {
   nik: string;
   nama: string;
   jabatan: string;
+  technician_segment?: string | null;
   username: string;
   password: string;
   role_id: number;
@@ -22,6 +23,7 @@ export interface UpdateUserDTO {
   nik?: string;
   nama?: string;
   jabatan?: string;
+  technician_segment?: string | null;
   username?: string;
   password?: string;
   role_id?: number;
@@ -46,6 +48,7 @@ export interface UserById {
   nik: string;
   nama: string;
   jabatan: string;
+  technician_segment: string | null;
   username: string;
   password: string;
   role_id: number;
@@ -202,18 +205,25 @@ export async function getAllUsers(filters?: {
       nik: true,
       nama: true,
       jabatan: true,
+      technician_segment: true,
       username: true,
       role_id: true,
       area_id: true,
       created_at: true,
       updated_at: true,
       roles: { select: { key: true, name: true } },
+      user_sa: { select: { service_area: { select: { nama_sa: true } } } },
     },
     orderBy: { id_user: 'desc' },
     take: 1000,
   });
 
-  return users;
+  return users.map(({ user_sa, ...rest }) => ({
+    ...rest,
+    sa_names: user_sa
+      .map((us) => us.service_area?.nama_sa)
+      .filter((v): v is string => !!v),
+  }));
 }
 
 export async function findUserByNik(nik: string, excludeId?: number) {
@@ -402,6 +412,7 @@ export async function createUser(data: CreateUserDTO) {
       nik: data.nik,
       nama: data.nama,
       jabatan: data.jabatan,
+      technician_segment: data.technician_segment ?? null,
       username: data.username,
       password: hashedPassword,
       role_id: data.role_id,
@@ -470,6 +481,7 @@ export async function updateUser(id: number, data: UpdateUserDTO) {
   if (data.nik !== undefined) updateData.nik = data.nik;
   if (data.nama !== undefined) updateData.nama = data.nama;
   if (data.jabatan !== undefined) updateData.jabatan = data.jabatan;
+  if (data.technician_segment !== undefined) updateData.technician_segment = data.technician_segment;
   if (data.username !== undefined) updateData.username = data.username;
   if (data.role_id !== undefined) updateData.role_id = data.role_id;
   if (data.area_id !== undefined) updateData.area_id = data.area_id;

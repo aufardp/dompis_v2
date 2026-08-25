@@ -551,6 +551,7 @@ function mapTicket(t: any) {
     alamat: t.alamat,
     closedAt: toWibString(t.closed_at),
     syncDate: toWibDateString(t.sync_date),
+    ttrComplyStatus: t.ttr_comply_status,
     technicianName: t.users?.nama,
     worklogSummary: t.worklog_summary,
     validationReason: t.validation_reason,
