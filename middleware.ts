@@ -3,7 +3,7 @@
 // ==========================================
 
 import { NextResponse, NextRequest } from 'next/server';
-import { applySecurityHeaders } from '@/app/libs/request-security';
+import { applySecurityHeaders, getSecureCookieOptions } from '@/app/libs/request-security';
 import { logger } from '@/lib/observability/logger';
 
 // --- JWT VERIFICATION (Web Crypto API, Edge-compatible) ---
@@ -81,8 +81,24 @@ export async function middleware(req: NextRequest) {
   const correlationId = crypto.randomUUID();
   req.headers.set('x-correlation-id', correlationId);
 
+  // Set only when a silent refresh (see tryRefreshSession below) mints a new
+  // access token — attached to whichever response we end up returning so the
+  // renewed session isn't dropped on a role-guard redirect.
+  let refreshedAccessToken: string | null = null;
+
   function withCorrelation(res: NextResponse): NextResponse {
     res.headers.set('x-correlation-id', correlationId);
+    return res;
+  }
+
+  function withRefreshedToken(res: NextResponse): NextResponse {
+    if (refreshedAccessToken) {
+      res.cookies.set({
+        name: 'token',
+        value: refreshedAccessToken,
+        ...getSecureCookieOptions(60 * 60),
+      });
+    }
     return res;
   }
 
@@ -90,7 +106,43 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = path;
     url.search = '';
-    return withCorrelation(applySecurityHeaders(NextResponse.redirect(url)));
+    return withRefreshedToken(withCorrelation(applySecurityHeaders(NextResponse.redirect(url))));
+  }
+
+  // Exchange a still-valid refreshToken cookie for a fresh access token by
+  // calling our own /api/auth/refresh route (Node runtime — it touches
+  // Prisma/attendance data, which can't run here in the Edge runtime).
+  async function tryRefreshSession(): Promise<any | null> {
+    const refreshToken = req.cookies.get('refreshToken')?.value;
+    if (!refreshToken) return null;
+
+    try {
+      const refreshUrl = new URL('/api/auth/refresh', req.nextUrl.origin);
+      const forwardedFor = req.headers.get('x-forwarded-for');
+
+      const refreshRes = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: {
+          cookie: `refreshToken=${refreshToken}`,
+          ...(forwardedFor ? { 'x-forwarded-for': forwardedFor } : {}),
+        },
+      });
+
+      if (!refreshRes.ok) return null;
+
+      const data: any = await refreshRes.json().catch(() => null);
+      if (!data?.success || !data?.accessToken) return null;
+
+      const jwtSecret = process.env.JWT_ACCESS_SECRET;
+      if (!jwtSecret) return null;
+
+      const newPayload = await verifyJWT(data.accessToken, jwtSecret);
+      refreshedAccessToken = data.accessToken;
+      return newPayload;
+    } catch (err) {
+      logger.error('Silent session refresh failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
+      return null;
+    }
   }
 
   // API routes → correlation, security headers, cache-control, skip page auth
@@ -133,34 +185,36 @@ export async function middleware(req: NextRequest) {
     return withCorrelation(applySecurityHeaders(NextResponse.next()));
   }
 
-  // 2. TOKEN CHECK
+  // 2. TOKEN CHECK, VERIFY, AND EXPIRY — with a silent-refresh fallback
   const token = req.cookies.get('token')?.value;
-  if (!token) {
-    return safeRedirect('/login');
-  }
-
-  // 3. VERIFY AND DECODE PAYLOAD
   let payload: any;
-  try {
-    const jwtSecret = process.env.JWT_ACCESS_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_ACCESS_SECRET not set');
+
+  if (token) {
+    try {
+      const jwtSecret = process.env.JWT_ACCESS_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_ACCESS_SECRET not set');
+      }
+      payload = await verifyJWT(token, jwtSecret);
+
+      if (payload?.exp && Date.now() >= payload.exp * 1000) {
+        payload = undefined;
+      }
+    } catch (err) {
+      logger.error('JWT verification failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
+      payload = undefined;
     }
-    payload = await verifyJWT(token, jwtSecret);
-  } catch (err) {
-    logger.error('JWT verification failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
-    const res = safeRedirect('/login');
-    res.cookies.delete('token');
-    res.cookies.delete('refreshToken');
-    return res;
   }
 
-  // 4. EXPIRY CHECK
-  if (payload?.exp && Date.now() >= payload.exp * 1000) {
-    const res = safeRedirect('/login');
-    res.cookies.delete('token');
-    res.cookies.delete('refreshToken');
-    return res;
+  if (!payload) {
+    payload = await tryRefreshSession();
+
+    if (!payload) {
+      const res = safeRedirect('/login');
+      res.cookies.delete('token');
+      res.cookies.delete('refreshToken');
+      return res;
+    }
   }
 
   // 5. ROLE GUARD
@@ -213,7 +267,7 @@ export async function middleware(req: NextRequest) {
     return safeRedirect(roleHome);
   }
 
-  return withCorrelation(applySecurityHeaders(NextResponse.next()));
+  return withRefreshedToken(withCorrelation(applySecurityHeaders(NextResponse.next())));
 }
 
 export const config = {

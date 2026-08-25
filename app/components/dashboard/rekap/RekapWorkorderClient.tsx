@@ -82,12 +82,18 @@ interface BucketRecord {
   obsolete: SegCount;
 }
 
+interface SegmentTotal {
+  b2c: SegCount;
+  b2b: SegCount;
+}
+
 interface WorkzoneRow {
   workzone: string;
   buckets: BucketRecord;
   detail: DetailGroup;
   sqm: { open: number; close: number; update: number };
   status: StatusCounts;
+  segmentTotal?: SegmentTotal;
   totalOpen: number;
   totalClose: number;
 }
@@ -105,6 +111,7 @@ interface SARow {
   sqm: { open: number; close: number; update: number };
   status: StatusCounts;
   workzones: WorkzoneRow[];
+  segmentTotal?: SegmentTotal;
   totalOpen: number;
   totalClose: number;
   grandTotal: number;
@@ -330,6 +337,10 @@ function computeSummary(rows: SARow[]) {
   const open = rows.reduce((sum, row) => sum + row.totalOpen, 0);
   const close = rows.reduce((sum, row) => sum + row.totalClose, 0);
   const total = open + close;
+  const openB2b = rows.reduce((sum, row) => sum + (row.segmentTotal?.b2b.open ?? 0), 0);
+  const openB2c = rows.reduce((sum, row) => sum + (row.segmentTotal?.b2c.open ?? 0), 0);
+  const closeB2b = rows.reduce((sum, row) => sum + (row.segmentTotal?.b2b.close ?? 0), 0);
+  const closeB2c = rows.reduce((sum, row) => sum + (row.segmentTotal?.b2c.close ?? 0), 0);
   const teknisi = rows.reduce((sum, row) => sum + row.teknisiMasuk, 0);
   const registered = rows.reduce(
     (sum, row) => sum + (row.teknisiTerdaftar ?? 0),
@@ -351,7 +362,20 @@ function computeSummary(rows: SARow[]) {
     }
   }
 
-  return { open, close, total, teknisi, registered, coverage, closeRate, woPerTeknisi };
+  return {
+    open,
+    close,
+    total,
+    teknisi,
+    registered,
+    coverage,
+    closeRate,
+    woPerTeknisi,
+    openB2b,
+    openB2c,
+    closeB2b,
+    closeB2c,
+  };
 }
 
 function computeStatusFlow(
@@ -946,6 +970,10 @@ export default function RekapWorkorderClient({
               tone='red'
               icon={<Clock3 className='h-4 w-4' />}
             >
+              <p className='mt-2 text-[10px] text-(--text-muted)'>
+                B2B {formatNumber(displaySummary.openB2b)} · B2C{' '}
+                {formatNumber(displaySummary.openB2c)}
+              </p>
               <div className='mt-2'>
                 <StatusFlowBar flow={flow} showLegend={false} />
               </div>
@@ -957,6 +985,10 @@ export default function RekapWorkorderClient({
               tone='green'
               icon={<CheckCircle2 className='h-4 w-4' />}
             >
+              <p className='mt-2 text-[10px] text-(--text-muted)'>
+                B2B {formatNumber(displaySummary.closeB2b)} · B2C{' '}
+                {formatNumber(displaySummary.closeB2c)}
+              </p>
               <div className='mt-2 flex items-center gap-2'>
                 <div className='h-1.5 flex-1 overflow-hidden rounded-full bg-(--surface-3)'>
                   <div

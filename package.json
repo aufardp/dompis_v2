@@ -25,6 +25,7 @@
     "backfill:jenis-tiket": "tsx scripts/backfill-jenis-tiket.ts",
     "backfill:jenis-vlookup": "tsx scripts/backfill-jenis-vlookup.ts",
     "backfill:validasi": "tsx scripts/backfill-validation-flags.ts",
+    "backfill:ttr-comply": "tsx scripts/backfill-ttr-comply.ts",
     "test:ingestion": "tsx scripts/test-ingestion.ts",
     "test:measure": "tsx scripts/test-measure.ts",
     "projection:initial": "tsx scripts/projection-initial.ts",
@@ -55,6 +56,7 @@
     "projection:reset-failed": "tsx scripts/projection-reset-failed.ts",
     "agg:rebuild": "tsx scripts/rebuild-aggregation.ts",
     "bridge:ingest": "tsx scripts/qosmic-bridge-ingest.ts",
+    "bridge:sync-local": "tsx scripts/bridge-sync-local.ts",
     "backup:db": "tsx scripts/backup-db.ts",
     "lint": "eslint ."
   },

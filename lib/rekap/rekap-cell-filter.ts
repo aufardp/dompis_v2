@@ -35,6 +35,7 @@ function quoteList(values: readonly string[]): string {
 
 const B2C_SEG_SQL = `t.customer_segment IN ('DCS','PL-TSEL')`;
 const B2B_SEG_SQL = `(t.customer_segment IS NULL OR t.customer_segment NOT IN ('DCS','PL-TSEL'))`;
+const GAMAS_BASE_SQL = `LOWER(t.source_ticket) = 'gamas'`;
 
 const CLOSE_STATUS_SQL = quoteList(
   CLOSE_STATUS_VALUES.map((v) => v.toUpperCase()),
@@ -178,8 +179,13 @@ export function buildDetailClause(
     return '1=1';
   }
 
-  if (segName === 'unspec') {
+  if (segName === 'unspec' || segName === 'segment') {
     return key === 'b2b' ? B2B_SEG_SQL : B2C_SEG_SQL;
+  }
+
+  if (segName === 'gamas') {
+    if (key === 'close') return `(${GAMAS_BASE_SQL} AND ${buildCloseClause()})`;
+    return `(${GAMAS_BASE_SQL} AND ${buildOpenClause()})`;
   }
 
   if (segName === 'b2c' || segName === 'b2b') {

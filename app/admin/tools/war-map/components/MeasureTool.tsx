@@ -24,8 +24,7 @@ export default function MeasureTool({
       }`}
       style={active ? { background: measureModeColor(mode) } : undefined}
     >
-      <Ruler className='h-3.5 w-3.5' />
-      Ukur Jarak
+      <Ruler size={13} />
     </button>
   );
 }

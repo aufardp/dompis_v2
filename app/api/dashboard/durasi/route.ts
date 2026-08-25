@@ -32,8 +32,10 @@ interface RawDurasiRow {
   status: string | null;
   customer_type: string | null;
   jenis_tiket: string | null;
+  jenis_tiket_2: string | null;
   flagging_manja: string | null;
   manja_expired: string | null;
+  guarantee_status: string | null;
   summary: string | null;
 }
 
@@ -154,8 +156,11 @@ const PANEL_CONFIGS = [
   { type: 'FFG', label: 'FFG', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'FFG'), bucketFn: bucketManja, buckets: MANJA_BUCKETS },
   { type: 'SQM_UPDATE', label: 'SQM UPDATE', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'SQM_UPDATE'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
   { type: 'SQM', label: 'SQM', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'SQM'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS, showTotal: true },
-  { type: 'ANAK_GAMAS', label: 'ANAK GAMAS', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'ANAK_GAMAS'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'ANAK_GAMAS', label: 'GAMAS', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'ANAK_GAMAS'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
   { type: 'HSI', label: 'HSI', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'HSI'), bucketFn: (t: RawDurasiRow) => bucketHSI(calculateDurationHours(t.reported_date)), buckets: HSI_BUCKETS },
+  { type: 'TSEL', label: 'TSEL', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'TSEL'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'DATIN', label: 'DATIN', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'DATIN'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
+  { type: 'UNSPEC', label: 'UNSPEC', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'UNSPEC'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
 ];
 
 function buildDurasiTicketsCacheKey(
@@ -343,6 +348,12 @@ const BUCKET_FILTERS: Record<KpiBucketKey, any[]> = {
   ],
 };
 
+// Kategori jenis_tiket_1 yang terbukti tidak pernah cocok satupun dari 6
+// operational bucket di kpi-bucket-sql.ts (GAMAS source_ticket='GAMAS';
+// sebagian besar TSEL source_ticket NULL/PROACTIVE) — tanpa ini, tiket-tiket
+// itu tidak akan pernah muncul di panel manapun, termasuk saat bucket "all".
+const BUCKET_GAP_JENIS = ['GAMAS', 'TSEL'];
+
 async function getFilteredTickets(
   role: string,
   userId: number,
@@ -359,11 +370,23 @@ async function getFilteredTickets(
     for (const filters of filtersList) {
       const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
         ...filters,
-        includeClosed: true,
+        includeClosed: false,
         branchId: branchParam ? Number(branchParam) : undefined,
       });
       parts.push(`(SELECT id_ticket FROM ticket WHERE ${whereClause} LIMIT 5000)`);
       allParams.push(...params);
+    }
+
+    if (bucket === 'all') {
+      const [gapWhereClause, gapParams] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
+        dept: 'all',
+        operationalBucket: undefined,
+        includeClosed: false,
+        branchId: branchParam ? Number(branchParam) : undefined,
+      });
+      const jenisList = BUCKET_GAP_JENIS.map((j) => `'${j}'`).join(',');
+      parts.push(`(SELECT id_ticket FROM ticket WHERE (${gapWhereClause}) AND jenis_tiket_1 IN (${jenisList}) LIMIT 5000)`);
+      allParams.push(...gapParams);
     }
 
     if (parts.length === 0) return [];
@@ -378,8 +401,10 @@ async function getFilteredTickets(
       t.status,
       t.customer_type,
       CONCAT_WS(' ', t.jenis_tiket_1, t.jenis_tiket_2) AS jenis_tiket,
+      t.jenis_tiket_2,
       t.flagging_manja,
       t.manja_expired,
+      t.guarantee_status,
       t.summary
     FROM (${unionSql}) AS ids
     JOIN ticket t ON t.id_ticket = ids.id_ticket

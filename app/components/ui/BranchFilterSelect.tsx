@@ -28,7 +28,7 @@ export default function BranchFilterSelect({ initialBranch, className = '' }: Pr
         value={branch ?? ''}
         onChange={(e) => setBranch(e.target.value)}
         disabled={loading}
-        className='bg-surface hover:bg-surface-2 appearance-none rounded-2xl border border-(--border) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors focus:border-blue-500 focus:outline-none'
+        className={`bg-surface hover:bg-surface-2 appearance-none rounded-2xl border border-(--border) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors focus:border-blue-500 focus:outline-none ${className}`}
         title='Filter branch'
       >
         <option value=''>All Branch</option>

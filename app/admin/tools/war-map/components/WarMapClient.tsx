@@ -1523,8 +1523,7 @@ export default function WarMapClient({
       lastFetched.toDate !== toDate ||
       lastFetched.activeOnly !== activeOnly ||
       lastFetched.hotOnly !== hotOnly;
-    const bboxChanged =
-      lastFetched === null || lastFetched.bboxKey !== bboxKey;
+    const bboxChanged = lastFetched === null || lastFetched.bboxKey !== bboxKey;
     if (!filtersChanged && !bboxChanged) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -1533,7 +1532,8 @@ export default function WarMapClient({
       if (!cur) return;
       // Zoom-in / pan kecil di dalam area yang sudah dimuat → pakai data memori,
       // tidak perlu refetch (klustering memakai points + zoom yang sudah ada).
-      if (!filtersChanged && isBboxContained(cur, loadedBboxRef.current)) return;
+      if (!filtersChanged && isBboxContained(cur, loadedBboxRef.current))
+        return;
       void loadPoints(cur);
     }, 500);
     return () => {
@@ -1826,7 +1826,9 @@ export default function WarMapClient({
     }
     const nearest = nearestOdp(myLocation, odpPoints);
     if (!nearest) {
-      setLocNotice('Tidak ada ODP di sekitar lokasi — menampilkan seluruh jaringan.');
+      setLocNotice(
+        'Tidak ada ODP di sekitar lokasi — menampilkan seluruh jaringan.',
+      );
       fallback();
       return;
     }
@@ -2208,6 +2210,7 @@ export default function WarMapClient({
                   type='button'
                   onClick={locateToCurrent}
                   disabled={locating}
+                  title={locating ? 'Mencari lokasi...' : 'Lokasi Saya'}
                   className='flex items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-blue-600 shadow-sm transition hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-60'
                 >
                   {locating ? (
@@ -2215,16 +2218,15 @@ export default function WarMapClient({
                   ) : (
                     <LocateFixed size={13} />
                   )}
-                  {locating ? 'Mencari lokasi...' : 'Lokasi Saya'}
                 </button>
                 {kmlLayers.length > 0 && primaryLayerBbox && (
                   <button
                     onClick={handleViewNetwork}
                     disabled={locating}
+                    title='Topologi Jaringan'
                     className='flex items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface) px-2.5 py-1 text-[10px] font-bold text-indigo-600 shadow-sm transition hover:bg-(--surface-2) disabled:cursor-not-allowed disabled:opacity-60'
                   >
                     <Network size={13} />
-                    Lihat jaringan
                   </button>
                 )}
                 <MeasureTool

@@ -16,6 +16,7 @@ import {
   CLOSE_STATUS_VALUES,
 } from '@/app/libs/ticket-utils';
 import { classifyNeedsValidation } from '@/lib/projection/classify-validation';
+import { computeTtrCompliance } from '@/app/libs/tickets/ttr-comply';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
@@ -554,6 +555,19 @@ export function buildProjectionUpsert(
   const newFlagging = computeFlaggingManja(raw.booking_date as string | null);
   if (newFlagging) updateData.flagging_manja = newFlagging;
 
+  // --- TTR compliance ---
+  const updateCompliance = computeTtrCompliance({
+    status: (updateData.status as string) ?? null,
+    closedAt: (updateData.closed_at as Date) ?? null,
+    reportedDate: (updateData.reported_date as string) ?? null,
+    customerSegment: (updateData.customer_segment as string) ?? null,
+    customerType: (updateData.customer_type as string) ?? null,
+    jenisTiket1: (updateData.jenis_tiket_1 as string) ?? null,
+    jenisTiket2: (updateData.jenis_tiket_2 as string) ?? null,
+  });
+  updateData.ttr_comply_status = updateCompliance.status;
+  updateData.ttr_deadline_at = updateCompliance.deadlineAt;
+
   // --- Validation classification ---
   const validationInput = {
     status: raw.status ?? null,
@@ -586,6 +600,19 @@ export function buildProjectionUpsert(
     createData.status_update = 'open';
   }
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
+
+  // --- TTR compliance ---
+  const createCompliance = computeTtrCompliance({
+    status: (createData.status as string) ?? null,
+    closedAt: (createData.closed_at as Date) ?? null,
+    reportedDate: (createData.reported_date as string) ?? null,
+    customerSegment: (createData.customer_segment as string) ?? null,
+    customerType: (createData.customer_type as string) ?? null,
+    jenisTiket1: (createData.jenis_tiket_1 as string) ?? null,
+    jenisTiket2: (createData.jenis_tiket_2 as string) ?? null,
+  });
+  createData.ttr_comply_status = createCompliance.status;
+  createData.ttr_deadline_at = createCompliance.deadlineAt;
 
   const createValidation = classifyNeedsValidation({
     status: raw.status ?? null,

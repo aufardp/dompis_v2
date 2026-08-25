@@ -29,9 +29,13 @@ const PANEL_ACCENT: Record<string, string> = {
   HVC_GOLD: '#f59e0b',
   MANJA: '#f87171',
   FFG: '#34d399',
+  SQM_UPDATE: '#8b5cf6',
   SQM: '#a78bfa',
   ANAK_GAMAS: '#fb923c',
   HSI: '#94a3b8',
+  TSEL: '#f43f5e',
+  DATIN: '#06b6d4',
+  UNSPEC: '#64748b',
 };
 
 const BUCKET_COLORS = [
@@ -87,7 +91,7 @@ export default function TicketDurationPanel({
     return { name: bestName, count: bestCount };
   }, [panel.areas]);
   const topAreaLabel = isAllBucket ? 'Top area' : `Top area in ${bucketLabel}`;
-  const dominantLabel = isAllBucket ? 'Dominan' : `Dominan in ${bucketLabel}`;
+  const dominantLabel = isAllBucket ? 'Dominan' : `Dominan di ${bucketLabel}`;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface) shadow-sm">
@@ -106,10 +110,9 @@ export default function TicketDurationPanel({
               {formatNum(panel.grandTotal ?? grandTotal)}
             </span>
           </div>
-          <div className="mt-2 grid gap-2 text-[11px] text-(--text-muted) sm:grid-cols-3">
+          <div className="mt-2 grid gap-2 text-[11px] text-(--text-muted) sm:grid-cols-2">
             <span className="truncate">{topAreaLabel}: <strong className="text-(--text-primary)">{topArea.name}</strong> ({formatNum(topArea.count)})</span>
             <span className="truncate">{dominantLabel}: <strong className="text-(--text-primary)">{dominantBucket.label}</strong> ({formatNum(dominantBucket.total)})</span>
-            <span className="truncate">Rows: <strong className="text-(--text-primary)">{formatNum(grandTotal)}</strong></span>
           </div>
         </div>
         <span className={`mt-0.5 text-xs font-semibold transition-transform ${isOpen ? 'rotate-180' : ''}`}>⌄</span>
@@ -133,7 +136,7 @@ export default function TicketDurationPanel({
             })}
           </div>
           <span className="text-[10px] text-(--text-muted) sm:text-[11px]">
-            {grandTotal} tickets
+            {formatNum(grandTotal)} tiket
           </span>
         </div>
       )}

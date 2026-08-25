@@ -460,7 +460,7 @@ function PriorityTodayPanel({
         </div>
       </div>
 
-      <div className='mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5'>
+      <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-2'>
         {displayItems.map((item) => {
           const threshold = h1ThresholdFor(item.key);
           const overThreshold =
@@ -975,7 +975,7 @@ export default function TicketManagementOverviewPage({
                     </span>
                   </div>
 
-                  <div className='mt-3 flex flex-nowrap gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+                  <div className='mt-3 flex flex-wrap gap-1.5'>
                     {BUCKET_OPTIONS.map((opt) => {
                       const active = opt.value === selectedBucket;
                       return (

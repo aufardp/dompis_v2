@@ -68,6 +68,7 @@ function mapTicket(t: any) {
     area: t.area,
     saName: t.sa_name,
     jenisTiket1: t.jenis_tiket_1,
+    jenisTiket2: t.jenis_tiket_2,
     status: t.status,
     status_update: (() => {
       const v = String(t.status_update ?? '')

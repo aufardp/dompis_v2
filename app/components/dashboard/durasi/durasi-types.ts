@@ -16,7 +16,10 @@ export type DurasiPanelType =
   | 'SQM_UPDATE'
   | 'SQM'
   | 'ANAK_GAMAS'
-  | 'HSI';
+  | 'HSI'
+  | 'TSEL'
+  | 'DATIN'
+  | 'UNSPEC';
 
 export interface DurasiDetailTarget {
   bucket: DurasiBucketKey;

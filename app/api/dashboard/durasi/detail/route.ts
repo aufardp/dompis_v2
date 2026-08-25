@@ -54,6 +54,12 @@ function bucketDisplayLabel(bucket: DurasiBucketKey): string {
   return labels[bucket];
 }
 
+// Kategori jenis_tiket_1 yang terbukti tidak pernah cocok satupun dari 6
+// operational bucket di kpi-bucket-sql.ts (GAMAS source_ticket='GAMAS';
+// sebagian besar TSEL source_ticket NULL/PROACTIVE) — tanpa ini, tiket-tiket
+// itu tidak akan pernah muncul di panel manapun, termasuk saat bucket "all".
+const BUCKET_GAP_JENIS = ['GAMAS', 'TSEL'];
+
 async function fetchAllTickets(
   role: string,
   userId: number,
@@ -65,12 +71,28 @@ async function fetchAllTickets(
   const ids = new Set<number>();
   const rows: DurasiDetailTicket[] = [];
 
+  const wherePairs: Array<[string, any[]]> = [];
   for (const filters of filtersList) {
-    const [whereClause, params] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-      ...filters,
-      includeClosed: true,
+    wherePairs.push(
+      await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
+        ...filters,
+        includeClosed: false,
+        branchId: branchParam ? Number(branchParam) : undefined,
+      }),
+    );
+  }
+  if (bucket === 'all') {
+    const [gapWhereClause, gapParams] = await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
+      dept: 'all',
+      operationalBucket: undefined,
+      includeClosed: false,
       branchId: branchParam ? Number(branchParam) : undefined,
     });
+    const jenisList = BUCKET_GAP_JENIS.map((j) => `'${j}'`).join(',');
+    wherePairs.push([`(${gapWhereClause}) AND jenis_tiket_1 IN (${jenisList})`, gapParams]);
+  }
+
+  for (const [whereClause, params] of wherePairs) {
     const sql = `
       SELECT
         t.id_ticket,

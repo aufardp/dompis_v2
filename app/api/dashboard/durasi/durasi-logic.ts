@@ -1,4 +1,5 @@
 import type { DurasiPanelType } from '@/app/components/dashboard/durasi/durasi-types';
+import { normalizeJenis } from '@/app/config/jenis-tiket';
 
 export const STANDARD_BUCKETS = ['0-3J', '3-6J', '6-12J', '12-24J', '24-36J', '>36J'] as const;
 export const MANJA_BUCKETS = ['0-1d', '1-2d', '2-3d', 'EXPIRED'] as const;
@@ -76,6 +77,7 @@ export function matchesDurasiPanel(ticket: DurasiPanelTicket, panelType: DurasiP
     `${ticket.jenis_tiket ?? ''} ${ticket.jenis_tiket_1 ?? ''} ${ticket.jenis_tiket_2 ?? ''}`,
   );
   const summary = normalizeText(ticket.summary);
+  const jenisKey = normalizeJenis(jenis);
 
   switch (panelType) {
     case 'REGULER':
@@ -87,15 +89,25 @@ export function matchesDurasiPanel(ticket: DurasiPanelTicket, panelType: DurasiP
     case 'MANJA':
       return isManjaTicket(ticket);
     case 'FFG':
-      return jenis.includes('ffg');
+      return normalizeText(ticket.guarantee_status) === 'guarantee';
     case 'SQM_UPDATE':
       return summary.startsWith('[sqm-update]');
     case 'SQM':
-      return jenis.includes('sqm') || jenis.includes('sqm-ccan');
+      return jenisKey === 'sqm' || jenisKey === 'sqm-ccan';
     case 'ANAK_GAMAS':
-      return jenis.includes('anak_gamas');
-    case 'HSI':
-      return jenis.includes('hsi');
+      return jenisKey === 'gamas';
+    case 'HSI': {
+      const jenis2Key = normalizeJenis(ticket.jenis_tiket_2);
+      return jenis2Key === 'indibiz' || jenis2Key === 'reseller';
+    }
+    case 'TSEL':
+      return jenisKey === 'tsel';
+    case 'DATIN':
+      return jenisKey === 'datin';
+    case 'UNSPEC': {
+      const jenis2Key = normalizeJenis(ticket.jenis_tiket_2);
+      return jenis2Key === 'unspec' || jenis2Key === 'unspec-b2b';
+    }
     default:
       return false;
   }
@@ -116,8 +128,11 @@ export function panelLabel(panelType: DurasiPanelType): string {
     FFG: 'FFG',
     SQM_UPDATE: 'SQM UPDATE',
     SQM: 'SQM',
-    ANAK_GAMAS: 'ANAK GAMAS',
+    ANAK_GAMAS: 'GAMAS',
     HSI: 'HSI',
+    TSEL: 'TSEL',
+    DATIN: 'DATIN',
+    UNSPEC: 'UNSPEC',
   };
   return labels[panelType];
 }

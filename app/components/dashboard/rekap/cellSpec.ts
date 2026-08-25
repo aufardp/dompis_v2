@@ -171,6 +171,28 @@ export function buildDetailCellSpec(
     };
   }
 
+  if (segment === 'gamas') {
+    const keyRaw =
+      subLabel.trim().toUpperCase() === 'CLOSE' ||
+      subLabel.trim().toUpperCase() === 'CLS'
+        ? 'close'
+        : 'open';
+    return {
+      key: `detail|gamas|${keyRaw}|${scopeKey(scope)}`,
+      // Sengaja 'all', bukan 'kpi_customer' — tiket GAMAS (source_ticket
+      // = 'GAMAS') tidak pernah lolos filter bucket kpi_customer (union
+      // customer/proactive/sqm_update), jadi bucket filter di-bypass dan
+      // pembatasan sepenuhnya diserahkan ke klausa `detail` di bawah.
+      bucket: 'all',
+      detail: `gamas:${keyRaw}`,
+      status,
+      scope,
+      label: `GAMAS · ${STATUS_LABEL[status]}${
+        scopeLabel(scope) ? ` · ${scopeLabel(scope)}` : ''
+      }`,
+    };
+  }
+
   if (segment === 'unspec') {
     const keyRaw = key === 'unspec-b2b' ? 'b2b' : 'b2c';
     return {
@@ -213,6 +235,33 @@ export function buildDetailCellSpec(
     label: `${segment.toUpperCase()} · ${key.replace(/-/g, ' ').toUpperCase()} · ${
       STATUS_LABEL[status]
     }${scopeLabel(scope) ? ` · ${scopeLabel(scope)}` : ''}`,
+  };
+}
+
+/**
+ * Builds a spec for a B2B/B2C segment cell (Open B2B / Open B2C / Close B2B /
+ * Close B2C columns) — plain segment split, independent of jenis-tiket.
+ */
+export function buildSegmentCellSpec(
+  detailMode: string | undefined,
+  status: RekapStatusFilter,
+  segment: 'b2b' | 'b2c',
+  scope: RekapCellScope,
+): RekapCellSpec {
+  const bucket = detailMode ?? 'all';
+  return {
+    key: `segment|${bucket}|${segment}|${status}|${scopeKey(scope)}`,
+    bucket,
+    detail: `segment:${segment}`,
+    status,
+    legacyCustomer: bucket === 'kpi_customer',
+    scope,
+    label: [
+      `${segment.toUpperCase()} · ${STATUS_LABEL[status]}`,
+      scopeLabel(scope),
+    ]
+      .filter(Boolean)
+      .join(' · '),
   };
 }
 

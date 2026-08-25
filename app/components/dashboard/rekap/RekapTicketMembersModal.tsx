@@ -38,6 +38,7 @@ export interface RekapMemberTicket {
   area: string;
   saName: string;
   jenisTiket1: string | null;
+  jenisTiket2: string | null;
   status: string | null;
   status_update: string | null;
   classificationPath: string | null;
@@ -299,7 +300,7 @@ export default function RekapTicketMembersModal({
         className={clsx(
           'fixed z-80 flex flex-col bg-(--surface) shadow-2xl transition-all duration-300 ease-out',
           'right-0 bottom-0 left-0 max-h-[88vh] rounded-t-[28px] border-t border-(--border)',
-          'md:top-1/2 md:bottom-auto md:left-1/2 md:h-auto md:max-h-[86vh] md:min-h-120 md:w-[min(94vw,920px)] md:-translate-x-1/2 md:rounded-[28px] md:border',
+          'md:top-1/2 md:bottom-auto md:left-1/2 md:h-auto md:max-h-[86vh] md:min-h-120 md:w-[min(96vw,1060px)] md:-translate-x-1/2 md:rounded-[28px] md:border',
           isVisible
             ? 'translate-y-0 opacity-100 md:-translate-y-1/2'
             : 'translate-y-full opacity-0 md:translate-y-[calc(-50%-24px)]',
@@ -401,15 +402,18 @@ export default function RekapTicketMembersModal({
           ) : (
             <>
               <div className='overflow-hidden rounded-2xl border border-(--border) bg-(--surface)'>
-                <div className='hidden items-center gap-4 border-b border-(--border) bg-(--surface-2) px-4 py-2.5 md:grid md:grid-cols-[minmax(0,200px)_minmax(0,1fr)_64px_96px_minmax(0,200px)_56px]'>
+                <div className='hidden items-center gap-4 border-b border-(--border) bg-(--surface-2) px-4 py-2.5 md:grid md:grid-cols-[minmax(0,180px)_minmax(160px,1fr)_78px_86px_86px_172px_52px]'>
                   <span className='text-[9px] font-semibold tracking-[0.18em] whitespace-nowrap text-(--text-muted) uppercase'>
                     Incident
                   </span>
                   <span className='text-[9px] font-semibold tracking-[0.18em] whitespace-nowrap text-(--text-muted) uppercase'>
-                    Summary
+                    Pelanggan
                   </span>
                   <span className='text-[9px] font-semibold tracking-[0.18em] whitespace-nowrap text-(--text-muted) uppercase'>
                     SA
+                  </span>
+                  <span className='text-[9px] font-semibold tracking-[0.18em] whitespace-nowrap text-(--text-muted) uppercase'>
+                    Jenis Tiket
                   </span>
                   <span className='text-[9px] font-semibold tracking-[0.18em] whitespace-nowrap text-(--text-muted) uppercase'>
                     Segmen
@@ -519,7 +523,7 @@ function MemberTicketRow({
       className='group cursor-pointer transition-colors hover:bg-(--surface-2) focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40'
       aria-label={`Buka detail ${ticket.ticket}`}
     >
-      <div className='hidden items-center gap-4 px-4 py-2.5 md:grid md:grid-cols-[minmax(0,200px)_minmax(0,1fr)_64px_96px_minmax(0,200px)_56px]'>
+      <div className='hidden items-center gap-4 px-4 py-2.5 md:grid md:grid-cols-[minmax(0,180px)_minmax(160px,1fr)_78px_86px_86px_172px_52px]'>
         <div className='flex min-w-0 flex-col gap-0.5'>
           <div className='flex items-center gap-2'>
             <span className='truncate font-mono text-[13px] font-semibold tracking-[0.08em] text-(--text-primary)'>
@@ -544,17 +548,7 @@ function MemberTicketRow({
         <div className='flex min-w-0 flex-col gap-0.5'>
           <p
             className={clsx(
-              'min-w-0 truncate text-xs',
-              ticket.summary
-                ? 'text-(--text-secondary)'
-                : 'text-(--text-muted)',
-            )}
-          >
-            {ticket.summary ?? 'Tidak ada ringkasan ticket'}
-          </p>
-          <p
-            className={clsx(
-              'min-w-0 truncate text-[11px] font-medium',
+              'min-w-0 truncate text-xs font-medium',
               ticket.customerName
                 ? 'text-(--text-primary)'
                 : 'text-(--text-muted)',
@@ -563,9 +557,23 @@ function MemberTicketRow({
           >
             {renderValue(ticket.customerName)}
           </p>
+          <p
+            className={clsx(
+              'min-w-0 truncate text-[11px]',
+              ticket.summary
+                ? 'text-(--text-secondary)'
+                : 'text-(--text-muted)',
+            )}
+            title={ticket.summary ?? undefined}
+          >
+            {ticket.summary ?? 'Tidak ada ringkasan ticket'}
+          </p>
         </div>
         <p className='truncate text-xs font-semibold text-(--text-primary)'>
           {renderValue(ticket.saName)}
+        </p>
+        <p className='truncate text-xs text-(--text-secondary)'>
+          {renderValue(ticket.jenisTiket2)}
         </p>
         <p className='truncate text-xs text-(--text-secondary)'>
           {renderValue(ticket.customerSegment)}
@@ -605,16 +613,8 @@ function MemberTicketRow({
             />
           </div>
         </div>
-        <p
-          className={clsx(
-            'mt-1 truncate text-xs',
-            ticket.summary ? 'text-(--text-secondary)' : 'text-(--text-muted)',
-          )}
-        >
-          {ticket.summary ?? 'Tidak ada ringkasan ticket'}
-        </p>
         {ticket.customerName || ticket.serviceNo ? (
-          <div className='mt-1 flex items-center gap-1.5 text-[11px]'>
+          <div className='mt-1 flex items-center gap-1.5 text-xs'>
             <span
               className='min-w-0 truncate font-medium text-(--text-primary)'
               title={ticket.customerName ?? undefined}
@@ -623,7 +623,7 @@ function MemberTicketRow({
             </span>
             {ticket.serviceNo ? (
               <span
-                className='shrink-0 font-mono text-(--text-muted)'
+                className='shrink-0 font-mono text-[11px] text-(--text-muted)'
                 title={ticket.serviceNo}
               >
                 · {renderValue(ticket.serviceNo)}
@@ -631,9 +631,19 @@ function MemberTicketRow({
             ) : null}
           </div>
         ) : null}
+        <p
+          className={clsx(
+            'mt-1 truncate text-[11px]',
+            ticket.summary ? 'text-(--text-secondary)' : 'text-(--text-muted)',
+          )}
+          title={ticket.summary ?? undefined}
+        >
+          {ticket.summary ?? 'Tidak ada ringkasan ticket'}
+        </p>
         <div className='mt-1 flex items-center justify-between gap-2 text-[11px]'>
           <span className='truncate font-medium text-(--text-secondary)'>
             {renderValue(ticket.saName)}
+            {ticket.jenisTiket2 ? ` · ${renderValue(ticket.jenisTiket2)}` : ''}
             {ticket.customerSegment
               ? ` · ${renderValue(ticket.customerSegment)}`
               : ''}

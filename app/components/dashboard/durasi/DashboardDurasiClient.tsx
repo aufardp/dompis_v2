@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/app/libs/query-keys';
 import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
@@ -10,6 +11,7 @@ import DataFreshnessBadge from '../DataFreshnessBadge';
 import TicketDurationPanel from './TicketDurationPanel';
 import DurationPanelSkeleton from './DurationPanelSkeleton';
 import DurasiCriticalStrip from './DurasiCriticalStrip';
+import DurasiHeatmap from './DurasiHeatmap';
 import DurasiTicketDetailDrawer from './DurasiTicketDetailDrawer';
 import type { DurasiBucketKey, DurasiDetailTarget } from './durasi-types';
 
@@ -55,6 +57,12 @@ const BUCKET_OPTIONS = [
   { value: 'obsolete', label: 'Obsolete' },
 ] as const;
 
+// Panel per bucket ditentukan lewat uji empiris ke data live (bukan
+// tebakan): tiap kombinasi bucket x panel dihitung berapa tiket yang
+// benar-benar cocok, panel dengan hasil 0 di bucket tsb tidak dicantumkan
+// supaya filter bucket benar-benar cuma menampilkan isinya sendiri.
+// REGULER/HVC (customer-tier, dimensi customer_type) lintas-bucket karena
+// orthogonal terhadap source_ticket/jenis-tiket.
 const PANEL_ORDER_BY_BUCKET: Record<string, string[]> = {
   all: [
     'REGULER',
@@ -66,6 +74,9 @@ const PANEL_ORDER_BY_BUCKET: Record<string, string[]> = {
     'SQM',
     'ANAK_GAMAS',
     'HSI',
+    'TSEL',
+    'DATIN',
+    'UNSPEC',
   ],
   kpi_customer: [
     'REGULER',
@@ -73,46 +84,40 @@ const PANEL_ORDER_BY_BUCKET: Record<string, string[]> = {
     'HVC_GOLD',
     'MANJA',
     'FFG',
-    'SQM',
-    'ANAK_GAMAS',
     'HSI',
+    'TSEL',
+    'DATIN',
   ],
   kpi_proactive: [
-    'SQM_UPDATE',
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
     'SQM',
-    'MANJA',
-    'FFG',
-    'ANAK_GAMAS',
-    'HSI',
   ],
   non_kpi_unspec: [
-    'MANJA',
-    'FFG',
-    'SQM',
-    'ANAK_GAMAS',
-    'HSI',
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
+    'UNSPEC',
   ],
   non_technical: [
-    'MANJA',
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
     'FFG',
-    'SQM',
-    'ANAK_GAMAS',
-    'HSI',
   ],
   sqm_update: [
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
     'SQM_UPDATE',
     'SQM',
-    'MANJA',
-    'FFG',
-    'ANAK_GAMAS',
-    'HSI',
   ],
   obsolete: [
-    'MANJA',
+    'REGULER',
+    'HVC_DIAMOND_PLATINUM',
+    'HVC_GOLD',
     'FFG',
-    'SQM',
-    'ANAK_GAMAS',
-    'HSI',
   ],
 };
 
@@ -127,6 +132,7 @@ export default function DashboardDurasiClient({
 }) {
   const [selectedBucket, setSelectedBucket] = useState<DurasiBucketKey>('all');
   const [detailTarget, setDetailTarget] = useState<DurasiDetailTarget | null>(null);
+  const [view, setView] = useState<'table' | 'heatmap'>('table');
   const { branch } = usePersistentBranchScope(initialBranch);
 
   const queryParams = useMemo(
@@ -148,8 +154,8 @@ export default function DashboardDurasiClient({
       }
       return res.json();
     },
-    refetchInterval: 300000,
-    staleTime: 120000,
+    refetchInterval: 60000,
+    staleTime: 30000,
   });
 
   useEffect(() => {
@@ -221,12 +227,17 @@ export default function DashboardDurasiClient({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <p className="text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase">
-              Monitoring Durasi
-            </p>
+      <section className="rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase">
+                Monitoring Durasi
+              </p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight text-(--text-primary)">
+                Distribusi tiket per bucket durasi
+              </h1>
+            </div>
             {data.generatedAt && (
               <div className="shrink-0">
                 <DataFreshnessBadge
@@ -238,25 +249,16 @@ export default function DashboardDurasiClient({
             )}
           </div>
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 max-w-2xl">
-              <h1 className="text-xl font-semibold tracking-tight text-(--text-primary)">
-                Distribusi tiket per bucket durasi
-              </h1>
-              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-(--text-secondary)">
-                Tampilan ini memadatkan status durasi supaya pola open dan bucket kritis mudah dipindai tanpa elemen visual yang berlebihan.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 lg:min-w-[18rem]">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
-                  Bucket view
-                </span>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 sm:max-w-md">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+                Bucket
+              </span>
+              <div className="relative">
                 <select
                   value={selectedBucket}
                   onChange={(e) => setSelectedBucket(e.target.value as DurasiBucketKey)}
-                  className="min-w-36 cursor-pointer rounded-lg border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full cursor-pointer appearance-none rounded-2xl border border-(--border) bg-(--surface) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors hover:bg-(--surface-2) focus:border-blue-500 focus:outline-none"
                 >
                   {BUCKET_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -264,17 +266,15 @@ export default function DashboardDurasiClient({
                     </option>
                   ))}
                 </select>
+                <ChevronDown className="pointer-events-none absolute top-3 right-3 h-4 w-4 text-(--text-muted)" />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
-                  Branch
-                </span>
-                <BranchFilterSelect
-                  className="min-w-36"
-                  initialBranch={branch}
-                />
-              </div>
-            </div>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+                Branch
+              </span>
+              <BranchFilterSelect className="block w-full" initialBranch={branch} />
+            </label>
           </div>
         </div>
       </section>
@@ -289,19 +289,58 @@ export default function DashboardDurasiClient({
         />
       )}
 
-      <div className="space-y-4">
-        {visiblePanels.map((panel) => (
-          <TicketDurationPanel
-            key={panel.type}
-            panel={panel}
-            defaultOpen
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase">
+          {view === 'table' ? `${visiblePanels.length} panel` : 'Heat-map durasi per service area'}
+        </p>
+        <div className="inline-flex shrink-0 rounded-full border border-(--border) bg-(--surface-2) p-0.5 text-[11px] font-semibold">
+          <button
+            type="button"
+            onClick={() => setView('table')}
+            className={`rounded-full px-3 py-1 transition-colors ${view === 'table' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
+          >
+            Tabel
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('heatmap')}
+            className={`rounded-full px-3 py-1 transition-colors ${view === 'heatmap' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
+          >
+            Heat-map
+          </button>
+        </div>
+      </div>
+
+      {view === 'table' ? (
+        <div className="space-y-4">
+          {visiblePanels.map((panel) => (
+            <TicketDurationPanel
+              key={panel.type}
+              panel={panel}
+              defaultOpen={false}
+              bucketKey={data.selectedBucket ?? 'all'}
+              bucketLabel={selectedBucketLabel}
+              isAllBucket={data.selectedBucket === 'all'}
+              onCellClick={setDetailTarget}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm sm:p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] text-(--text-muted)">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500/80" />Segar</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-yellow-500/80" />Menengah</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-red-600/85" />Lama / EXPIRED</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-(--surface-2)" />Tidak ada tiket</span>
+          </div>
+          <DurasiHeatmap
+            panels={visiblePanels}
             bucketKey={data.selectedBucket ?? 'all'}
             bucketLabel={selectedBucketLabel}
-            isAllBucket={data.selectedBucket === 'all'}
             onCellClick={setDetailTarget}
           />
-        ))}
-      </div>
+        </div>
+      )}
 
       <DurasiTicketDetailDrawer
         open={Boolean(detailTarget)}

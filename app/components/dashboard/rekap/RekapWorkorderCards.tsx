@@ -29,11 +29,17 @@ interface BucketRecord {
   sqmUpdate: SegCount;
   obsolete: SegCount;
 }
+interface SegmentTotal {
+  b2c: SegCount;
+  b2b: SegCount;
+}
+
 interface WorkzoneRow {
   workzone: string;
   buckets: BucketRecord;
   detail: DetailGroup;
   sqm: { open: number; close: number; update: number };
+  segmentTotal?: SegmentTotal;
   totalOpen: number;
   totalClose: number;
 }
@@ -48,6 +54,7 @@ interface SARow {
   detail: DetailGroup;
   sqm: { open: number; close: number; update: number };
   workzones: WorkzoneRow[];
+  segmentTotal?: SegmentTotal;
   totalOpen: number;
   totalClose: number;
   grandTotal: number;
@@ -59,6 +66,16 @@ interface RekapCardsProps {
   captureTargetRef?: RefObject<HTMLDivElement | null>;
   detailMode?: string;
   onCellClick?: (spec: RekapCellSpec) => void;
+}
+
+// Rincian B2B/B2C kecil di bawah angka Open/Close utama pada kartu SA.
+function SegmentCaption({ b2b, b2c }: { b2b: number; b2c: number }) {
+  if (b2b === 0 && b2c === 0) return null;
+  return (
+    <span className='mt-0.5 block text-[9px] font-medium whitespace-nowrap text-(--text-muted)'>
+      B2B {b2b} · B2C {b2c}
+    </span>
+  );
 }
 
 function closeRate(row: SARow, close?: number): number {
@@ -289,6 +306,7 @@ export default function RekapWorkorderCards({
                                 onCellClick={onCellClick}
                                 className='mt-1 block text-[1.05rem] leading-none font-semibold text-rose-600 dark:text-rose-300 tabular-nums'
                               />
+                              <SegmentCaption b2b={row.segmentTotal?.b2b.open ?? 0} b2c={row.segmentTotal?.b2c.open ?? 0} />
                             </div>
                             <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
@@ -303,6 +321,7 @@ export default function RekapWorkorderCards({
                                 onCellClick={onCellClick}
                                 className='mt-1 block text-[1.05rem] leading-none font-semibold text-emerald-600 dark:text-emerald-300 tabular-nums'
                               />
+                              <SegmentCaption b2b={row.segmentTotal?.b2b.close ?? 0} b2c={row.segmentTotal?.b2c.close ?? 0} />
                             </div>
                             <div className='rounded-[20px] border border-(--border) bg-(--surface) px-2.5 py-2'>
                               <p className='text-[9px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>

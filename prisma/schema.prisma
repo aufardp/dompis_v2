@@ -313,6 +313,8 @@ model ticket {
   validation_reason           String?                     @db.VarChar(64)
   validation_flagged_at       DateTime?                   @db.Timestamp(0)
   closed_at                   DateTime?                   @db.Timestamp(0)
+  ttr_comply_status           String?                     @db.VarChar(20)
+  ttr_deadline_at             DateTime?                   @db.Timestamp(0)
   sync_date                   DateTime?                   @db.Date
   synced_at                   DateTime?                   @db.Timestamp(0)
   import_batch                String?                     @db.VarChar(50)
@@ -349,6 +351,7 @@ model ticket {
   @@index([reported_date, workzone, status], map: "idx_ticket_reported_wz_st")
   @@index([device_name, rca, sub_rca, closed_at], map: "idx_ticket_rca_lookup")
   @@index([sync_date], map: "idx_ticket_sync_date")
+  @@index([ttr_comply_status, closed_at], map: "idx_ticket_ttr_comply")
 }
 
 model ticket_activity_log {
