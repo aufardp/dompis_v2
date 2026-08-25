@@ -201,3 +201,36 @@ export function computeOdpAlerts(
       (a.tier === b.tier ? 0 : a.tier === 'critical' ? -1 : 1),
   );
 }
+
+export interface PathBbox {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
+/**
+ * Bounding-box dari koordinat path (LineString, format [lng, lat] per
+ * titik) — dipakai supaya jalur kabel bisa difilter viewport langsung di
+ * DB (kolom path_min_lat/path_max_lat/path_min_lng/path_max_lng), bukan
+ * cuma di JS setelah semua baris di-fetch. Dipakai bersama oleh import
+ * KML baru (`app/api/war-map/kml-layers/run/route.ts`) dan backfill
+ * (`scripts/backfill-kml-line-bbox.ts`) supaya hasilnya identik.
+ */
+export function computePathBbox(
+  coords: [number, number][] | null | undefined,
+): PathBbox | null {
+  if (!coords || coords.length === 0) return null;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+  if (!Number.isFinite(minLat) || !Number.isFinite(minLng)) return null;
+  return { minLat, maxLat, minLng, maxLng };
+}

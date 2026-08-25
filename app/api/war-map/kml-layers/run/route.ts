@@ -9,6 +9,7 @@ import { ApiError, getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseKml } from '@/app/libs/kml/parser';
 import { saveKmlFile, deleteKmlFile } from '@/app/libs/kml/storage';
+import { computePathBbox } from '@/app/libs/kml/geo';
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const BATCH_SIZE = 500;
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
           sublayerVisibility = parsed;
         }
       } catch {
-        // ignore — pakai default semua visible
+        // ignore — pakai default semua tersembunyi (opt-in per sublayer)
       }
     }
 
@@ -125,7 +126,7 @@ export async function POST(req: Request) {
           folder_path: sub.folderPath,
           geometry_kind: sub.geometryKind,
           feature_count: sub.featureCount,
-          default_visible: sublayerVisibility[sub.folderPath] !== false,
+          default_visible: sublayerVisibility[sub.folderPath] === true,
           display_order: index,
         },
       });
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
     for (const f of result.features) {
       const sublayerId = sublayerIdByPath.get(f.sublayerFolderPath);
       if (!sublayerId) continue;
+      const pathBbox = computePathBbox(f.pathCoordinates);
       features.push({
         kml_layer_id: layer.id,
         kml_sublayer_id: sublayerId,
@@ -159,6 +161,10 @@ export async function POST(req: Request) {
         latitude: f.latitude,
         longitude: f.longitude,
         path_coordinates: f.pathCoordinates ?? Prisma.JsonNull,
+        path_min_lat: pathBbox?.minLat ?? null,
+        path_max_lat: pathBbox?.maxLat ?? null,
+        path_min_lng: pathBbox?.minLng ?? null,
+        path_max_lng: pathBbox?.maxLng ?? null,
         node_role: f.nodeRole,
       });
     }

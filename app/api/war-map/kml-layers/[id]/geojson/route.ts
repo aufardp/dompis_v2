@@ -63,28 +63,7 @@ function bboxKey(bbox: Bbox): string {
     .join(',');
 }
 
-// Apakah bounding box fitur memotong viewport (padding sudah termasuk).
-function intersectsBbox(
-  coords: [number, number][],
-  bbox: Bbox,
-): boolean {
-  let minLng = Infinity;
-  let maxLng = -Infinity;
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-  for (const [lng, lat] of coords) {
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-  }
-  return (
-    minLng <= bbox.east &&
-    maxLng >= bbox.west &&
-    minLat <= bbox.north &&
-    maxLat >= bbox.south
-  );
-}
+const MAX_FEATURES_PER_TYPE = 5000;
 
 export async function GET(
   req: NextRequest,
@@ -142,52 +121,70 @@ export async function GET(
     }
 
     const cacheKey = [
-      'war-map:kml:geojson:v4', // v4: culling bbox (titik/polyline) + padding
+      'war-map:kml:geojson:v5', // v5: garis difilter bbox di DB (kolom path_min/max_lat/lng)
       layerId,
       sublayerIds.join(','),
       bbox ? bboxKey(bbox) : 'all',
     ].join('|');
 
     const data = await getOrSetCache(cacheKey, async () => {
-      const where: any = { kml_layer_id: layerId };
+      const baseWhere: any = { kml_layer_id: layerId };
       if (sublayerIds.length > 0) {
-        where.kml_sublayer_id = { in: sublayerIds };
+        baseWhere.kml_sublayer_id = { in: sublayerIds };
       }
+
+      const pointWhere: any = { ...baseWhere, feature_type: 'point' };
+      const lineWhere: any = { ...baseWhere, feature_type: 'line' };
+
       if (bbox) {
-        // Titik langsung disaring di query (kotak-batas); polyline difilter di JS
-        // karena koordinatnya JSON (perlu bounding-box). West>east (antimeridian)
-        // tidak umum di wilayah kerja — fallback tak difilter longitude.
+        // West>east (antimeridian) tidak umum di wilayah kerja — fallback
+        // tak difilter longitude.
         if (bbox.west <= bbox.east) {
-          where.longitude = { gte: bbox.west, lte: bbox.east };
+          pointWhere.longitude = { gte: bbox.west, lte: bbox.east };
+          lineWhere.path_min_lng = { lte: bbox.east };
+          lineWhere.path_max_lng = { gte: bbox.west };
         }
-        where.latitude = { gte: bbox.south, lte: bbox.north };
+        pointWhere.latitude = { gte: bbox.south, lte: bbox.north };
+        lineWhere.path_min_lat = { lte: bbox.north };
+        lineWhere.path_max_lat = { gte: bbox.south };
       }
 
-      const rows = await prisma.kml_feature.findMany({
-        where,
-        orderBy: { id: 'asc' },
-        select: {
-          id: true,
-          name: true,
-          feature_type: true,
-          folder_path: true,
-          description_raw: true,
-          parsed_metadata: true,
-          style_color: true,
-          line_color: true,
-          line_width: true,
-          icon_key: true,
-          icon_color: true,
-          icon_scale: true,
-          node_role: true,
-          latitude: true,
-          longitude: true,
-          path_coordinates: true,
-          kml_sublayer_id: true,
-        },
-      });
+      const select = {
+        id: true,
+        name: true,
+        feature_type: true,
+        folder_path: true,
+        description_raw: true,
+        parsed_metadata: true,
+        style_color: true,
+        line_color: true,
+        line_width: true,
+        icon_key: true,
+        icon_color: true,
+        icon_scale: true,
+        node_role: true,
+        latitude: true,
+        longitude: true,
+        path_coordinates: true,
+        kml_sublayer_id: true,
+      } as const;
 
-      const features = rows
+      const [pointRows, lineRows] = await Promise.all([
+        prisma.kml_feature.findMany({
+          where: pointWhere,
+          orderBy: { id: 'asc' },
+          take: MAX_FEATURES_PER_TYPE,
+          select,
+        }),
+        prisma.kml_feature.findMany({
+          where: lineWhere,
+          orderBy: { id: 'asc' },
+          take: MAX_FEATURES_PER_TYPE,
+          select,
+        }),
+      ]);
+
+      const features = [...pointRows, ...lineRows]
         .map((r) => {
           const props: any = {
             id: r.id,
@@ -220,7 +217,6 @@ export async function GET(
 
           const coords = (r.path_coordinates as [number, number][]) ?? null;
           if (!coords || coords.length < 2) return null;
-          if (bbox && !intersectsBbox(coords, bbox)) return null;
           return {
             type: 'Feature' as const,
             properties: props,

@@ -877,18 +877,18 @@ function KmlPointMarker({
 
 function OdpRows({ items }: { items: OdpNearbyPoint[] }) {
   return (
-    <div className='max-h-40 overflow-auto'>
+    <div className='max-h-32 overflow-auto'>
       {items.slice(0, 15).map((n, i) => (
         <div
           key={`${n.serviceNo}-${i}`}
-          className={`flex items-start gap-2 px-2.5 py-1.5 text-[11px] ${
+          className={`flex items-start gap-1.5 px-2 py-1 text-[11px] leading-tight ${
             i % 2 === 0
               ? 'bg-slate-50 dark:bg-white/5'
               : 'bg-white dark:bg-transparent'
           }`}
         >
           <span
-            className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+            className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
               n.status &&
               ['open', 'assigned', 'on_progress', 'pending'].includes(n.status)
                 ? 'bg-red-500'
@@ -904,7 +904,7 @@ function OdpRows({ items }: { items: OdpNearbyPoint[] }) {
                 </span>
               ) : null}
             </p>
-            <p className='text-[10px] text-slate-400'>
+            <p className='truncate text-[10px] text-slate-400'>
               {n.serviceNo} · {n.distanceKm.toFixed(2)} km
               {n.status ? ` · ${n.status.replace('_', ' ')}` : ''}
             </p>
@@ -928,7 +928,7 @@ function OdpSection({
 }) {
   return (
     <div className='overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700'>
-      <div className='flex items-center justify-between bg-slate-50 px-2.5 py-1.5 text-[9px] font-bold tracking-wide text-slate-400 uppercase dark:bg-white/5'>
+      <div className='flex items-center justify-between bg-slate-50 px-2 py-1 text-[9px] font-bold tracking-wide text-slate-400 uppercase dark:bg-white/5'>
         <span>{label}</span>
         {count !== undefined && items.length > 0 && (
           <span
@@ -964,23 +964,28 @@ function OdpAlertPopup({
     [alert.attributed],
   );
   return (
-    <Popup minWidth={300} maxWidth={380}>
-      <div className='w-80 space-y-2.5'>
+    <Popup minWidth={260} maxWidth={320}>
+      <div className='w-full max-w-[300px] space-y-2'>
         <div className='flex items-center justify-between gap-2'>
-          <p className='text-sm font-bold text-slate-900 dark:text-white'>
+          <p className='truncate text-sm font-bold text-slate-900 dark:text-white'>
             {alert.name}
           </p>
           <span
-            className='rounded-full px-2 py-0.5 text-[9px] font-bold text-white'
+            className='shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold text-white'
             style={{ background: tierColor }}
           >
             {alert.tier === 'critical' ? '⚠ BERISIKO' : 'WASPADA'}
           </span>
         </div>
-        <p className='text-[10px] font-semibold text-slate-400'>{folderPath}</p>
+        <p className='truncate text-[10px] font-semibold text-slate-400'>
+          <span className='text-slate-500 dark:text-slate-300'>
+            {isOdc ? 'ODC' : 'ODP'}
+          </span>{' '}
+          · {folderPath}
+        </p>
 
         <div className='grid grid-cols-3 gap-1.5'>
-          <div className='rounded-lg bg-slate-50 px-2 py-1.5 text-center dark:bg-white/5'>
+          <div className='rounded-lg bg-slate-50 px-1.5 py-1 text-center dark:bg-white/5'>
             <p
               className='text-base font-extrabold tabular-nums'
               style={{ color: tierColor }}
@@ -991,7 +996,7 @@ function OdpAlertPopup({
               Gangguan
             </p>
           </div>
-          <div className='rounded-lg bg-blue-50 px-2 py-1.5 text-center dark:bg-blue-500/10'>
+          <div className='rounded-lg bg-blue-50 px-1.5 py-1 text-center dark:bg-blue-500/10'>
             <p className='text-base font-extrabold text-blue-600 tabular-nums dark:text-blue-400'>
               {alert.activeCount}
             </p>
@@ -999,7 +1004,7 @@ function OdpAlertPopup({
               Aktif
             </p>
           </div>
-          <div className='rounded-lg bg-purple-50 px-2 py-1.5 text-center dark:bg-purple-500/10'>
+          <div className='rounded-lg bg-purple-50 px-1.5 py-1 text-center dark:bg-purple-500/10'>
             <p className='text-base font-extrabold text-purple-600 tabular-nums dark:text-purple-400'>
               {alert.hotCount}
             </p>
@@ -1011,7 +1016,7 @@ function OdpAlertPopup({
 
         {alert.attributed.length > 0 && (
           <OdpSection
-            label={`Terdaftar pada ${isOdc ? 'ODC' : 'ODP'} ini (device_name)`}
+            label='Terdaftar (device_name)'
             count={alert.attributed.length}
             accent={tierColor}
             items={alert.attributed}
@@ -1021,20 +1026,18 @@ function OdpAlertPopup({
         {alert.nearby.filter((n) => !attributedSet.has(n.serviceNo)).length >
           0 && (
           <OdpSection
-            label={`Gangguan di sekitar ${isOdc ? 'ODC' : 'ODP'} (radius)`}
+            label='Radius sekitar'
             items={alert.nearby.filter((n) => !attributedSet.has(n.serviceNo))}
           />
         )}
 
         {descriptionRaw && (
-          <pre className='max-h-24 overflow-auto rounded-lg bg-slate-50 p-2 text-[10px] leading-4 whitespace-pre-wrap text-slate-600 dark:bg-white/5 dark:text-slate-300'>
+          <pre className='max-h-20 overflow-auto rounded-lg bg-slate-50 p-1.5 text-[10px] leading-4 whitespace-pre-wrap text-slate-600 dark:bg-white/5 dark:text-slate-300'>
             {descriptionRaw}
           </pre>
         )}
         <p className='text-[10px] leading-4 text-amber-600 dark:text-amber-400'>
-          {alert.totalPoints} titik gangguan terkait {isOdc ? 'ODC' : 'ODP'} ini
-          (terdaftar pada {isOdc ? 'ODC' : 'ODP'} + dalam radius deteksi).
-          Lakukan pengecekan berkoordinasi dengan tiket sekitar.
+          Koordinasikan dengan tiket di sekitar sebelum tindak lanjut.
         </p>
         <KmlCoordsFooter
           latitude={alert.latitude}
@@ -1304,6 +1307,14 @@ export default function WarMapClient({
   } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kmlFetchIdRef = useRef(0);
+  const kmlDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const kmlLoadedBboxRef = useRef<{
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } | null>(null);
+  const kmlLastSublayerKeyRef = useRef<string | null>(null);
 
   // ── Geolokasi (auto-center saat buka + tombol "Lokasi Saya") ──
   const [myLocation, setMyLocation] = useState<{
@@ -1608,90 +1619,120 @@ export default function WarMapClient({
     if (!hasVisible) {
       setKmlPoints([]);
       setKmlLines([]);
+      kmlLoadedBboxRef.current = null;
+      kmlLastSublayerKeyRef.current = null;
       return;
     }
 
-    const id = ++kmlFetchIdRef.current;
-    setKmlFeaturesLoading(true);
-
     const doFetch = async () => {
-      const allPoints: KmlPointFeature[] = [];
-      const allLines: KmlLineFeature[] = [];
+      const id = ++kmlFetchIdRef.current;
+      setKmlFeaturesLoading(true);
       const viewport = bboxRef.current;
+
+      const visibleLayers = kmlLayers.filter((layer) => {
+        if (!layerVisible[layer.id]) return false;
+        return layer.sublayers.some((s) => sublayerVisible[s.id]);
+      });
+
       try {
-        for (const layer of kmlLayers) {
-          if (!layerVisible[layer.id]) continue;
-          const visibleSublayerIds = layer.sublayers
-            .filter((s) => sublayerVisible[s.id])
-            .map((s) => s.id);
-          if (visibleSublayerIds.length === 0) continue;
+        const perLayerResults = await Promise.all(
+          visibleLayers.map(async (layer) => {
+            const visibleSublayerIds = layer.sublayers
+              .filter((s) => sublayerVisible[s.id])
+              .map((s) => s.id);
 
-          const params = new URLSearchParams();
-          params.set('sublayer', visibleSublayerIds.join(','));
-          if (viewport) {
-            params.set(
-              'bbox',
-              [
-                viewport.south,
-                viewport.west,
-                viewport.north,
-                viewport.east,
-              ].join(','),
-            );
-          }
-
-          const res = await fetchWithAuth(
-            `/api/war-map/kml-layers/${layer.id}/geojson?${params.toString()}`,
-          );
-          if (!res) continue;
-          const json = await res.json();
-          if (!json?.success) continue;
-
-          for (const feature of json.data?.features ?? []) {
-            const props = feature.properties;
-            if (feature.geometry.type === 'Point') {
-              const [lng, lat] = feature.geometry.coordinates;
-              allPoints.push({
-                id: props.id,
-                name: props.name,
-                folderPath: props.folderPath,
-                descriptionRaw: props.descriptionRaw,
-                sublayerId: props.sublayerId,
-                isOdc: false,
-                iconKey: props.iconKey ?? null,
-                iconColor: props.iconColor ?? null,
-                iconScale: props.iconScale ?? null,
-                latitude: lat,
-                longitude: lng,
-              });
-            } else if (feature.geometry.type === 'LineString') {
-              allLines.push({
-                id: props.id,
-                name: props.name,
-                folderPath: props.folderPath,
-                descriptionRaw: props.descriptionRaw ?? null,
-                parsedMetadata: props.parsedMetadata,
-                styleColor: props.styleColor,
-                lineColor: props.lineColor ?? null,
-                lineWidth: props.lineWidth ?? null,
-                sublayerId: props.sublayerId,
-                coordinates: feature.geometry.coordinates,
-              });
+            const params = new URLSearchParams();
+            params.set('sublayer', visibleSublayerIds.join(','));
+            if (viewport) {
+              params.set(
+                'bbox',
+                [
+                  viewport.south,
+                  viewport.west,
+                  viewport.north,
+                  viewport.east,
+                ].join(','),
+              );
             }
-          }
-        }
+
+            const res = await fetchWithAuth(
+              `/api/war-map/kml-layers/${layer.id}/geojson?${params.toString()}`,
+            );
+            if (!res) return { points: [], lines: [] };
+            const json = await res.json();
+            if (!json?.success) return { points: [], lines: [] };
+
+            const points: KmlPointFeature[] = [];
+            const lines: KmlLineFeature[] = [];
+            for (const feature of json.data?.features ?? []) {
+              const props = feature.properties;
+              if (feature.geometry.type === 'Point') {
+                const [lng, lat] = feature.geometry.coordinates;
+                points.push({
+                  id: props.id,
+                  name: props.name,
+                  folderPath: props.folderPath,
+                  descriptionRaw: props.descriptionRaw,
+                  sublayerId: props.sublayerId,
+                  isOdc: false,
+                  iconKey: props.iconKey ?? null,
+                  iconColor: props.iconColor ?? null,
+                  iconScale: props.iconScale ?? null,
+                  latitude: lat,
+                  longitude: lng,
+                });
+              } else if (feature.geometry.type === 'LineString') {
+                lines.push({
+                  id: props.id,
+                  name: props.name,
+                  folderPath: props.folderPath,
+                  descriptionRaw: props.descriptionRaw ?? null,
+                  parsedMetadata: props.parsedMetadata,
+                  styleColor: props.styleColor,
+                  lineColor: props.lineColor ?? null,
+                  lineWidth: props.lineWidth ?? null,
+                  sublayerId: props.sublayerId,
+                  coordinates: feature.geometry.coordinates,
+                });
+              }
+            }
+            return { points, lines };
+          }),
+        );
+
+        if (id !== kmlFetchIdRef.current) return;
+        setKmlPoints(perLayerResults.flatMap((r) => r.points));
+        setKmlLines(perLayerResults.flatMap((r) => r.lines));
+        kmlLoadedBboxRef.current = viewport;
+        kmlLastSublayerKeyRef.current = visibleSublayerKey;
       } catch {
         // fetch error — biarkan data lama
       } finally {
-        if (id === kmlFetchIdRef.current) {
-          setKmlPoints(allPoints);
-          setKmlLines(allLines);
-          setKmlFeaturesLoading(false);
-        }
+        if (id === kmlFetchIdRef.current) setKmlFeaturesLoading(false);
       }
     };
 
-    void doFetch();
+    const sublayersChanged =
+      kmlLastSublayerKeyRef.current !== visibleSublayerKey;
+
+    if (kmlDebounceRef.current) clearTimeout(kmlDebounceRef.current);
+    kmlDebounceRef.current = setTimeout(() => {
+      const viewport = bboxRef.current;
+      // Zoom-in / pan kecil di dalam area yang sudah dimuat → pakai data
+      // memori, tidak perlu refetch (sama seperti layer tiket).
+      if (
+        !sublayersChanged &&
+        viewport &&
+        isBboxContained(viewport, kmlLoadedBboxRef.current)
+      ) {
+        return;
+      }
+      void doFetch();
+    }, 500);
+
+    return () => {
+      if (kmlDebounceRef.current) clearTimeout(kmlDebounceRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSublayerKey, kmlLayers, bboxKey]);
 
@@ -1875,6 +1916,34 @@ export default function WarMapClient({
       zoom,
     );
   }, [index, bbox, zoom]);
+
+  // Layer KML (titik ODC/ODP) — clustering sama seperti layer tiket,
+  // supaya tidak merender ratusan Marker DOM individual saat zoom out.
+  const kmlIndex = useMemo(() => {
+    const sc = new Supercluster({
+      radius: CLUSTER_RADIUS,
+      minZoom: 0,
+      maxZoom: 18,
+      minPoints: 2,
+    });
+    const features: Array<PointFeature<KmlPointFeature>> = kmlPoints.map(
+      (p) => ({
+        type: 'Feature',
+        properties: p,
+        geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+      }),
+    );
+    sc.load(features);
+    return sc;
+  }, [kmlPoints]);
+
+  const kmlClusters = useMemo(() => {
+    if (!bbox) return [];
+    return kmlIndex.getClusters(
+      [bbox.west, bbox.south, bbox.east, bbox.north],
+      zoom,
+    );
+  }, [kmlIndex, bbox, zoom]);
 
   // SSE: refresh titik saat ada tag baru (debounced agar burst tidak bikin jank)
   useEffect(() => {
@@ -2333,6 +2402,7 @@ export default function WarMapClient({
                 zoom={11}
                 className='h-full w-full'
                 scrollWheelZoom
+                preferCanvas
               >
                 <TileLayer
                   key='osm-street'
@@ -2374,21 +2444,52 @@ export default function WarMapClient({
                   />
                 ))}
 
-                {/* Layer KML — titik ODC/ODP */}
-                {kmlPoints.map((pt) => (
-                  <KmlPointMarker
-                    key={`kml-point-${pt.id}`}
-                    feature={pt}
-                    layerTitle={
-                      kmlLayerTitleById.get(
-                        kmlSublayerLayerId.get(pt.sublayerId) ?? 0,
-                      ) ?? ''
-                    }
-                    showLabel={zoom >= 12}
-                    alert={odpAlertById.get(pt.id) ?? null}
-                    measuring={measuring}
-                  />
-                ))}
+                {/* Layer KML — titik ODC/ODP (di-cluster spy tidak render
+                    ratusan Marker individual saat zoom out) */}
+                {kmlClusters.map((cluster) => {
+                  const [lng, lat] = cluster.geometry.coordinates;
+                  const props = cluster.properties as KmlPointFeature & {
+                    cluster?: boolean;
+                    cluster_id?: number;
+                    point_count?: number;
+                  };
+
+                  if (props.cluster) {
+                    const count = props.point_count ?? 0;
+                    const expansionZoom = kmlIndex.getClusterExpansionZoom(
+                      props.cluster_id as number,
+                    );
+                    return (
+                      <ZoomToCluster
+                        key={`kml-c-${props.cluster_id}`}
+                        cluster={{
+                          latitude: lat,
+                          longitude: lng,
+                          count,
+                          expansionZoom,
+                        }}
+                        onExpand={() => {}}
+                        disabled={measuring}
+                      />
+                    );
+                  }
+
+                  const pt = props;
+                  return (
+                    <KmlPointMarker
+                      key={`kml-point-${pt.id}`}
+                      feature={pt}
+                      layerTitle={
+                        kmlLayerTitleById.get(
+                          kmlSublayerLayerId.get(pt.sublayerId) ?? 0,
+                        ) ?? ''
+                      }
+                      showLabel={zoom >= 12}
+                      alert={odpAlertById.get(pt.id) ?? null}
+                      measuring={measuring}
+                    />
+                  );
+                })}
 
                 {clusters.map((cluster, idx) => {
                   const [lng, lat] = cluster.geometry.coordinates;
