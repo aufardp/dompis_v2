@@ -5,6 +5,10 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { ClusterAutoAssignServiceV2 } from '@/app/libs/services/clusterAutoAssign.service';
+import {
+  normalizeOperationalBucketKey,
+  type OperationalBucketKey,
+} from '@/app/config/operational-buckets';
 import { acquireLock, releaseLock } from '@/lib/ratelimit';
 import {
   broadcastAutoAssignProgress,
@@ -90,6 +94,13 @@ export async function POST(req: Request) {
       logger.info('[AUTO-ASSIGN API] User workzones:', { saIds });
     }
 
+    const body = (await req.json().catch(() => ({}))) as { buckets?: unknown };
+    const rawBuckets: unknown[] = Array.isArray(body?.buckets) ? body.buckets : [];
+    const normalizedBuckets: OperationalBucketKey[] = rawBuckets
+      .map((b) => normalizeOperationalBucketKey(String(b ?? '')))
+      .filter((b): b is OperationalBucketKey => b !== '');
+    const buckets: OperationalBucketKey[] = [...new Set(normalizedBuckets)];
+
     ClusterAutoAssignServiceV2.setProgressCallback((data) => {
       if (data.type === 'completed') {
         broadcastAutoAssignCompleted({
@@ -123,6 +134,7 @@ export async function POST(req: Request) {
       const result = await ClusterAutoAssignServiceV2.runBatchV2(
         saIds,
         user.id_user,
+        buckets,
       );
 
       return new Response(stream, {

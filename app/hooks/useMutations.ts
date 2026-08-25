@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { queryKeys } from '@/app/libs/query-keys';
+import type { OperationalBucketKey } from '@/app/config/operational-buckets';
 
 function invalidateTicketDashboardQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({
@@ -208,11 +209,11 @@ export function useTriggerSync() {
 export function useRunAutoAssign() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (params?: { buckets?: OperationalBucketKey[] }) => {
       const res = await fetch('/api/clustering/auto-assign', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ buckets: params?.buckets ?? [] }),
         credentials: 'include',
       });
       const json = await res.json();

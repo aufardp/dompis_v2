@@ -11,6 +11,8 @@ import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
 import { logger } from '@/lib/observability/logger';
 import { todayWibDateForDb } from '@/lib/timezone';
+import type { OperationalBucketKey } from '@/app/config/operational-buckets';
+import { buildOperationalBucketWhere } from '@/app/libs/services/ticket-buckets';
 
 export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
@@ -634,6 +636,7 @@ export class ClusterAutoAssignServiceV2 {
   static async runBatchV2(
     saIds?: number[],
     actorId: number = SYSTEM_ACTOR.id_user,
+    buckets?: OperationalBucketKey[],
   ): Promise<BatchAutoAssignResult> {
     const startTime = Date.now();
     if (isDev) {
@@ -703,11 +706,13 @@ export class ClusterAutoAssignServiceV2 {
         ...(workzoneFilter.length > 0 && {
           workzone: { in: workzoneFilter },
         }),
-        OR: [
-          { status_update: null },
-          { status_update: 'open' },
-        ],
         sync_date: todayDate,
+        AND: [
+          { OR: [{ status_update: null }, { status_update: 'open' }] },
+          ...(buckets && buckets.length > 0
+            ? [{ OR: buckets.map((b) => buildOperationalBucketWhere(b)) }]
+            : []),
+        ],
       },
       select: {
         id_ticket: true,

@@ -89,6 +89,26 @@ const TRANSIENT_ERROR_PATTERNS = [
   'p2034',
 ];
 
+/**
+ * Sumber (bridge/DB eksternal) kadang mengirim rk_information terduplikasi,
+ * mis. "ODC-RKT-FDM ODC-RKT-FDM" — bikin exact-match ke cluster_node.odc_value
+ * di auto-assign gagal terus. Collapse HANYA kalau semua token (dipisah
+ * spasi) identik; nilai multi-token yang genuinely beda (mis.
+ * "ODC-KRN-FBB ODC-KRN-FB") dibiarkan apa adanya.
+ */
+export function normalizeRkInformation(
+  value: string | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length >= 2 && tokens.every((t) => t === tokens[0])) {
+    return tokens[0];
+  }
+  return trimmed;
+}
+
 export function computeFlaggingManja(
   bookingDate: string | null,
 ): string | null {
@@ -501,7 +521,7 @@ export function buildProjectionUpsert(
     service_no: raw.service_no,
     symptom: raw.symptom,
     device_name: raw.device_name,
-    rk_information: raw.rk_information,
+    rk_information: normalizeRkInformation(raw.rk_information as string | null),
     witel: raw.witel,
     worklog_summary: raw.worklog_summary,
     realm: raw.realm,

@@ -12,6 +12,11 @@ import { formatInTimeZone } from 'date-fns-tz';
 import PlotTeknisiModal from './PlotTeknisiModal';
 import EditClusterModal from './EditClusterModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import AutoAssignBucketFilter from './AutoAssignBucketFilter';
+import {
+  OPERATIONAL_BUCKET_DEFINITIONS,
+  type OperationalBucketKey,
+} from '@/app/config/operational-buckets';
 
 interface ManagedServiceArea {
   id_sa: number;
@@ -26,6 +31,7 @@ export default function ClusteringPage() {
     formatInTimeZone(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd'),
   );
   const [autoAssignRunning, setAutoAssignRunning] = useState(false);
+  const [selectedBuckets, setSelectedBuckets] = useState<OperationalBucketKey[]>([]);
   const [copyRunning, setCopyRunning] = useState(false);
   const [showCreateCluster, setShowCreateCluster] = useState(false);
   const [newClusterName, setNewClusterName] = useState('');
@@ -128,18 +134,24 @@ export default function ClusteringPage() {
     setMessage(null);
 
     try {
-      const data = await autoAssignMutation.mutateAsync();
-      const { assigned, total, no_teknisi, no_cluster } = data;
+      const data = await autoAssignMutation.mutateAsync({ buckets: selectedBuckets });
+      const { assigned, failed, skipped } = data;
 
       const messages: string[] = [];
       if (assigned > 0) {
         messages.push(`${assigned} tiket berhasil di-assign`);
       }
-      if (no_teknisi > 0) {
-        messages.push(`${no_teknisi} tiket gagal: tidak ada teknisi hari ini`);
+      if (failed > 0) {
+        messages.push(`${failed} tiket gagal di-assign`);
       }
-      if (no_cluster > 0) {
-        messages.push(`${no_cluster} tiket tidak ada cluster`);
+      if (skipped > 0) {
+        messages.push(`${skipped} tiket dilewati`);
+      }
+      if (selectedBuckets.length > 0) {
+        const labels = selectedBuckets
+          .map((b) => OPERATIONAL_BUCKET_DEFINITIONS[b].label)
+          .join(', ');
+        messages.push(`Bucket: ${labels}`);
       }
 
       setMessage({
@@ -154,7 +166,7 @@ export default function ClusteringPage() {
     } finally {
       setAutoAssignRunning(false);
     }
-  }, [autoAssignMutation]);
+  }, [autoAssignMutation, selectedBuckets]);
 
   const handleCreateCluster = useCallback(async () => {
     if (!newClusterName.trim()) {
@@ -412,6 +424,10 @@ export default function ClusteringPage() {
                 >
                   {copyRunning ? 'Menyalin...' : 'Copy dari Kemarin'}
                 </button>
+                <AutoAssignBucketFilter
+                  selected={selectedBuckets}
+                  onChange={setSelectedBuckets}
+                />
                 <button
                   onClick={handleRunAutoAssign}
                   disabled={autoAssignRunning}
