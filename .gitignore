@@ -75,3 +75,6 @@ EOF
 logs/*.log
 # accidental backups
 *.zip
+
+# Project Planning & PRD
+plans/
