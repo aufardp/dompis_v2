@@ -307,6 +307,14 @@ function isAnyTaskRunning(): boolean {
   return syncState.running || pushState.running || techEventsState.running || regulerWebhookState.running || autoAssignState.running;
 }
 
+function latestRunAt(): Date | null {
+  const times = [syncState, pushState, techEventsState, regulerWebhookState, autoAssignState, dlqRetryState]
+    .map((s) => s.lastRunAt)
+    .filter((d): d is Date => d instanceof Date);
+  if (times.length === 0) return null;
+  return new Date(Math.max(...times.map((d) => d.getTime())));
+}
+
 const dlqRetryState = createTaskState();
 
 async function runDlqRetry(): Promise<void> {
@@ -711,7 +719,7 @@ async function startWorker() {
 
   startWorkerHeartbeat('ops-worker', {
     get running() { return isAnyTaskRunning(); },
-    lastRunAt: null,
+    get lastRunAt() { return latestRunAt(); },
     lastError: null,
     consecutiveErrors: 0,
     circuitOpenedAt: null,

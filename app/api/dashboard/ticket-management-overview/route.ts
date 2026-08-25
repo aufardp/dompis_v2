@@ -3,7 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     const cacheKey = `ticket_mgmt_overview:v6:${user.role}:${user.id_user}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
-    const data = await getOrSetCache(cacheKey, async () => {
+    const data = await getOrSetCacheSwr(cacheKey, async () => {
       const summary = await DailyTicketService.getTicketManagementOverviewSummary(
         user.role,
         user.id_user,

@@ -458,7 +458,7 @@ async function importFromExcel(
   console.log('\n🗑️ Invalidating cache...');
   try {
     const { invalidateTicketsCache } = await import('@/lib/cache');
-    await invalidateTicketsCache();
+    await invalidateTicketsCache({ includeDashboard: true });
     console.log('✅ Cache invalidated');
   } catch (err) {
     console.warn('⚠️ Cache invalidation failed (non-critical):', err);

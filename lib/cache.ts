@@ -149,19 +149,26 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
 /**
  * Invalidate semua cache yang berhubungan dengan tiket.
  * Awaitable agar refresh UI setelah mutasi tidak membaca cache lama.
+ *
+ * Secara default cache `dashboard:*` TIDAK dihapus: siklus otomatis
+ * (status-refresh/active-refresh/sync-metrics) berjalan tiap 1–2 menit dan
+ * dulu selalu menghapus dashboard:* sehingga TTL panjang tidak pernah
+ * terpakai dan semua user recompute query berat bersamaan (pool exhaustion).
+ * Dashboard sekarang pakai getOrSetCacheSwr yang menyegarkan diri sendiri;
+ * purge dashboard hanya untuk aksi eksplisit user (includeDashboard: true).
  */
-export async function invalidateTicketsCache(): Promise<void> {
+export async function invalidateTicketsCache(
+  options: { includeDashboard?: boolean } = {},
+): Promise<void> {
   if (!(await ensureRedisReady())) return;
 
   try {
+    const patterns: string[] = ['tickets:*', 'daily_tickets:*', 'stats:*'];
+    if (options.includeDashboard) {
+      patterns.push('dashboard:*', 'dashboard_operations_summary:*');
+    }
     // Jalankan semua pola SCAN secara paralel — masing-masing pakai pipeline sendiri.
-    await Promise.all([
-      deleteCachePattern('tickets:*'),
-      deleteCachePattern('daily_tickets:*'),
-      deleteCachePattern('stats:*'),
-      deleteCachePattern('dashboard:*'),
-      deleteCachePattern('dashboard_operations_summary:*'),
-    ]);
+    await Promise.all(patterns.map((p) => deleteCachePattern(p)));
   } catch (error) {
     logger.warn('[Cache] Operation failed:', { error: String(error) });
   }
@@ -233,9 +240,8 @@ export async function getOrSetCache<T>(
 
   const computation = (async () => {
     try {
-      // Cache miss — compute
       const data = await fn();
-      // Store synchronously — blocking is negligible vs recompute cost
+      // Simpan nilai MENTAH — konsumen getOrSetCache tidak mengenal envelope.
       await setCache(key, data, ttl);
       return data;
     } finally {
@@ -245,4 +251,127 @@ export async function getOrSetCache<T>(
 
   inFlight.set(key, computation);
   return computation;
+}
+
+/**
+ * Faktor umur maksimum entry SWR relatif terhadap ttl fresh-nya.
+ * Entry basi tetap dilayani instan sampai ttl * SWR_STALE_FACTOR,
+ * sambil di-recompute di background.
+ */
+const SWR_STALE_FACTOR = parsePositiveIntEnv('SWR_STALE_FACTOR', 3);
+
+interface SwrEnvelope<T> {
+  __swr: true;
+  storedAt: number;
+  data: T;
+}
+
+function isSwrEnvelope<T>(value: unknown): value is SwrEnvelope<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as SwrEnvelope<T>).__swr === true &&
+    typeof (value as SwrEnvelope<T>).storedAt === 'number'
+  );
+}
+
+async function computeAndStoreSwr<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number,
+  storeTtl: number,
+): Promise<T> {
+  try {
+    const data = await fn();
+    await setCache(
+      key,
+      { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
+      storeTtl,
+    );
+    return data;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+function revalidateInBackground<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number,
+): void {
+  if (inFlight.has(key)) return;
+
+  const computation = (async () => {
+    try {
+      const data = await fn();
+      await setCache(
+        key,
+        { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
+        ttl * SWR_STALE_FACTOR,
+      );
+    } catch (error) {
+      logger.warn('[Cache] SWR background recompute failed:', {
+        key,
+        error: String(error),
+      });
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+
+  inFlight.set(key, computation);
+}
+
+/**
+ * Cache-aside dengan stale-while-revalidate untuk query dashboard yang mahal.
+ *
+ * - Entry fresh (< ttl) → langsung dilayani.
+ * - Entry basi (< ttl * SWR_STALE_FACTOR) → tetap dilayani instan dan
+ *   recompute dijalankan di background (single-flight per key), sehingga
+ *   user tidak pernah menunggu query berat dan beban DB rata sepanjang waktu.
+ * - Entry hilang/expired total → komputasi sinkron seperti getOrSetCache.
+ */
+export async function getOrSetCacheSwr<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number = DEFAULT_TTL,
+): Promise<T> {
+  const staleTtl = ttl * SWR_STALE_FACTOR;
+  const cached = await getCache<SwrEnvelope<T> | T>(key);
+
+  if (cached !== null) {
+    if (!isSwrEnvelope<T>(cached)) {
+      // Nilai legacy dari getOrSetCache lama (tanpa envelope) — umurnya tidak
+      // diketahui; layankan sekali lalu segarkan di background.
+      revalidateInBackground(key, fn, ttl);
+      return cached;
+    }
+
+    revalidateInBackgroundIfNeeded(cached.storedAt, key, fn, ttl);
+    return cached.data;
+  }
+
+  // Ada komputasi in-flight untuk key ini (revalidate background atau cold
+  // path lain) — tunggu selesai lalu baca hasilnya dari cache.
+  const existing = inFlight.get(key);
+  if (existing) {
+    await existing.catch(() => {});
+    const env = await getCache<SwrEnvelope<T>>(key);
+    if (env && isSwrEnvelope<T>(env)) return env.data;
+    // Komputasi in-flight gagal dan tidak meninggalkan nilai — fallback ke
+    // komputasi sinkron di bawah.
+  }
+
+  return computeAndStoreSwr(key, fn, ttl, staleTtl);
+}
+
+function revalidateInBackgroundIfNeeded<T>(
+  storedAt: number,
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number,
+): void {
+  const ageMs = Date.now() - storedAt;
+  if (ageMs < ttl * 1000) return;
+  revalidateInBackground(key, fn, ttl);
 }

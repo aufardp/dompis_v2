@@ -1,4 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
+import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 
 const OBSERVATION_WINDOW_DAYS = 60;
 
@@ -40,7 +41,7 @@ export async function getRecurringDisruptionTickets(
   const windowStartStr = windowStart.toISOString().slice(0, 19).replace('T', ' ');
 
   return prisma.$queryRawUnsafe<RecurringDisruptionRow[]>(
-    `SELECT t.customer_type, t.source_ticket
+    withMaxExecutionTime(`SELECT t.customer_type, t.source_ticket
      FROM ticket t
      JOIN (
        SELECT service_no
@@ -54,7 +55,7 @@ export async function getRecurringDisruptionTickets(
        HAVING COUNT(*) >= 2
      ) rep ON t.service_no = rep.service_no
      WHERE t.reported_date >= ?
-       AND (${whereClause})`,
+       AND (${whereClause})`),
     windowStartStr,
     ...params,
     windowStartStr,

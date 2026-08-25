@@ -80,7 +80,7 @@ const SHARED_CONFIG: EnvVarSpec[] = [
   { name: 'EXTERNAL_DB_CONNECTION_LIMIT', type: 'int', min: 1, max: 10, optional: true },
   { name: 'EXTERNAL_DB_CONNECT_TIMEOUT_MS', type: 'int', min: 1000, max: 60000, optional: true },
   { name: 'CACHE_MAX_BYTES', type: 'int', min: 65536, max: 10485760, optional: true },
-  { name: 'DASHBOARD_CACHE_TTL', type: 'int', min: 5, max: 300, optional: true },
+  { name: 'DASHBOARD_CACHE_TTL', type: 'int', min: 5, max: 900, optional: true },
   { name: 'STATS_CACHE_TTL', type: 'int', min: 5, max: 300, optional: true },
   { name: 'PRISMA_SLOW_QUERY_MS', type: 'int', min: 100, max: 30000, optional: true },
   { name: 'TELEGRAM_BOT_TOKEN', type: 'string', optional: true },
@@ -162,7 +162,7 @@ export function collectConfigWarnings(workerName: string): string[] {
 const SERVER_CONFIG: EnvVarSpec[] = [
   { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 100 },
   { name: 'TICKETS_CACHE_TTL', type: 'int', min: 1, max: 300, optional: true },
-  { name: 'DASHBOARD_CACHE_TTL', type: 'int', min: 1, max: 300, optional: true },
+  { name: 'DASHBOARD_CACHE_TTL', type: 'int', min: 1, max: 900, optional: true },
   { name: 'WEB_INSTANCES', type: 'int', min: 1, max: 8, optional: true },
   { name: 'REDIS_PORT', type: 'int', min: 1, max: 65535, optional: true },
 ];

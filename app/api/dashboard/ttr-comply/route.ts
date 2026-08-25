@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { logger } from '@/lib/observability/logger';
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       branchParam ?? '',
     ].join(':');
 
-    const data = await getOrSetCache(
+    const data = await getOrSetCacheSwr(
       cacheKey,
       async () => {
         const [whereClause, params] =

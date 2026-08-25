@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { nowWib, toWibDateString } from '@/lib/timezone';
@@ -362,7 +362,7 @@ async function getFilteredTickets(
   branchParam?: string | null,
 ): Promise<RawDurasiRow[]> {
   const cacheKey = buildDurasiTicketsCacheKey(role, userId, bucket, syncDate, branchParam);
-  return getOrSetCache(cacheKey, async () => {
+  return getOrSetCacheSwr(cacheKey, async () => {
     const filtersList = BUCKET_FILTERS[bucket];
     const parts: string[] = [];
     const allParams: any[] = [];
@@ -466,7 +466,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
 
-    const data = await getOrSetCache(cacheKey, async () => {
+    const data = await getOrSetCacheSwr(cacheKey, async () => {
       const overview = await DailyTicketService.getTicketManagementOverviewSummary(
         decoded.role,
         decoded.id_user,

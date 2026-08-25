@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/app/libs/tickets/ttr-comply';
 import { computeMttrSeconds, formatMttr } from '@/app/libs/tickets/mttr';
 import { logger } from '@/lib/observability/logger';
+import { withMaxExecutionTime, isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
       branchParam ?? '',
     ].join(':');
 
-    const data = await getOrSetCache(
+    const data = await getOrSetCacheSwr(
       cacheKey,
       async () => {
         const range =
@@ -152,13 +153,13 @@ export async function GET(request: NextRequest) {
         });
 
         const tickets = await prisma.$queryRawUnsafe<ClosedTicketRow[]>(
-          `SELECT
+          withMaxExecutionTime(`SELECT
             status, closed_at, reported_date, booking_date,
             customer_segment, customer_type, source_ticket,
             flagging_manja, jenis_tiket_1, ttr_comply_status
           FROM ticket
           WHERE (${baseWhere})
-            AND closed_at >= ? AND closed_at <= ?`,
+            AND closed_at >= ? AND closed_at <= ?`),
           ...baseParams,
           range.start,
           range.end,
@@ -273,6 +274,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('TTR compliance overview overloaded', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        { success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' },
+        { status: 503 },
+      );
+    }
     logger.error('TTR compliance overview error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },

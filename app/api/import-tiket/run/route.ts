@@ -402,7 +402,7 @@ export async function POST(req: Request) {
       );
     }
 
-    await invalidateTicketsCache();
+    await invalidateTicketsCache({ includeDashboard: true });
 
     logger.info(`Projection queued for batch ${batchName}`);
 

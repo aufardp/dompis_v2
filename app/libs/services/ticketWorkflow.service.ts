@@ -50,7 +50,7 @@ async function commitAndInvalidate<T>(promise: Promise<T>): Promise<T> {
 
   // Fire-and-forget: cache invalidation is best-effort and should not
   // block the mutation response path.
-  void invalidateTicketsCache();
+  void invalidateTicketsCache({ includeDashboard: true });
 
   return result;
 }

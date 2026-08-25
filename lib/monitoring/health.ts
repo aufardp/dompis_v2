@@ -131,6 +131,16 @@ const WORKER_INTERVAL_MS: Record<string, number> = {
   'snapshot-worker': (Number(process.env.SNAPSHOT_INTERVAL_SECONDS ?? 60) || 60) * 1000,
 };
 
+// snapshot-worker dijadwalkan lewat scheduleEveryMinutes() dengan adaptive
+// backoff (worker-snapshot.ts: maxIntervalMinutes=5) — interval-nya melebar
+// sendiri sampai 5 menit kalau run berturut-turut selesai cepat/idle. Ambang
+// staleness default (interval dasar * 3 = 3 menit) tidak tahu soal backoff
+// ini dan salah alarm untuk perilaku yang memang disengaja. Override khusus
+// worker ini ke basis maxIntervalMinutes + buffer.
+const WORKER_STALE_THRESHOLD_MS: Record<string, number> = {
+  'snapshot-worker': 5 * 60_000 * 1.4,
+};
+
 function numberFrom(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -350,7 +360,10 @@ export function evaluateHealth(input: HealthInput): {
         `Worker ${label} tidak mengirim heartbeat`,
         `Heartbeat terakhir ${Math.round(updatedAge / 1000)}s lalu — proses kemungkinan mati atau stuck. Cek PM2: pm2 status ${name}.`,
       );
-    } else if (lastRunAge !== null && lastRunAge > interval * 3) {
+    } else if (
+      lastRunAge !== null &&
+      lastRunAge > (WORKER_STALE_THRESHOLD_MS[name] ?? interval * 3)
+    ) {
       push(
         'warning',
         name,
@@ -534,14 +547,14 @@ export function evaluateHealth(input: HealthInput): {
       'critical',
       'bridge-dlq',
       `Bridge DLQ total ${input.pipeline.bridgeDLQ.total} (interactive: ${input.pipeline.bridgeDLQ.interactive}, ingestion: ${input.pipeline.bridgeDLQ.ingestion}, backfill: ${input.pipeline.bridgeDLQ.backfill})`,
-      'Webhook mungkin down — cek endpoint https://webhookdompis.telkomakses-area3.id/webhook/dompis',
+      'Qosmic Bridge API mungkin down — cek endpoint https://qosmic.solusee.id/api/metabase-bridge dan circuit breaker state (getBridgeCircuitState).',
     );
   } else if (input.pipeline.bridgeDLQ && input.pipeline.bridgeDLQ.total > 50) {
     push(
       'warning',
       'bridge-dlq',
       `Bridge DLQ total ${input.pipeline.bridgeDLQ.total}`,
-      'Bridge jobs gagal terkirim — monitor webhook endpoint',
+      'Bridge jobs gagal terkirim — monitor Qosmic Bridge API (qosmic.solusee.id/api/metabase-bridge) dan circuit breaker state.',
     );
   }
 

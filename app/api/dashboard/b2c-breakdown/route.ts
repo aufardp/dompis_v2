@@ -5,7 +5,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { parseSearchType } from '@/lib/search-intent';
-import { DASHBOARD_CACHE_TTL, getOrSetCache } from '@/lib/cache';
+import { DASHBOARD_CACHE_TTL, getOrSetCacheSwr } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     };
 
     const data = cacheKey
-      ? await getOrSetCache(
+      ? await getOrSetCacheSwr(
         cacheKey,
         () => DailyTicketService.getB2CBreakdown(
           user.role,

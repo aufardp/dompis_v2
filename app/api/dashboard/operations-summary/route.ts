@@ -14,7 +14,7 @@ import {
 } from '@/app/config/jenis-tiket';
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
 import { normalizeCustomerType } from '@/app/config/customer-types';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
@@ -774,7 +774,7 @@ export async function GET(request: Request) {
 
     const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
     const result = cacheKey
-      ? await getOrSetCache(
+      ? await getOrSetCacheSwr(
           cacheKey,
           () => buildOperationsSummaryResult(user, filters),
           CACHE_TTL_SECONDS,

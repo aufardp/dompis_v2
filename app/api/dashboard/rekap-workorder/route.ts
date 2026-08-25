@@ -3,7 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { toWibDateString, getTodayWibRange } from '@/lib/timezone';
@@ -1126,7 +1126,7 @@ async function getFilteredRekapTickets(
     branchId,
     dept,
   );
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => {
       const { start: todayStart } = getTodayWibRange();
@@ -1188,7 +1188,7 @@ async function getCustomerSqmOverlayTickets(
     workzone,
     branchId,
   );
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => {
       const [whereClause, params] =
@@ -1274,7 +1274,7 @@ async function getCustomerGamasOverlayTickets(
     workzone,
     branchId,
   );
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => {
       const [whereClause, params] =
@@ -1461,7 +1461,7 @@ async function getRekapTeknisiRows(
       ? workzones.slice().sort().join(',')
       : 'all';
   const cacheKey = buildRekapTeknisiCacheKey(syncDate, userId, scope);
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
       SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
@@ -1486,7 +1486,7 @@ async function getRekapTeknisiRegistered(
       ? workzones.slice().sort().join(',')
       : 'all';
   const cacheKey = buildRekapTeknisiRegisteredCacheKey(userId, scope);
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
       SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT u.id_user) AS cnt
@@ -1515,7 +1515,7 @@ async function getRekapAging(
     workzone,
     branchId,
   );
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     cacheKey,
     async () => {
       try {
@@ -1588,7 +1588,7 @@ async function getRekapExpectedServiceAreas(
   workzone?: string,
 ): Promise<{ area: string; saName: string }[]> {
   if (workzone) {
-    return getOrSetCache(
+    return getOrSetCacheSwr(
       `rekap:sa-area:${workzone}`,
       async () =>
         prisma.$queryRaw<{ area: string; saName: string }[]>`
@@ -1605,7 +1605,7 @@ async function getRekapExpectedServiceAreas(
   if (branchId) {
     const id = Number(branchId);
     if (!Number.isFinite(id) || id <= 0) return [];
-    return getOrSetCache(
+    return getOrSetCacheSwr(
       `rekap:branch-sa-areas:${id}`,
       async () =>
         prisma.$queryRaw<{ area: string; saName: string }[]>`
@@ -1619,7 +1619,7 @@ async function getRekapExpectedServiceAreas(
     );
   }
 
-  return getOrSetCache(
+  return getOrSetCacheSwr(
     'rekap:all-sa-areas',
     async () =>
       prisma.$queryRaw<{ area: string; saName: string }[]>`
@@ -1921,7 +1921,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (scopeWorkzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
 
-    const data = await getOrSetCache(
+    const data = await getOrSetCacheSwr(
       cacheKey,
       async () => {
         const startedAt = Date.now();

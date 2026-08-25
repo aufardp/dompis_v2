@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = `dashboard:durasi:detail:${decoded.role}:${decoded.id_user}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}:${branchParam ?? ''}`;
 
-    const data = await getOrSetCache(cacheKey, async () => {
+    const data = await getOrSetCacheSwr(cacheKey, async () => {
       const allTickets = await fetchAllTickets(
         decoded.role,
         decoded.id_user,

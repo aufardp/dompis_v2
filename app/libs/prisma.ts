@@ -72,10 +72,11 @@ if (enableSlowQueryLogging) {
   });
 }
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-  globalForPrisma.prismaBulk = prismaBulk;
-}
+// Selalu simpan ke globalThis — tanpa ini, module context berbeda di proses
+// yang sama (mis. bundle route Next.js) bisa membuat PrismaClient kedua dan
+// menggandakan koneksi pool.
+globalForPrisma.prisma = prisma;
+globalForPrisma.prismaBulk = prismaBulk;
 
 export async function connectDB() {
   const retryDelay = (attempt: number) => Math.min(1000 * Math.pow(2, attempt), 30000);

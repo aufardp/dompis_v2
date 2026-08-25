@@ -6,7 +6,7 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
     const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
     const data = cacheKey
-      ? await getOrSetCache(
+      ? await getOrSetCacheSwr(
           cacheKey,
           () => DailyTicketService.getTopSymptoms(
             user.role,

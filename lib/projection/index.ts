@@ -1269,7 +1269,7 @@ async function projectRecords(
           ? Math.round((itemChunk.length / batchDurationMs) * 1000 * 100) / 100
           : 0;
         const chunkLagMs = chunkLastRecord.importedAt
-          ? Date.now() - chunkLastRecord.importedAt.getTime()
+          ? nowWib().getTime() - chunkLastRecord.importedAt.getTime()
           : null;
 
         await Promise.allSettled([
@@ -1425,7 +1425,7 @@ export async function runProjection(
     const result = await projectRecords(signal, options);
     result.duration = Date.now() - start;
     const endToEndLagMs = result.checkpoint.lastProjectedImportedAt
-      ? Date.now() - result.checkpoint.lastProjectedImportedAt.getTime()
+      ? nowWib().getTime() - result.checkpoint.lastProjectedImportedAt.getTime()
       : null;
     const rowsPerSecond = result.duration > 0
       ? Math.round((result.processed / result.duration) * 1000 * 100) / 100

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { getRecurringDisruptionTickets } from '@/app/libs/tickets/recurring-disruption';
 import { buildTicketRoleScopeSql } from '@/app/libs/tickets/scope';
 import { isGamasTicket } from '@/app/libs/tickets/ttr-comply';
 import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 const TIER_KEYS = ['diamond', 'platinum', 'gold', 'reguler'] as const;
 type TierKey = (typeof TIER_KEYS)[number];
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
       branchParam ?? '',
     ].join(':');
 
-    const data = await getOrSetCache(
+    const data = await getOrSetCacheSwr(
       cacheKey,
       async () => {
         const [baseWhere, baseParams] = buildTicketRoleScopeSql({
@@ -124,6 +125,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('Assurance guarantee overloaded', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        { success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' },
+        { status: 503 },
+      );
+    }
     logger.error('Assurance guarantee error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },

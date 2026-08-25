@@ -3,7 +3,7 @@ import { toZonedTime } from 'date-fns-tz';
 import { format, subDays, startOfDay } from 'date-fns';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
-import { getOrSetCache, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
@@ -11,6 +11,7 @@ import { buildTicketRoleScopeSql } from '@/app/libs/tickets/scope';
 import { getWorkHourCategory } from '@/app/libs/tickets/ttr-comply';
 import { parseWIBDateInput } from '@/app/utils/datetime';
 import { logger } from '@/lib/observability/logger';
+import { withMaxExecutionTime, isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 const TIMEZONE = 'Asia/Jakarta';
 const TREND_DAYS = 28;
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
       branchParam ?? '',
     ].join(':');
 
-    const data = await getOrSetCache(
+    const data = await getOrSetCacheSwr(
       cacheKey,
       async () => {
         const [baseWhere, baseParams] = buildTicketRoleScopeSql({
@@ -88,11 +89,11 @@ export async function GET(request: NextRequest) {
         const startWibStr = format(startWib, 'yyyy-MM-dd 00:00:00');
 
         const tickets = await prisma.$queryRawUnsafe<TrendTicketRow[]>(
-          `SELECT t.reported_date
+          withMaxExecutionTime(`SELECT t.reported_date
            FROM ticket t
            WHERE (${baseWhere})
              AND (${bucketWhere})
-             AND t.reported_date >= ?`,
+             AND t.reported_date >= ?`),
           ...baseParams,
           startWibStr,
         );
@@ -127,6 +128,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('SQM daily trend overloaded', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        { success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' },
+        { status: 503 },
+      );
+    }
     logger.error('SQM daily trend error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },

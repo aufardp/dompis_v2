@@ -268,7 +268,7 @@ export async function POST(req: Request) {
       await new Promise((r) => setTimeout(r, 50));
     }
 
-    await invalidateTicketsCache();
+    await invalidateTicketsCache({ includeDashboard: true });
 
     return NextResponse.json({
       success: true,

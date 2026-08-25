@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
 
     const result = await batchUpsert(prisma, rows, import_batch);
 
-    await invalidateTicketsCache();
+    await invalidateTicketsCache({ includeDashboard: true });
 
     return NextResponse.json({
       success: true,

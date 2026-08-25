@@ -850,7 +850,7 @@ export class ClusterAutoAssignServiceV2 {
     totalAssigned = chunkResults.reduce((sum, r) => sum + r.assigned, 0);
     totalFailed = chunkResults.reduce((sum, r) => sum + r.failed, 0);
 
-    await invalidateTicketsCache();
+    await invalidateTicketsCache({ includeDashboard: true });
     broadcastTicketInvalidate('assign');
 
     const duration = Date.now() - startTime;
