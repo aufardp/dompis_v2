@@ -4,6 +4,8 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getOrSetCacheSwr } from '@/lib/cache';
+import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +50,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('ticket-management-overview overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     return NextResponse.json(
       {
         success: false,

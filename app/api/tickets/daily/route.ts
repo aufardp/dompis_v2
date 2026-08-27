@@ -51,6 +51,7 @@ export async function GET(request: Request) {
     const flagging = searchParams.getAll('flagging').filter(Boolean);
     const regulerOnlyParam = searchParams.get('regulerOnly');
 
+    const rawDept = toEnumValue(dept ?? null, ['all', 'b2b', 'b2c', 'netral', 'neutral']);
     const filters = {
       search: searchParams.get('search') || '',
       ticketId: toPositiveInt(searchParams.get('ticketId'), 0, 10_000_000),
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
       searchType: parseSearchType(searchParams.get('searchType')),
       statusUpdate: statusUpdate.length > 0 ? statusUpdate : undefined,
       ticketStatus: ticketStatus.length > 0 ? ticketStatus : undefined,
-      dept: toEnumValue(dept ?? null, ['all', 'b2b', 'b2c']),
+      dept: rawDept === 'neutral' ? 'netral' : rawDept,
       ticketType: ticketType.length > 0 ? ticketType : undefined,
       ticketGroup: ticketGroup.length > 0 ? ticketGroup : undefined,
       operationalBucket:

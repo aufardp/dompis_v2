@@ -48,11 +48,12 @@ export async function GET(request: Request) {
     // Role-aware limit: teknisi gets 500 for dashboard pagination, others 100
     const maxLimit = user.role === 'teknisi' ? 500 : 100;
 
+    const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']);
     const filters = {
       search: searchParams.get('search') || '',
       searchType,
       statusUpdate,
-      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
+      dept: rawDept === 'neutral' ? 'netral' : rawDept,
       ticketType:
         searchParams.get('ticketType') ||
         searchParams.get('jenisTiket') ||

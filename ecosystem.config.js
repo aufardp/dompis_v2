@@ -18,6 +18,7 @@ module.exports = {
         REDIS_PORT: '6379',
         PRISMA_CONNECTION_LIMIT: '20',
         PRISMA_POOL_TIMEOUT: '30',
+        PRISMA_SLOW_QUERY_MS: '2000',
           TICKETS_CACHE_TTL: '10',
         DASHBOARD_CACHE_TTL: '600',
         CACHE_MAX_BYTES: '4194304',

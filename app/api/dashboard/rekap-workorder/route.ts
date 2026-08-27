@@ -10,6 +10,7 @@ import { toWibDateString, getTodayWibRange } from '@/lib/timezone';
 import { toZonedTime } from 'date-fns-tz';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getTicketCategory } from '@/app/libs/ticket-utils';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import {
   buildKpiBucketFilterSql,
   type KpiBucketKey,
@@ -22,6 +23,7 @@ import {
   normalizeBucketText,
 } from '@/lib/rekap/rekap-classify';
 import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
+import { deptByJenis } from '@/lib/dept';
 
 interface RekapTicketRow {
   area: string;
@@ -97,6 +99,7 @@ interface BucketRecord {
 interface DetailGroup {
   b2c: Record<string, SegCount>;
   b2b: Record<string, SegCount>;
+  netral: Record<string, SegCount>;
 }
 
 // Agregat Open/Close per segmen customer (B2C = customer_segment IN
@@ -106,12 +109,14 @@ interface DetailGroup {
 interface SegmentTotal {
   b2c: SegCount;
   b2b: SegCount;
+  netral: SegCount;
 }
 
 function emptySegmentTotal(): SegmentTotal {
   return {
     b2c: { open: 0, close: 0 },
     b2b: { open: 0, close: 0 },
+    netral: { open: 0, close: 0 },
   };
 }
 
@@ -597,7 +602,7 @@ const BUCKET_VIEW_MEMBERS: Record<KpiBucketKey, BucketKey[]> = {
 };
 
 // Bump this whenever bucket classification or detail aggregation changes.
-const REKAP_WORKORDER_CACHE_VERSION = 'v27';
+const REKAP_WORKORDER_CACHE_VERSION = 'v28';
 const REKAP_TEKNISI_CACHE_VERSION = 'v2';
 
 function filterRekapRowsByBucket(
@@ -636,7 +641,7 @@ function emptyWzBuckets(): BucketRecord {
 }
 
 function emptyDetail(): DetailGroup {
-  return { b2c: {}, b2b: {} };
+  return { b2c: {}, b2b: {}, netral: {} };
 }
 
 function buildRekapResponse(
@@ -779,8 +784,7 @@ function buildRekapResponse(
 
     sa.buckets[ticketBucket].open += open;
     sa.buckets[ticketBucket].close += close;
-    const seg = (row.customer_segment ?? '').toUpperCase();
-    const segKey = seg === 'DCS' || seg === 'PL-TSEL' ? 'b2c' : 'b2b';
+    const segKey = deptByJenis(row.jenis_tiket_2, row.customer_segment);
     sa.segmentTotal[segKey].open += open;
     sa.segmentTotal[segKey].close += close;
     wz.segmentTotal[segKey].open += open;
@@ -800,7 +804,12 @@ function buildRekapResponse(
         grp[dtJenis].close += close;
       }
     } else if (useUnspec) {
-      const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
+      const key =
+        segKey === 'b2c'
+          ? 'unspec'
+          : segKey === 'netral'
+            ? 'unspec-netral'
+            : 'unspec-b2b';
       const grp = sa.detail[segKey];
       if (!grp[key]) grp[key] = { open: 0, close: 0 };
       grp[key].open += open;
@@ -815,6 +824,22 @@ function buildRekapResponse(
       if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
       grp[ctKey].open += open;
       grp[ctKey].close += close;
+    } else if (segKey === 'netral') {
+      const dtJenis =
+        normalizeJenis(detailJenisSource) ||
+        normalizeB2BJenis(row.jenis_tiket_1);
+      if (dtJenis) {
+        const grp = sa.detail.netral;
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
+      } else {
+        const grp = sa.detail.netral;
+        const key = 'netral';
+        if (!grp[key]) grp[key] = { open: 0, close: 0 };
+        grp[key].open += open;
+        grp[key].close += close;
+      }
     } else {
       const dtJenis = normalizeB2BJenis(row.jenis_tiket_1);
       if (dtJenis) {
@@ -840,7 +865,12 @@ function buildRekapResponse(
         grp[dtJenis].close += close;
       }
     } else if (useUnspec) {
-      const key = segKey === 'b2c' ? 'unspec' : 'unspec-b2b';
+      const key =
+        segKey === 'b2c'
+          ? 'unspec'
+          : segKey === 'netral'
+            ? 'unspec-netral'
+            : 'unspec-b2b';
       const grp = wz.detail[segKey];
       if (!grp[key]) grp[key] = { open: 0, close: 0 };
       grp[key].open += open;
@@ -855,6 +885,22 @@ function buildRekapResponse(
       if (!grp[ctKey]) grp[ctKey] = { open: 0, close: 0 };
       grp[ctKey].open += open;
       grp[ctKey].close += close;
+    } else if (segKey === 'netral') {
+      const dtJenis =
+        normalizeJenis(detailJenisSource) ||
+        normalizeB2BJenis(row.jenis_tiket_1);
+      if (dtJenis) {
+        const grp = wz.detail.netral;
+        if (!grp[dtJenis]) grp[dtJenis] = { open: 0, close: 0 };
+        grp[dtJenis].open += open;
+        grp[dtJenis].close += close;
+      } else {
+        const grp = wz.detail.netral;
+        const key = 'netral';
+        if (!grp[key]) grp[key] = { open: 0, close: 0 };
+        grp[key].open += open;
+        grp[key].close += close;
+      }
     } else {
       const dtJenis = normalizeB2BJenis(row.jenis_tiket_1);
       if (dtJenis) {
@@ -1078,9 +1124,10 @@ function buildRekapTicketsCacheKey(
   bucket: KpiBucketKey,
   workzone?: string,
   branchId?: number | string,
-  dept: 'all' | 'b2c' | 'b2b' = 'all',
+  dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): string {
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}:${dept}:${workzone || 'all'}:${branchId ?? ''}`;
+  const normalizedDept = dept === 'neutral' ? 'netral' : dept;
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}:${normalizedDept}:${workzone || 'all'}:${branchId ?? ''}`;
 }
 
 function buildRekapTeknisiCacheKey(
@@ -1115,8 +1162,9 @@ async function getFilteredRekapTickets(
   bucket: KpiBucketKey,
   workzone?: string,
   branchId?: number | string,
-  dept: 'all' | 'b2c' | 'b2b' = 'all',
+  dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): Promise<RekapTicketRow[]> {
+  const normalizedDept = dept === 'neutral' ? 'netral' : dept;
   const cacheKey = buildRekapTicketsCacheKey(
     role,
     userId,
@@ -1124,7 +1172,7 @@ async function getFilteredRekapTickets(
     bucket,
     workzone,
     branchId,
-    dept,
+    normalizedDept,
   );
   return getOrSetCacheSwr(
     cacheKey,
@@ -1132,7 +1180,7 @@ async function getFilteredRekapTickets(
       const { start: todayStart } = getTodayWibRange();
       const [whereClause, params] =
         await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-          dept,
+          dept: normalizedDept,
           includeClosed: true,
           workzone,
           branchId,
@@ -1326,11 +1374,12 @@ async function getLegacyCustomerBucketRows(
   userId: number,
   workzone?: string,
   branchId?: number | string,
-  dept: 'all' | 'b2c' | 'b2b' = 'all',
+  dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): Promise<LegacyCustomerBucketRow[]> {
+  const normalizedDept = dept === 'neutral' ? 'netral' : dept;
   const [whereClause, params] =
     await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-      dept,
+      dept: normalizedDept,
       operationalBucket: ['kpi_customer'],
       includeClosed: true,
       workzone,
@@ -1361,11 +1410,12 @@ async function getLegacyCustomerRekapTickets(
   userId: number,
   workzone?: string,
   branchId?: number | string,
-  dept: 'all' | 'b2c' | 'b2b' = 'all',
+  dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): Promise<RekapTicketRow[]> {
+  const normalizedDept = dept === 'neutral' ? 'netral' : dept;
   const [whereClause, params] =
     await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-      dept,
+      dept: normalizedDept,
       operationalBucket: ['kpi_customer'],
       includeClosed: true,
       workzone,
@@ -1558,7 +1608,7 @@ async function getRekapAging(
             g48: bigint;
             g72: bigint;
           }>
-        >(sql, ...params, threshold(24), threshold(48), threshold(72));
+        >(withMaxExecutionTime(sql), ...params, threshold(24), threshold(48), threshold(72));
         return rows.map((r) => ({
           saName: r.saName,
           openCount: Number(r.openCount ?? 0),
@@ -2088,6 +2138,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data);
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('rekap-workorder overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     logger.error('Rekap workorder error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

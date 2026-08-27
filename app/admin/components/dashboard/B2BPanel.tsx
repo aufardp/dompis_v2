@@ -72,7 +72,7 @@ function isB2BTicket(ticket: Ticket): boolean {
 interface B2BPanelProps {
   searchQuery: string;
   workzoneFilter: string;
-  deptFilter: 'all' | 'b2b' | 'b2c';
+  deptFilter: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   tickets: Ticket[];
   b2bSummaryFromApi?: {
     total: number;

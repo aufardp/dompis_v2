@@ -6,6 +6,7 @@ import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 
 interface MonthlyComplyRow {
   month: string;
@@ -86,14 +87,14 @@ export async function GET(request: NextRequest) {
           );
 
         const rows = await prisma.$queryRawUnsafe<MonthlyComplyRow[]>(
-          `SELECT
+          withMaxExecutionTime(`SELECT
             DATE_FORMAT(closed_at, '%Y-%m') AS month,
             COUNT(*) AS total,
             SUM(ttr_comply_status = 'comply') AS comply_count
           FROM ticket
           WHERE (${whereClause}) AND ttr_comply_status IS NOT NULL
           GROUP BY month
-          ORDER BY month ASC`,
+          ORDER BY month ASC`),
           ...params,
         );
 
@@ -117,6 +118,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('TTR comply overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json(
+        { success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' },
+        { status: 503 },
+      );
+    }
     logger.error('TTR comply report error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },

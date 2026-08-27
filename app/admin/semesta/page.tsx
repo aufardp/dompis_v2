@@ -187,7 +187,7 @@ const AnalyticsSkeleton = dynamic(
 );
 
 // --- Old analytics (keep for backward compat with ticket table) ---
-type Dept = 'all' | 'b2b' | 'b2c';
+type Dept = 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
 type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
 type StatusFilter =
   | 'all'
@@ -202,6 +202,7 @@ const DEPT_OPTIONS = [
   { key: 'all', label: 'Semua' },
   { key: 'b2b', label: 'B2B' },
   { key: 'b2c', label: 'B2C' },
+  { key: 'netral', label: 'Netral' },
 ];
 
 const TYPE_OPTIONS = [
@@ -296,7 +297,7 @@ export default function SemestaPage() {
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope();
   const [ctypeFilter, setCtypeFilter] = useState<TicketCtype | 'all'>('all');
-  const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c'>('all');
+  const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c' | 'netral' | 'neutral'>('all');
   const [ticketTypeFilter, setTicketTypeFilter] = useState<string>('all');
   const [hasilVisitFilter, setHasilVisitFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -318,22 +319,26 @@ export default function SemestaPage() {
 
   // --- V2 analytics filters (simplified: no status/ctype) ---
   const analyticsFilters: SemestaAnalyticsV2Filters = useMemo(
-    () => ({
-      startDate,
-      endDate,
-      workzone: workzoneFilter || undefined,
-      dept: deptFilter !== 'all' ? deptFilter : undefined,
-      ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-    }),
+    () => {
+      const normalizedDept = deptFilter === 'neutral' ? 'netral' : deptFilter;
+      return {
+        startDate,
+        endDate,
+        workzone: workzoneFilter || undefined,
+        dept: normalizedDept !== 'all' ? (normalizedDept as 'b2b' | 'b2c' | 'netral') : undefined,
+        ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+      };
+    },
     [startDate, endDate, workzoneFilter, deptFilter, ticketTypeFilter],
   );
 
   // --- V1 analytics (kept for backward compat with ticket table filters) ---
+  const normalizedDeptForAnalytics = deptFilter === 'neutral' ? 'netral' : deptFilter;
   const { data: analyticsData, loading: analyticsLoading } = useTicketAnalytics({
     search: searchQuery || undefined,
     workzone: workzoneFilter || undefined,
     ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
-    dept: deptFilter !== 'all' ? deptFilter : undefined,
+    dept: normalizedDeptForAnalytics !== 'all' ? normalizedDeptForAnalytics : undefined,
     ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
     statusUpdate: hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
     startDate,
@@ -356,7 +361,7 @@ export default function SemestaPage() {
     workzoneFilter || undefined,
     ctypeFilter !== 'all' ? ctypeFilter : undefined,
     hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
-    deptFilter !== 'all' ? deptFilter : undefined,
+    normalizedDeptForAnalytics !== 'all' ? normalizedDeptForAnalytics : undefined,
     ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
     startDate,
     endDate,
@@ -411,7 +416,8 @@ export default function SemestaPage() {
   }, []);
 
   const handleDeptChange = (dept: string) => {
-    setDeptFilter(dept as 'all' | 'b2b' | 'b2c');
+    const normalized = dept === 'neutral' ? 'netral' : dept;
+    setDeptFilter(normalized as 'all' | 'b2b' | 'b2c' | 'netral');
     setCurrentPage(1);
   };
 

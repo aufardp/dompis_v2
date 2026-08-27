@@ -7,6 +7,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { logger } from '@/lib/observability/logger';
 import { getErrorMessage } from '@/app/libs/apiError';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import type {
   DurasiBucketKey,
@@ -122,7 +123,7 @@ async function fetchAllTickets(
       WHERE ${whereClause}
       ORDER BY t.reported_date DESC, t.id_ticket DESC
     `;
-    const result = await prisma.$queryRawUnsafe<DurasiDetailTicket[]>(sql, ...params);
+    const result = await prisma.$queryRawUnsafe<DurasiDetailTicket[]>(withMaxExecutionTime(sql), ...params);
     for (const row of result) {
       if (visibleWorkzones && row.workzone && !visibleWorkzones.has(row.workzone)) continue;
       if (ids.has(row.id_ticket)) continue;
@@ -246,6 +247,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('Durasi detail overloaded', { error: String(error?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     logger.error('Dashboard durasi detail error:', error);
     if (error.status === 401 || error.status === 403) {
       return NextResponse.json({ success: false, message: getErrorMessage(error, 'Unauthorized') }, { status: error.status });

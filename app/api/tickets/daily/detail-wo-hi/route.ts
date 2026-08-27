@@ -90,7 +90,8 @@ export async function GET(request: Request) {
     const user = await protectApi(['admin', 'superadmin', 'super_admin']);
     const { searchParams } = new URL(request.url);
 
-    const dept = searchParams.get('dept') ?? 'all';
+    const rawDept = searchParams.get('dept') ?? 'all';
+    const dept = rawDept === 'neutral' ? 'netral' : rawDept;
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
     const result = await getOrSetCache(cacheKey || `tickets_daily_detail_wo_hi:${user.role}:${user.id_user}:uncached`, async () => {
     const baseWhere = await DailyTicketService.buildDetailWoHiWhere(
       user.role, user.id_user, {
-        dept: dept === 'all' ? undefined : dept as 'b2b' | 'b2c',
+        dept: dept === 'all' ? undefined : dept as 'b2b' | 'b2c' | 'netral',
         search: search || undefined,
         searchType,
         workzone: workzone || undefined,

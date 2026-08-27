@@ -97,7 +97,7 @@ export interface AdminTicketTableB2BProps {
   highlightQuery?: string;
   flaggingFilter?: string[];
   downloadFilters?: {
-    dept: 'b2b' | 'b2c';
+    dept: 'b2b' | 'b2c' | 'netral' | 'neutral' | 'all';
     ticketType?: string[];
     ticketGroup?: string[];
     operationalBucket?: string[];
@@ -352,7 +352,7 @@ export default function TicketTableB2B({
     try {
       const params = new URLSearchParams();
       params.set('format', downloadFormat);
-      params.set('dept', downloadFilters.dept);
+      params.set('dept', downloadFilters.dept === 'neutral' ? 'netral' : downloadFilters.dept);
 
       for (const t of downloadFilters.ticketType ?? []) {
         params.append('ticketType', t);

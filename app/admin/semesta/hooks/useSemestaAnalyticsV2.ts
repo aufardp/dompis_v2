@@ -78,7 +78,7 @@ export type SemestaAnalyticsV2Filters = {
   startDate?: string;
   endDate?: string;
   workzone?: string;
-  dept?: 'all' | 'b2b' | 'b2c';
+  dept?: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   ticketType?: string;
 };
 
@@ -92,7 +92,7 @@ export function useSemestaAnalyticsV2(filters: SemestaAnalyticsV2Filters) {
       if (filters.startDate) params.set('startDate', filters.startDate);
       if (filters.endDate) params.set('endDate', filters.endDate);
       if (filters.workzone) params.set('workzone', filters.workzone);
-      if (filters.dept && filters.dept !== 'all') params.set('dept', filters.dept);
+      if (filters.dept && filters.dept !== 'all') params.set('dept', filters.dept === 'neutral' ? 'netral' : filters.dept);
       if (filters.ticketType) params.set('ticketType', filters.ticketType);
 
       const res = await fetchWithAuth(`/api/dashboard/semesta-analytics?${params}`);

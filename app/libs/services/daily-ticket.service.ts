@@ -10,7 +10,9 @@ import {
   DASHBOARD_CACHE_TTL,
   DASHBOARD_SUMMARY_CACHE_TTL,
   getOrSetCache,
+  getOrSetCacheSwr,
 } from '@/lib/cache';
+import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 
 import { TicketWorkflowService } from './ticketWorkflow.service';
 import { ActorContext } from '@/app/types/ticket';
@@ -459,15 +461,17 @@ function applyAnomalyBucketFilterWhere(
 
 function buildDeptSegmentWhere(dept?: string): Record<string, unknown> | null {
   if (!dept || dept === 'all') return null;
-  if (dept === 'b2c') return { customer_segment: { in: ['DCS', 'PL-TSEL'] } };
-  if (dept === 'b2b') {
-    return {
-      OR: [
-        { customer_segment: { notIn: ['DCS', 'PL-TSEL'] } },
-        { customer_segment: null },
-      ],
-    };
+  // dept 3-segmen berbasis jenis_tiket_2 (netral priority), permintaan dinamis via customer_segment
+  // helper di lib/dept.ts sudah handle netral/b2c/b2b
+  // dynamic import hindari circular: inline via require
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildDeptJenisWhere } = require('@/lib/dept') as typeof import('@/lib/dept');
+  if (dept === 'b2c' || dept === 'b2b' || dept === 'netral' || dept === 'neutral') {
+    const key = dept === 'neutral' ? 'netral' : dept;
+    return buildDeptJenisWhere(key as 'b2c' | 'b2b' | 'netral');
   }
+  // legacy fallback (seharusnya tidak terpakai)
+  if (dept === 'b2c') return { customer_segment: { in: ['DCS', 'PL-TSEL'] } };
   return null;
 }
 
@@ -1511,7 +1515,7 @@ private static async fetchTicketIdsBySql(
       }
 
       const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; reported_date?: string | Date }>>(
-        sql,
+        withMaxExecutionTime(sql),
         ...queryParams,
       );
 
@@ -1606,7 +1610,7 @@ private static async fetchTicketIdsBySql(
   ): Promise<number> {
     const [whereClause, params] = buildSqlWhereClause(validasiBaseWhere);
     const sql = `
-      SELECT /*+ MAX_EXECUTION_TIME(10000) */ COUNT(*) AS total
+      SELECT /*+ MAX_EXECUTION_TIME(30000) */ COUNT(*) AS total
       FROM ticket
       WHERE ${whereClause}
     `;
@@ -1637,17 +1641,17 @@ private static async fetchTicketIdsBySql(
       const [s1, s2] = union.branchSqls;
       const [p1, p2] = union.params;
       mainSql = `
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
         FROM ticket WHERE ${s1}
         UNION ALL
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
         FROM ticket WHERE ${s2}
       `;
       mainParams = [...p1, ...p2];
     } else {
       const [wc, ps] = buildSqlWhereClause(mainTableWhere);
       mainSql = `
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
         FROM ticket
         WHERE ${wc}
       `;
@@ -1693,7 +1697,7 @@ private static async countValidasiFlaggingSummary(
   ): Promise<Array<Record<string, unknown>>> {
     const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
     const sqlWithIndex = `
-      SELECT /*+ MAX_EXECUTION_TIME(10000) */
+      SELECT /*+ MAX_EXECUTION_TIME(30000) */
         t.id_ticket,
         t.status,
         t.status_update,
@@ -1759,7 +1763,7 @@ private static async fetchValidasiTicketIds(
       }
 
       const rows = await prisma.$queryRawUnsafe<Array<{ id_ticket: number; reported_date?: string | Date }>>(
-        sql,
+        withMaxExecutionTime(sql),
         ...queryParams,
       );
 
@@ -1811,10 +1815,10 @@ private static async fetchValidasiTicketIds(
           SUM(hvc_gold) AS hvc_gold,
           SUM(reguler) AS reguler
         FROM (
-          SELECT /*+ MAX_EXECUTION_TIME(10000) */ ${aggSelect}
+          SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
           FROM ticket WHERE ${s1}
           UNION ALL
-          SELECT /*+ MAX_EXECUTION_TIME(10000) */ ${aggSelect}
+          SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
           FROM ticket WHERE ${s2}
         ) AS combined
       `;
@@ -1822,7 +1826,7 @@ private static async fetchValidasiTicketIds(
     } else {
       const [wc, ps] = buildSqlWhereClause(where);
       sql = `
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */
           COUNT(*) AS total,
           SUM(CASE WHEN ${statusCat} = 'open' THEN 1 ELSE 0 END) AS \`open\`,
           SUM(CASE WHEN ${statusCat} = 'assigned' THEN 1 ELSE 0 END) AS assigned,
@@ -1944,7 +1948,7 @@ private static async fetchValidasiTicketIds(
       const [s1, s2] = union.branchSqls;
       const [p1, p2] = union.params;
       sql = `
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */ status, status_update, SUM(cnt) AS count
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */ status, status_update, SUM(cnt) AS count
         FROM (
           SELECT status, status_update, COUNT(*) AS cnt FROM ticket WHERE ${s1} GROUP BY status, status_update
           UNION ALL
@@ -1956,7 +1960,7 @@ private static async fetchValidasiTicketIds(
     } else {
       const [wc, ps] = buildSqlWhereClause(where);
       sql = `
-        SELECT /*+ MAX_EXECUTION_TIME(10000) */ status, status_update, COUNT(*) AS count
+        SELECT /*+ MAX_EXECUTION_TIME(30000) */ status, status_update, COUNT(*) AS count
         FROM ticket
         WHERE ${wc}
         GROUP BY status, status_update
@@ -2183,7 +2187,7 @@ private static async fetchValidasiTicketIds(
     const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
     const validasiCountPromise = !countOnly && includeValidasi && validasiBaseWhere
-      ? getOrSetCache(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
+      ? getOrSetCacheSwr(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0);
     const statusOptionsPromise = includeOptions && !countOnly
       ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
@@ -2442,15 +2446,14 @@ private static async fetchValidasiTicketIds(
     branchId?: number | string,
   ): Promise<BucketSummaryMatrix> {
     const cacheKey = buildKpiBucketSummaryCacheKey(role, userId, filters);
-    return getOrSetCache(
+    return getOrSetCacheSwr(
       cacheKey,
       async () => {
         type BucketKeyNoAll = Exclude<KpiBucketKey, 'all'>;
         const NON_KPI_BUCKETS: BucketKeyNoAll[] = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'];
 
-        // b2c = customer_segment IN (DCS, PL-TSEL); b2b = sisanya / NULL.
-        // Partition lengkap → b2c + b2b == all, tanpa double-count.
-        const SEG_SQL = `CASE WHEN customer_segment IN ('DCS', 'PL-TSEL') THEN 'b2c' ELSE 'b2b' END AS seg`;
+        // 3-segmen: netral priority, permintaan dinamis, lalu b2c/b2b via jenis
+        const SEG_SQL = `CASE WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare') THEN 'netral' WHEN LOWER(TRIM(COALESCE(jenis_tiket_2,'')))='permintaan' THEN CASE WHEN customer_segment IN ('DCS','PL-TSEL') THEN 'b2c' ELSE 'b2b' END WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') THEN 'b2c' ELSE 'b2b' END AS seg`;
 
         const buildSegmentAggregateColumns = (bucket: BucketKeyNoAll): string[] => {
           return [
@@ -2590,7 +2593,7 @@ static async getTicketManagementOverviewSummary(
     const branchKey = branchId ? `:${branchId}` : '';
     const cacheKey = `dashboard:ticket_management_overview_summary:${role}:${scopedUserId}:${workzone || 'all'}${branchKey}`;
 
-    return getOrSetCache(
+    return getOrSetCacheSwr(
       cacheKey,
       async () => {
         const bucketDefs = [
@@ -2606,7 +2609,7 @@ static async getTicketManagementOverviewSummary(
         type BucketKeyNoKpi = (typeof NON_KPI_BUCKETS)[number];
         const ALL_BUCKETS = ['kpi_customer', ...NON_KPI_BUCKETS] as const;
 
-        const SEG_SQL = `CASE WHEN customer_segment IN ('DCS', 'PL-TSEL') THEN 'b2c' ELSE 'b2b' END AS seg`;
+        const SEG_SQL = `CASE WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare') THEN 'netral' WHEN LOWER(TRIM(COALESCE(jenis_tiket_2,'')))='permintaan' THEN CASE WHEN customer_segment IN ('DCS','PL-TSEL') THEN 'b2c' ELSE 'b2b' END WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') THEN 'b2c' ELSE 'b2b' END AS seg`;
 
         const buildSegmentAggregateColumns = (bucket: string): string[] => {
           return [
@@ -3150,7 +3153,7 @@ static async getTicketManagementOverviewSummary(
     `;
 
     const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
-      sql,
+      withMaxExecutionTime(sql),
       ...params,
       startWib,
       nextHourWib,
@@ -3195,7 +3198,7 @@ static async getTicketManagementOverviewSummary(
     `;
 
     const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
-      sql,
+      withMaxExecutionTime(sql),
       ...params,
       start,
       end,
@@ -3265,7 +3268,7 @@ static async getTicketManagementOverviewSummary(
         masuk: bigint | number;
         close: bigint | number;
       }>
-    >(sql, ...params, startUtc, ...params, startUtc);
+    >(withMaxExecutionTime(sql), ...params, startUtc, ...params, startUtc);
 
     const map = new Map<string, { date: string; masuk: number; close: number }>();
     for (let i = 0; i < days; i++) {
@@ -3310,7 +3313,7 @@ static async getTicketManagementOverviewSummary(
       ORDER BY count DESC, symptom_clean ASC
       LIMIT ?
     `;
-    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(sql, ...params, limit);
+    const rows = await prisma.$queryRawUnsafe<Array<{ symptom_clean: string; count: bigint }>>(withMaxExecutionTime(sql), ...params, limit);
     return rows.map((r) => ({ symptom: r.symptom_clean, count: Number(r.count) }));
   }
 
@@ -3420,7 +3423,7 @@ static async getTicketManagementOverviewSummary(
       total: bigint; open: bigint; assigned: bigint; close: bigint;
       customer_count: bigint; sqm_count: bigint; unspec_count: bigint;
       ffg_count: bigint; gamas_count: bigint; p1_count: bigint; pplus_count: bigint;
-    }>>(sql, ...params);
+    }>>(withMaxExecutionTime(sql), ...params);
 
     const mapRow = (r: typeof rows[number]) => ({
       total: Number(r.total),

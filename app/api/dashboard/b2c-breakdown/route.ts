@@ -6,6 +6,8 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { parseSearchType } from '@/lib/search-intent';
 import { DASHBOARD_CACHE_TTL, getOrSetCacheSwr } from '@/lib/cache';
+import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +61,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('b2c-breakdown overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     const message = getErrorMessage(error, 'Failed to fetch B2C breakdown');
     const status = getErrorStatus(error, 500);
     return NextResponse.json({ success: false, message }, { status });

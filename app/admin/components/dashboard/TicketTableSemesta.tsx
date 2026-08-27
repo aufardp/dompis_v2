@@ -62,7 +62,7 @@ export interface AdminTicketTableSemestaProps {
     onPageChange: (page: number) => void;
   };
   downloadFilters?: {
-    dept: 'all' | 'b2b' | 'b2c';
+    dept: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
     search?: string;
     workzone?: string;
     branch?: string;
@@ -375,7 +375,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
     try {
       const params = new URLSearchParams();
       params.set('format', downloadFormat);
-      params.set('dept', downloadFilters.dept);
+      params.set('dept', downloadFilters.dept === 'neutral' ? 'netral' : downloadFilters.dept);
 
       if (downloadFilters.search) params.set('search', downloadFilters.search);
       if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);

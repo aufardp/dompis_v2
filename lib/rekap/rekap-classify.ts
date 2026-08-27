@@ -1,5 +1,5 @@
 import { getTicketCategory } from '@/app/libs/ticket-utils';
-import { normalizeJenis } from '@/app/config/jenis-tiket';
+import { isB2CJenis, isNetralJenis, normalizeJenis } from '@/app/config/jenis-tiket';
 
 /**
  * Shared JS classification for rekap workorder cells.
@@ -164,9 +164,30 @@ const CLASS_BY_BUCKET: Record<string, ClassBucketKey> = {
   obsolete: 'obsolete',
 };
 
-function getSegKey(customer_segment?: string | null): 'b2c' | 'b2b' {
+function isB2CSegment(customer_segment?: string | null): boolean {
   const seg = (customer_segment ?? '').toUpperCase();
-  return seg === 'DCS' || seg === 'PL-TSEL' ? 'b2c' : 'b2b';
+  return seg === 'DCS' || seg === 'PL-TSEL';
+}
+
+export function getSegKey(
+  customer_segment?: string | null,
+  jenis_tiket_2?: string | null,
+): 'b2c' | 'b2b' | 'netral' {
+  if (jenis_tiket_2 != null && String(jenis_tiket_2).trim() !== '') {
+    if (isNetralJenis(jenis_tiket_2)) return 'netral';
+    if (normalizeJenis(jenis_tiket_2) === 'permintaan')
+      return isB2CSegment(customer_segment) ? 'b2c' : 'b2b';
+    if (isB2CJenis(jenis_tiket_2)) return 'b2c';
+    return 'b2b';
+  }
+  return isB2CSegment(customer_segment) ? 'b2c' : 'b2b';
+}
+
+export function getSegKeyByJenis(
+  jenis_tiket_2?: string | null,
+  customer_segment?: string | null,
+): 'b2c' | 'b2b' | 'netral' {
+  return getSegKey(customer_segment, jenis_tiket_2);
 }
 
 export function matchesBucket(row: {
@@ -274,8 +295,15 @@ export function matchesDetail(
     return key === 'b2b' ? segKey === 'b2b' : segKey === 'b2c';
   }
 
-  if (segName === 'b2c' || segName === 'b2b') {
-    if (getSegKey(row.customer_segment) !== segName) return false;
+  if (
+    segName === 'b2c' ||
+    segName === 'b2b' ||
+    segName === 'netral' ||
+    segName === 'neutral'
+  ) {
+    const normalizedSegName = segName === 'neutral' ? 'netral' : segName;
+    if (getSegKey(row.customer_segment, row.jenis_tiket_2) !== normalizedSegName)
+      return false;
 
     const isCustomerTypeKey =
       bucket === 'kpi_customer' &&

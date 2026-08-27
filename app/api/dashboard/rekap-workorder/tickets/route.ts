@@ -8,6 +8,7 @@ import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.he
 import { toWibString, toWibDateString } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
 import { buildCellFilterSql } from '@/lib/rekap/rekap-cell-filter';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 
 interface RekapMemberTicketRow {
   id_ticket: number;
@@ -244,11 +245,11 @@ export async function GET(request: NextRequest) {
             ...cellParams,
           ),
           prisma.$queryRawUnsafe<{ total: bigint }[]>(
-            `SELECT COUNT(*) AS total
+            withMaxExecutionTime(`SELECT COUNT(*) AS total
             FROM ticket t
             JOIN service_area sa ON sa.nama_sa = t.workzone
             JOIN area a ON a.id_area = sa.area_id
-            WHERE ${fullWhere}`,
+            WHERE ${fullWhere}`),
             ...params,
             ...cellParams,
           ),
@@ -281,6 +282,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('Rekap workorder tickets overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     logger.error('Rekap workorder tickets error:', error);
     return NextResponse.json(
       {

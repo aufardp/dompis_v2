@@ -9,6 +9,7 @@ import { nowWib, toWibDateString } from '@/lib/timezone';
 import type { KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
 import { getErrorMessage } from '@/app/libs/apiError';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import {
   bucketHSI,
   bucketManja,
@@ -414,7 +415,7 @@ async function getFilteredTickets(
     LEFT JOIN region r   ON r.id_region = b.region_id
     ORDER BY a.nama_area, sa.nama_sa
   `;
-    return prisma.$queryRawUnsafe<RawDurasiRow[]>(fullSql, ...allParams);
+    return prisma.$queryRawUnsafe<RawDurasiRow[]>(withMaxExecutionTime(fullSql), ...allParams);
   }, 60);
 }
 
@@ -501,6 +502,10 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
     });
   } catch (error: any) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('Dashboard durasi overloaded', { error: String(error?.message ?? error) });
+      return NextResponse.json({ error: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     logger.error('Dashboard durasi error:', error);
     if (error.status === 401 || error.status === 403) {
       return NextResponse.json({ error: getErrorMessage(error, 'Unauthorized') }, { status: error.status });

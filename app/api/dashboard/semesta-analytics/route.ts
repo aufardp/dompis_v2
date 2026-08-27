@@ -4,6 +4,8 @@ import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getCache, setCache } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +59,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('semesta-analytics overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     return NextResponse.json(
       {
         success: false,

@@ -70,7 +70,7 @@ type BucketPageProps = {
     description: string;
     tableLabel: string;
     symptom: string;
-    dept?: 'all' | 'b2b' | 'b2c';
+    dept?: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   };
   headerSlot?: ReactNode;
   initialWorkzone?: string;

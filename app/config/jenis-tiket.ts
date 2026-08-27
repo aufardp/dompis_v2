@@ -359,6 +359,19 @@ export const B2B_JENIS_KEYS = JENIS_TIKET_LIST.filter(
   (j) => j.segment === 'b2b',
 ).map((j) => j.key);
 
+export const NETRAL_JENIS_KEYS: JenisKey[] = [
+  'unknown',
+  'digital-spbu',
+  'non-numbering',
+  'billing',
+  'infracare',
+];
+
+export const NETRAL_JENIS_ALIASES = NETRAL_JENIS_KEYS.flatMap((key) => {
+  const cfg = JENIS_MAP.get(key);
+  return cfg ? cfg.dbAliases : [key];
+});
+
 export function normalizeJenis(raw: string | null | undefined): JenisKey | '' {
   if (!raw) return '';
   const cleaned = raw.trim().toLowerCase().replace(/[\s_]/g, '-');
@@ -385,12 +398,19 @@ export function getJenisStyle(raw: string | null | undefined): string {
 
 export function isB2CJenis(raw: string | null | undefined): boolean {
   const key = normalizeJenis(raw);
+  if (isNetralJenis(raw)) return false;
   return !key || B2C_JENIS_KEYS.includes(key);
 }
 
 export function isB2BJenis(raw: string | null | undefined): boolean {
   const key = normalizeJenis(raw);
+  if (isNetralJenis(raw)) return false;
   return !!key && B2B_JENIS_KEYS.includes(key);
+}
+
+export function isNetralJenis(raw: string | null | undefined): boolean {
+  const key = normalizeJenis(raw);
+  return !!key && (NETRAL_JENIS_KEYS as string[]).includes(key);
 }
 
 export function getJenisSlaHours(
@@ -446,5 +466,5 @@ export const B2C_JENIS_ALIASES = JENIS_TIKET_LIST.filter(
 ).flatMap((j) => j.dbAliases);
 
 export const B2B_JENIS_ALIASES = JENIS_TIKET_LIST.filter(
-  (j) => j.segment === 'b2b',
+  (j) => j.segment === 'b2b' && !(NETRAL_JENIS_KEYS as string[]).includes(j.key),
 ).flatMap((j) => j.dbAliases);

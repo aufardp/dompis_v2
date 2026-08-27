@@ -64,7 +64,7 @@ type OperationsSummaryFilters = {
   search?: string;
   workzone?: string;
   branch?: string;
-  dept?: 'all' | 'b2b' | 'b2c';
+  dept?: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   enabled?: boolean;
 };
 
@@ -102,7 +102,10 @@ export function useOperationsSummary({
       }
       if (filters.workzone) params.set('workzone', filters.workzone);
       if (filters.branch) params.set('branch', filters.branch);
-      if (filters.dept && filters.dept !== 'all') params.set('dept', filters.dept);
+      if (filters.dept && filters.dept !== 'all') {
+        const normalizedDept = filters.dept === 'neutral' ? 'netral' : filters.dept;
+        params.set('dept', normalizedDept);
+      }
 
       const res = await fetchWithAuth(
         `/api/dashboard/operations-summary?${params.toString()}`,

@@ -67,6 +67,11 @@ const DEPT_OPTIONS = [
     label: 'B2C',
     tone: 'bg-violet-500/15 text-violet-700 ring-1 ring-violet-500/40 dark:text-violet-300 dark:ring-violet-400/40',
   },
+  {
+    value: 'netral',
+    label: 'Netral',
+    tone: 'bg-slate-500/15 text-slate-700 ring-1 ring-slate-500/40 dark:text-slate-300 dark:ring-slate-400/40',
+  },
 ];
 
 const STATUS_OPTIONS = [
@@ -251,14 +256,14 @@ export default function DetailWoHiClient({
 }) {
   const { branch } = usePersistentBranchScope(initialBranch);
   const [search, setSearch] = useState('');
-  const [dept, setDept] = useState('all');
+  const [dept, setDept] = useState<'all' | 'b2b' | 'b2c' | 'netral' | 'neutral'>('all');
   const [status, setStatus] = useState<'all' | 'open' | 'close' | 'assigned'>('all');
   const [page, setPage] = useState(1);
   const limit = 100;
 
   const queryParams = new URLSearchParams();
   if (search) queryParams.set('search', search);
-  if (dept !== 'all') queryParams.set('dept', dept);
+  if (dept !== 'all') queryParams.set('dept', dept === 'neutral' ? 'netral' : dept);
   if (status !== 'all') queryParams.set('status', status);
   if (branch) queryParams.set('branch', branch);
   queryParams.set('page', String(page));
@@ -291,7 +296,7 @@ export default function DetailWoHiClient({
   }, []);
 
   const handleDeptChange = useCallback((value: string) => {
-    setDept(value);
+    setDept((value === 'neutral' ? 'netral' : value) as 'all' | 'b2b' | 'b2c' | 'netral');
     setPage(1);
   }, []);
 
@@ -304,7 +309,7 @@ export default function DetailWoHiClient({
     async (format: 'xlsx' | 'csv') => {
       const queryParams = new URLSearchParams();
       if (search) queryParams.set('search', search);
-      if (dept !== 'all') queryParams.set('dept', dept);
+      if (dept !== 'all') queryParams.set('dept', dept === 'neutral' ? 'netral' : dept);
       if (status !== 'all') queryParams.set('status', status);
       if (branch) queryParams.set('branch', branch);
       queryParams.set('format', format);

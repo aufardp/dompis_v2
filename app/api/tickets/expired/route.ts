@@ -28,7 +28,8 @@ export async function GET(request: Request) {
     const workzone =
       searchParams.get('workzone') || searchParams.get('sa_id') || null;
     const saId = workzone ? toPositiveInt(workzone, 0) || undefined : undefined;
-    const dept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']);
+    const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']);
+    const dept = rawDept === 'neutral' ? 'netral' : rawDept;
     const ticketType =
       searchParams.get('ticketType') ||
       searchParams.get('jenisTiket') ||

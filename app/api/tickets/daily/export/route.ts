@@ -263,6 +263,10 @@ function filterTicketByJenis(
     return jenisFilter.includes(normalized);
   }
 
+  if (dept === 'netral' || dept === 'neutral') {
+    return jenisFilter.includes(normalized);
+  }
+
   return true;
 }
 
@@ -440,7 +444,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
-    const dept = searchParams.get('dept') ?? 'b2c';
+    const deptRaw = searchParams.get('dept') ?? 'b2c';
+    const dept = deptRaw === 'neutral' ? 'netral' : deptRaw;
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';
@@ -501,7 +506,7 @@ export async function GET(request: Request) {
       allTickets = cached as any[];
     } else if (validasiOnly) {
       const fetchValidasiForDept = async (
-        d: 'b2b' | 'b2c',
+        d: 'b2b' | 'b2c' | 'netral',
       ): Promise<any[]> => {
         const results: any[] = [];
         const firstRes = await DailyTicketService.getDailyTicketTable(
@@ -582,13 +587,15 @@ export async function GET(request: Request) {
       };
 
       if (dept === 'all') {
-        const [b2cTickets, b2bTickets] = await Promise.all([
+        const [b2cTickets, b2bTickets, netralTickets] = await Promise.all([
           fetchValidasiForDept('b2c'),
           fetchValidasiForDept('b2b'),
+          fetchValidasiForDept('netral'),
         ]);
-        allTickets = [...b2cTickets, ...b2bTickets];
+        allTickets = [...b2cTickets, ...b2bTickets, ...netralTickets];
       } else {
-        allTickets = await fetchValidasiForDept(dept as 'b2b' | 'b2c');
+        const normalizedDept = dept === 'neutral' ? 'netral' : dept;
+        allTickets = await fetchValidasiForDept(normalizedDept as 'b2b' | 'b2c' | 'netral');
       }
 
       if (allTickets.length > DIRECT_EXPORT_MAX_ROWS) {

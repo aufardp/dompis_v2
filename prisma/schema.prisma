@@ -352,6 +352,8 @@ model ticket {
   @@index([device_name, rca, sub_rca, closed_at], map: "idx_ticket_rca_lookup")
   @@index([sync_date], map: "idx_ticket_sync_date")
   @@index([ttr_comply_status, closed_at], map: "idx_ticket_ttr_comply")
+  @@index([booking_date], map: "idx_ticket_booking_date")
+  @@index([closed_at, booking_date], map: "idx_ticket_closed_booking")
 }
 
 model ticket_activity_log {

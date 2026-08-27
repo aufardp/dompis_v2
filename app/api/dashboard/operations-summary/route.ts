@@ -19,6 +19,8 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
+import { buildDeptJenisWhere } from '@/lib/dept';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +54,7 @@ function isMissingIndexError(error: unknown): boolean {
 
 function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   const filterParams = new URLSearchParams(params);
-  if (filterParams.has('_t')) return null;
+  filterParams.delete('_t');
   filterParams.sort();
   return `dashboard_operations_summary:${role}:${userId}:${filterParams.toString()}`;
 }
@@ -455,12 +457,14 @@ async function queryRawWithOptionalIndex<T>(
   sqlWithoutIndex: string,
   params: unknown[],
 ): Promise<T> {
+  const hintedWithIndex = withMaxExecutionTime(sqlWithIndex);
+  const hintedWithoutIndex = withMaxExecutionTime(sqlWithoutIndex);
   try {
-    return await prisma.$queryRawUnsafe<T>(sqlWithIndex, ...params);
+    return await prisma.$queryRawUnsafe<T>(hintedWithIndex, ...params);
   } catch (error) {
     if (!isMissingIndexError(error)) throw error;
     logger.warn('[OperationsSummary] FORCE INDEX skipped:', { detail: String((error as Error)?.message ?? error) });
-    return prisma.$queryRawUnsafe<T>(sqlWithoutIndex, ...params);
+    return prisma.$queryRawUnsafe<T>(hintedWithoutIndex, ...params);
   }
 }
 
@@ -618,7 +622,7 @@ async function buildOperationsSummaryResult(
   filters: {
     search: string;
     searchType: ReturnType<typeof parseSearchType>;
-    dept: 'all' | 'b2b' | 'b2c';
+    dept: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
     workzone?: string;
     ticketType?: string;
     statusUpdate?: string;
@@ -634,19 +638,9 @@ async function buildOperationsSummaryResult(
   )) as Prisma.ticketWhereInput;
   const activeWhere = DailyTicketService.buildMainTableWhere(where);
 
-  const b2cWhere = withWhere(
-    where,
-    { customer_segment: { in: ['DCS', 'PL-TSEL'] } } as Prisma.ticketWhereInput,
-  );
-  const b2bWhere = withWhere(
-    where,
-    {
-      OR: [
-        { customer_segment: { notIn: ['DCS', 'PL-TSEL'] } },
-        { customer_segment: null },
-      ],
-    } as Prisma.ticketWhereInput,
-  );
+  const b2cWhere = withWhere(where, (buildDeptJenisWhere('b2c') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
+  const b2bWhere = withWhere(where, (buildDeptJenisWhere('b2b') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
+  const netralWhere = withWhere(where, (buildDeptJenisWhere('netral') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
   const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
   const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
 
@@ -655,6 +649,7 @@ async function buildOperationsSummaryResult(
     b2cRegulerStats,
     b2bGroups,
     b2bRegulerGroups,
+    netralGroups,
     serviceAreas,
     focusRaw,
   ] = await Promise.all([
@@ -662,6 +657,7 @@ async function buildOperationsSummaryResult(
     buildB2CSummary(b2cRegulerWhere),
     buildB2BGroupsOptimized(b2bWhere),
     buildB2BGroupsOptimized(b2bRegulerWhere),
+    buildB2BGroupsOptimized(netralWhere),
     buildServiceAreas(where),
     (() => {
       const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere);
@@ -711,12 +707,18 @@ async function buildOperationsSummaryResult(
 
   const b2cTotal = b2cStats.summary.total;
   const b2bTotal = b2bSummary.total;
+  const netralTotal = Object.values(netralGroups).reduce((s, g) => s + g.total, 0);
+  const netralSummary = Object.values(netralGroups).reduce((acc, g) => {
+    acc.total += g.total; acc.open += g.open; acc.assigned += g.assigned; acc.close += g.close;
+    acc.ffgCount += g.ffgCount ?? 0; acc.gamasCount += g.gamasCount ?? 0; acc.p1Count += g.p1Count ?? 0; acc.pPlusCount += g.pPlusCount ?? 0;
+    return acc;
+  }, cloneCounts());
 
   const overallSummary = {
-    total: b2cStats.summary.total + b2bSummary.total,
-    unassigned: b2cStats.summary.open + b2bSummary.open,
-    assigned: b2cStats.summary.assigned + b2bSummary.assigned,
-    close: b2cStats.summary.close + b2bSummary.close,
+    total: b2cStats.summary.total + b2bSummary.total + netralSummary.total,
+    unassigned: b2cStats.summary.open + b2bSummary.open + netralSummary.open,
+    assigned: b2cStats.summary.assigned + b2bSummary.assigned + netralSummary.assigned,
+    close: b2cStats.summary.close + b2bSummary.close + netralSummary.close,
   };
 
   return {
@@ -727,10 +729,13 @@ async function buildOperationsSummaryResult(
       close: overallSummary.close,
       b2c: b2cTotal,
       b2b: b2bTotal,
+      netral: netralTotal,
     },
     b2cStats: b2cSummary,
     b2bSummary,
     b2bGroups,
+    netralGroups,
+    netralSummary,
     serviceAreas,
     focusCounts,
     generatedAt: new Date().toISOString(),
@@ -756,10 +761,11 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const branchParam = searchParams.get('branch');
+    const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']) ?? 'all';
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
-      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']) ?? 'all',
+      dept: rawDept === 'neutral' ? 'netral' : rawDept,
       workzone: searchParams.get('workzone') || undefined,
       branchId: branchParam ? Number(branchParam) : undefined,
       ticketType:
@@ -773,13 +779,11 @@ export async function GET(request: Request) {
     };
 
     const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
-    const result = cacheKey
-      ? await getOrSetCacheSwr(
-          cacheKey,
-          () => buildOperationsSummaryResult(user, filters),
-          CACHE_TTL_SECONDS,
-        )
-      : await buildOperationsSummaryResult(user, filters);
+    const result = await getOrSetCacheSwr(
+      cacheKey,
+      () => buildOperationsSummaryResult(user, filters),
+      CACHE_TTL_SECONDS,
+    );
 
     return NextResponse.json(
       {
@@ -789,6 +793,13 @@ export async function GET(request: Request) {
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('[OperationsSummary] overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json(
+        { success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       {
         success: false,

@@ -96,7 +96,7 @@ export interface AdminTicketTableProps {
   highlightQuery?: string;
   flaggingFilter?: string[];
   downloadFilters?: {
-    dept: 'all' | 'b2b' | 'b2c';
+    dept: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
     ticketType?: string[];
     ticketGroup?: string[];
     operationalBucket?: string[];
@@ -362,7 +362,7 @@ export default function TicketTable({
     try {
       const params = new URLSearchParams();
       params.set('format', downloadFormat);
-      params.set('dept', downloadFilters.dept);
+      params.set('dept', downloadFilters.dept === 'neutral' ? 'netral' : downloadFilters.dept);
 
       for (const t of downloadFilters.ticketType ?? []) {
         params.append('ticketType', t);

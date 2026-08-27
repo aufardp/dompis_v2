@@ -10,6 +10,7 @@ import {
 import { buildTicketRoleScopeSql } from '@/app/libs/tickets/scope';
 import { toWibString } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 const TIER_KEYS = ['diamond', 'platinum', 'gold', 'reguler'] as const;
 type TierKey = (typeof TIER_KEYS)[number];
@@ -201,6 +202,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('assurance-guarantee/tickets overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     logger.error('Assurance guarantee tickets error:', error);
     return NextResponse.json(
       { success: false, message: 'Internal server error' },

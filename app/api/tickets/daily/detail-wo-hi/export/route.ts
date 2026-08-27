@@ -184,7 +184,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const format = (searchParams.get('format') ?? 'xlsx').toLowerCase();
-    const dept = (searchParams.get('dept') ?? 'all') as string;
+    const rawDept = (searchParams.get('dept') ?? 'all') as string;
+    const dept = rawDept === 'neutral' ? 'netral' : rawDept;
     const search = searchParams.get('search') ?? '';
     const searchType = parseSearchType(searchParams.get('searchType'));
     const workzone = searchParams.get('workzone') ?? '';

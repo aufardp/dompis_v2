@@ -55,7 +55,7 @@ function mapTicketForTable(t: Ticket): TicketTableItem {
 interface B2CPanelProps {
   searchQuery: string;
   workzoneFilter: string;
-  deptFilter: 'all' | 'b2b' | 'b2c';
+  deptFilter: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   ctypeFilter: string;
   tickets: Ticket[];
   b2cStatsFromApi?: {

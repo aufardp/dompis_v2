@@ -7,6 +7,8 @@ import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { logger } from '@/lib/observability/logger';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +39,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
     const branchParam = searchParams.get('branch');
+    const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']);
     const filters = {
       search: searchParams.get('search') || '',
       searchType: parseSearchType(searchParams.get('searchType')),
-      dept: toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c']),
+      dept: rawDept === 'neutral' ? 'netral' : rawDept,
       workzone: searchParams.get('workzone') || undefined,
       branchId: branchParam ? Number(branchParam) : undefined,
       operationalBucket: rawBucket ? [rawBucket] : undefined,
@@ -67,6 +70,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    if (isQueryOverloadError(error)) {
+      logger.warn('top-symptoms overloaded', { error: String((error as Error)?.message ?? error) });
+      return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
+    }
     const message = getErrorMessage(error, 'Failed to fetch top symptoms');
     const status = getErrorStatus(error, 500);
     return NextResponse.json({ success: false, message }, { status });

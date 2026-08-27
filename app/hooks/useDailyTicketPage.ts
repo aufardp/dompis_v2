@@ -15,7 +15,7 @@ type DailyTicketPageFilters = {
   excludeSymptom?: string;
   workzone?: string;
   branch?: string;
-  dept: 'all' | 'b2b' | 'b2c';
+  dept: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
   ctype?: string;
   ticketType?: string[];
   ticketGroup?: string[];
@@ -132,8 +132,9 @@ export function useDailyTicketPage({
     placeholderData: search?.trim() ? undefined : keepPreviousData,
     enabled,
     queryFn: async () => {
+      const normalizedDept = dept === 'neutral' ? 'netral' : dept;
       const params = new URLSearchParams({
-        dept,
+        dept: normalizedDept,
         page: String(page),
         limit: String(limit),
         validasiPage: String(validasiPage),

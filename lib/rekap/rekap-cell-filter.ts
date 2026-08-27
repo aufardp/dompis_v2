@@ -33,8 +33,9 @@ function quoteList(values: readonly string[]): string {
     .join(',')})`;
 }
 
-const B2C_SEG_SQL = `t.customer_segment IN ('DCS','PL-TSEL')`;
-const B2B_SEG_SQL = `(t.customer_segment IS NULL OR t.customer_segment NOT IN ('DCS','PL-TSEL'))`;
+const NETRAL_SEG_SQL = `LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare')`;
+const B2C_SEG_SQL = `(LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') OR (LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) = 'permintaan' AND t.customer_segment IN ('DCS','PL-TSEL')))`;
+const B2B_SEG_SQL = `((NOT (${NETRAL_SEG_SQL}) AND LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) != 'permintaan' AND LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) NOT IN ('reguler','hvc','sqm','unspec')) OR (LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) = 'permintaan' AND (t.customer_segment IS NULL OR t.customer_segment NOT IN ('DCS','PL-TSEL'))))`;
 const GAMAS_BASE_SQL = `LOWER(t.source_ticket) = 'gamas'`;
 
 const CLOSE_STATUS_SQL = quoteList(
@@ -180,7 +181,13 @@ export function buildDetailClause(
   }
 
   if (segName === 'unspec' || segName === 'segment') {
-    return key === 'b2b' ? B2B_SEG_SQL : B2C_SEG_SQL;
+    if (key === 'b2b') return B2B_SEG_SQL;
+    if (key === 'netral' || key === 'neutral') return NETRAL_SEG_SQL;
+    return B2C_SEG_SQL;
+  }
+
+  if (segName === 'netral' || segName === 'neutral') {
+    return NETRAL_SEG_SQL;
   }
 
   if (segName === 'gamas') {

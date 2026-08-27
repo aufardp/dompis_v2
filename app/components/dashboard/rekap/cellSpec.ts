@@ -194,7 +194,7 @@ export function buildDetailCellSpec(
   }
 
   if (segment === 'unspec') {
-    const keyRaw = key === 'unspec-b2b' ? 'b2b' : 'b2c';
+    const keyRaw = key === 'unspec-b2b' ? 'b2b' : key === 'unspec-netral' ? 'netral' : 'b2c';
     return {
       key: `detail|unspec|${keyRaw}|${subLabel}|${scopeKey(scope)}`,
       bucket: 'non_kpi_unspec',
@@ -207,9 +207,9 @@ export function buildDetailCellSpec(
     };
   }
 
-  // Unspec view renders unspec keys inside the B2C / B2B group segments.
+  // Unspec view renders unspec keys inside the B2C / B2B / Netral group segments.
   if (detailMode === 'non_kpi_unspec') {
-    const keyRaw = segment === 'b2b' ? 'b2b' : 'b2c';
+    const keyRaw = segment === 'b2b' ? 'b2b' : segment === 'netral' || segment === 'neutral' ? 'netral' : 'b2c';
     return {
       key: `detail|unspec|${keyRaw}|${subLabel}|${scopeKey(scope)}`,
       bucket: 'non_kpi_unspec',
@@ -245,19 +245,20 @@ export function buildDetailCellSpec(
 export function buildSegmentCellSpec(
   detailMode: string | undefined,
   status: RekapStatusFilter,
-  segment: 'b2b' | 'b2c',
+  segment: 'b2b' | 'b2c' | 'netral' | 'neutral',
   scope: RekapCellScope,
 ): RekapCellSpec {
+  const normalizedSegment = segment === 'neutral' ? 'netral' : segment;
   const bucket = detailMode ?? 'all';
   return {
-    key: `segment|${bucket}|${segment}|${status}|${scopeKey(scope)}`,
+    key: `segment|${bucket}|${normalizedSegment}|${status}|${scopeKey(scope)}`,
     bucket,
-    detail: `segment:${segment}`,
+    detail: `segment:${normalizedSegment}`,
     status,
     legacyCustomer: bucket === 'kpi_customer',
     scope,
     label: [
-      `${segment.toUpperCase()} · ${STATUS_LABEL[status]}`,
+      `${normalizedSegment.toUpperCase()} · ${STATUS_LABEL[status]}`,
       scopeLabel(scope),
     ]
       .filter(Boolean)
