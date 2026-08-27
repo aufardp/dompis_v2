@@ -9,7 +9,7 @@ const BASE_BACKOFF_MS = 60 * 1000;
 const MAX_BACKOFF_MS = 15 * 60 * 1000;
 const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 100;
-const SENDING_CHUNK_SIZE = 50; // chunk size for SENDING updates to avoid long-running TX
+const SENDING_CHUNK_SIZE = 50;
 
 export const DISPATCHABLE_TECH_EVENT_TYPES = [
   'TICKET_STATUS_CHANGED',
@@ -39,7 +39,8 @@ async function withP1017Retry<T>(fn: () => Promise<T>): Promise<T> {
 
 function getBatchSize(): number {
   const configured = Number(process.env.TECH_EVENTS_DISPATCH_BATCH_SIZE);
-  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_BATCH_SIZE;
+  if (!Number.isFinite(configured) || configured <= 0)
+    return DEFAULT_BATCH_SIZE;
   return Math.min(MAX_BATCH_SIZE, Math.floor(configured));
 }
 
@@ -83,7 +84,9 @@ export async function dispatchTechEvents() {
     prismaBulk.tech_event_outbox.findMany({
       where: {
         status: 'PENDING',
-        event_type: { in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[] },
+        event_type: {
+          in: DISPATCHABLE_TECH_EVENT_TYPES as unknown as string[],
+        },
         OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }],
       },
       orderBy: { created_at: 'asc' },
@@ -155,8 +158,9 @@ export async function dispatchTechEvents() {
           attempt_count: { increment: 1 },
           last_error: batchErrorMsg,
           status: isFinal ? 'FAILED' : 'PENDING',
-          next_attempt_at:
-            isFinal ? null : new Date(Date.now() + computeBackoff(newAttempt)),
+          next_attempt_at: isFinal
+            ? null
+            : new Date(Date.now() + computeBackoff(newAttempt)),
         },
       }),
     );

@@ -683,16 +683,28 @@ async function bulkUpsertTicketRaw(
     .filter((column) => column !== 'incident')
     .map((column) => {
       if (dataOnly.has(column)) {
+        // Nossa is the source of truth, but piloting_tickets may supplement
+        // fields Nossa leaves empty. A non-null Nossa value always wins; a
+        // null Nossa value must retain an existing Piloting complement.
+        // Bridge-only fields live in ticket_raw_bridge_ext and are handled
+        // separately as a complete Bridge snapshot.
         return Prisma.sql`${sqlIdentifier(column)} = IF(
-          sourceTable IN ('nossa','nossa_closed')
-          AND NOT (${incomingIsBridge})
-          AND VALUES(${sqlIdentifier(column)}) IS NOT NULL
-          AND ${sqlIdentifier(column)} IS NULL,
-          VALUES(${sqlIdentifier(column)}),
+          ${incomingIsBridge},
           IF(
-            ${keepOldGuard},
+            VALUES(${sqlIdentifier(column)}) IS NULL,
             ${sqlIdentifier(column)},
-            IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})
+            VALUES(${sqlIdentifier(column)})
+          ),
+          IF(
+            sourceTable IN ('nossa','nossa_closed')
+            AND VALUES(${sqlIdentifier(column)}) IS NOT NULL
+            AND ${sqlIdentifier(column)} IS NULL,
+            VALUES(${sqlIdentifier(column)}),
+            IF(
+              ${keepOldGuard},
+              ${sqlIdentifier(column)},
+              IF(VALUES(${sqlIdentifier(column)}) IS NOT NULL, VALUES(${sqlIdentifier(column)}), ${sqlIdentifier(column)})
+            )
           )
         )`;
       }
@@ -741,7 +753,9 @@ async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Pro
   const setClause = Prisma.join(
     EXT_COLUMNS.map(
       (col) =>
-        Prisma.sql`${sqlIdentifier(col)} = IF(VALUES(${sqlIdentifier(col)}) IS NOT NULL, VALUES(${sqlIdentifier(col)}), ${sqlIdentifier(col)})`,
+        // ticket_raw_bridge_ext is bridge-owned, so mirror the complete
+        // snapshot including intentional NULLs.
+        Prisma.sql`${sqlIdentifier(col)} = VALUES(${sqlIdentifier(col)})`,
     ),
     ',\n',
   );
@@ -960,8 +974,10 @@ async function processBatch(
     assertNotAborted(signal);
     await bulkUpsertTicketRaw(sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
     await bulkUpsertTicketRawExt(extRows);
-    // Skip heartbeat upsert — hash & status unchanged, no data to write.
-    // lastSeenAt tracking is not critical; stale detection uses updated_at.
+    // A matching hash is not a business change, but it proves the incident is
+    // still present in the latest scan. Keep that freshness separately from
+    // importedAt/syncVersion so projection is not needlessly re-run.
+    await bulkUpsertTicketRaw(sortedHeartbeatRows, ['incident', 'lastSeenAt'], nossaDown);
     if (quarantined.length > 0) {
       await tx.ingestion_quarantine.createMany({ data: quarantined });
       await incrIngestionQuarantine(quarantined.length);
@@ -1282,11 +1298,28 @@ async function processTable(
             component: 'ingestion', tableName, batchId, mode,
           });
           const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
-          await ingestionQueue.add(
-            jobName,
-            { table: tableName, correlationId: batchId },
-            { jobId: jobName },
-          );
+          const existingJob = await ingestionQueue.getJob(jobName);
+          if (existingJob) {
+            const existingState = await existingJob.getState();
+            if (existingState === 'completed' || existingState === 'failed') {
+              // Remove jobs retained from an older deployment before adding
+              // the next scan. Current jobs are removed on completion, but a
+              // retained static jobId must never permanently stop ingestion.
+              await existingJob.remove();
+            } else {
+              logger.info('[Ingestion] Bridge scan already queued or running', {
+                component: 'ingestion', tableName, batchId, jobId: jobName, state: existingState,
+              });
+            }
+          }
+          const jobStillExists = await ingestionQueue.getJob(jobName);
+          if (!jobStillExists) {
+            await ingestionQueue.add(
+              jobName,
+              { table: tableName, correlationId: batchId },
+              { jobId: jobName },
+            );
+          }
         }
       }
 

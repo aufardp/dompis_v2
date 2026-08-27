@@ -1067,6 +1067,7 @@ export async function runStatusRefresh(
     const changedRows: ExternalStatusRow[] = [];
     const externalRowsByIncident = new Map<string, ExternalStatusRow>();
     const changedFieldsByIncident = new Map<string, string[]>();
+    const checkedCandidates: CandidateRow[] = [];
     const processedTables = new Set<string>();
     for (const [sourceTable, tableCandidates] of byTable) {
       assertNotAborted(signal);
@@ -1076,23 +1077,32 @@ export async function runStatusRefresh(
       const BRIDGE_TABLES = new Set(['nossa', 'nossa_closed']);
       const useBridge = BRIDGE_TABLES.has(sourceTable) && isQosmicBridgeConfigured();
 
-      if (useBridge && process.env.BRIDGE_JOB_REFRESH_ENABLED === 'true') {
-        logger.info('[StatusRefresh] Pushing bridge refresh jobs', {
-          table: sourceTable, count: tableCandidates.length,
-        });
-        const { interactiveQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
-        await interactiveQueue.addBulk(
-          tableCandidates.map((row) => ({
-            name: 'refresh-ticket',
-            data: { incident: row.incident, sourceTable, correlationId: `${batchId}-${row.incident}` },
-            opts: {
-              priority: 5,
-              jobId: `refresh-${sourceTable}-${row.incident}`,
-            },
-          })),
-        );
-        result.fetched += tableCandidates.length;
-        continue; // skip inline fetch + upsert
+      if (useBridge) {
+        if (process.env.BRIDGE_JOB_REFRESH_ENABLED === 'true') {
+          logger.info('[StatusRefresh] Pushing bridge refresh jobs', {
+            table: sourceTable, count: tableCandidates.length,
+          });
+          const { interactiveQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+          await interactiveQueue.addBulk(
+            tableCandidates.map((row) => ({
+              name: 'refresh-ticket',
+              data: { incident: row.incident, sourceTable, correlationId: `${batchId}-${row.incident}` },
+              opts: {
+                priority: 5,
+                jobId: `refresh-${sourceTable}-${row.incident}`,
+              },
+            })),
+          );
+          result.fetched += tableCandidates.length;
+        } else {
+          logger.info('[StatusRefresh] Bridge candidates skipped; bulk ingestion owns Nossa freshness', {
+            table: sourceTable,
+            count: tableCandidates.length,
+          });
+        }
+        // Do not fall back to N individual bridge calls and do not mark these
+        // candidates checked before an asynchronous bridge job actually writes.
+        continue;
       }
 
       const externalRows = useBridge
@@ -1106,6 +1116,7 @@ export async function runStatusRefresh(
           );
       result.fetched += externalRows.size;
       result.missing += tableCandidates.length - externalRows.size;
+      checkedCandidates.push(...tableCandidates);
 
       for (const candidate of tableCandidates) {
         const external = externalRows.get(candidate.incident);
@@ -1146,7 +1157,7 @@ export async function runStatusRefresh(
       await batchCloseTickets(closedRows, batchId);
     }
 
-    await markChecked(candidates, externalRowsByIncident, batchId);
+    await markChecked(checkedCandidates, externalRowsByIncident, batchId);
     result.durationMs = Date.now() - start;
     await finishRunLog(batchId, 'success', result);
     await recordMetrics('success', result);

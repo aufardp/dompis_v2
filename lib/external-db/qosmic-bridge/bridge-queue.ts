@@ -1,12 +1,9 @@
 import { Queue, Worker, QueueEvents } from 'bullmq';
 import { redis, isRedisReady } from '@/lib/redis';
-import { prisma } from '@/app/libs/prisma';
-import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/observability/logger';
 import { WorkerTaskState, shouldRunWithCircuitBreaker, nowWIB, runWithCorrelationContext } from '@/lib/workers/task-runner';
 import { iterateNossaOpen, iterateNossaClosedIncremental, iterateNossaClosedWindow, fetchByIncident } from './nossa';
 import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY } from './client';
-import { normalizeExternalRow } from '@/lib/ingestion/normalizer';
 import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
@@ -37,59 +34,6 @@ const BRIDGE_JOB_SEARCH_ENABLED = process.env.BRIDGE_JOB_SEARCH_ENABLED === 'tru
 const BRIDGE_JOB_REFRESH_ENABLED = process.env.BRIDGE_JOB_REFRESH_ENABLED === 'true';
 const BRIDGE_JOB_INGESTION_ENABLED = process.env.BRIDGE_JOB_INGESTION_ENABLED === 'true';
 const BRIDGE_JOB_BACKFILL_ENABLED = process.env.BRIDGE_JOB_BACKFILL_ENABLED === 'true';
-
-// ── Data columns (SANS sourceUpdatedAt, syncVersion, metadata) ─────
-// These match ticket_raw columns that the bridge API can provide
-const DATA_COLUMNS = [
-  'incident', 'sourceTable', 'status', 'status_date',
-  'date_modified', 'worklog_summary', 'last_update_worklog',
-  'closed_reopen_by', 'realm', 'tsc_result', 'scc_result',
-  'service_no', 'customer_id', 'customer_name',
-  'customer_segment', 'witel', 'region', 'symptom', 'cause',
-  'channel', 'workzone', 'source_ticket', 'external_ticket_id',
-  'service_type', 'slg', 'rk_information', 'technology',
-  'ticket_id_gamas', 'reported_date', 'ttr_customer',
-  'ttr_nasional', 'ttr_region', 'ttr_witel', 'ttr_mitra',
-  'ttr_agent', 'owner', 'owner_group', 'description_actual_solution',
-  'classification_path', 'impacted_site', 'reported_by',
-  'ttr_pending', 'incident_domain', 'technician', 'customer_type',
-  'resolution', 'gaul', 'contact_email', 'resolve_date',
-  'description_assignment', 'ttr_end_to_end', 'guarantee_status',
-  'related_to_gamas', 'booking_date', 'urgency', 'solution',
-  'closed_by', 'street_address', 'summary', 'service_id',
-  'reported_priority',
-  'lastSeenAt', 'importedAt', 'import_batch',
-  'syncBatchId', 'sync_date',
-];
-
-// ── Staleness + NOT NULL Guard ──────────────────────────────────────
-function buildUpsertSetClause(): string {
-  const guards = DATA_COLUMNS.map(col => `
-    ${col} = IF(
-      VALUES(sourceUpdatedAt) IS NOT NULL
-      AND (sourceUpdatedAt IS NULL OR VALUES(sourceUpdatedAt) >= sourceUpdatedAt)
-      AND VALUES(${col}) IS NOT NULL,
-      VALUES(${col}), ${col}
-    )`
-  );
-
-  return `
-    sourceUpdatedAt = CASE
-      WHEN VALUES(sourceUpdatedAt) IS NULL THEN sourceUpdatedAt
-      WHEN sourceUpdatedAt IS NULL THEN VALUES(sourceUpdatedAt)
-      ELSE GREATEST(VALUES(sourceUpdatedAt), sourceUpdatedAt)
-    END,
-    syncVersion = IF(
-      VALUES(sourceUpdatedAt) IS NOT NULL
-      AND (sourceUpdatedAt IS NULL OR VALUES(sourceUpdatedAt) >= sourceUpdatedAt),
-      syncVersion + 1, syncVersion
-    ),
-    isActive = TRUE,
-    ${guards.join(',\n')}
-  `;
-}
-
-const UPSERT_SET_CLAUSE = buildUpsertSetClause();
 
 // ── Per-Incident Lock ────────────────────────────────────────────────
 function lockKey(incident: string): string {
@@ -159,7 +103,10 @@ export const interactiveQueue = new Queue('bridge-interactive', {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 2000 },
-    removeOnComplete: 100,
+    // Refresh jobs use a stable incident jobId to deduplicate only while the
+    // job is waiting/active. Retaining completed jobs would suppress the next
+    // legitimate refresh for that incident.
+    removeOnComplete: true,
     removeOnFail: 200,
   },
 });
@@ -169,7 +116,9 @@ export const ingestionQueue = new Queue('bridge-ingestion', {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 2000 },
-    removeOnComplete: 50,
+    // Ingestion uses one stable jobId per resource. Remove it immediately on
+    // completion so the following scheduled scan can be enqueued.
+    removeOnComplete: true,
     removeOnFail: 100,
   },
 });
@@ -325,148 +274,40 @@ async function handleBackfillWindow(job: any): Promise<{ processed: number }> {
   return { processed };
 }
 
-// ── Helpers for dynamic SQL ─────────────────────────────────────────
-function sqlId(id: string): Prisma.Sql {
-  if (!/^[A-Za-z0-9_]+$/.test(id)) throw new Error(`Unsafe SQL identifier: ${id}`);
-  return Prisma.raw(`\`${id}\``);
-}
-
-const MAX_COLUMN_LENGTH: Record<string, number> = {
-  incident: 50, workzone: 10, gaul: 10, related_to_gamas: 10,
-  classification_flag: 20, customer_segment: 20, service_type: 50,
-  channel: 20, closed_by: 100, closed_reopen_by: 100,
-  source_ticket: 50, external_ticket_id: 50, customer_id: 100,
-  service_id: 100, service_no: 100, slg: 50, technology: 50,
-  owner: 100, owner_group: 100, witel: 100, region: 50,
-  reported_by: 50, ttr_agent: 20, ttr_mitra: 20, ttr_nasional: 20,
-  ttr_region: 20, ttr_witel: 20, ttr_end_to_end: 20, ttr_pending: 20,
-  ttr_customer: 100, guarantee_status: 50, impacted_site: 50,
-  resolve_date: 50, incident_domain: 100, cause: 50, resolution: 50,
-  technician: 255, customer_type: 100, customer_name: 255,
-  description_actual_solution: 100, classification_path: 100,
-  description_assignment: 100, booking_date: 50, urgency: 20,
-  realm: 100, solution: 100, tsc_result: 100, scc_result: 100,
-  rk_information: 100, ticket_id_gamas: 100, street_address: 500,
-  external_ticket_tier_3: 50, customer_category: 50,
-  notes_eskalasi: 255, note: 255, sn_ont: 30, tipe_ont: 20,
-  manufacture_ont: 20, teritory_near_end: 50, teritory_far_end: 50,
-  urgency_description: 100, contact_phone: 50, contact_name: 100,
-  contact_email: 255, reported_priority: 100, subsidiary: 100,
-  perangkat: 100, device_name: 100, hierarchy_path: 100,
-  status: 50, status_date: 100, date_modified: 50,
-  worklog_summary: 100, last_update_worklog: 100,
-  sourceTable: 50, import_batch: 100, syncBatchId: 50,
-  summary: 1000,
-};
-
-function sqlVal(value: unknown, col?: string): Prisma.Sql {
-  if (value === null || value === undefined) return Prisma.sql`NULL`;
-  if (typeof value === 'number') return Prisma.sql`${value}`;
-  if (typeof value === 'boolean') return Prisma.sql`${value}`;
-  if (value instanceof Date) return Prisma.sql`${value}`;
-  let str = String(value);
-  if (col && MAX_COLUMN_LENGTH[col]) {
-    str = str.slice(0, MAX_COLUMN_LENGTH[col]);
-  }
-  return Prisma.sql`${str}`;
-}
-
-// ── Upsert with Staleness + NOT NULL Guard ──────────────────────────
-
-const UPSERT_META_COLS = [
-  'sourceUpdatedAt', 'lastSeenAt', 'importedAt', 'syncBatchId',
-  'sync_date', 'synced_at', 'import_batch', 'isActive',
-];
-
-// Fields the bridge sends that have no column on ticket_raw (already at
-// InnoDB's row-size ceiling) — stored in the companion table instead.
-// Only the bridge writes these, so a plain overwrite-if-not-null upsert is
-// enough; no cross-source conflict resolution like ticket_raw needs.
-const EXT_COLUMNS = [
-  'segment', 'osm_resolved_code', 'assigned_owner_group', 'rca',
-  'tknode', 'hostname', 'ticket_details', 'isobsolete',
-  'c_pending_status', 'c_description_serviceid', 'c_mycx_result',
-  'c_hostname_olt', 'c_service_category', 'c_slg_ttr', 'c_working_hour',
-  'c_package', 'c_ibooster_alert_id', 'total_service_indibiz',
-  'total_service_indihome', 'total_service_nodeb', 'total_all_service',
-  'total_lis_indihome', 'total_lis_indibiz', 'total_service_datin',
-  'total_service_vula', 'total_service_sdwan', 'total_service_wifi',
-  'c_area_tif', 'c_district_tif', 'c_regional_tif',
-  'c_tsc_result_category', 'c_slg_ncx', 'inserted_date', 'c_cts_cause',
-  'c_cts_resolution', 'jml_tiket_anak_gamas', 'c_solution_code',
-  'solution_segment',
-];
-
-async function upsertTicketRawExt(
-  normalized: Record<string, unknown>,
-  incident: string,
-  sourceTable: string,
-): Promise<void> {
-  const cols = ['incident', 'sourceTable', ...EXT_COLUMNS];
-  const values = cols.map((col) => {
-    if (col === 'incident') return sqlVal(incident);
-    if (col === 'sourceTable') return sqlVal(sourceTable);
-    return sqlVal(normalized[col]);
-  });
-  const colIdentifiers = cols.map((c) => sqlId(c));
-  const setClause = EXT_COLUMNS.map(
-    (col) => `${col} = IF(VALUES(${col}) IS NOT NULL, VALUES(${col}), ${col})`,
-  ).join(',\n');
-
-  await prisma.$executeRaw`
-    INSERT INTO ticket_raw_bridge_ext
-      (${Prisma.join(colIdentifiers)})
-    VALUES
-      (${Prisma.join(values)})
-    ON DUPLICATE KEY UPDATE
-      sourceTable = VALUES(sourceTable),
-      ${Prisma.raw(setClause)}
-  `;
-}
-
 async function upsertTicketRaw(
   raw: QosmicRawRow,
   sourceTable: string,
   batchId: string,
 ): Promise<void> {
-  const normalized = normalizeExternalRow(raw as any, sourceTable);
-  const now = new Date();
-  const todayWib = new Intl.DateTimeFormat('id-ID', {
-    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(now).split('/').reverse().join('-');
-  const incident = String(normalized.incident ?? raw.Incident ?? raw.incident ?? '');
-  if (!incident) return;
+  const cursor: ExternalCursorDefinition = {
+    idColumn: null,
+    modifiedColumn: null,
+    createdAtColumn: null,
+    strategy: 'snapshot',
+    columns: [],
+  };
+  const result: ChunkResult = {
+    processed: 0,
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    quarantined: 0,
+    retried: 0,
+    errors: [],
+  };
 
-  const sourceUpdatedAt = normalized.date_modified ? new Date(normalized.date_modified) : now;
-
-  const insertCols = ['incident', 'sourceTable', ...UPSERT_META_COLS, ...DATA_COLUMNS];
-  const uniqueCols = [...new Set(insertCols)];
-
-  const values = uniqueCols.map((col) => {
-    switch (col) {
-      case 'incident': return sqlVal(incident);
-      case 'sourceTable': return sqlVal(sourceTable);
-      case 'sourceUpdatedAt': return sqlVal(sourceUpdatedAt);
-      case 'lastSeenAt': case 'importedAt': case 'synced_at': return sqlVal(now);
-      case 'syncBatchId': case 'import_batch': return sqlVal(batchId);
-      case 'sync_date': return sqlVal(todayWib);
-      case 'isActive': return sqlVal(true);
-      default: return sqlVal(normalized[col as keyof typeof normalized], col);
-    }
-  });
-
-  const colIdentifiers = uniqueCols.map((c) => sqlId(c));
-
-  await prisma.$executeRaw`
-    INSERT INTO ticket_raw
-      (${Prisma.join(colIdentifiers)})
-    VALUES
-      (${Prisma.join(values)})
-    ON DUPLICATE KEY UPDATE
-      ${Prisma.raw(UPSERT_SET_CLAUSE)}
-  `;
-
-  await upsertTicketRawExt(normalized as unknown as Record<string, unknown>, incident, sourceTable);
+  // Every bridge write, including one-incident refresh/search/backfill,
+  // goes through the same normalise → hash → conflict → full-snapshot upsert
+  // pipeline as bulk ingestion. This prevents the two paths from assigning
+  // conflicting meanings to syncVersion, importedAt, and NULL fields.
+  await processRawRows(
+    [raw as Record<string, unknown>],
+    sourceTable,
+    batchId,
+    cursor,
+    result,
+  );
 }
 
 // ── Worker refs (null until startBridgeWorkers) ─────────────────────────

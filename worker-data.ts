@@ -218,7 +218,7 @@ async function runAllTasks(signal: AbortSignal): Promise<void> {
       const { controller, cancel } = withCancellableTimeout(ingestionTimeout * 60_000);
       try {
         const startTime = Date.now();
-        const result = await runIngestion(signal);
+        const result = await runIngestion(AbortSignal.any([signal, controller.signal]));
         const duration = Date.now() - startTime;
 
         logger.info('Ingestion task complete', {
@@ -268,7 +268,7 @@ async function runAllTasks(signal: AbortSignal): Promise<void> {
       const { controller, cancel } = withCancellableTimeout(srTimeout * 60_000);
       try {
         const startTime = Date.now();
-        const result = await runStatusRefresh(signal);
+        const result = await runStatusRefresh(AbortSignal.any([signal, controller.signal]));
         const duration = Date.now() - startTime;
 
         logger.info('Status refresh task complete', {
@@ -313,7 +313,7 @@ async function runAllTasks(signal: AbortSignal): Promise<void> {
       const { controller, cancel } = withCancellableTimeout(arTimeout * 60_000);
       try {
         const startTime = Date.now();
-        const result = await runActiveRefresh(signal);
+        const result = await runActiveRefresh(AbortSignal.any([signal, controller.signal]));
         const duration = Date.now() - startTime;
 
         logger.info('Active refresh task complete', {

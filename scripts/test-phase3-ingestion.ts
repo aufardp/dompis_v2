@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveConflict } from '@/lib/ingestion/conflict-resolver';
+import { computeSourceHash } from '@/lib/ingestion/normalizer';
 
 function testStaleSourceRejected() {
   const existingUpdatedAt = new Date('2026-05-28T10:05:00+07:00');
@@ -67,10 +68,31 @@ function testSameHashNoChange() {
   assert.equal(result.reason, 'no_change');
 }
 
+function testAnyBridgeFieldChangeChangesSnapshotHash() {
+  const original = {
+    incident: 'INC-ALL-COLUMNS',
+    status: 'OPEN',
+    c_tsc_result_category: 'old-value',
+    _sourceTable: 'nossa',
+    _rawPayload: {},
+  } as any;
+  const changed = {
+    ...original,
+    c_tsc_result_category: null,
+  } as any;
+
+  assert.notEqual(
+    computeSourceHash(original),
+    computeSourceHash(changed),
+    'a change in any normalized bridge field, including a value cleared to null, must create a new snapshot version',
+  );
+}
+
 function main() {
   testStaleSourceRejected();
   testNewerSourceCanUpdate();
   testSameHashNoChange();
+  testAnyBridgeFieldChangeChangesSnapshotHash();
   console.log('[test:phase3] ingestion conflict resolution passed');
 }
 
