@@ -28,6 +28,10 @@ export async function POST(request: Request) {
 
   clearSecureCookie(response, 'token');
   clearSecureCookie(response, 'refreshToken');
+  // Clear legacy filter cookies — URL is now source of truth, prevent nyantol on next login
+  const legacyOpts = { path: '/', maxAge: 0 } as const;
+  response.cookies.set('dompis:selected-branch', '', legacyOpts);
+  response.cookies.set('dompis:selected-workzone', '', legacyOpts);
 
   return response;
 }

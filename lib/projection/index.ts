@@ -584,6 +584,7 @@ export function buildProjectionUpsert(
     customerType: (updateData.customer_type as string) ?? null,
     jenisTiket1: (updateData.jenis_tiket_1 as string) ?? null,
     jenisTiket2: (updateData.jenis_tiket_2 as string) ?? null,
+    ticketIdGamas: (updateData.ticket_id_gamas as string) ?? (raw.ticket_id_gamas as string) ?? null,
   });
   updateData.ttr_comply_status = updateCompliance.status;
   updateData.ttr_deadline_at = updateCompliance.deadlineAt;
@@ -630,6 +631,7 @@ export function buildProjectionUpsert(
     customerType: (createData.customer_type as string) ?? null,
     jenisTiket1: (createData.jenis_tiket_1 as string) ?? null,
     jenisTiket2: (createData.jenis_tiket_2 as string) ?? null,
+    ticketIdGamas: (createData.ticket_id_gamas as string) ?? (raw.ticket_id_gamas as string) ?? null,
   });
   createData.ttr_comply_status = createCompliance.status;
   createData.ttr_deadline_at = createCompliance.deadlineAt;

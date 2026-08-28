@@ -4,7 +4,11 @@ import {
   normalizeCustomerType,
   SLA_HOURS_MAP,
 } from '@/app/config/customer-types';
-import { getJenisSlaHours } from '@/app/config/jenis-tiket';
+import {
+  getJenisSlaHours,
+  isNetralJenis,
+  normalizeJenis,
+} from '@/app/config/jenis-tiket';
 import { BOOKING_DEADLINE_HOURS } from '@/app/config/priority-rules';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
@@ -20,6 +24,7 @@ export interface TtrComplyInput {
   customerType: string | null;
   jenisTiket1: string | null;
   jenisTiket2: string | null;
+  ticketIdGamas?: string | null;
 }
 
 export interface TtrComplyResult {
@@ -30,20 +35,47 @@ export interface TtrComplyResult {
 const B2C_SEGMENTS = ['DCS', 'PL-TSEL'];
 
 /**
- * DATIN dan turunannya (ASTINET/METRO_E/VPNIP/SIP_TRUNK) menyimpan tier
- * TTR-nya sebagai suffix " K2"/" K3" di jenis_tiket_2 (mis. "ASTINET K3").
- * Tidak ada suffix = tier K1 (tercepat), sama dengan nilai default DATIN
- * di app/config/jenis-tiket.ts.
+ * K-tier family: DATIN dan turunannya (ASTINET/METRO_E/VPN IP/IP_TRANSIT)
+ * menyimpan tier TTR sebagai suffix " K1"/" K2"/" K3" di jenis_tiket_2
+ * (mis. "ASTINET K3"). Tidak ada suffix = K1 (1.5j). SIP TRUNK tidak ikut
+ * K-tier (flat 10j via slaOverrideHours).
  */
-function getDatinTierHours(
+const K_TIER_JENIS1_SET = new Set(['DATIN']);
+const K_TIER_JENIS2_KEYS = new Set(['datin', 'astinet', 'vpn-ip', 'metro-e', 'ip-transit']);
+
+function getKTierHours(
   jenisTiket1: string | null,
   jenisTiket2: string | null,
 ): number | null {
-  if ((jenisTiket1 ?? '').trim().toUpperCase() !== 'DATIN') return null;
-  const j2 = (jenisTiket2 ?? '').trim().toUpperCase();
-  if (/\bK3$/.test(j2)) return 7.2;
-  if (/\bK2$/.test(j2)) return 3.6;
+  const j1 = (jenisTiket1 ?? '').trim().toUpperCase();
+  const j2Upper = (jenisTiket2 ?? '').trim().toUpperCase();
+  // SIP TRUNK flat 10j, jangan K-tier
+  if (j2Upper.includes('SIP TRUNK') || j2Upper.includes('SIP_TRUNK')) return null;
+
+  const j1IsDatin = K_TIER_JENIS1_SET.has(j1);
+  const j2Key = normalizeJenis(jenisTiket2);
+  const j2IsFamily = j2Key ? K_TIER_JENIS2_KEYS.has(j2Key) : false;
+
+  // K-tier berlaku jika jenis_tiket_1=DATIN (hasil classifier) ATAU
+  // jenis_tiket_2 sendiri adalah family (cover data lama tanpa DATIN)
+  if (!j1IsDatin && !j2IsFamily) return null;
+
+  if (/\bK3$/.test(j2Upper)) return 7.2;
+  if (/\bK2$/.test(j2Upper)) return 3.6;
+  // K1 explicit atau tanpa suffix → K1
   return 1.5;
+}
+
+// Legacy alias untuk kompatibilitas
+const getDatinTierHours = getKTierHours;
+
+function getTopOloHours(
+  jenisTiket2: string | null,
+  ticketIdGamas: string | null | undefined,
+): number | null {
+  if (normalizeJenis(jenisTiket2) !== 'top-olo') return null;
+  const hasGamas = String(ticketIdGamas ?? '').trim().length > 0;
+  return hasGamas ? 7 : 4;
 }
 
 /**
@@ -54,9 +86,14 @@ function getDatinTierHours(
 export function getComplyMaxTtrHours(
   ticket: Pick<
     TtrComplyInput,
-    'customerSegment' | 'customerType' | 'jenisTiket1' | 'jenisTiket2'
+    'customerSegment' | 'customerType' | 'jenisTiket1' | 'jenisTiket2' | 'ticketIdGamas'
   >,
 ): number | null {
+  // Netral exclude dari comply (tapi tetap punya display TTR via jenis-tiket.ts)
+  if (isNetralJenis(ticket.jenisTiket2) || isNetralJenis(ticket.jenisTiket1)) {
+    return null;
+  }
+
   const isB2C = B2C_SEGMENTS.includes(
     (ticket.customerSegment ?? '').trim().toUpperCase(),
   );
@@ -66,8 +103,13 @@ export function getComplyMaxTtrHours(
     return key ? (SLA_HOURS_MAP.get(key) ?? null) : null;
   }
 
-  const datinHours = getDatinTierHours(ticket.jenisTiket1, ticket.jenisTiket2);
-  if (datinHours !== null) return datinHours;
+  // B2B: TOP OLO conditional (ticket_id_gamas ada →7j)
+  const topOloHours = getTopOloHours(ticket.jenisTiket2, ticket.ticketIdGamas);
+  if (topOloHours !== null) return topOloHours;
+
+  // K-tier family (DATIN/ASTINET/VPN IP/METRO-E/IP_TRANSIT)
+  const kTierHours = getKTierHours(ticket.jenisTiket1, ticket.jenisTiket2);
+  if (kTierHours !== null) return kTierHours;
 
   return (
     getJenisSlaHours(ticket.jenisTiket2) ??
@@ -94,6 +136,13 @@ export function computeTtrCompliance(
 
   const reported = parseWIBDateInput(ticket.reportedDate);
   if (!reported) return { status: null, deadlineAt: null };
+
+  // SQM-CCAN workhour: 4j hanya jika reported di jam kerja 08-17 WIB
+  if (normalizeJenis(ticket.jenisTiket2) === 'sqm-ccan') {
+    const wh = getWorkHourCategory(ticket.reportedDate);
+    if (wh === 'non_work_hour') return { status: null, deadlineAt: null };
+    if (wh === null) return { status: null, deadlineAt: null };
+  }
 
   const hours = getComplyMaxTtrHours(ticket);
   if (hours === null) return { status: null, deadlineAt: null };

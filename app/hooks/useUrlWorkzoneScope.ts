@@ -1,10 +1,6 @@
 'use client';
 
-/**
- * @deprecated URL is now source of truth — delegates to ?workzone=.
- * Legacy localStorage/cookie `dompis:selected-workzone` migrated once then cleared.
- */
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
 const LEGACY_KEY = 'dompis:selected-workzone';
@@ -16,9 +12,10 @@ function normalizeWorkzone(value: string | null | undefined): string {
 function readLegacyWorkzone(): string {
   if (typeof window === 'undefined') return '';
   try {
-    const ls = normalizeWorkzone(window.localStorage.getItem(LEGACY_KEY));
-    if (ls) return ls;
+    const fromLS = normalizeWorkzone(window.localStorage.getItem(LEGACY_KEY));
+    if (fromLS) return fromLS;
   } catch {}
+  if (typeof document === 'undefined') return '';
   const match = document.cookie.split('; ').find((e) => e.startsWith(`${LEGACY_KEY}=`));
   if (!match) return '';
   const enc = match.slice(LEGACY_KEY.length + 1);
@@ -38,35 +35,12 @@ function clearLegacyWorkzone() {
   } catch {}
 }
 
-export function usePersistentWorkzoneScope(initialWorkzone?: string) {
+export function useUrlWorkzoneScope() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const hasWorkzoneParam = searchParams.has('workzone');
-  const urlWorkzone = normalizeWorkzone(searchParams.get('workzone'));
-
-  let workzone: string;
-  if (hasWorkzoneParam) workzone = urlWorkzone;
-  else if (initialWorkzone !== undefined && normalizeWorkzone(initialWorkzone).length > 0) workzone = normalizeWorkzone(initialWorkzone);
-  else workzone = '';
-
-  useEffect(() => {
-    if (hasWorkzoneParam) {
-      clearLegacyWorkzone();
-      return;
-    }
-    const legacy = readLegacyWorkzone();
-    const target = normalizeWorkzone(initialWorkzone) || legacy;
-    if (target) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('workzone', target);
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-      clearLegacyWorkzone();
-    } else if (legacy) {
-      clearLegacyWorkzone();
-    }
-  }, [hasWorkzoneParam, initialWorkzone, pathname, router, searchParams]);
+  const workzone = normalizeWorkzone(searchParams.get('workzone'));
 
   const setWorkzone = useCallback(
     (value: string) => {
@@ -81,5 +55,5 @@ export function usePersistentWorkzoneScope(initialWorkzone?: string) {
     [router, pathname, searchParams],
   );
 
-  return { workzone, setWorkzone };
+  return { workzone, setWorkzone, readLegacyWorkzone, clearLegacyWorkzone };
 }

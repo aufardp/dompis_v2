@@ -161,6 +161,14 @@ export async function logoutUser(): Promise<boolean> {
     });
     if (res.ok) {
       if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem('dompis:selected-branch');
+          window.localStorage.removeItem('dompis:selected-workzone');
+          window.document.cookie = 'dompis:selected-branch=; path=/; max-age=0; samesite=lax';
+          window.document.cookie = 'dompis:selected-workzone=; path=/; max-age=0; samesite=lax';
+          const qc = (window as unknown as { __queryClient?: { clear: () => void } }).__queryClient;
+          qc?.clear();
+        } catch {}
         window.location.assign('/login');
       }
       return true;

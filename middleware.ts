@@ -149,15 +149,19 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/api/')) {
     const res = withCorrelation(applySecurityHeaders(NextResponse.next()));
 
-    // Reference data — rarely changes
+    // Reference data — branch/workzone is per-user (role/branch scope), must not be shared across accounts in same browser
     if (
       pathname === '/api/area' ||
       pathname === '/api/roles' ||
-      pathname === '/api/region' ||
+      pathname === '/api/region'
+    ) {
+      res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+    } else if (
       pathname === '/api/branch/options' ||
       pathname.startsWith('/api/workzone')
     ) {
-      res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+      res.headers.set('Cache-Control', 'private, max-age=30, must-revalidate');
+      res.headers.set('Vary', 'Cookie');
     }
     // Dashboard data — already server-cached via getOrSetCache
     else if (pathname.startsWith('/api/dashboard/')) {

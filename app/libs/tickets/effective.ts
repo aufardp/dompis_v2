@@ -12,6 +12,8 @@ import {
   BOOKING_DEADLINE_HOURS,
   GUARANTEE_ESCALATION_HOURS,
 } from '@/app/config/priority-rules';
+import { getComplyMaxTtrHours } from '@/app/libs/tickets/ttr-comply';
+import { getJenisSlaHours } from '@/app/config/jenis-tiket';
 
 export type FlaggingLabel = 'P1' | 'P+' | 'EXPIRED';
 
@@ -94,7 +96,29 @@ export function getEffectiveMaxTtrDate(ticket: any): Date | null {
     if (db && db.getTime() > reported.getTime()) return db;
   }
 
-  // Fallback: reported + SLA hours based on customer type
+  // Fallback: jenis-based TTR (B2B) / HVC tier (B2C) via comply engine
+  const jenisHours = getComplyMaxTtrHours({
+    customerSegment: ticket?.customer_segment ?? ticket?.customerSegment ?? null,
+    customerType: ticket?.customerType ?? ticket?.ctype ?? null,
+    jenisTiket1: ticket?.jenis_tiket_1 ?? ticket?.jenisTiket1 ?? null,
+    jenisTiket2: ticket?.jenis_tiket_2 ?? ticket?.jenisTiket2 ?? null,
+    ticketIdGamas: ticket?.ticket_id_gamas ?? ticket?.ticketIdGamas ?? null,
+  });
+  if (jenisHours !== null) {
+    const d = new Date(reported.getTime() + jenisHours * 60 * 60 * 1000);
+    return d.getTime() > reported.getTime() ? d : null;
+  }
+
+  // Netral display: comply returns null but static jenis still has 24j
+  const staticHours =
+    getJenisSlaHours(ticket?.jenis_tiket_2 ?? ticket?.jenisTiket2) ??
+    getJenisSlaHours(ticket?.jenis_tiket_1 ?? ticket?.jenisTiket1);
+  if (staticHours !== null) {
+    const d = new Date(reported.getTime() + staticHours * 60 * 60 * 1000);
+    return d.getTime() > reported.getTime() ? d : null;
+  }
+
+  // Final fallback: customer type SLA (Reguler 24)
   const slaHours = getSlaHours(ticket?.customerType ?? ticket?.ctype);
   const computed = addHours(reported, slaHours);
   return computed.getTime() > reported.getTime() ? computed : null;

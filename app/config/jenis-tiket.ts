@@ -1,3 +1,12 @@
+/**
+ * Panduan perawatan TTR (Max TTR):
+ * - Ganti jam cukup ubah `slaOverrideHours`/`ttrLabel` di 1 entry JENIS_TIKET_LIST di bawah ini (1 key = 1 baris).
+ * - Jangan ubah angka TTR di `app/libs/tickets/ttr-comply.ts` atau `effective.ts` — keduanya baca dari sini via getJenisSlaHours()/getComplyMaxTtrHours().
+ * - Rule kondisional (K-tier K1/K2/K3, TOP OLO 4/7 via ticket_id_gamas, SQM-CCAN workhour 08-17 WIB, permintaan B2C/B2B) tetap di `ttr-comply.ts`.
+ * - Netral (exclude KPI tapi tetap display 24j) diatur di NETRAL_JENIS_KEYS di bawah.
+ * - Setelah ubah jam, jalankan `npm run build` dan `scripts/backfill-ttr-comply.ts` untuk closed tickets historis bila perlu.
+ * - Riwayat perubahan tercatat di git + docs/adr/ADR-003-b2b-ttr-expansion.md
+ */
 export interface JenisTiketConfig {
   key: string;
   label: string;
@@ -63,6 +72,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     color:
       'bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['unspec', 'unspecified', 'UNSPEC'],
   },
   {
@@ -89,8 +100,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
     priority: 4,
-    slaOverrideHours: 4,
-    ttrLabel: '4 Jam',
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: [
       'indibiz',
       'indi_biz',
@@ -123,8 +134,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     color:
       'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
     priority: 2,
-    slaOverrideHours: 6,
-    ttrLabel: '6 Jam',
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['reseller', 'RESELLER'],
   },
   {
@@ -133,6 +144,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['non-datin', 'non_datin', 'non datin', 'NON DATIN'],
   },
   {
@@ -151,6 +164,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2c',
     color: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['infracare', 'INFRACARE', 'InfraCare'],
   },
   {
@@ -159,6 +174,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-gray-50 text-gray-600 dark:bg-gray-500/15 dark:text-gray-400',
     priority: 0,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['unknown', 'UNKNOWN'],
   },
   {
@@ -167,6 +184,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400',
     priority: 6,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['digital-spbu', 'digital_spbu', 'DIGITAL_SPBU'],
   },
   {
@@ -175,6 +194,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['permintaan', 'PERMINTAAN'],
   },
   {
@@ -183,6 +204,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['unspec-b2b', 'unspec_b2b', 'UNSPEC B2B', 'UNSPEC_B2B'],
   },
   {
@@ -191,6 +214,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-zinc-50 text-zinc-600 dark:bg-zinc-500/15 dark:text-zinc-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['non-numbering', 'non_numbering', 'NON NUMBERING', 'NON_NUMBERING'],
   },
   {
@@ -199,6 +224,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['billing', 'BILLING'],
   },
   {
@@ -207,6 +234,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400',
     priority: 1,
+    slaOverrideHours: 1.5,
+    ttrLabel: '1.5 Jam',
     dbAliases: ['astinet', 'ASTINET'],
   },
   {
@@ -215,6 +244,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['tsel', 'TSEL'],
   },
   {
@@ -223,6 +254,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-500/15 dark:text-yellow-400',
     priority: 1,
+    slaOverrideHours: 4,
+    ttrLabel: '4 Jam',
     dbAliases: ['top-olo', 'top_olo', 'top olo', 'TOP OLO', 'TOP_OLO'],
   },
   {
@@ -231,6 +264,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-red-50 text-red-700 dark:bg-red-500/20 dark:text-red-400',
     priority: 1,
+    slaOverrideHours: 4,
+    ttrLabel: '4 Jam',
     dbAliases: ['tsel-critical', 'tsel_critical', 'tsel critical', 'TSEL CRITICAL', 'TSEL_CRITICAL'],
   },
   {
@@ -239,6 +274,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400',
     priority: 1,
+    slaOverrideHours: 8,
+    ttrLabel: '8 Jam',
     dbAliases: ['tsel-major', 'tsel_major', 'tsel major', 'TSEL MAJOR', 'TSEL_MAJOR'],
   },
   {
@@ -247,6 +284,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
     priority: 1,
+    slaOverrideHours: 16,
+    ttrLabel: '16 Jam',
     dbAliases: ['tsel-minor', 'tsel_minor', 'tsel minor', 'TSEL MINOR', 'TSEL_MINOR'],
   },
   {
@@ -255,6 +294,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
     priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
     dbAliases: ['tsel-low', 'tsel_low', 'tsel low', 'TSEL LOW', 'TSEL_LOW'],
   },
   {
@@ -263,6 +304,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400',
     priority: 1,
+    slaOverrideHours: 2,
+    ttrLabel: '2 Jam',
     dbAliases: [
       'tsel-premium-site', 'tsel_premium_site', 'tsel premium site',
       'TSEL PREMIUM SITE', 'TSEL_PREMIUM_SITE',
@@ -274,6 +317,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
     priority: 1,
+    slaOverrideHours: 1.5,
+    ttrLabel: '1.5 Jam',
     dbAliases: ['vpn-ip', 'vpn_ip', 'vpn ip', 'vpnip', 'VPN IP'],
   },
   {
@@ -282,6 +327,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400',
     priority: 1,
+    slaOverrideHours: 1.5,
+    ttrLabel: '1.5 Jam',
     dbAliases: ['metro-e', 'metro_e', 'METRO_E'],
   },
   {
@@ -290,6 +337,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
     priority: 1,
+    slaOverrideHours: 7.2,
+    ttrLabel: '7.2 Jam',
     dbAliases: ['dwdm', 'DWDM'],
   },
   {
@@ -298,6 +347,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-lime-50 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400',
     priority: 1,
+    slaOverrideHours: 4,
+    ttrLabel: '4 Jam',
     dbAliases: ['gamas', 'GAMAS'],
   },
   {
@@ -306,6 +357,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-lime-50 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400',
     priority: 1,
+    slaOverrideHours: 10,
+    ttrLabel: '10 Jam',
     dbAliases: ['gamas-feeder', 'gamas_feeder', 'gamas feeder', 'GAMAS FEEDER', 'GAMAS_FEEDER'],
   },
   {
@@ -314,6 +367,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-lime-50 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400',
     priority: 1,
+    slaOverrideHours: 1,
+    ttrLabel: '1 Jam',
     dbAliases: ['gamas-gpon', 'gamas_gpon', 'gamas gpon', 'GAMAS GPON', 'GAMAS_GPON'],
   },
   {
@@ -322,6 +377,8 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-lime-50 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400',
     priority: 1,
+    slaOverrideHours: 4,
+    ttrLabel: '4 Jam',
     dbAliases: ['gamas-distribusi', 'gamas_distribusi', 'gamas distribusi', 'GAMAS DISTRIBUSI', 'GAMAS_DISTRIBUSI'],
   },
   {
@@ -330,7 +387,29 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     segment: 'b2b',
     color: 'bg-lime-50 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400',
     priority: 1,
+    slaOverrideHours: 3,
+    ttrLabel: '3 Jam',
     dbAliases: ['gamas-odp', 'gamas_odp', 'gamas odp', 'GAMAS ODP', 'GAMAS_ODP'],
+  },
+  {
+    key: 'sip-trunk',
+    label: 'SIP TRUNK',
+    segment: 'b2b',
+    color: 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400',
+    priority: 1,
+    slaOverrideHours: 10,
+    ttrLabel: '10 Jam',
+    dbAliases: ['sip-trunk', 'sip_trunk', 'sip trunk', 'siptrunk', 'SIP TRUNK', 'SIP_TRUNK'],
+  },
+  {
+    key: 'ip-transit',
+    label: 'IP TRANSIT',
+    segment: 'b2b',
+    color: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400',
+    priority: 1,
+    slaOverrideHours: 1.5,
+    ttrLabel: '1.5 Jam',
+    dbAliases: ['ip-transit', 'ip_transit', 'ip transit', 'iptransit', 'IP TRANSIT', 'IP_TRANSIT'],
   },
 ] as const;
 
@@ -365,6 +444,11 @@ export const NETRAL_JENIS_KEYS: JenisKey[] = [
   'non-numbering',
   'billing',
   'infracare',
+  'gamas',
+  'gamas-feeder',
+  'gamas-gpon',
+  'gamas-distribusi',
+  'gamas-odp',
 ];
 
 export const NETRAL_JENIS_ALIASES = NETRAL_JENIS_KEYS.flatMap((key) => {

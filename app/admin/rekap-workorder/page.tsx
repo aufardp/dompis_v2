@@ -18,13 +18,22 @@ async function getUser() {
   }
 }
 
-export default async function RekapWorkorderPage() {
+export default async function RekapWorkorderPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ branch?: string; workzone?: string }>;
+}) {
   const user = await getUser();
   if (!user) redirect('/auth/login');
   if (user.role === 'teknisi') redirect('/teknisi');
   const homeHref = '/admin';
-  const initialWorkzone = await getInitialWorkzoneScope();
-  const initialBranch = await getInitialBranchScope();
+  const sp = searchParams ? await searchParams : {};
+  const [cookieWorkzone, cookieBranch] = await Promise.all([
+    getInitialWorkzoneScope(),
+    getInitialBranchScope(),
+  ]);
+  const initialWorkzone = typeof sp.workzone === 'string' ? sp.workzone : cookieWorkzone;
+  const initialBranch = typeof sp.branch === 'string' ? sp.branch : cookieBranch;
 
   return (
     <div className='min-h-screen bg-(--bg) p-4 md:p-6'>
