@@ -322,6 +322,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
   'description_actual_solution', 'alamat', 'status_date', 'flagging_manja', 'pending_reason',
   'status', 'status_update', 'closed_at',
+  'ttr_comply_status', 'ttr_deadline_at', 'needs_validation', 'validation_reason', 'validation_flagged_at',
 ];
 
 const LOG_BULK_COLUMNS: readonly string[] = [

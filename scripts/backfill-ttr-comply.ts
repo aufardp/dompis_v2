@@ -15,6 +15,7 @@ async function main() {
     const limitArg = process.env.BACKFILL_LIMIT
       ? parseInt(process.env.BACKFILL_LIMIT, 10)
       : null;
+    const closedFrom = process.env.BACKFILL_CLOSED_FROM || '2026-01-01';
 
     let processed = 0;
     let comply = 0;
@@ -34,6 +35,7 @@ async function main() {
           status: { in: CLOSE_STATUS_VALUES },
           ttr_comply_status: null,
           id_ticket: { gt: lastId },
+          closed_at: { gte: new Date(`${closedFrom}T00:00:00+07:00`) },
         },
         select: {
           id_ticket: true,
@@ -44,6 +46,7 @@ async function main() {
           customer_type: true,
           jenis_tiket_1: true,
           jenis_tiket_2: true,
+          ticket_id_gamas: true,
         },
         take,
         orderBy: { id_ticket: 'asc' },
@@ -62,6 +65,7 @@ async function main() {
           customerType: ticket.customer_type,
           jenisTiket1: ticket.jenis_tiket_1,
           jenisTiket2: ticket.jenis_tiket_2,
+          ticketIdGamas: (ticket as any).ticket_id_gamas ?? null,
         });
 
         if (result.status === 'comply') comply++;
