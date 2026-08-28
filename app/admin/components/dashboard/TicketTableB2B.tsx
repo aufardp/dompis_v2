@@ -515,15 +515,21 @@ export default function TicketTableB2B({
       ? sortedTickets.slice(pageOffset, pageOffset + pageSize)
       : sortedTickets;
 
-  const MOBILE_PAGE_SIZE = 5;
-  const mobileTotalPages = Math.max(
-    1,
-    Math.ceil(sortedTickets.length / MOBILE_PAGE_SIZE),
-  );
-  const mobilePageTickets = sortedTickets.slice(
-    (mobilePage - 1) * MOBILE_PAGE_SIZE,
-    mobilePage * MOBILE_PAGE_SIZE,
-  );
+  const MOBILE_FALLBACK_PAGE_SIZE = 15;
+  const isMobileServerPaginated = Boolean(pagination);
+  const mobileEffectivePageSize = pagination?.limit ?? MOBILE_FALLBACK_PAGE_SIZE;
+  const mobileEffectiveTotal = pagination?.total ?? sortedTickets.length;
+  const mobileEffectiveTotalPages =
+    pagination?.totalPages ??
+    Math.max(1, Math.ceil(sortedTickets.length / mobileEffectivePageSize));
+  const mobileCurrentPage = pagination?.currentPage ?? mobilePage;
+  const mobilePageTickets = isMobileServerPaginated
+    ? sortedTickets
+    : sortedTickets.slice(
+        (mobilePage - 1) * mobileEffectivePageSize,
+        mobilePage * mobileEffectivePageSize,
+      );
+  const handleMobilePageChange = pagination?.onPageChange ?? setMobilePage;
 
   const ticketCountdowns = useMemo(() => {
     const map = new Map<number, TtrCountdown | null>();
@@ -579,17 +585,17 @@ export default function TicketTableB2B({
           <>
             <div className='mb-2 flex items-center justify-between px-1'>
               <p className='text-xs text-(--text-secondary)'>
-                {(mobilePage - 1) * MOBILE_PAGE_SIZE + 1}–
-                {Math.min(mobilePage * MOBILE_PAGE_SIZE, sortedTickets.length)}{' '}
-                dari {sortedTickets.length} tiket
+                {(mobileCurrentPage - 1) * mobileEffectivePageSize + 1}–
+                {Math.min(mobileCurrentPage * mobileEffectivePageSize, mobileEffectiveTotal)}{' '}
+                dari {mobileEffectiveTotal} tiket
               </p>
-              {mobileTotalPages > 1 && (
+              {mobileEffectiveTotalPages > 1 && (
                 <span className='text-xs font-semibold text-(--text-primary)'>
-                  Halaman {mobilePage}/{mobileTotalPages}
+                  Halaman {mobileCurrentPage}/{mobileEffectiveTotalPages}
                 </span>
               )}
             </div>
-            <div className='space-y-3'>
+            <div className='space-y-2'>
               {mobilePageTickets.map((ticket) => (
                 <TicketCardMobile
                   key={ticket.idTicket ?? ticket.ticket}
@@ -600,14 +606,14 @@ export default function TicketTableB2B({
                 />
               ))}
             </div>
-            {mobileTotalPages > 1 && (
+            {mobileEffectiveTotalPages > 1 && (
               <div className='mt-3'>
                 <MobilePagination
-                  currentPage={mobilePage}
-                  totalPages={mobileTotalPages}
-                  total={sortedTickets.length}
-                  pageSize={MOBILE_PAGE_SIZE}
-                  onPageChange={setMobilePage}
+                  currentPage={mobileCurrentPage}
+                  totalPages={mobileEffectiveTotalPages}
+                  total={mobileEffectiveTotal}
+                  pageSize={mobileEffectivePageSize}
+                  onPageChange={handleMobilePageChange}
                 />
               </div>
             )}

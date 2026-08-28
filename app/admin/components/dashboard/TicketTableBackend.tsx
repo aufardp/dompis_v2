@@ -55,7 +55,7 @@ interface TicketTableBackendProps {
   onAssign?: (ticketId: number | string) => void;
 }
 
-const MOBILE_PAGE_SIZE = 5;
+const MOBILE_PAGE_SIZE = 15;
 
 function TicketTableBackendLoadingMobile() {
   return (
@@ -243,13 +243,13 @@ export default function TicketTableBackend({
                 </span>
               )}
             </div>
-            <div className='space-y-3'>
+            <div className='space-y-2'>
               {mobilePageTickets.map((ticket, idx) => {
                 const ticketId = ticket.idTicket ?? idx;
                 return (
                   <div
                     key={ticketId}
-                    className='bg-surface rounded-xl border border-(--border) p-4'
+                    className='bg-surface rounded-xl border border-(--border) p-3'
                   >
                     <div className='flex items-center justify-between'>
                       <div>

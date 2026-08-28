@@ -86,7 +86,7 @@ function TicketCardMobile({
   return (
     <div
       className={clsx(
-        'group rounded-3xl border bg-(--surface) p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4 scroll-mt-28',
+        'group rounded-2xl border bg-(--surface) p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-3 scroll-mt-28',
         highlighted
           ? 'border-blue-500 bg-blue-50/70 ring-2 ring-blue-500/20 dark:border-blue-300/40 dark:bg-blue-500/10 dark:ring-blue-400/20'
           : 'border-(--border)',
@@ -130,9 +130,9 @@ function TicketCardMobile({
         </div>
       </div>
 
-      <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-(--text-primary) sm:grid-cols-2'>
-        <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-          <Hash className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+      <div className='mt-2 grid grid-cols-1 gap-1.5 text-xs text-(--text-primary) sm:grid-cols-2'>
+        <div className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--bg) px-2 py-1.5'>
+          <Hash className='h-3.5 w-3.5 shrink-0 text-(--text-muted) sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Service</p>
             <p className='truncate font-semibold text-(--text-primary)'>{ticket.serviceNo || '-'}</p>
@@ -143,22 +143,22 @@ function TicketCardMobile({
             )}
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-          <MapPin className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+        <div className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--bg) px-2 py-1.5'>
+          <MapPin className='h-3.5 w-3.5 shrink-0 text-(--text-muted) sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Workzone</p>
             <p className='truncate font-semibold text-(--text-primary)'>{ticket.workzone || '-'}</p>
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-          <User className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+        <div className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--bg) px-2 py-1.5'>
+          <User className='h-3.5 w-3.5 shrink-0 text-(--text-muted) sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Type</p>
             <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
           </div>
         </div>
-        <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-          <Clock3 className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+        <div className='flex items-center gap-2 rounded-xl border border-(--border) bg-(--bg) px-2 py-1.5'>
+          <Clock3 className='h-3.5 w-3.5 shrink-0 text-(--text-muted) sm:h-4 sm:w-4' />
           <div className='min-w-0'>
             <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Max TTR</p>
             <p className='truncate font-semibold text-(--text-primary)'>{maxTtr}</p>
@@ -166,7 +166,7 @@ function TicketCardMobile({
         </div>
       </div>
 
-      <div className='mt-3 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--bg) p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
+      <div className='mt-2 flex flex-col gap-1.5 rounded-xl border border-(--border) bg-(--bg) p-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
         <div className='min-w-0'>
           <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Customer</p>
           <p className='truncate text-sm font-semibold text-(--text-primary)'>
@@ -182,7 +182,7 @@ function TicketCardMobile({
         </div>
       </div>
 
-      <div className='mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
+      <div className='mt-2 flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between'>
         <div className='min-w-0 flex-1'>
           <p className='text-[10px] font-semibold uppercase tracking-[0.12em] text-(--text-muted)'>Technician</p>
           <p className='truncate text-sm font-medium text-(--text-primary)'>

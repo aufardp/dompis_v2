@@ -50,7 +50,7 @@ interface TicketTableValidasiProps {
   searching?: boolean;
 }
 
-const MOBILE_PAGE_SIZE = 5;
+const MOBILE_PAGE_SIZE = 15;
 
 function TicketTableValidasiLoadingMobile({
   loadingLabel = 'Loading validation tickets',

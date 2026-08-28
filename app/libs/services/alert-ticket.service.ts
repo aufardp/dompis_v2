@@ -3,6 +3,7 @@ import { todayWibDateForDb } from '@/lib/timezone';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { getJenisWhereClause } from '@/app/config/jenis-tiket';
+import { buildOperationalBucketWhere } from '@/app/libs/services/ticket-buckets';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
 export type AlertDiamondTicket = {
@@ -21,6 +22,137 @@ export type AlertDiamondTicket = {
 };
 
 export class AlertTicketService {
+  /**
+   * Inbox B2B — subset Customer bucket untuk jenis_tiket_2 B2B:
+   *  - K-Tier K1/K2 family (DATIN/ASTINET/VPN IP/METRO-E/IP_TRANSIT dengan suffix K1/K2, jenis_tiket_1='DATIN')
+   *  - TSEL PREMIUM SITE, TSEL CRITICAL, TOP OLO
+   *  Wajib: bucket kpi_customer AND status OPEN AND sync_date hari ini (WIB)
+   */
+  static async getInboxB2BTickets(
+    role: string,
+    userId: number,
+    forcedWorkzoneId?: string,
+    options?: { limit?: number },
+  ): Promise<AlertDiamondTicket[]> {
+    const limit = options?.limit ?? 8;
+    const todayWib = todayWibDateForDb();
+    const workzoneWhere = await this.buildWorkzoneWhere(role, userId, forcedWorkzoneId);
+    const bucketWhere = buildOperationalBucketWhere('kpi_customer');
+
+    const b2bOr: Record<string, any>[] = [
+      { AND: [{ jenis_tiket_1: 'DATIN' }, { jenis_tiket_2: { endsWith: 'K1' } }] },
+      { AND: [{ jenis_tiket_1: 'DATIN' }, { jenis_tiket_2: { endsWith: 'K2' } }] },
+      getJenisWhereClause('tsel-premium-site'),
+      getJenisWhereClause('tsel-critical'),
+      getJenisWhereClause('top-olo'),
+    ];
+
+    const where: Record<string, any> = {
+      sync_date: todayWib,
+      status: 'OPEN',
+      AND: [{ ...bucketWhere }, { OR: b2bOr }],
+      ...workzoneWhere,
+    };
+
+    const tickets = await prisma.ticket.findMany({
+      where,
+      select: {
+        id_ticket: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        customer_type: true,
+        service_no: true,
+        contact_name: true,
+        status: true,
+        status_update: true,
+        workzone: true,
+        sync_date: true,
+        jenis_tiket_1: true,
+        jenis_tiket_2: true,
+        teknisi_user_id: true,
+        users: { select: { nama: true } },
+      },
+      orderBy: { reported_date: 'desc' },
+      take: limit,
+    });
+
+    return tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticketId: t.incident,
+      incident: t.incident,
+      customerType: t.customer_type ?? '',
+      status: t.status ?? 'open',
+      reportedAt: t.reported_date ? new Date(t.reported_date) : new Date(),
+      workzone: t.workzone,
+      contactName: t.contact_name,
+      serviceNo: t.service_no,
+      technicianName: t.users?.nama ?? null,
+      teknisiUserId: t.teknisi_user_id,
+      syncDate: t.sync_date ? t.sync_date.toISOString() : '',
+    }));
+  }
+
+  /**
+   * Inbox B2C — DIAMOND + PLATINUM di dalam bucket Customer, OPEN hari ini
+   * Wajib: bucket kpi_customer AND customer_type IN (DIAMOND, PLATINUM) AND sync_date hari ini
+   */
+  static async getInboxB2CTickets(
+    role: string,
+    userId: number,
+    forcedWorkzoneId?: string,
+    options?: { limit?: number },
+  ): Promise<AlertDiamondTicket[]> {
+    const limit = options?.limit ?? 8;
+    const todayWib = todayWibDateForDb();
+    const workzoneWhere = await this.buildWorkzoneWhere(role, userId, forcedWorkzoneId);
+    const bucketWhere = buildOperationalBucketWhere('kpi_customer');
+
+    const where: Record<string, any> = {
+      sync_date: todayWib,
+      customer_type: { in: ['HVC_DIAMOND', 'HVC_PLATINUM'] },
+      status: 'OPEN',
+      AND: [{ ...bucketWhere }, { status_update: { notIn: ['close', 'closed'] } }],
+      ...workzoneWhere,
+    };
+
+    const tickets = await prisma.ticket.findMany({
+      where,
+      select: {
+        id_ticket: true,
+        incident: true,
+        summary: true,
+        reported_date: true,
+        customer_type: true,
+        service_no: true,
+        contact_name: true,
+        status: true,
+        status_update: true,
+        workzone: true,
+        sync_date: true,
+        teknisi_user_id: true,
+        users: { select: { nama: true } },
+      },
+      orderBy: { reported_date: 'desc' },
+      take: limit,
+    });
+
+    return tickets.map((t) => ({
+      idTicket: t.id_ticket,
+      ticketId: t.incident,
+      incident: t.incident,
+      customerType: t.customer_type ?? 'HVC_DIAMOND',
+      status: t.status ?? 'open',
+      reportedAt: t.reported_date ? new Date(t.reported_date) : new Date(),
+      workzone: t.workzone,
+      contactName: t.contact_name,
+      serviceNo: t.service_no,
+      technicianName: t.users?.nama ?? null,
+      teknisiUserId: t.teknisi_user_id,
+      syncDate: t.sync_date ? t.sync_date.toISOString() : '',
+    }));
+  }
+
   /**
    * Get Diamond tickets that were synced TODAY only (WIB timezone)
    * This ensures the alert banner only shows tickets from today's sync,
@@ -67,14 +199,14 @@ export class AlertTicketService {
       forcedWorkzoneId,
     );
 
+    const bucketWhere = buildOperationalBucketWhere('kpi_customer');
     const where: Record<string, any> = {
       // Only today's sync (WIB date)
       sync_date: todayWib,
-      // Only Diamond tickets — Customer bucket only
+      // Only Diamond tickets — Customer bucket only (wajib bucket)
       customer_type: 'HVC_DIAMOND',
-      source_ticket: { in: ['CUSTOMER', 'customer'] },
-      // Exclude closed tickets by status OR status_update
       AND: [
+        bucketWhere,
         {
           OR: [
             { status: { notIn: CLOSE_STATUS_VALUES } },
@@ -129,6 +261,27 @@ export class AlertTicketService {
   }
 
   /**
+   * Get count of Diamond+Platinum (Inbox B2C) tickets synced TODAY — wajib bucket Customer
+   */
+  static async getInboxB2CCount(
+    role: string,
+    userId: number,
+    forcedWorkzoneId?: string,
+  ): Promise<number> {
+    const todayWib = todayWibDateForDb();
+    const workzoneWhere = await this.buildWorkzoneWhere(role, userId, forcedWorkzoneId);
+    const bucketWhere = buildOperationalBucketWhere('kpi_customer');
+    const where: Record<string, any> = {
+      sync_date: todayWib,
+      customer_type: { in: ['HVC_DIAMOND', 'HVC_PLATINUM'] },
+      status: 'OPEN',
+      AND: [bucketWhere, { status_update: { notIn: ['close', 'closed'] } }],
+      ...workzoneWhere,
+    };
+    return prisma.ticket.count({ where });
+  }
+
+  /**
    * Get count of Diamond tickets synced TODAY
    */
   static async getAlertDiamondCount(
@@ -152,11 +305,12 @@ export class AlertTicketService {
       forcedWorkzoneId,
     );
 
+    const bucketWhere = buildOperationalBucketWhere('kpi_customer');
     const where: Record<string, any> = {
       sync_date: todayWib,
       customer_type: 'HVC_DIAMOND',
-      source_ticket: { in: ['CUSTOMER', 'customer'] },
       AND: [
+        bucketWhere,
         {
           OR: [
             { status: { notIn: CLOSE_STATUS_VALUES } },

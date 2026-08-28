@@ -441,6 +441,17 @@ export default function Topbar({
 
             <div className='flex flex-wrap items-center justify-end gap-1.5'>
               <BranchFilterSelect />
+              <button
+                type='button'
+                onClick={() => setShowMobileFilters((v) => !v)}
+                className='bg-surface hover:bg-surface-2 inline-flex items-center justify-center gap-1.5 rounded-2xl border border-(--border) px-3 py-2.5 text-(--text-secondary) shadow-sm transition-colors lg:hidden'
+                aria-label='Toggle filters'
+                aria-expanded={showMobileFilters}
+                title='Filter workzone'
+              >
+                <Filter className='h-4 w-4' />
+                <span className='hidden text-xs font-semibold sm:inline'>Filter</span>
+              </button>
               <TopbarNotifications selectedWorkzone={workzone || undefined} />
 
               <div className='relative hidden lg:block xl:block'>

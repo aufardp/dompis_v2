@@ -3,7 +3,6 @@ import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { AlertTicketService } from '@/app/libs/services/alert-ticket.service';
 
 export const dynamic = 'force-dynamic';
@@ -136,22 +135,14 @@ function buildDiamondReason(params: {
 
   return parts.length > 0
     ? parts.join(' · ')
-    : 'Diamond ticket perlu perhatian';
+    : 'Ticket perlu perhatian';
 }
 
-function mapInboxItem(row: Record<string, any>): TopbarInboxItem | null {
-  const ticketCode = String(row.ticket || row.incident || '').trim();
+function mapInboxB2BItem(row: Record<string, any>): TopbarInboxItem | null {
+  const ticketCode = String(row.incident || row.ticketId || '').trim();
   if (!ticketCode) return null;
-  const reportedAt = toIsoString(row.reportedDate || row.reported_date);
-  const summary = String(row.summary || row.description || ticketCode || '').trim();
-  const status = String(row.status || '').trim().toUpperCase();
-  const statusUpdate = String(row.status_update || '').trim().toLowerCase() || null;
-  const priority = status === 'CLOSE'
-    ? 'normal'
-    : statusUpdate === 'assigned'
-      ? 'warning'
-      : 'high';
-
+  const reportedAt = toIsoString(row.reportedAt || row.reported_date);
+  const summary = String(row.summary || ticketCode || '').trim();
   return {
     id: `inbox:${row.idTicket ?? row.id_ticket ?? ticketCode}`,
     notificationKey: buildNotificationKey('inbox', ticketCode),
@@ -159,10 +150,10 @@ function mapInboxItem(row: Record<string, any>): TopbarInboxItem | null {
     bucket: 'kpi_customer',
     bucketLabel: 'Customer',
     source: 'CUSTOMER',
-    summary: summary || 'Ticket baru Customer',
+    summary: summary || 'Ticket B2B Customer',
     reportedAt,
     isRead: false,
-    priority,
+    priority: 'high',
     targetPath: buildTargetPath(ticketCode, {
       ticketId: Number(row.idTicket ?? row.id_ticket ?? 0) || undefined,
     }),
@@ -170,26 +161,23 @@ function mapInboxItem(row: Record<string, any>): TopbarInboxItem | null {
     serviceNo: row.serviceNo || row.service_no || undefined,
     workzone: row.workzone ?? null,
     status: row.status ?? null,
-    statusUpdate,
+    statusUpdate: String(row.status_update || '').trim().toLowerCase() || null,
     ageLabel: buildAgeLabel(reportedAt),
   };
 }
 
-function mapDiamondItem(row: Record<string, any>): TopbarDiamondAlertItem | null {
+function mapInboxB2CItem(row: Record<string, any>): TopbarDiamondAlertItem | null {
   const ticketCode = String(row.ticketId || row.incident || '').trim();
   if (!ticketCode) return null;
   const reportedAt = toIsoString(row.reportedAt || row.reported_date);
   const status = String(row.status || '').trim().toLowerCase();
   const statusUpdate = String(row.status_update || row.statusUpdate || '').trim().toLowerCase() || null;
-  const severity = status === 'assigned'
-    ? 'warning'
-    : status === 'open'
-      ? 'high'
-      : 'critical';
+  const severity = status === 'assigned' ? 'warning' : status === 'open' ? 'high' : 'critical';
   const ageLabel = buildAgeLabel(reportedAt);
   const contactName = row.contactName || row.contact_name || null;
   const serviceNo = row.serviceNo || row.service_no || null;
   const workzone = row.workzone ?? null;
+  const customerType = String(row.customerType || row.customer_type || '').toUpperCase();
 
   return {
     id: `diamond:${row.idTicket ?? row.id_ticket ?? ticketCode}`,
@@ -197,10 +185,10 @@ function mapDiamondItem(row: Record<string, any>): TopbarDiamondAlertItem | null
     ticketCode,
     bucket: 'kpi_customer',
     bucketLabel: 'Customer',
-    title: 'Diamond alert',
+    title: customerType.includes('PLATINUM') ? 'Platinum alert' : 'Diamond alert',
     summary:
       String(row.summary || row.contactName || row.contact_name || ticketCode).trim() ||
-      'Diamond ticket perlu perhatian',
+      'Ticket perlu perhatian',
     reportedAt,
     isRead: false,
     severity,
@@ -262,32 +250,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const workzone = searchParams.get('workzone') || undefined;
 
-    const [dailyResult, diamondRows] = await Promise.all([
-      DailyTicketService.getDailyTicketTable(user.role, user.id_user, {
-        operationalBucket: ['kpi_customer'],
-        workzone,
-        ticketStatus: ['OPEN'],
-        page: 1,
-        limit: 8,
-        sort: 'desc',
-        includeSummary: false,
-        includeOptions: false,
-        includeValidasi: false,
-      }),
-      AlertTicketService.getAlertDiamondTickets(
-        user.role,
-        user.id_user,
-        workzone,
-        { limit: 8, includeAssigned: true },
-      ),
+    const [inboxB2BRows, inboxB2CRows] = await Promise.all([
+      AlertTicketService.getInboxB2BTickets(user.role, user.id_user, workzone, { limit: 8 }),
+      AlertTicketService.getInboxB2CTickets(user.role, user.id_user, workzone, { limit: 8 }),
     ]);
 
-    const inboxItems = (dailyResult.data ?? [])
-      .map((row) => mapInboxItem(row as Record<string, any>))
+    const inboxItems = (inboxB2BRows ?? [])
+      .map((row) => mapInboxB2BItem(row as Record<string, any>))
       .filter((item): item is TopbarInboxItem => item !== null);
 
-    const diamondAlerts = (diamondRows ?? [])
-      .map((row) => mapDiamondItem(row as Record<string, any>))
+    const diamondAlerts = (inboxB2CRows ?? [])
+      .map((row) => mapInboxB2CItem(row as Record<string, any>))
       .filter((item): item is TopbarDiamondAlertItem => item !== null);
 
     diamondAlerts.sort((a, b) => {

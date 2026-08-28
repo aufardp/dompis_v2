@@ -23,17 +23,15 @@ type Props = {
   onClose: () => void;
   onSwitchTab: (tab: ActiveTab) => void;
   onMarkAllRead: () => void;
-  onItemClick: (scope: ActiveTab, ticketCode: string, targetPath: string) => void;
+  onItemClick: (
+    scope: ActiveTab,
+    ticketCode: string,
+    targetPath: string,
+  ) => void;
   onRetry: () => void;
 };
 
-function EmptyState({
-  title,
-  hint,
-}: {
-  title: string;
-  hint: string;
-}) {
+function EmptyState({ title, hint }: { title: string; hint: string }) {
   return (
     <div className='rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-center dark:border-white/10 dark:bg-white/5'>
       <div className='mx-auto grid h-10 w-10 place-items-center rounded-2xl bg-white text-slate-400 shadow-sm dark:bg-white/5'>
@@ -42,9 +40,7 @@ function EmptyState({
       <p className='mt-3 text-sm font-semibold text-slate-900 dark:text-white'>
         {title}
       </p>
-      <p className='mt-1 text-xs text-slate-500 dark:text-slate-300'>
-        {hint}
-      </p>
+      <p className='mt-1 text-xs text-slate-500 dark:text-slate-300'>{hint}</p>
     </div>
   );
 }
@@ -100,12 +96,12 @@ export default function NotificationCenter({
       aria-modal='true'
       aria-label='Topbar notifications'
       className={cn(
-        'absolute top-full right-0 z-50 mt-3',
-        'w-[min(calc(100vw-1rem),26rem)] sm:w-[24rem] lg:w-[26rem]',
+        'fixed inset-x-3 top-18 z-60 sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-3',
+        'w-auto sm:w-[24rem] lg:w-104',
       )}
     >
       <div className='overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95 dark:shadow-[0_24px_60px_rgba(0,0,0,0.35)]'>
-        <div className='border-b border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-4 py-4 dark:border-white/10 dark:from-slate-950 dark:to-slate-900'>
+        <div className='border-b border-slate-200/80 bg-linear-to-b from-white to-slate-50 px-4 py-4 dark:border-white/10 dark:from-slate-950 dark:to-slate-900'>
           <div className='flex items-start justify-between gap-3'>
             <div className='min-w-0'>
               <div className='flex items-center gap-2'>
@@ -117,7 +113,8 @@ export default function NotificationCenter({
                     Notifications
                   </p>
                   <p className='text-[11px] text-slate-500 dark:text-slate-300'>
-                    Customer open tickets terbaru and diamond alerts
+                    Alert B2B (DATIN K1/K2, TSEL, TOP OLO) and Alert B2C
+                    (Diamond/Platinum)
                   </p>
                 </div>
               </div>
@@ -159,7 +156,7 @@ export default function NotificationCenter({
             >
               <span className='inline-flex items-center gap-2 text-sm font-semibold'>
                 <Inbox className='h-4 w-4' />
-                Inbox
+                Alert B2B
               </span>
               <span className='text-[11px] font-semibold'>
                 {inboxUnreadCount}
@@ -178,7 +175,7 @@ export default function NotificationCenter({
             >
               <span className='inline-flex items-center gap-2 text-sm font-semibold'>
                 <Sparkles className='h-4 w-4' />
-                Diamond
+                Alert B2C
               </span>
               <span className='text-[11px] font-semibold'>
                 {diamondUnreadCount}
@@ -187,7 +184,7 @@ export default function NotificationCenter({
           </div>
         </div>
 
-        <div className='max-h-[min(60vh,34rem)] space-y-3 overflow-y-auto px-4 py-4'>
+        <div className='[ -webkit-overflow-scrolling:touch] max-h-[min(60dvh,34rem)] space-y-3 overflow-y-auto overscroll-contain px-4 py-4'>
           {error ? (
             <div className='rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-50'>
               <p className='font-semibold'>Failed to load notifications.</p>
@@ -207,12 +204,12 @@ export default function NotificationCenter({
               <div className='flex items-center justify-between'>
                 <div>
                   <p className='text-[10px] font-bold tracking-[0.22em] text-slate-500 uppercase dark:text-slate-400'>
-                    {isInbox ? 'Inbox' : 'Diamond Alert'}
+                    {isInbox ? 'Alert B2B' : 'Alert B2C'}
                   </p>
                   <p className='mt-1 text-xs text-slate-500 dark:text-slate-300'>
                     {isInbox
-                      ? 'Customer open tickets terbaru yang perlu dicek.'
-                      : 'Ticket Diamond yang perlu perhatian cepat.'}
+                      ? 'Ticket B2B Customer (K1/K2, TSEL Premium/Critical, TOP OLO) OPEN hari ini.'
+                      : 'Ticket Diamond & Platinum Customer OPEN hari ini.'}
                   </p>
                 </div>
                 <span className='rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-white/10 dark:text-slate-300'>
@@ -223,14 +220,12 @@ export default function NotificationCenter({
               {activeItems.length === 0 ? (
                 <EmptyState
                   title={
-                    isInbox
-                      ? 'No customer open tickets'
-                      : 'No diamond alerts'
+                    isInbox ? 'No alert B2B tickets' : 'No alert B2C alerts'
                   }
                   hint={
                     isInbox
-                      ? 'Ticket Customer open terbaru akan muncul di sini sesuai urutan terbaru.'
-                      : 'Alert diamond akan muncul saat ticket prioritas perlu perhatian.'
+                      ? 'Ticket B2B Customer (K1/K2, Premium, Critical, TOP OLO) OPEN hari ini akan muncul di sini.'
+                      : 'Ticket Diamond & Platinum Customer OPEN hari ini akan muncul di sini.'
                   }
                 />
               ) : (
@@ -245,8 +240,12 @@ export default function NotificationCenter({
                       reportedAt={item.reportedAt}
                       ageLabel={item.ageLabel}
                       isRead={item.isRead}
-                      priority={item.kind === 'inbox' ? item.priority : undefined}
-                      severity={item.kind === 'diamond' ? item.severity : undefined}
+                      priority={
+                        item.kind === 'inbox' ? item.priority : undefined
+                      }
+                      severity={
+                        item.kind === 'diamond' ? item.severity : undefined
+                      }
                       reason={item.kind === 'diamond' ? item.reason : undefined}
                       title={item.kind === 'diamond' ? item.title : undefined}
                       onClick={() =>
