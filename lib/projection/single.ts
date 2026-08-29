@@ -60,6 +60,8 @@ const RAW_SELECT_FIELDS = {
   tsc_result: true,
   scc_result: true,
   pending_reason: true,
+  resolve_date: true,
+  technician: true,
 } as const;
 
 const EXISTING_TICKET_SELECT_FIELDS = {
@@ -74,6 +76,8 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   status: true,
   status_update: true,
   closed_at: true,
+  resolved_date: true,
+  technician: true,
   rca: true,
   sub_rca: true,
   status_manja: true,

@@ -40,19 +40,7 @@ import type {
   ExternalRow,
   NormalizedExternalRow,
 } from '@/lib/external-db/types';
-
-// Tipe ini HARUS sama persis dengan yang dideklarasikan di status-refresh.ts.
-// Kalau di file aslinya bentuknya beda, sesuaikan definisi ini juga.
-interface ExternalStatusRow {
-  incident: string;
-  sourceTable: string;
-  normalizedStatus: string;
-  statusDate: string | null;
-  dateModified: string | null;
-  worklogSummary: string | null;
-  lastUpdateWorklog: string | null;
-  sourceUpdatedAt: Date;
-}
+import type { ExternalStatusRow } from '@/lib/status-refresh';
 
 function trimTo(value: unknown, maxLen: number): string | null {
   if (value === null || value === undefined) return null;
@@ -181,6 +169,8 @@ export async function fetchExternalRowsViaBridge(
       worklogSummary: trimTo(normalized.worklog_summary, 100),
       lastUpdateWorklog: trimTo(normalized.last_update_worklog, 100),
       sourceUpdatedAt: parseExternalDate(normalized.date_modified) ?? nowWib(),
+      resolveDate: parseExternalDate(normalized.resolve_date) ?? null,
+      technician: trimTo(normalized.technician, 255),
     });
   });
 

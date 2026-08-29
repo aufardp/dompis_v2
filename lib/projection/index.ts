@@ -229,6 +229,8 @@ export interface ExistingTicket {
   status: string | null;
   status_update: string | null;
   closed_at: Date | null;
+  resolved_date: Date | null;
+  technician: string | null;
   rca: string | null;
   sub_rca: string | null;
   status_manja: string | null;
@@ -292,6 +294,7 @@ const PROJECTED_FIELDS: Record<string, string> = {
   tsc_result: 'tsc_result',
   scc_result: 'scc_result',
   pending_reason: 'pending_reason',
+  technician: 'technician',
 };
 
 const PROTECTED_FIELDS = new Set([
@@ -322,6 +325,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
   'description_actual_solution', 'alamat', 'status_date', 'flagging_manja', 'pending_reason',
   'status', 'status_update', 'closed_at',
+  'resolved_date', 'technician',
   'ttr_comply_status', 'ttr_deadline_at', 'needs_validation', 'validation_reason', 'validation_flagged_at',
 ];
 
@@ -547,6 +551,15 @@ export function buildProjectionUpsert(
     }
   }
 
+  // Parse resolve_date dari raw → resolved_date (DateTime)
+  let resolvedDate: Date | null = null;
+  if (raw.resolve_date) {
+    resolvedDate = parseExternalDateInWib(raw.resolve_date as string);
+    if (resolvedDate) {
+      base.resolved_date = resolvedDate;
+    }
+  }
+
   const updateData = { ...base };
   if (existing?.teknisi_user_id) delete updateData.alamat;
 
@@ -577,9 +590,12 @@ export function buildProjectionUpsert(
   if (newFlagging) updateData.flagging_manja = newFlagging;
 
   // --- TTR compliance ---
+  // Gunakan resolved_date (dari Nossa) sebagai acuan kepatuhan,
+  // fallback ke closed_at (lokal Dompis) jika resolved_date belum tersedia.
+  const complianceClosedAt = resolvedDate ?? (updateData.closed_at as Date) ?? null;
   const updateCompliance = computeTtrCompliance({
     status: (updateData.status as string) ?? null,
-    closedAt: (updateData.closed_at as Date) ?? null,
+    closedAt: complianceClosedAt,
     reportedDate: (updateData.reported_date as string) ?? null,
     customerSegment: (updateData.customer_segment as string) ?? null,
     customerType: (updateData.customer_type as string) ?? null,
@@ -624,15 +640,18 @@ export function buildProjectionUpsert(
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
 
   // --- TTR compliance ---
+  // Gunakan resolved_date (dari Nossa) sebagai acuan kepatuhan,
+  // fallback ke closed_at (lokal Dompis) jika resolved_date belum tersedia.
+  const createComplianceClosedAt = resolvedDate ?? (createData.closed_at as Date) ?? null;
   const createCompliance = computeTtrCompliance({
     status: (createData.status as string) ?? null,
-    closedAt: (createData.closed_at as Date) ?? null,
+    closedAt: createComplianceClosedAt,
     reportedDate: (createData.reported_date as string) ?? null,
-    customerSegment: (createData.customer_segment as string) ?? null,
-    customerType: (createData.customer_type as string) ?? null,
-    jenisTiket1: (createData.jenis_tiket_1 as string) ?? null,
-    jenisTiket2: (createData.jenis_tiket_2 as string) ?? null,
-    ticketIdGamas: (createData.ticket_id_gamas as string) ?? (raw.ticket_id_gamas as string) ?? null,
+    customerSegment: (createData.customer_segment as string) || null,
+    customerType: (createData.customer_type as string) || null,
+    jenisTiket1: (createData.jenis_tiket_1 as string) || null,
+    jenisTiket2: (createData.jenis_tiket_2 as string) || null,
+    ticketIdGamas: (createData.ticket_id_gamas as string) || (raw.ticket_id_gamas as string) || null,
   });
   createData.ttr_comply_status = createCompliance.status;
   createData.ttr_deadline_at = createCompliance.deadlineAt;
@@ -761,6 +780,8 @@ async function fetchBatch(
       tr.tsc_result,
       tr.scc_result,
       tr.pending_reason,
+      tr.resolved_date,
+      tr.technician,
       ext.c_description_serviceid
     FROM ticket_raw tr
     LEFT JOIN ticket_raw_bridge_ext ext ON ext.incident = tr.incident
@@ -817,6 +838,8 @@ async function prepareProjectionItems(
       status: true,
       status_update: true,
       closed_at: true,
+      resolved_date: true,
+      technician: true,
       rca: true,
       sub_rca: true,
       status_manja: true,

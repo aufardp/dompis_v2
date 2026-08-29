@@ -44,6 +44,8 @@ type CandidateRow = {
   date_modified: string | null;
   worklog_summary: string | null;
   last_update_worklog: string | null;
+  resolve_date: string | null;
+  technician: string | null;
   sourceHash: string | null;
 };
 
@@ -54,7 +56,7 @@ type SeedCandidateRow = {
   sourceHash: string | null;
 };
 
-type ExternalStatusRow = {
+export type ExternalStatusRow = {
   incident: string;
   sourceTable: string;
   normalizedStatus: string;
@@ -63,6 +65,8 @@ type ExternalStatusRow = {
   worklogSummary: string | null;
   lastUpdateWorklog: string | null;
   sourceUpdatedAt: Date;
+  resolveDate: Date | null;
+  technician: string | null;
 };
 
 const CONFIGURED_BATCH_SIZE = parsePositiveIntEnv('STATUS_REFRESH_BATCH_SIZE', 300);
@@ -264,6 +268,9 @@ function getChangedFields(candidate: CandidateRow, external: ExternalStatusRow):
   if (candidate.date_modified !== external.dateModified) fields.push('date_modified');
   if (candidate.worklog_summary !== external.worklogSummary) fields.push('worklog_summary');
   if (candidate.last_update_worklog !== external.lastUpdateWorklog) fields.push('last_update_worklog');
+  const externalResolveDateStr = external.resolveDate?.toISOString().slice(0, 19).replace('T', ' ') ?? null;
+  if (candidate.resolve_date !== externalResolveDateStr) fields.push('resolve_date');
+  if (candidate.technician !== external.technician) fields.push('technician');
   return fields;
 }
 
@@ -382,6 +389,8 @@ async function fetchHotCandidates(
         tr.date_modified,
         tr.worklog_summary,
         tr.last_update_worklog,
+        tr.resolve_date,
+        tr.technician,
         tr.sourceHash
       FROM ticket_raw tr
       LEFT JOIN status_refresh_ticket_state s
@@ -432,6 +441,8 @@ async function fetchSafetyCandidates(
         tr.date_modified,
         tr.worklog_summary,
         tr.last_update_worklog,
+        tr.resolve_date,
+        tr.technician,
         tr.sourceHash
       FROM status_refresh_ticket_state s
       INNER JOIN ticket_raw tr ON tr.incident = s.incident
@@ -591,6 +602,8 @@ async function fetchExternalRows(
     'status_date',
     'worklog_summary',
     'last_update_worklog',
+    'resolve_date',
+    'technician',
   ].filter((column) => availableColumns.has(column));
   const modifiedColumn =
     ['date_modified', 'datemodified', cursorDefinition.modifiedColumn]
@@ -631,6 +644,8 @@ async function fetchExternalRows(
       worklogSummary: trimTo(normalized.worklog_summary, 100),
       lastUpdateWorklog: trimTo(normalized.last_update_worklog, 100),
       sourceUpdatedAt: parseExternalDate(normalized.date_modified) ?? nowWib(),
+      resolveDate: parseExternalDate(normalized.resolve_date) ?? null,
+      technician: trimTo(normalized.technician, 255),
     });
   }
 
@@ -745,27 +760,31 @@ async function batchCloseTickets(
   for (const chunk of chunkArray(closedRows, UPDATE_CHUNK_SIZE)) {
     for (let attempt = 0; attempt <= UPDATE_RETRY_MAX; attempt++) {
       try {
-        const values = chunk.map((row) =>
-          Prisma.sql`(
-            ${row.incident},
-            ${row.normalizedStatus},
-            'close',
-            ${now},
-            ${now}
-          )`,
-        );
+         const values = chunk.map((row) =>
+           Prisma.sql`(
+             ${row.incident},
+             ${row.normalizedStatus},
+             'close',
+             ${now},
+             ${row.resolveDate ?? now},
+             ${row.technician ?? null},
+             ${now}
+           )`,
+         );
 
-        const updatedCount = await withStatusRefreshRetry(
-          () => prisma.$executeRaw`
-          INSERT INTO ticket
-            (incident, status, status_update, closed_at, synced_at)
-          VALUES ${Prisma.join(values)}
-          ON DUPLICATE KEY UPDATE
-            status = VALUES(status),
-            status_update = 'close',
-            closed_at = IF(closed_at IS NULL, VALUES(closed_at), closed_at),
-            synced_at = VALUES(synced_at)
-        `,
+         const updatedCount = await withStatusRefreshRetry(
+           () => prisma.$executeRaw`
+           INSERT INTO ticket
+             (incident, status, status_update, closed_at, resolved_date, technician, synced_at)
+           VALUES ${Prisma.join(values)}
+           ON DUPLICATE KEY UPDATE
+             status = VALUES(status),
+             status_update = 'close',
+             closed_at = IF(closed_at IS NULL, VALUES(closed_at), closed_at),
+             resolved_date = IF(resolved_date IS NULL, VALUES(resolved_date), resolved_date),
+             technician = IF(technician IS NULL, VALUES(technician), technician),
+             synced_at = VALUES(synced_at)
+         `,
           { label: 'batchCloseTickets', retries: 2, baseDelayMs: 150, failOpen: false },
         );
         if (updatedCount === null) throw new Error('Batch close tickets skipped after retries');

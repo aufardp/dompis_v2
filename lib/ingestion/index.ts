@@ -399,9 +399,11 @@ async function withRetry<T>(
     } catch (error) {
       if (attempt >= options.retryMax || !isTransientError(error)) throw error;
       attempt++;
-      const jitter = Math.floor(Math.random() * DEFAULT_RETRY_BASE_MS);
-      const delayMs = DEFAULT_RETRY_BASE_MS * 2 ** (attempt - 1) + jitter;
       const errorType = classifyTransientError(error);
+      const isDeadlock = errorType === 'deadlock' || String(error).includes('1213');
+      const baseDelay = isDeadlock ? DEFAULT_RETRY_BASE_MS * 10 : DEFAULT_RETRY_BASE_MS;
+      const jitter = Math.floor(Math.random() * baseDelay);
+      const delayMs = baseDelay * 2 ** (attempt - 1) + jitter;
       logger.warn('Retrying transient ingestion operation', {
         component: 'ingestion',
         label: options.label ?? 'unknown',
@@ -778,6 +780,35 @@ async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Pro
   }
 }
 
+async function fetchExistingIdentities(
+  identities: string[],
+): Promise<Map<string, { sourceHash: string | null; status: string | null; syncVersion: number; sourceUpdatedAt: Date | null }>> {
+  if (identities.length === 0) return new Map();
+  const CHUNK_SIZE = 20;
+  return new Map(
+    (
+      await Promise.all(
+        chunkArray(identities, CHUNK_SIZE).map(chunk =>
+          prisma.$queryRawUnsafe<
+            Array<{
+              incident: string | null;
+              sourceHash: string | null;
+              status: string | null;
+              syncVersion: number;
+              sourceUpdatedAt: Date | null;
+            }>
+          >(
+            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt
+             FROM ticket_raw
+             WHERE incident IN (${chunk.map(() => '?').join(',')})`,
+            ...chunk,
+          ),
+        ),
+      )
+    ).flat().filter(row => row.incident !== null).map(row => [row.incident as string, row]),
+  );
+}
+
 async function processBatch(
   rows: NormalizedExternalRow[],
   rawRows: Record<string, unknown>[],
@@ -888,6 +919,8 @@ async function processBatch(
   const identities = processable.map((item) => item.identity);
   const nossaDown = await isQosmicBridgeDown();
 
+  const existingMap = await fetchExistingIdentities(identities);
+
   const {
     changedRows,
     heartbeatRows,
@@ -895,31 +928,6 @@ async function processBatch(
     updated,
     skipped,
   } = await prisma.$transaction(async (tx) => {
-    const CHUNK_SIZE = 20;
-    const existingMap = identities.length
-      ? new Map(
-          (
-            await Promise.all(
-              chunkArray(identities, CHUNK_SIZE).map(chunk =>
-                tx.$queryRawUnsafe<
-                  Array<{
-                    incident: string | null;
-                    sourceHash: string | null;
-                    status: string | null;
-                    syncVersion: number;
-                    sourceUpdatedAt: Date | null;
-                  }>
-                >(
-                  `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt
-                   FROM ticket_raw
-                   WHERE incident IN (${chunk.map(() => '?').join(',')})`,
-                  ...chunk,
-                ),
-              ),
-            )
-          ).flat().map(row => [row.incident, row]),
-        )
-      : new Map();
     const changedRows: TicketRawBulkRow[] = [];
     const heartbeatRows: TicketRawBulkRow[] = [];
     const extRows: Array<Record<string, unknown>> = [];
