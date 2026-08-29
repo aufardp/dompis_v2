@@ -229,7 +229,7 @@ export interface ExistingTicket {
   status: string | null;
   status_update: string | null;
   closed_at: Date | null;
-  resolved_date: Date | null;
+  resolve_date: Date | null;
   technician: string | null;
   rca: string | null;
   sub_rca: string | null;
@@ -325,7 +325,7 @@ const TICKET_BULK_COLUMNS: readonly string[] = [
   'incident_domain', 'solution', 'tsc_result', 'scc_result',
   'description_actual_solution', 'alamat', 'status_date', 'flagging_manja', 'pending_reason',
   'status', 'status_update', 'closed_at',
-  'resolved_date', 'technician',
+  'resolve_date', 'technician',
   'ttr_comply_status', 'ttr_deadline_at', 'needs_validation', 'validation_reason', 'validation_flagged_at',
 ];
 
@@ -551,12 +551,12 @@ export function buildProjectionUpsert(
     }
   }
 
-  // Parse resolve_date dari raw → resolved_date (DateTime)
+  // Parse resolve_date dari raw → resolve_date (DateTime)
   let resolvedDate: Date | null = null;
   if (raw.resolve_date) {
     resolvedDate = parseExternalDateInWib(raw.resolve_date as string);
     if (resolvedDate) {
-      base.resolved_date = resolvedDate;
+      base.resolve_date = resolvedDate;
     }
   }
 
@@ -590,8 +590,8 @@ export function buildProjectionUpsert(
   if (newFlagging) updateData.flagging_manja = newFlagging;
 
   // --- TTR compliance ---
-  // Gunakan resolved_date (dari Nossa) sebagai acuan kepatuhan,
-  // fallback ke closed_at (lokal Dompis) jika resolved_date belum tersedia.
+  // Gunakan resolve_date (dari Nossa) sebagai acuan kepatuhan,
+  // fallback ke closed_at (lokal Dompis) jika resolve_date belum tersedia.
   const complianceClosedAt = resolvedDate ?? (updateData.closed_at as Date) ?? null;
   const updateCompliance = computeTtrCompliance({
     status: (updateData.status as string) ?? null,
@@ -640,8 +640,8 @@ export function buildProjectionUpsert(
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
 
   // --- TTR compliance ---
-  // Gunakan resolved_date (dari Nossa) sebagai acuan kepatuhan,
-  // fallback ke closed_at (lokal Dompis) jika resolved_date belum tersedia.
+  // Gunakan resolve_date (dari Nossa) sebagai acuan kepatuhan,
+  // fallback ke closed_at (lokal Dompis) jika resolve_date belum tersedia.
   const createComplianceClosedAt = resolvedDate ?? (createData.closed_at as Date) ?? null;
   const createCompliance = computeTtrCompliance({
     status: (createData.status as string) ?? null,
@@ -780,7 +780,7 @@ async function fetchBatch(
       tr.tsc_result,
       tr.scc_result,
       tr.pending_reason,
-      tr.resolved_date,
+      tr.resolve_date,
       tr.technician,
       ext.c_description_serviceid
     FROM ticket_raw tr
@@ -838,7 +838,7 @@ async function prepareProjectionItems(
       status: true,
       status_update: true,
       closed_at: true,
-      resolved_date: true,
+      resolve_date: true,
       technician: true,
       rca: true,
       sub_rca: true,

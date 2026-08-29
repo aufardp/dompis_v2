@@ -35,13 +35,13 @@ async function main() {
           status: { in: CLOSE_STATUS_VALUES },
           ttr_comply_status: null,
           id_ticket: { gt: lastId },
-          resolved_date: { gte: new Date(`${closedFrom}T00:00:00+07:00`) },
+          resolve_date: { gte: new Date(`${closedFrom}T00:00:00+07:00`) },
         },
         select: {
           id_ticket: true,
           status: true,
           closed_at: true,
-          resolved_date: true,
+          resolve_date: true,
           reported_date: true,
           customer_segment: true,
           customer_type: true,
@@ -60,7 +60,7 @@ async function main() {
       for (const ticket of tickets) {
         const result = computeTtrCompliance({
           status: ticket.status,
-          closedAt: ticket.resolved_date ?? ticket.closed_at,
+          closedAt: ticket.resolve_date ?? ticket.closed_at,
           reportedDate: ticket.reported_date,
           customerSegment: ticket.customer_segment,
           customerType: ticket.customer_type,

@@ -775,13 +775,13 @@ async function batchCloseTickets(
          const updatedCount = await withStatusRefreshRetry(
            () => prisma.$executeRaw`
            INSERT INTO ticket
-             (incident, status, status_update, closed_at, resolved_date, technician, synced_at)
+             (incident, status, status_update, closed_at, resolve_date, technician, synced_at)
            VALUES ${Prisma.join(values)}
            ON DUPLICATE KEY UPDATE
              status = VALUES(status),
              status_update = 'close',
              closed_at = IF(closed_at IS NULL, VALUES(closed_at), closed_at),
-             resolved_date = IF(resolved_date IS NULL, VALUES(resolved_date), resolved_date),
+             resolve_date = IF(resolve_date IS NULL, VALUES(resolve_date), resolve_date),
              technician = IF(technician IS NULL, VALUES(technician), technician),
              synced_at = VALUES(synced_at)
          `,

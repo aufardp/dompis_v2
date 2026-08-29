@@ -76,7 +76,7 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   status: true,
   status_update: true,
   closed_at: true,
-  resolved_date: true,
+  resolve_date: true,
   technician: true,
   rca: true,
   sub_rca: true,
