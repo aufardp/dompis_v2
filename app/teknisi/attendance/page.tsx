@@ -35,9 +35,7 @@ export default function AttendancePage() {
     status?: 'PRESENT' | 'LATE';
     message?: string;
   } | null>(null);
-  const [selectedWorkzoneId, setSelectedWorkzoneId] = useState<number | null>(
-    null,
-  );
+  const [selectedWorkzoneIds, setSelectedWorkzoneIds] = useState<number[]>([]);
   const [workzones, setWorkzones] = useState<
     { id_sa: number; nama_sa: string }[]
   >([]);
@@ -70,7 +68,7 @@ export default function AttendancePage() {
         const saData = await saRes.json();
         if (saData.success && saData.data.length > 0) {
           setWorkzones(saData.data);
-          setSelectedWorkzoneId(saData.data[0].id_sa);
+          setSelectedWorkzoneIds([saData.data[0].id_sa]);
         }
       }
     } catch (error) {
@@ -103,15 +101,22 @@ export default function AttendancePage() {
     }
   }, [checkInResult, countdown, router]);
 
+  const toggleWorkzone = (id: number) => {
+    setSelectedWorkzoneIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
   const handleCheckIn = async () => {
-    if (!selectedWorkzoneId) return;
+    if (!selectedWorkzoneIds.length) return;
 
     setCheckingIn(true);
     try {
+      const body = selectedWorkzoneIds.length === 1 ? { workzone_id: selectedWorkzoneIds[0] } : { workzone_ids: selectedWorkzoneIds };
       const res = await fetch('/api/technicians/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workzone_id: selectedWorkzoneId }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -245,21 +250,22 @@ export default function AttendancePage() {
             {workzones.length > 0 && (
               <div className='mb-4'>
                 <label className='mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300'>
-                  Workzone:
+                  Workzone (pilih 1 atau lebih):
                 </label>
-                <select
-                  value={selectedWorkzoneId || ''}
-                  onChange={(e) =>
-                    setSelectedWorkzoneId(Number(e.target.value))
-                  }
-                  className='w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white'
-                >
+                <div className='space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-900/50'>
                   {workzones.map((wz) => (
-                    <option key={wz.id_sa} value={wz.id_sa}>
-                      {wz.nama_sa}
-                    </option>
+                    <label key={wz.id_sa} className='flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white dark:hover:bg-slate-800'>
+                      <input
+                        type='checkbox'
+                        checked={selectedWorkzoneIds.includes(wz.id_sa)}
+                        onChange={() => toggleWorkzone(wz.id_sa)}
+                        className='h-4 w-4 rounded border-slate-300 text-green-600 focus:ring-green-500'
+                      />
+                      <span className='text-sm font-medium text-slate-700 dark:text-slate-200'>{wz.nama_sa}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
+                <p className='mt-1 text-xs text-slate-400'>Teknisi multi-STO bisa pilih beberapa STO sekaligus</p>
               </div>
             )}
 
@@ -278,7 +284,7 @@ export default function AttendancePage() {
 
             <button
               onClick={handleCheckIn}
-              disabled={checkingIn || !selectedWorkzoneId}
+              disabled={checkingIn || !selectedWorkzoneIds.length}
               className='flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 py-4 text-lg font-bold text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:bg-green-300'
             >
               {checkingIn ? (

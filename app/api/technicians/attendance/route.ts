@@ -6,7 +6,7 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { AttendanceCheckInInput } from '@/app/types/attendance';
 import prisma from '@/app/libs/prisma';
 import { signAccessToken } from '@/app/libs/auth';
-import { getSecureCookieOptions } from '@/app/libs/request-security';
+import { getSecureCookieOptions, getAccessTokenCookieMaxAge } from '@/app/libs/request-security';
 import { logger } from '@/lib/observability/logger';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
@@ -30,20 +30,29 @@ export async function POST(request: NextRequest) {
 
     const technicianId = decoded.id_user;
 
-    const attendanceSchema = z.object({
-      workzone_id: z.number(),
-    });
+    const attendanceSchema = z
+      .object({
+        workzone_id: z.number().optional(),
+        workzone_ids: z.array(z.number()).optional(),
+      })
+      .refine((d) => d.workzone_id !== undefined || (d.workzone_ids && d.workzone_ids.length > 0), {
+        message: 'workzone_id atau workzone_ids wajib diisi',
+      });
 
     const body = await request.json();
     const parsed = attendanceSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ success: false, message: 'Validation failed', errors: parsed.error.flatten().fieldErrors }, { status: 400 });
     }
-    const { workzone_id } = parsed.data;
+    const workzoneIds: number[] = parsed.data.workzone_ids
+      ? parsed.data.workzone_ids
+      : parsed.data.workzone_id !== undefined
+        ? [parsed.data.workzone_id]
+        : [];
 
     const result = await AttendanceService.checkIn(
       technicianId,
-      body.workzone_id,
+      workzoneIds.length === 1 ? workzoneIds[0] : workzoneIds,
     );
 
     if (!result.success) {
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set({
       name: 'token',
       value: newAccessToken,
-      ...getSecureCookieOptions(60 * 60),
+      ...getSecureCookieOptions(getAccessTokenCookieMaxAge()),
     });
 
     return response;

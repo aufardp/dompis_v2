@@ -17,10 +17,11 @@ export async function GET(request: NextRequest) {
     const technicianId = decoded.id_user;
 
     const status = await AttendanceService.getOwnStatus(technicianId);
+    const statuses = await AttendanceService.getOwnStatuses(technicianId);
 
     return NextResponse.json({
       success: true,
-      data: status,
+      data: { ...status, statuses },
     });
   } catch (error: unknown) {
     logger.error('GET /technicians/attendance/status error:', error);

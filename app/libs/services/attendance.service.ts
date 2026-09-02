@@ -51,98 +51,168 @@ export class AttendanceService {
 
   static async checkIn(
     technicianId: number,
-    workzoneId: number,
+    workzoneId: number | number[],
   ): Promise<{
     success: boolean;
     check_in_at?: string;
     status?: AttendanceStatus;
     message?: string;
+    results?: Array<{ workzone_id: number; success: boolean; status?: AttendanceStatus; message?: string; check_in_at?: string }>;
   }> {
     const today = this.getTodayDateString();
     const month = this.getTodayMonth();
     const year = this.getTodayYear();
     const now = new Date();
 
-    const existingAttendance = await prismaBulk.technician_attendance.findFirst({
-      where: {
-        technician_id: technicianId,
-        date: today,
-      },
-    });
-
-    if (existingAttendance) {
-      return {
-        success: false,
-        message: 'Anda sudah absen hari ini',
-      };
+    const workzoneIds = Array.isArray(workzoneId) ? workzoneId : [workzoneId];
+    if (workzoneIds.length === 0) {
+      return { success: false, message: 'workzone_id tidak boleh kosong' };
+    }
+    const uniqueIds = Array.from(new Set(workzoneIds.filter((id) => Number.isFinite(id))));
+    if (uniqueIds.length === 0) {
+      return { success: false, message: 'workzone_id tidak valid' };
     }
 
     const status = this.computeStatus(now);
 
-    const attendance = await prismaBulk.technician_attendance.create({
-      data: {
-        technician_id: technicianId,
-        workzone_id: workzoneId,
-        check_in_at: now,
-        date: today,
-        month,
-        year,
-        status,
-      },
-    });
+    const results: Array<{ workzone_id: number; success: boolean; status?: AttendanceStatus; message?: string; check_in_at?: string }> = [];
+    let anySuccess = false;
+    let firstCheckInAt: string | undefined;
+    let firstStatus: AttendanceStatus | undefined;
+
+    for (const wzId of uniqueIds) {
+      const existingAttendance = await prismaBulk.technician_attendance.findFirst({
+        where: {
+          technician_id: technicianId,
+          date: today,
+          workzone_id: wzId,
+        },
+      });
+
+      if (existingAttendance) {
+        results.push({ workzone_id: wzId, success: false, message: `Sudah absen di STO ${wzId} hari ini` });
+        continue;
+      }
+
+      const attendance = await prismaBulk.technician_attendance.create({
+        data: {
+          technician_id: technicianId,
+          workzone_id: wzId,
+          check_in_at: now,
+          date: today,
+          month,
+          year,
+          status,
+        },
+      });
+      anySuccess = true;
+      if (!firstCheckInAt) {
+        firstCheckInAt = attendance.check_in_at.toISOString();
+        firstStatus = attendance.status as AttendanceStatus;
+      }
+      results.push({
+        workzone_id: wzId,
+        success: true,
+        status: attendance.status as AttendanceStatus,
+        check_in_at: attendance.check_in_at.toISOString(),
+      });
+    }
+
+    if (!anySuccess) {
+      const allAlready = results.every((r) => !r.success);
+      if (allAlready && uniqueIds.length === 1) {
+        return { success: false, message: 'Anda sudah absen hari ini' };
+      }
+      return { success: false, message: 'Semua STO sudah absen hari ini', results };
+    }
 
     return {
       success: true,
-      check_in_at: attendance.check_in_at.toISOString(),
-      status: attendance.status as AttendanceStatus,
+      check_in_at: firstCheckInAt,
+      status: firstStatus,
+      results,
     };
   }
 
-  static async checkOut(technicianId: number): Promise<{
+  /**
+   * Check-in untuk banyak STO sekaligus — wrapper eksplisit untuk kejelasan.
+   */
+  static async checkInMany(
+    technicianId: number,
+    workzoneIds: number[],
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    results: Array<{ workzone_id: number; success: boolean; status?: AttendanceStatus; message?: string; check_in_at?: string }>;
+  }> {
+    const res = await this.checkIn(technicianId, workzoneIds);
+    return {
+      success: res.success,
+      message: res.message,
+      results: res.results || [],
+    };
+  }
+
+  static async checkOut(technicianId: number, workzoneId?: number | number[]): Promise<{
     success: boolean;
     check_out_at?: string;
     message?: string;
+    results?: Array<{ workzone_id: number; success: boolean; message?: string; check_out_at?: string }>;
   }> {
     const today = this.getTodayDateString();
     const now = new Date();
 
-    const existingAttendance = await prismaBulk.technician_attendance.findFirst({
-      where: {
-        technician_id: technicianId,
-        date: today,
-      },
+    const targetIds = workzoneId !== undefined
+      ? (Array.isArray(workzoneId) ? workzoneId : [workzoneId]).filter((id) => Number.isFinite(id))
+      : null;
+
+    const whereBase: Record<string, unknown> = {
+      technician_id: technicianId,
+      date: today,
+    };
+    if (targetIds && targetIds.length > 0) {
+      (whereBase as Record<string, unknown>).workzone_id = targetIds.length === 1 ? targetIds[0] : { in: targetIds };
+    }
+
+    const rows = await prismaBulk.technician_attendance.findMany({
+      where: whereBase,
     });
 
-    if (!existingAttendance) {
+    if (rows.length === 0) {
       return {
         success: false,
         message: 'Anda belum absen hari ini',
       };
     }
 
-    if (existingAttendance.check_out_at) {
+    const pending = rows.filter((r: { check_out_at: Date | null }) => !r.check_out_at);
+    if (pending.length === 0) {
       return {
         success: false,
         message: 'Anda sudah absen keluar hari ini',
       };
     }
 
-    // Calculate working hours: difference between check_out and check_in in hours
-    const checkIn = existingAttendance.check_in_at;
-    const diffMs = now.getTime() - checkIn.getTime();
-    const workingHours = Math.round((diffMs / 3600000) * 100) / 100; // Round to 2 decimal places
+    const results: Array<{ workzone_id: number; success: boolean; message?: string; check_out_at?: string }> = [];
+    for (const row of pending) {
+      const checkIn = (row as { check_in_at: Date }).check_in_at;
+      const diffMs = now.getTime() - checkIn.getTime();
+      const workingHours = Math.round((diffMs / 3600000) * 100) / 100;
 
-    await prismaBulk.technician_attendance.update({
-      where: { id: existingAttendance.id },
-      data: {
-        check_out_at: now,
-        working_hours: workingHours,
-      },
-    });
+      await prismaBulk.technician_attendance.update({
+        where: { id: (row as { id: number }).id },
+        data: {
+          check_out_at: now,
+          working_hours: workingHours,
+        },
+      });
+      results.push({ workzone_id: (row as { workzone_id: number }).workzone_id, success: true, check_out_at: now.toISOString() });
+    }
 
     return {
       success: true,
       check_out_at: now.toISOString(),
+      results,
     };
   }
 
@@ -156,6 +226,7 @@ export class AttendanceService {
         technician_id: technicianId,
         date: today,
       },
+      orderBy: { check_in_at: 'asc' },
     });
 
     if (!attendance) {
@@ -168,13 +239,39 @@ export class AttendanceService {
       };
     }
 
+    const allForToday = await prismaBulk.technician_attendance.findMany({
+      where: { technician_id: technicianId, date: today },
+      select: { check_out_at: true },
+    });
+    const allCheckedOut = allForToday.length > 0 && allForToday.every((r: { check_out_at: Date | null }) => r.check_out_at !== null);
+
     return {
       checked_in: true,
-      checked_out: attendance.check_out_at !== null,
+      checked_out: allCheckedOut,
       check_in_at: attendance.check_in_at.toISOString(),
       check_out_at: attendance.check_out_at?.toISOString() || null,
       status: attendance.status as AttendanceStatus,
     };
+  }
+
+  static async getOwnStatuses(
+    technicianId: number,
+  ): Promise<Array<{ workzone_id: number; workzone_name?: string; checked_in: boolean; checked_out: boolean; check_in_at: string | null; check_out_at: string | null; status: AttendanceStatus | null }>> {
+    const today = this.getTodayDateString();
+    const rows = await prismaBulk.technician_attendance.findMany({
+      where: { technician_id: technicianId, date: today },
+      include: { workzone: { select: { nama_sa: true } } },
+      orderBy: { workzone_id: 'asc' },
+    });
+    return rows.map((r: { workzone_id: number; workzone: { nama_sa: string | null }; check_in_at: Date; check_out_at: Date | null; status: string }) => ({
+      workzone_id: r.workzone_id,
+      workzone_name: r.workzone?.nama_sa || undefined,
+      checked_in: true,
+      checked_out: r.check_out_at !== null,
+      check_in_at: r.check_in_at.toISOString(),
+      check_out_at: r.check_out_at?.toISOString() || null,
+      status: r.status as AttendanceStatus,
+    }));
   }
 
   static async getTodayPresentTechnicianIds(): Promise<number[]> {
@@ -187,8 +284,19 @@ export class AttendanceService {
       select: {
         technician_id: true,
       },
+      distinct: ['technician_id'],
     });
 
+    return attendances.map((a: { technician_id: number }) => a.technician_id);
+  }
+
+  static async getTodayPresentTechnicianIdsByWorkzone(workzoneId: number): Promise<number[]> {
+    const today = this.getTodayDateString();
+    const attendances = await prismaBulk.technician_attendance.findMany({
+      where: { date: today, workzone_id: workzoneId },
+      select: { technician_id: true },
+      distinct: ['technician_id'],
+    });
     return attendances.map((a: { technician_id: number }) => a.technician_id);
   }
 
@@ -456,6 +564,7 @@ export class AttendanceService {
       where: {
         technician_id: data.technician_id,
         date: data.date,
+        workzone_id: data.workzone_id,
       },
     });
 

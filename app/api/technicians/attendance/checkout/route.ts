@@ -25,7 +25,18 @@ export async function PATCH(request: NextRequest) {
 
     const technicianId = decoded.id_user;
 
-    const result = await AttendanceService.checkOut(technicianId);
+    let workzoneIds: number | number[] | undefined;
+    try {
+      const body = await request.json().catch(() => null);
+      if (body) {
+        if (Array.isArray(body.workzone_ids)) workzoneIds = body.workzone_ids as number[];
+        else if (typeof body.workzone_id === 'number') workzoneIds = body.workzone_id;
+        else if (Array.isArray(body.workzone_id)) workzoneIds = body.workzone_id as number[];
+      }
+    } catch {
+      // no body = checkout all pending
+    }
+    const result = await AttendanceService.checkOut(technicianId, workzoneIds);
 
     if (!result.success) {
       return NextResponse.json(
@@ -50,4 +61,8 @@ export async function PATCH(request: NextRequest) {
       { status: getErrorStatus(error, 500) },
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  return PATCH(request);
 }
