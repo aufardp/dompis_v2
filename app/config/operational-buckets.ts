@@ -145,7 +145,7 @@ export const OPERATIONAL_BUCKET_DEFINITIONS: Record<
     key: 'sqm_update',
     label: 'SQM Update',
     description:
-      'Ticket SQM yang sudah di-flag update dengan headline [SQM-UPDATE].',
+      'Ticket SQM yang sudah di-flag update (kolom sqm_update_reason terisi).',
     sourceTicket: ['PROACTIVE'],
     classificationFlag: ['TECHNICAL'],
     jenisTiket1Filter: ['sqm', 'sqm-ccan'],

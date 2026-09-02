@@ -303,7 +303,7 @@ model ticket {
     status_ttr_reseller_6_jam   String?                     @db.VarChar(10)
     status_ttr_wifi_id          String?                     @db.VarChar(10)
     pending_dompis              String?                     @db.VarChar(255)
-    sqm_update_reason           String?                     @db.VarChar(255)
+    sqm_update_reason           String?                     @db.VarChar(300)
     description_solution_dompis String?                     @db.VarChar(255)
     rca                         String?                     @db.VarChar(100)
     sub_rca                     String?                     @db.VarChar(100)

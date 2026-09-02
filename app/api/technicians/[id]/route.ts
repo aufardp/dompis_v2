@@ -26,6 +26,7 @@ interface TicketType {
   classification_path?: string | null;
   channel?: string | null;
   summary?: string | null;
+  sqm_update_reason?: string | null;
   jenis_tiket_1?: string | null;
   jenis_tiket_2?: string | null;
   workzone?: string | null;
@@ -198,6 +199,7 @@ export async function GET(
             classification_path: true,
             channel: true,
             summary: true,
+            sqm_update_reason: true,
             jenis_tiket_1: true,
             jenis_tiket_2: true,
             workzone: true,
@@ -233,6 +235,7 @@ export async function GET(
             classification_path: true,
             channel: true,
             summary: true,
+            sqm_update_reason: true,
             jenis_tiket_1: true,
             jenis_tiket_2: true,
             workzone: true,

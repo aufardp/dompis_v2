@@ -24,6 +24,7 @@ import {
 } from '@/lib/rekap/rekap-classify';
 import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
 import { deptByJenis } from '@/lib/dept';
+import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
 
 interface RekapTicketRow {
   area: string;
@@ -1200,7 +1201,7 @@ async function getFilteredRekapTickets(
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
-      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt
@@ -1249,7 +1250,7 @@ async function getCustomerSqmOverlayTickets(
       const proactiveWhere = buildKpiBucketFilterSql('kpi_proactive');
       const sqmWhere = `LOWER(source_ticket) = 'proactive'
          AND (classification_path IS NULL OR classification_path != 'Z_PERMINTAAN_044')
-         AND summary LIKE '[SQM-UPDATE]%'
+         AND ${isSqmUpdateReasonSql('')}
          AND (LOWER(jenis_tiket_1) LIKE '%sqm%' OR LOWER(jenis_tiket_1) LIKE '%sqm-ccan%')`;
 
       const fullSql = `
@@ -1270,7 +1271,7 @@ async function getCustomerSqmOverlayTickets(
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
-      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt
@@ -1348,7 +1349,7 @@ async function getCustomerGamasOverlayTickets(
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
-      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt
@@ -1436,7 +1437,7 @@ async function getLegacyCustomerRekapTickets(
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
-      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
       COUNT(*) AS cnt

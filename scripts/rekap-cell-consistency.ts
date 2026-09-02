@@ -3,6 +3,7 @@ import { prisma } from '@/app/libs/prisma';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { buildCellFilterSql } from '@/lib/rekap/rekap-cell-filter';
 import { classifyBucket, type ClassBucketKey } from '@/lib/rekap/rekap-classify';
+import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
 import { getTicketCategory } from '@/app/libs/ticket-utils';
 
 interface Scope {
@@ -114,7 +115,7 @@ async function verifyAllAggregation() {
       t.source_ticket,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
-      LOWER(t.summary) LIKE '[sqm-update]%' AS is_sqm_update,
+      ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       COUNT(*) AS cnt
      FROM ticket t
      JOIN service_area sa ON sa.nama_sa = t.workzone

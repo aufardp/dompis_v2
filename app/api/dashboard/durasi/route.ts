@@ -38,6 +38,7 @@ interface RawDurasiRow {
   manja_expired: string | null;
   guarantee_status: string | null;
   summary: string | null;
+  sqm_update_reason: string | null;
 }
 
 interface WorkzoneSeed {
@@ -406,7 +407,8 @@ async function getFilteredTickets(
       t.flagging_manja,
       t.manja_expired,
       t.guarantee_status,
-      t.summary
+      t.summary,
+      t.sqm_update_reason
     FROM (${unionSql}) AS ids
     JOIN ticket t ON t.id_ticket = ids.id_ticket
     JOIN service_area sa ON sa.nama_sa = t.workzone

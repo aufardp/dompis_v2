@@ -36,6 +36,7 @@ export interface DurasiDetailTicket {
   id_ticket: number;
   incident: string;
   summary: string | null;
+  sqm_update_reason: string | null;
   reported_date: string | null;
   status: string | null;
   status_update: string | null;

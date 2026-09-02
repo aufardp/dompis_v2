@@ -34,6 +34,10 @@ export const pickupTicketSchema = z.object({
   ticketId: positiveInt,
 });
 
+export const claimTicketSchema = z.object({
+  ticketId: positiveInt,
+});
+
 export const closeTicketSchema = z.object({
   ticketId: positiveInt,
   rca: optionalTrimmedString(100),
@@ -74,8 +78,8 @@ export const updateTicketSchema = z.object({
       device_name: optionalTrimmedString(100),
       symptom: optionalTrimmedString(65535),
       alamat: optionalTrimmedString(65535),
-      sqmUpdateReason: optionalNullableTrimmedString(255),
-      sqm_update_reason: optionalNullableTrimmedString(255),
+      sqmUpdateReason: optionalNullableTrimmedString(300),
+      sqm_update_reason: optionalNullableTrimmedString(300),
       pendingDompis: optionalTrimmedString(255),
       descriptionSolutionDompis: optionalTrimmedString(255),
       description_solution_dompis: optionalTrimmedString(255),
@@ -102,6 +106,7 @@ export const updateTicketSchema = z.object({
 export type AssignTicketInput = z.infer<typeof assignTicketSchema>;
 export type UnassignTicketInput = z.infer<typeof unassignTicketSchema>;
 export type PickupTicketInput = z.infer<typeof pickupTicketSchema>;
+export type ClaimTicketInput = z.infer<typeof claimTicketSchema>;
 export type CloseTicketInput = z.infer<typeof closeTicketSchema>;
 export type UpdateTicketInputSchema = z.infer<typeof updateTicketSchema>;
 

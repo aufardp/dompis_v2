@@ -6,6 +6,7 @@ import {
   OPERATIONAL_BUCKET_DEFINITIONS,
 } from '@/app/config/operational-buckets';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import { sqmUpdateReasonPrismaFilter } from '@/lib/sqm-update';
 
 function uniqueStrings(values: readonly (string | null | undefined)[]): string[] {
   return [...new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean))];
@@ -85,12 +86,7 @@ export function buildOperationalBucketWhere(
         { source_ticket: { in: sourceVariants } },
         NOT_OBSOLETE,
         containsAny('jenis_tiket_1', ['sqm', 'sqm-ccan']),
-        {
-          OR: [
-            { summary: null },
-            { NOT: { summary: { startsWith: '[SQM-UPDATE]' } } },
-          ],
-        },
+        { NOT: sqmUpdateReasonPrismaFilter },
       ],
     };
   }
@@ -138,7 +134,7 @@ export function buildOperationalBucketWhere(
         { source_ticket: { in: sourceVariants } },
         NOT_OBSOLETE,
         containsAny('jenis_tiket_1', ['sqm', 'sqm-ccan']),
-        { summary: { startsWith: '[SQM-UPDATE]' } },
+        sqmUpdateReasonPrismaFilter,
         { status: { notIn: CLOSE_STATUS_VALUES } },
       ],
     };

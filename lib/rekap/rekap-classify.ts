@@ -1,5 +1,6 @@
 import { getTicketCategory } from '@/app/libs/ticket-utils';
 import { isB2CJenis, isNetralJenis, normalizeJenis } from '@/app/config/jenis-tiket';
+import { isSqmUpdateRow } from '@/lib/sqm-update';
 
 /**
  * Shared JS classification for rekap workorder cells.
@@ -253,8 +254,8 @@ function sqmBase(row: {
   );
 }
 
-function isSqmUpdateSummary(row: { summary?: string | null }): boolean {
-  return String(row.summary ?? '').toLowerCase().startsWith('[sqm-update]');
+function isSqmUpdateSummary(row: { sqm_update_reason?: string | null }): boolean {
+  return isSqmUpdateRow(row);
 }
 
 export function matchesDetail(
@@ -267,6 +268,7 @@ export function matchesDetail(
     source_ticket?: string | null;
     classification_path?: string | null;
     summary?: string | null;
+    sqm_update_reason?: string | null;
     status?: string | null;
     status_update?: string | null;
   },

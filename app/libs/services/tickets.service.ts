@@ -232,6 +232,7 @@ const ticketSearchContextSelect = {
   id_ticket: true,
   incident: true,
   summary: true,
+  sqm_update_reason: true,
   source_ticket: true,
   jenis_tiket_1: true,
   jenis_tiket_2: true,

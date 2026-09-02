@@ -18,6 +18,7 @@ import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { ApiError } from '@/app/libs/apiError';
+import { SQM_UPDATE_REASON_MAX_LEN } from '@/lib/sqm-update';
 import { invalidateTicketsCache } from '@/lib/cache';
 import { AttendanceService } from './attendance.service';
 import {
@@ -267,9 +268,13 @@ function cleanNullableString(value: unknown): string | null | undefined {
   return s.length === 0 ? null : s;
 }
 
+function truncateTo(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return value.slice(0, max - 3) + '...';
+}
+
 function truncate255(value: string): string {
-  if (value.length <= 255) return value;
-  return value.slice(0, 252) + '...';
+  return truncateTo(value, 255);
 }
 
 function assertTransition(
@@ -299,7 +304,8 @@ async function lockTicketRow(
     SELECT id_ticket,
       incident, workzone, teknisi_user_id, status_update,
       pending_dompis AS pending_dompis, alamat, service_no, contact_name,
-      owner_group, customer_type, device_name, customer_name
+      owner_group, customer_type, device_name, customer_name,
+      is_manual, status, needs_validation
     FROM ticket
     WHERE id_ticket = ${ticketId}
     FOR UPDATE
@@ -692,13 +698,14 @@ async function applyPatchFields(
     patchChanges.push('pendingDompis');
   }
 
-  // sqmUpdateReason — store separately so it remains stable even if the
-  // Prisma client on the running process has not been regenerated yet.
+  // sqmUpdateReason — kolom mandiri "[KODE] penjabaran"; keberadaannya adalah
+  // penanda SQM-update (tahan re-sync nossa, tidak seperti prefix di summary).
   if (patch.sqmUpdateReason !== undefined) {
     if (roleKey === 'teknisi') throw new Error('Forbidden - Access denied');
 
     const reason = cleanNullableString(patch.sqmUpdateReason);
-    const reasonDb = reason == null ? null : truncate255(reason);
+    const reasonDb =
+      reason == null ? null : truncateTo(reason, SQM_UPDATE_REASON_MAX_LEN);
 
     await tx.$executeRaw`
       UPDATE ticket
@@ -1320,18 +1327,31 @@ export class TicketWorkflowService {
         if (evidenceCount < 2)
           throw new Error('Minimal 2 evidence wajib sebelum close');
 
+        const isManualTicket = Boolean((ticket as unknown as { is_manual?: unknown }).is_manual);
         await tx.ticket.update({
           where: { id_ticket: ticketId },
           data: {
             status_update: 'close',
+            status: isManualTicket ? 'CLOSED' : undefined,
             rca: rcaValue,
             sub_rca: subRcaValue,
             description_solution_dompis: descriptionSolutionDompis.trim(),
             alamat,
             device_name: deviceNameValue,
             closed_at: now,
-          },
+            ...(isManualTicket
+              ? { needs_validation: false, validation_reason: null, validation_flagged_at: null }
+              : {}),
+          } as Prisma.ticketUpdateInput,
         });
+        // Ensure manual ticket also has CLOSED status and no validation via raw fallback (Prisma skips undefined)
+        if (isManualTicket) {
+          await tx.$executeRaw`
+            UPDATE ticket
+            SET status = 'CLOSED', needs_validation = FALSE, validation_reason = NULL, validation_flagged_at = NULL
+            WHERE id_ticket = ${ticketId}
+          `;
+        }
 
         const geoServiceNo = hasGeo ? cleanNullableString(ticket.service_no) : null;
 

@@ -1,4 +1,5 @@
 import type { OperationalBucketKey } from '@/app/config/operational-buckets';
+import { isSqmUpdateRow } from '@/lib/sqm-update';
 
 export type TechnicianBucketKey = OperationalBucketKey | 'unknown';
 
@@ -8,6 +9,7 @@ export type TechnicianBucketSource = {
   classification_path?: string | null;
   channel?: string | null;
   summary?: string | null;
+  sqm_update_reason?: string | null;
   jenis_tiket_1?: string | null;
   jenis_tiket_2?: string | null;
 };
@@ -55,7 +57,6 @@ export function classifyTechnicianBucket(
 
   const sourceTicket = trimLower(source.source_ticket);
   const channel = trimLower(source.channel);
-  const summary = String(source.summary ?? '').trim();
 
   const isCustomer = sourceTicket === 'customer';
   const isProactive = sourceTicket === 'proactive';
@@ -63,7 +64,7 @@ export function classifyTechnicianBucket(
   const isUnspec = hasJenis(source.jenis_tiket_2, ['unspec', 'unspec b2b']);
 
   if (isProactive && channel === '28' && isUnspec) return 'non_kpi_unspec';
-  if (isProactive && summary.startsWith('[SQM-UPDATE]') && isSqm) return 'sqm_update';
+  if (isProactive && isSqmUpdateRow(source) && isSqm) return 'sqm_update';
   if (isProactive && (channel === '50' || channel === '83') && isSqm) return 'kpi_proactive';
 
   if (isCustomer) return 'kpi_customer';

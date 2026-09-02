@@ -92,6 +92,7 @@ function mapTechnicianTicket(t: {
   classification_path?: string | null;
   channel?: string | null;
   summary?: string | null;
+  sqm_update_reason?: string | null;
   jenis_tiket_1?: string | null;
   jenis_tiket_2?: string | null;
 }) {
@@ -131,6 +132,7 @@ const technicianTicketSelect = {
   classification_path: true,
   channel: true,
   summary: true,
+  sqm_update_reason: true,
   jenis_tiket_1: true,
   jenis_tiket_2: true,
 } as const;

@@ -60,7 +60,7 @@ export const TICKET_MANAGEMENT_BUCKET_ITEMS: TicketManagementNavItem[] = [
     label: 'SQM Update',
     path: '/admin/ticket-management/sqm-update',
     icon: RefreshCcw,
-    description: 'Ticket SQM dengan headline [SQM-UPDATE].',
+    description: 'Ticket SQM yang sudah di-flag update (kolom sqm_update_reason).',
   },
   {
     key: 'obsolete',

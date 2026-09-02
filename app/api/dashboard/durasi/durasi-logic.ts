@@ -1,5 +1,6 @@
 import type { DurasiPanelType } from '@/app/components/dashboard/durasi/durasi-types';
 import { normalizeJenis } from '@/app/config/jenis-tiket';
+import { isSqmUpdateRow } from '@/lib/sqm-update';
 
 export const STANDARD_BUCKETS = ['0-3J', '3-6J', '6-12J', '12-24J', '24-36J', '>36J'] as const;
 export const MANJA_BUCKETS = ['0-1d', '1-2d', '2-3d', 'EXPIRED'] as const;
@@ -14,6 +15,7 @@ export interface DurasiPanelTicket {
   guarantee_status?: string | null;
   ticket_id_gamas?: string | null;
   summary?: string | null;
+  sqm_update_reason?: string | null;
   reported_date?: string | null;
   closed_at?: string | null;
 }
@@ -76,7 +78,6 @@ export function matchesDurasiPanel(ticket: DurasiPanelTicket, panelType: DurasiP
   const jenis = normalizeText(
     `${ticket.jenis_tiket ?? ''} ${ticket.jenis_tiket_1 ?? ''} ${ticket.jenis_tiket_2 ?? ''}`,
   );
-  const summary = normalizeText(ticket.summary);
   const jenisKey = normalizeJenis(jenis);
 
   switch (panelType) {
@@ -91,7 +92,7 @@ export function matchesDurasiPanel(ticket: DurasiPanelTicket, panelType: DurasiP
     case 'FFG':
       return normalizeText(ticket.guarantee_status) === 'guarantee';
     case 'SQM_UPDATE':
-      return summary.startsWith('[sqm-update]');
+      return isSqmUpdateRow(ticket);
     case 'SQM':
       return jenisKey === 'sqm' || jenisKey === 'sqm-ccan';
     case 'ANAK_GAMAS':

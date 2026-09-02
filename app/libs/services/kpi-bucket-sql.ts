@@ -5,6 +5,7 @@ import {
   OPERATIONAL_KPI_STATUSES,
 } from '@/app/config/operational-buckets';
 import { JENIS_MAP } from '@/app/config/jenis-tiket';
+import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
 
 export type KpiBucketKey = 'all' | 'kpi_customer' | 'kpi_proactive' | 'non_kpi_unspec' | 'non_technical' | 'sqm_update' | 'obsolete';
 
@@ -97,7 +98,7 @@ function buildKpiCustomerBaseSql(tbl: string): string {
 
 function buildKpiProactiveSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
-  return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND (${t}summary IS NULL OR ${t}summary NOT LIKE '[SQM-UPDATE]%') AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
+  return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND NOT ${isSqmUpdateReasonSql(tbl)} AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
 }
 
 function buildNonKpiUnspecSql(tbl: string): string {
@@ -149,7 +150,7 @@ function buildNonTechnicalSql(tbl: string): string {
 
 function buildSqmUpdateSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
-  return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND ${t}summary LIKE '[SQM-UPDATE]%' AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
+  return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND ${isSqmUpdateReasonSql(tbl)} AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
 }
 
 function buildObsoleteSql(tbl: string): string {

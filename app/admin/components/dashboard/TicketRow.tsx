@@ -25,6 +25,7 @@ import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { TtrCountdown } from '@/app/hooks/useTtrCountdown';
 import TtrCountdownBadge from './TtrCountdownBadge';
 import SqmUpdateModal from './SqmUpdateModal';
+import { formatSqmUpdateReason, isSqmUpdateRow } from '@/lib/sqm-update';
 import BypassCloseModal from './BypassCloseModal';
 import { useAdminToast } from './admin-toast';
 
@@ -174,7 +175,7 @@ function TicketRow({
   const bookingDateParts = formatStackedDateParts(ticket.bookingDate);
 
   const isSqmTicket = (ticket.jenisTiket1 ?? '').toLowerCase().includes('sqm');
-  const hasSqmUpdate = (ticket.summary ?? '').startsWith('[SQM-UPDATE]');
+  const hasSqmUpdate = isSqmUpdateRow({ sqm_update_reason: ticket.sqmUpdateReason });
 
   // Perbaikan Max TTR Label: Memisahkan Tanggal dan Jam
   const maxTtrFullLabel = getEffectiveMaxTtrLabel(ticket);
@@ -208,7 +209,7 @@ function TicketRow({
           ticketId: ticket.idTicket,
           patch: {
             summary: `[SQM-UPDATE][${reason}] ${currentSummary}`.trim(),
-            sqmUpdateReason: description,
+            sqmUpdateReason: formatSqmUpdateReason(reason, description),
           },
         }),
       });

@@ -37,6 +37,7 @@ function inferDailyBucketPathFromCandidate(candidate: {
   jenis_tiket_1?: string | null;
   jenis_tiket_2?: string | null;
   summary?: string | null;
+  sqm_update_reason?: string | null;
   classification_path?: string | null;
   customer_type?: string | null;
 }): BucketRoute | null {
@@ -56,9 +57,9 @@ function inferDailyBucketPathFromCandidate(candidate: {
   const jenis2 = String(candidate.jenis_tiket_2 ?? '')
     .trim()
     .toLowerCase();
-  const summary = String(candidate.summary ?? '')
-    .trim()
-    .toUpperCase();
+  const isSqmUpdate =
+    typeof candidate.sqm_update_reason === 'string' &&
+    candidate.sqm_update_reason.trim() !== '';
 
   const isSqm = jenis1.includes('sqm') || jenis2.includes('sqm');
   const isUnspec = jenis1.includes('unspec') || jenis2.includes('unspec');
@@ -66,7 +67,7 @@ function inferDailyBucketPathFromCandidate(candidate: {
     ['unknown', 'permintaan', 'infracare', 'billing', 'digital_spbu', 'digital spbu', 'non numbering']
       .some((term) => jenis1.includes(term) || jenis2.includes(term));
 
-  if (sourceTicket.includes('PROACTIVE') && isSqm && summary.startsWith('[SQM-UPDATE]')) {
+  if (sourceTicket.includes('PROACTIVE') && isSqm && isSqmUpdate) {
     return '/admin/ticket-management/sqm-update';
   }
   if (sourceTicket.includes('PROACTIVE') && isSqm) {
