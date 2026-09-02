@@ -77,6 +77,42 @@ export function buildDeptJenisSql(dept: DeptFilterKey, col = 'jenis_tiket_2'): s
   return '1=1';
 }
 
+/**
+ * SQL segmen yang meniru deptByJenis() PERSIS (sumber kebenaran agregasi rekap
+ * di app/api/dashboard/rekap-workorder/route.ts). Dipakai untuk membership sel
+ * di buildDetailClause. Berbasis tabel alias (lewat NETRAL/B2B_JENIS_SQL_COL),
+ * bukan daftar key hardcoded, supaya jenis_tiket_2 seperti 'customer'/'hvc_gold'
+ * ikut ter-klasifikasi seperti di route.ts.
+ *
+ * Precedence deptByJenis: netral -> permintaan (dinamis via customer_segment) ->
+ * isB2CJenis (jenis kosong / tak dikenal ikut b2c) -> sisanya b2b.
+ */
+export function buildSegKeySql(
+  seg: DeptKey,
+  jenisCol = 'jenis_tiket_2',
+  segmentCol = 'customer_segment',
+): string {
+  const norm = `LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.${jenisCol}, ''), ' ', '-'), '_', '-')))`;
+  const isEmpty = `${norm} = ''`;
+  const isB2CSeg = `UPPER(TRIM(COALESCE(t.${segmentCol}, ''))) IN ('DCS', 'PL-TSEL')`;
+  const isPermintaan = `(${norm} = 'permintaan' OR ${norm} LIKE 'permintaan-%')`;
+  const netral = `(NOT (${isEmpty}) AND (${NETRAL_JENIS_SQL_COL(jenisCol)}))`;
+  const b2bJenis = B2B_JENIS_SQL_COL(jenisCol);
+
+  // b2b <=> bukan netral DAN ( permintaan tanpa segment B2C  ATAU  jenis B2B dikenal )
+  const b2b = `(NOT (${netral}) AND (
+      (${isPermintaan} AND NOT (${isB2CSeg}))
+      OR (NOT ${isPermintaan} AND NOT ${isEmpty} AND (${b2bJenis}))
+  ))`;
+  // b2c <=> bukan netral DAN bukan b2b (mencakup: permintaan+segment B2C,
+  //        jenis B2C dikenal, jenis tak dikenal, jenis kosong)
+  const b2c = `(NOT (${netral}) AND NOT (${b2b}))`;
+
+  if (seg === 'netral') return netral;
+  if (seg === 'b2b') return b2b;
+  return b2c;
+}
+
 // Prisma where untuk dept 3-segmen (pakai jenis_tiket_2 + customer_segment untuk permintaan)
 export function buildDeptJenisWhere(dept: DeptFilterKey): Record<string, unknown> | null {
   if (dept === 'all') return null;

@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:rekap',
-      'v26',
+      'v27',
       'members',
       decoded.role,
       decoded.id_user,

@@ -4,6 +4,8 @@ import {
   buildKpiBucketFilterSql,
   type KpiBucketKey,
 } from '@/app/libs/services/kpi-bucket-sql';
+import { buildSegKeySql } from '@/lib/dept';
+import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
 
 export type RekapStatusFilter = 'open' | 'close' | 'all';
 
@@ -33,9 +35,6 @@ function quoteList(values: readonly string[]): string {
     .join(',')})`;
 }
 
-const NETRAL_SEG_SQL = `LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare')`;
-const B2C_SEG_SQL = `(LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') OR (LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) = 'permintaan' AND t.customer_segment IN ('DCS','PL-TSEL')))`;
-const B2B_SEG_SQL = `((NOT (${NETRAL_SEG_SQL}) AND LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) != 'permintaan' AND LOWER(TRIM(REPLACE(REPLACE(COALESCE(t.jenis_tiket_2,''),' ','-'),'_','-'))) NOT IN ('reguler','hvc','sqm','unspec')) OR (LOWER(TRIM(COALESCE(t.jenis_tiket_2,''))) = 'permintaan' AND (t.customer_segment IS NULL OR t.customer_segment NOT IN ('DCS','PL-TSEL'))))`;
 const GAMAS_BASE_SQL = `LOWER(t.source_ticket) = 'gamas'`;
 
 const CLOSE_STATUS_SQL = quoteList(
@@ -43,7 +42,7 @@ const CLOSE_STATUS_SQL = quoteList(
 );
 const NOT_OBSOLETE_SQL = `(t.classification_path IS NULL OR t.classification_path != 'Z_PERMINTAAN_044')`;
 const SQM_JENIS_SQL = `(LOWER(t.jenis_tiket_1) LIKE '%sqm%' OR LOWER(t.jenis_tiket_1) LIKE '%sqm-ccan%')`;
-const SQM_UPDATE_SUMMARY_SQL = `t.summary LIKE '[SQM-UPDATE]%'`;
+const SQM_UPDATE_FLAG_SQL = isSqmUpdateReasonSql('t');
 
 const buildCloseClause = (): string =>
   `UPPER(TRIM(COALESCE(t.status, ''))) IN ${CLOSE_STATUS_SQL}`;
@@ -147,7 +146,7 @@ function buildSqmBaseClause(): string {
 }
 
 function buildUpdateClause(): string {
-  return `(${buildSqmBaseClause()} AND ${SQM_UPDATE_SUMMARY_SQL})`;
+  return `(${buildSqmBaseClause()} AND ${SQM_UPDATE_FLAG_SQL})`;
 }
 
 /**
@@ -169,7 +168,7 @@ export function buildDetailClause(
 
   if (segName === 'sqm') {
     if (!key || key === 'opn') {
-      return `(${buildSqmBaseClause()} AND NOT ${SQM_UPDATE_SUMMARY_SQL} AND ${buildOpenClause()})`;
+      return `(${buildSqmBaseClause()} AND NOT ${SQM_UPDATE_FLAG_SQL} AND ${buildOpenClause()})`;
     }
     if (key === 'cls') {
       return `(${buildSqmBaseClause()} AND ${buildCloseClause()})`;
@@ -181,13 +180,13 @@ export function buildDetailClause(
   }
 
   if (segName === 'unspec' || segName === 'segment') {
-    if (key === 'b2b') return B2B_SEG_SQL;
-    if (key === 'netral' || key === 'neutral') return NETRAL_SEG_SQL;
-    return B2C_SEG_SQL;
+    if (key === 'b2b') return buildSegKeySql('b2b');
+    if (key === 'netral' || key === 'neutral') return buildSegKeySql('netral');
+    return buildSegKeySql('b2c');
   }
 
   if (segName === 'netral' || segName === 'neutral') {
-    return NETRAL_SEG_SQL;
+    return buildSegKeySql('netral');
   }
 
   if (segName === 'gamas') {
@@ -196,7 +195,7 @@ export function buildDetailClause(
   }
 
   if (segName === 'b2c' || segName === 'b2b') {
-    const segFilter = segName === 'b2c' ? B2C_SEG_SQL : B2B_SEG_SQL;
+    const segFilter = segName === 'b2c' ? buildSegKeySql('b2c') : buildSegKeySql('b2b');
     const isCustomerTypeKey =
       bucket === 'kpi_customer' &&
       segName === 'b2c' &&
