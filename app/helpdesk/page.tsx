@@ -85,6 +85,21 @@ export default function HelpdeskPage() {
           </div>
         </div>
 
+        <div className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-2'>
+          <div
+            className='cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 p-5 opacity-60'
+            title='Tiket Manual — segera hadir'
+            aria-disabled='true'
+          >
+            <div className='text-lg font-bold text-slate-500'>+ Tiket Manual</div>
+            <div className='text-sm text-slate-400'>Buat WO manual / non-tiket (B2B/B2C)</div>
+          </div>
+          <a href='/helpdesk/rekap-workorder' className='rounded-xl border border-slate-200 bg-white p-5 hover:bg-slate-50'>
+            <div className='text-lg font-bold text-slate-800'>Rekap Workorder</div>
+            <div className='text-sm text-slate-500'>Lihat rekap harian</div>
+          </a>
+        </div>
+
         <div>
           <h2 className='mb-4 text-xl font-semibold text-gray-800'>
             Recent Tickets

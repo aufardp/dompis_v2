@@ -441,6 +441,23 @@ export default function ClusteringPage() {
             </div>
           </div>
 
+          <div className='flex flex-wrap items-center gap-2 border-b border-(--border) bg-amber-50/50 px-4 py-2.5 text-xs dark:bg-amber-500/5'>
+            <span className='font-semibold text-amber-700 dark:text-amber-300'>Quick:</span>
+            <button
+              type='button'
+              disabled
+              aria-disabled='true'
+              title='Tiket Manual — segera hadir'
+              className='cursor-not-allowed rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-400 opacity-60 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:ring-slate-700'
+            >
+              + Tiket Manual
+            </button>
+            <button onClick={() => router.push('/admin/settings/attendance-gate')} className='rounded-full bg-white px-3 py-1 font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600'>
+              Atur Gate (B2B/B2C)
+            </button>
+            <span className='text-slate-400 dark:text-slate-500'>— pilih bucket & segmen lalu Jalankan Auto-Assign</span>
+          </div>
+
           <div className='p-4 md:p-5'>
             {assignmentsLoading ? (
               <div className='space-y-3'>

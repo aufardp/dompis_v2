@@ -28,6 +28,7 @@ import {
   MapPinned,
   Layers,
   Wrench,
+  Ticket as TicketIcon,
 } from 'lucide-react';
 import UserMenu from './user-menu/UserMenu';
 import { useTheme } from '@/app/contexts/ThemeContext';
@@ -486,9 +487,15 @@ export default function Topbar({
                 </span> */}
               </button>
 
-              <button className='hidden items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,rgba(59,130,246,0.98),rgba(99,102,241,0.95))] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 lg:inline-flex'>
-                <Plus className='h-4 w-4' />
-                <span>New Ticket</span>
+              <button
+                type='button'
+                disabled
+                aria-disabled='true'
+                className='hidden cursor-not-allowed items-center gap-2 rounded-2xl border border-(--border) bg-(--surface-2) px-4 py-2.5 text-sm font-semibold text-(--text-muted) opacity-60 shadow-sm lg:inline-flex'
+                title='Tiket Manual — segera hadir'
+              >
+                <TicketIcon className='h-4 w-4' />
+                <span>Tiket Manual</span>
               </button>
 
               <div className='flex items-center justify-end'>
