@@ -66,6 +66,10 @@ dompis-*.json
 .qwen
 .blackboxcli/
 
+# graphify (knowledge-graph artifacts)
+graphify.html
+graphify-out/
+
 # Runtime logs & generated results
 logs/
 error/logs/
