@@ -13,6 +13,8 @@ import { logger } from '@/lib/observability/logger';
 import { todayWibDateForDb } from '@/lib/timezone';
 import type { OperationalBucketKey } from '@/app/config/operational-buckets';
 import { buildOperationalBucketWhere } from '@/app/libs/services/ticket-buckets';
+import { getAllGates, normalizeSegment } from '@/app/libs/services/attendance-gate.service';
+import { B2B_JENIS_KEYS, B2C_JENIS_KEYS } from '@/app/config/jenis-tiket';
 
 export const SYSTEM_ACTOR = { id_user: 0, role: 'admin' } as const;
 
@@ -74,6 +76,8 @@ interface TicketWithRk {
   contact_name: string | null;
   owner_group: string | null;
   customer_type: string | null;
+  customer_segment: string | null;
+  jenis_tiket_2: string | null;
   jam_expired: string | null;
 }
 
@@ -239,9 +243,30 @@ export class ClusterAutoAssignServiceV2 {
         date: today,
       },
       select: { technician_id: true },
+      distinct: ['technician_id'],
     });
 
     return new Set(attendances.map((a) => a.technician_id));
+  }
+
+  private static isB2CTicket(jenisRaw: string | null | undefined, customerSegment: string | null | undefined): boolean {
+    // Mirror lib/dept.ts logic: netral check omitted (tickets are not netral in auto-assign pool typically)
+    // Use normalized jenis
+    const raw = String(jenisRaw || '').trim().toLowerCase();
+    // quick netral check via B2B_JENIS_KEYS etc? For simplicity treat unknown as b2b
+    // Reuse B2C_JENIS_KEYS which includes permintaan
+    // For permintaan need customer_segment
+    // Lazy: if normalized permintaan -> check DCS/PL-TSEL
+    const jenisNorm = raw.replace(/[\s_]/g, '-');
+    // Use helper from jenis-tiket: check if permintaan
+    const isPermintaan = jenisNorm === 'permintaan';
+    if (isPermintaan) {
+      const seg = String(customerSegment || '').trim().toUpperCase();
+      return seg === 'DCS' || seg === 'PL-TSEL';
+    }
+    // For other jenis, check B2C keys (reguler, hvc, sqm, unspec)
+    const b2cKeys = B2C_JENIS_KEYS.map((k) => String(k).toLowerCase());
+    return b2cKeys.includes(jenisNorm);
   }
 
   static async getActiveTeknisiForClusters(
@@ -283,6 +308,15 @@ export class ClusterAutoAssignServiceV2 {
     const checkedInTeknisi = await this.getCheckedInTeknisiIds(teknisiIds, today);
     if (isDev) logger.info('[DEBUG-GATEC] Checked in teknisi:', { checkedIn: Array.from(checkedInTeknisi) });
 
+    // Fetch segment for gate filtering
+    const teknisiUsers = await prisma.users.findMany({
+      where: { id_user: { in: teknisiIds } },
+      select: { id_user: true, technician_segment: true },
+    });
+    const segmentMap = new Map(teknisiUsers.map((u) => [u.id_user, u.technician_segment as string | null]));
+    const gates = await getAllGates();
+    if (isDev) logger.info('[DEBUG-GATEC] Gates:', gates);
+
     const workloadMap = await this.getWorkloadsForTeknisi(teknisiIds, today);
     if (isDev) logger.info('[DEBUG-GATEC] Workload map:', { workload: Array.from(workloadMap.entries()) });
 
@@ -296,7 +330,9 @@ export class ClusterAutoAssignServiceV2 {
       const teknisiId = assignment.teknisi_id;
       const currentLoad = workloadMap.get(teknisiId) ?? 0;
 
-      if (!checkedInTeknisi.has(teknisiId)) {
+      const seg = normalizeSegment(segmentMap.get(teknisiId) ?? null);
+      const gateRequired = gates[seg];
+      if (gateRequired && !checkedInTeknisi.has(teknisiId)) {
         autoAssignLogger.ticketSkipped(
           0,
           `technisi_${teknisiId}`,
@@ -637,6 +673,7 @@ export class ClusterAutoAssignServiceV2 {
     saIds?: number[],
     actorId: number = SYSTEM_ACTOR.id_user,
     buckets?: OperationalBucketKey[],
+    segment?: 'all' | 'b2b' | 'b2c',
   ): Promise<BatchAutoAssignResult> {
     const startTime = Date.now();
     if (isDev) {
@@ -699,7 +736,7 @@ export class ClusterAutoAssignServiceV2 {
 
     const todayDate = todayWibDateForDb();
 
-    const allTickets: TicketWithRk[] = await prisma.ticket.findMany({
+    let allTickets: TicketWithRk[] = await prisma.ticket.findMany({
       where: {
         teknisi_user_id: null,
         rk_information: { in: activeOdcValues },
@@ -725,11 +762,23 @@ export class ClusterAutoAssignServiceV2 {
         contact_name: true,
         owner_group: true,
         customer_type: true,
+        customer_segment: true,
+        jenis_tiket_2: true,
         jam_expired: true,
       },
       orderBy: { jam_expired: 'asc' },
       take: MAX_TICKETS_PER_RUN,
     });
+
+    // Segment filter (b2b / b2c) — applied in JS to avoid alias complexity in SQL
+    if (segment && segment !== 'all') {
+      const before = allTickets.length;
+      allTickets = allTickets.filter((t) => {
+        const isB2C = this.isB2CTicket(t.jenis_tiket_2, t.customer_segment);
+        return segment === 'b2c' ? isB2C : !isB2C;
+      });
+      if (isDev) logger.info(`[AUTO-ASSIGN] Segment filter ${segment}: ${before} → ${allTickets.length}`);
+    }
 
     if (isDev) {
       logger.info('[AUTO-ASSIGN] Found tickets to process:', { count: allTickets.length });
@@ -778,10 +827,33 @@ export class ClusterAutoAssignServiceV2 {
     }
 
     if (isDev) { logger.info('[AUTO-ASSIGN] Getting active teknisi for clusters...'); }
-    const teknisiMap = await this.getActiveTeknisiForClusters(
+    let teknisiMap = await this.getActiveTeknisiForClusters(
       clusterIds,
       today,
     );
+    if (segment && segment !== 'all') {
+      const allIds = Array.from(new Set(Array.from(teknisiMap.values()).flat().map((t) => t.teknisi_id)));
+      if (allIds.length) {
+        const segUsers = await prisma.users.findMany({
+          where: { id_user: { in: allIds } },
+          select: { id_user: true, technician_segment: true },
+        });
+        const segMap = new Map(segUsers.map((u) => [u.id_user, String(u.technician_segment || '').toUpperCase()]));
+        const keep = (segVal: string | null) => {
+          const v = String(segVal || '').toUpperCase();
+          if (segment === 'b2b') return v === 'B2B' || v === 'BOTH';
+          if (segment === 'b2c') return v === 'B2C' || v === 'BOTH';
+          return true;
+        };
+        const filtered = new Map<number, { teknisi_id: number; nama: string; nik: string | null; load: number }[]>();
+        for (const [cid, list] of teknisiMap.entries()) {
+          const fl = list.filter((t) => keep(segMap.get(t.teknisi_id) || null));
+          if (fl.length) filtered.set(cid, fl);
+        }
+        teknisiMap = filtered;
+        if (isDev) logger.info(`[AUTO-ASSIGN] Segment teknisi filter ${segment}: ${allIds.length} → ${Array.from(filtered.values()).flat().length}`);
+      }
+    }
     if (isDev) { logger.info('[AUTO-ASSIGN] Clusters with teknisi:', { size: teknisiMap.size }); }
     
     if (isDev) {

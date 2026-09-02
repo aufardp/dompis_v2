@@ -94,12 +94,14 @@ export async function POST(req: Request) {
       logger.info('[AUTO-ASSIGN API] User workzones:', { saIds });
     }
 
-    const body = (await req.json().catch(() => ({}))) as { buckets?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { buckets?: unknown; segment?: unknown };
     const rawBuckets: unknown[] = Array.isArray(body?.buckets) ? body.buckets : [];
     const normalizedBuckets: OperationalBucketKey[] = rawBuckets
       .map((b) => normalizeOperationalBucketKey(String(b ?? '')))
       .filter((b): b is OperationalBucketKey => b !== '');
     const buckets: OperationalBucketKey[] = [...new Set(normalizedBuckets)];
+    const rawSeg = String(body?.segment || 'all').trim().toLowerCase();
+    const segment: 'all' | 'b2b' | 'b2c' = rawSeg === 'b2b' || rawSeg === 'b2c' ? (rawSeg as 'b2b' | 'b2c') : 'all';
 
     ClusterAutoAssignServiceV2.setProgressCallback((data) => {
       if (data.type === 'completed') {
@@ -135,7 +137,10 @@ export async function POST(req: Request) {
         saIds,
         user.id_user,
         buckets,
+        segment,
       );
+
+      void result;
 
       return new Response(stream, {
         headers: {
@@ -149,6 +154,8 @@ export async function POST(req: Request) {
     const result = await ClusterAutoAssignServiceV2.runBatchV2(
       saIds,
       user.id_user,
+      buckets,
+      segment,
     );
 
     return NextResponse.json({

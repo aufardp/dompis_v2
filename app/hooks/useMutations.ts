@@ -209,11 +209,11 @@ export function useTriggerSync() {
 export function useRunAutoAssign() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (params?: { buckets?: OperationalBucketKey[] }) => {
+    mutationFn: async (params?: { buckets?: OperationalBucketKey[]; segment?: 'all' | 'b2b' | 'b2c' }) => {
       const res = await fetch('/api/clustering/auto-assign', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ buckets: params?.buckets ?? [] }),
+        body: JSON.stringify({ buckets: params?.buckets ?? [], segment: params?.segment ?? 'all' }),
         credentials: 'include',
       });
       const json = await res.json();
@@ -221,6 +221,25 @@ export function useRunAutoAssign() {
       return json.data;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.clustering.assignments() });
+    },
+  });
+}
+
+export function useClaimTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ticketId: number) => {
+      const res = await fetchWithAuth('/api/tickets/claim', {
+        method: 'POST',
+        body: JSON.stringify({ ticketId }),
+      });
+      const json = await res?.json();
+      if (!json?.success) throw new Error(json?.message || 'Gagal claim tiket');
+      return json.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tickets.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.clustering.assignments() });
     },
   });

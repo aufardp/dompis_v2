@@ -8,6 +8,7 @@ import { useClusterAssignment } from '@/app/hooks/useClusterAssignment';
 import { useUserManagedSAs } from '@/app/hooks/useUserManagedSAs';
 import { useCopyAssignments, useRemoveClusterAssignment, usePlotTeknisi, useRunAutoAssign as useRunAutoAssignMutation } from '@/app/hooks/useMutations';
 import { fetchWithAuth } from '@/app/libs/fetcher';
+import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { formatInTimeZone } from 'date-fns-tz';
 import PlotTeknisiModal from './PlotTeknisiModal';
 import EditClusterModal from './EditClusterModal';
@@ -25,6 +26,9 @@ interface ManagedServiceArea {
 
 export default function ClusteringPage() {
   const router = useRouter();
+  const { user: currentUser } = useCurrentUser();
+  const isSuperadmin =
+    String(currentUser?.role_key ?? '').toLowerCase() === 'superadmin';
   const clusterNameRef = useRef<HTMLInputElement>(null);
   const clusterActiveRef = useRef<HTMLInputElement>(null);
   const [selectedDate, setSelectedDate] = useState(
@@ -32,6 +36,7 @@ export default function ClusteringPage() {
   );
   const [autoAssignRunning, setAutoAssignRunning] = useState(false);
   const [selectedBuckets, setSelectedBuckets] = useState<OperationalBucketKey[]>([]);
+  const [selectedSegment, setSelectedSegment] = useState<'all' | 'b2b' | 'b2c'>('all');
   const [copyRunning, setCopyRunning] = useState(false);
   const [showCreateCluster, setShowCreateCluster] = useState(false);
   const [newClusterName, setNewClusterName] = useState('');
@@ -134,7 +139,7 @@ export default function ClusteringPage() {
     setMessage(null);
 
     try {
-      const data = await autoAssignMutation.mutateAsync({ buckets: selectedBuckets });
+      const data = await autoAssignMutation.mutateAsync({ buckets: selectedBuckets, segment: selectedSegment });
       const { assigned, failed, skipped } = data;
 
       const messages: string[] = [];
@@ -153,6 +158,9 @@ export default function ClusteringPage() {
           .join(', ');
         messages.push(`Bucket: ${labels}`);
       }
+      if (selectedSegment !== 'all') {
+        messages.push(`Segmen: ${selectedSegment.toUpperCase()}`);
+      }
 
       setMessage({
         type: assigned > 0 ? 'success' : 'error',
@@ -166,7 +174,7 @@ export default function ClusteringPage() {
     } finally {
       setAutoAssignRunning(false);
     }
-  }, [autoAssignMutation, selectedBuckets]);
+  }, [autoAssignMutation, selectedBuckets, selectedSegment]);
 
   const handleCreateCluster = useCallback(async () => {
     if (!newClusterName.trim()) {
@@ -416,7 +424,7 @@ export default function ClusteringPage() {
                 </h2>
                 <p className='text-xs text-(--text-secondary)'>{todayStr}</p>
               </div>
-              <div className='flex items-center gap-2'>
+              <div className='flex flex-wrap items-center gap-2'>
                 <button
                   onClick={handleCopyFromYesterday}
                   disabled={copyRunning}
@@ -428,6 +436,16 @@ export default function ClusteringPage() {
                   selected={selectedBuckets}
                   onChange={setSelectedBuckets}
                 />
+                <select
+                  value={selectedSegment}
+                  onChange={(e) => setSelectedSegment(e.target.value as 'all' | 'b2b' | 'b2c')}
+                  className='rounded-lg border border-(--border) bg-white px-3 py-2 text-sm font-medium text-(--text-primary) dark:bg-slate-800'
+                  title='Filter segmen'
+                >
+                  <option value='all'>Semua Segmen</option>
+                  <option value='b2b'>B2B</option>
+                  <option value='b2c'>B2C</option>
+                </select>
                 <button
                   onClick={handleRunAutoAssign}
                   disabled={autoAssignRunning}
@@ -452,9 +470,11 @@ export default function ClusteringPage() {
             >
               + Tiket Manual
             </button>
-            <button onClick={() => router.push('/admin/settings/attendance-gate')} className='rounded-full bg-white px-3 py-1 font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600'>
-              Atur Gate (B2B/B2C)
-            </button>
+            {isSuperadmin && (
+              <button onClick={() => router.push('/admin/settings/attendance-gate')} className='rounded-full bg-white px-3 py-1 font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600'>
+                Atur Gate (B2B/B2C)
+              </button>
+            )}
             <span className='text-slate-400 dark:text-slate-500'>— pilih bucket & segmen lalu Jalankan Auto-Assign</span>
           </div>
 
