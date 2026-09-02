@@ -89,6 +89,13 @@ const MENU_ITEMS: Array<{
     hint: 'Case investigation',
   },
   {
+    label: 'Attendance Gate',
+    path: '/admin/settings/attendance-gate',
+    icon: Clock3,
+    hint: 'B2B / B2C / Unset toggle',
+    superadminOnly: true,
+  },
+  {
     label: 'Tools',
     path: '/admin/tools',
     icon: Wrench,

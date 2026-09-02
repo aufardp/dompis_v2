@@ -3,7 +3,7 @@
 // ==========================================
 
 import { NextResponse, NextRequest } from 'next/server';
-import { applySecurityHeaders, getSecureCookieOptions } from '@/app/libs/request-security';
+import { applySecurityHeaders, getSecureCookieOptions, getAccessTokenCookieMaxAge } from '@/app/libs/request-security';
 import { logger } from '@/lib/observability/logger';
 
 // --- JWT VERIFICATION (Web Crypto API, Edge-compatible) ---
@@ -96,7 +96,7 @@ export async function middleware(req: NextRequest) {
       res.cookies.set({
         name: 'token',
         value: refreshedAccessToken,
-        ...getSecureCookieOptions(60 * 60),
+        ...getSecureCookieOptions(getAccessTokenCookieMaxAge()),
       });
     }
     return res;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { assertSameOriginRequest, getSecureCookieOptions } from '@/app/libs/request-security';
+import { assertSameOriginRequest, getSecureCookieOptions, getAccessTokenCookieMaxAge } from '@/app/libs/request-security';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { verifyLoginCaptchaAnswer } from '@/lib/auth/login-captcha';
 import { finishLogin } from '@/app/libs/services/login-session.service';
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     response.cookies.set({
       name: 'token',
       value: session.accessToken,
-      ...getSecureCookieOptions(60 * 60),
+      ...getSecureCookieOptions(getAccessTokenCookieMaxAge()),
     });
 
     response.cookies.set({

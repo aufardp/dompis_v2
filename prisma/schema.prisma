@@ -233,11 +233,12 @@ model technician_attendance {
   technician    users                        @relation(fields: [technician_id], references: [id_user], onDelete: Cascade)
   workzone      service_area                 @relation(fields: [workzone_id], references: [id_sa], onDelete: Cascade)
 
-  @@unique([technician_id, date])
+  @@unique([technician_id, date, workzone_id])
   @@index([date])
   @@index([date, technician_id], map: "idx_attendance_date_technician")
   @@index([month, year])
   @@index([technician_id])
+  @@index([technician_id, date], map: "idx_attendance_technician_date")
   @@index([workzone_id], map: "technician_attendance_workzone_id_fkey")
 }
 
@@ -316,6 +317,10 @@ model ticket {
     technician                  String?                     @db.VarChar(255)
     ttr_comply_status           String?                     @db.VarChar(20)
   ttr_deadline_at             DateTime?                   @db.Timestamp(0)
+  is_manual                   Boolean                     @default(false)
+  manual_category             String?                     @db.VarChar(50)
+  manual_notes                String?                     @db.Text
+  manual_created_by           Int?
   sync_date                   DateTime?                   @db.Date
   synced_at                   DateTime?                   @db.Timestamp(0)
   import_batch                String?                     @db.VarChar(50)
@@ -355,6 +360,7 @@ model ticket {
   @@index([ttr_comply_status, resolve_date], map: "idx_ticket_ttr_comply")
   @@index([booking_date], map: "idx_ticket_booking_date")
   @@index([closed_at, booking_date], map: "idx_ticket_closed_booking")
+  @@index([is_manual], map: "idx_ticket_is_manual")
 }
 
 model ticket_activity_log {
@@ -1176,4 +1182,14 @@ model audit_log {
   @@index([resource_type, resource_id], map: "idx_audit_resource")
   @@index([created_at], map: "idx_audit_created")
   @@map("audit_log")
+}
+
+model system_config {
+  key        String   @id @db.VarChar(100)
+  value      String   @db.VarChar(500)
+  updated_by Int?
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@map("system_config")
 }

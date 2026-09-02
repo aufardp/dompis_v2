@@ -4,8 +4,9 @@ import {
   signRefreshToken,
   createDefaultAttendancePayload,
   AccessTokenPayload,
-  REFRESH_EXPIRY_SHORT,
-  REFRESH_EXPIRY_LONG,
+  getRefreshTokenExpiryLong,
+  getRefreshTokenExpiryShort,
+  getRefreshCookieMaxAge,
 } from '@/app/libs/auth';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { roleKeyToRoleId, NormalizedRoleKey } from '@/app/libs/roles';
@@ -62,6 +63,17 @@ export async function finishLogin(
     }
   }
 
+  let needsAttendanceCheck = role === 'teknisi' && !attendancePayload.attendance_checked_in;
+  if (needsAttendanceCheck && role === 'teknisi') {
+    try {
+      const { getAttendanceGateByTechnicianSegment } = await import('@/app/libs/services/attendance-gate.service');
+      const gateRequired = await getAttendanceGateByTechnicianSegment((user as unknown as { technician_segment?: string | null }).technician_segment ?? null);
+      if (!gateRequired) needsAttendanceCheck = false;
+    } catch {
+      // fallback to true if gate fetch fails
+    }
+  }
+
   const payload: AccessTokenPayload = {
     id_user: user.id_user,
     role,
@@ -70,8 +82,8 @@ export async function finishLogin(
     ...attendancePayload,
   };
 
-  const refreshExpiresIn = remember ? REFRESH_EXPIRY_LONG : REFRESH_EXPIRY_SHORT;
-  const refreshExpirySeconds = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
+  const refreshExpiresIn = remember ? getRefreshTokenExpiryLong() : getRefreshTokenExpiryShort();
+  const refreshExpirySeconds = getRefreshCookieMaxAge(remember);
 
   const accessToken = await signAccessToken(payload);
   const refreshToken = await signRefreshToken(payload, refreshExpiresIn);
@@ -81,6 +93,6 @@ export async function finishLogin(
     refreshToken,
     refreshExpirySeconds,
     role,
-    needsAttendanceCheck: role === 'teknisi' && !attendancePayload.attendance_checked_in,
+    needsAttendanceCheck,
   };
 }

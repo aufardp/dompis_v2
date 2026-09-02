@@ -1,9 +1,45 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { NextRequest } from 'next/server';
 
-const ACCESS_EXPIRY = '4h';
-export const REFRESH_EXPIRY_SHORT = '1d';
-export const REFRESH_EXPIRY_LONG = '30d';
+function parseExpiryToSeconds(value: string, fallbackSeconds: number): number {
+  const normalized = String(value || '').trim().toLowerCase();
+  const match = normalized.match(/^(\d+)\s*([smhd])$/);
+  if (!match) return fallbackSeconds;
+  const amount = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === 's') return amount;
+  if (unit === 'm') return amount * 60;
+  if (unit === 'h') return amount * 60 * 60;
+  if (unit === 'd') return amount * 60 * 60 * 24;
+  return fallbackSeconds;
+}
+
+export const ACCESS_EXPIRY: string = process.env.JWT_ACCESS_EXPIRY || '12h';
+export const REFRESH_EXPIRY_SHORT: string = process.env.JWT_REFRESH_EXPIRY_SHORT || '7d';
+export const REFRESH_EXPIRY_LONG: string = process.env.JWT_REFRESH_EXPIRY_LONG || '30d';
+
+export function getAccessTokenExpiry(): string {
+  return process.env.JWT_ACCESS_EXPIRY || ACCESS_EXPIRY;
+}
+
+export function getRefreshTokenExpiryShort(): string {
+  return process.env.JWT_REFRESH_EXPIRY_SHORT || REFRESH_EXPIRY_SHORT;
+}
+
+export function getRefreshTokenExpiryLong(): string {
+  return process.env.JWT_REFRESH_EXPIRY_LONG || REFRESH_EXPIRY_LONG;
+}
+
+export function getAccessCookieMaxAge(): number {
+  return parseExpiryToSeconds(getAccessTokenExpiry(), 12 * 60 * 60);
+}
+
+export function getRefreshCookieMaxAge(remember: boolean): number {
+  return parseExpiryToSeconds(
+    remember ? getRefreshTokenExpiryLong() : getRefreshTokenExpiryShort(),
+    remember ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60,
+  );
+}
 type TokenType = 'access' | 'refresh';
 
 export interface AccessTokenPayload {
@@ -27,13 +63,13 @@ const getRefreshSecret = () => new TextEncoder().encode(process.env.JWT_REFRESH_
 export function signAccessToken(payload: AccessTokenPayload) {
   return new SignJWT({ ...payload, token_type: 'access' satisfies TokenType })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime(ACCESS_EXPIRY)
+    .setExpirationTime(getAccessTokenExpiry())
     .sign(getAccessSecret());
 }
 
 export function signRefreshToken(
   payload: AccessTokenPayload,
-  expiresIn: string = REFRESH_EXPIRY_SHORT,
+  expiresIn: string = getRefreshTokenExpiryShort(),
 ) {
   return new SignJWT({ ...payload, token_type: 'refresh' satisfies TokenType })
     .setProtectedHeader({ alg: 'HS256' })

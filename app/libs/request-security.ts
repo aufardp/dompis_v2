@@ -7,6 +7,24 @@ const SENSITIVE_COOKIE_OPTIONS = {
   path: '/',
 };
 
+function parseExpiryToSeconds(value: string, fallbackSeconds: number): number {
+  const normalized = String(value || '').trim().toLowerCase();
+  const match = normalized.match(/^(\d+)\s*([smhd])$/);
+  if (!match) return fallbackSeconds;
+  const amount = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === 's') return amount;
+  if (unit === 'm') return amount * 60;
+  if (unit === 'h') return amount * 60 * 60;
+  if (unit === 'd') return amount * 60 * 60 * 24;
+  return fallbackSeconds;
+}
+
+export function getAccessTokenCookieMaxAge(): number {
+  const expiry = process.env.JWT_ACCESS_EXPIRY || '12h';
+  return parseExpiryToSeconds(expiry, 12 * 60 * 60);
+}
+
 function normalizeOrigin(value: string) {
   try {
     const url = new URL(value);

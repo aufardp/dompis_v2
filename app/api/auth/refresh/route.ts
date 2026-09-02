@@ -9,6 +9,7 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 import {
   assertSameOriginRequest,
   getSecureCookieOptions,
+  getAccessTokenCookieMaxAge,
 } from '@/app/libs/request-security';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     response.cookies.set({
       name: 'token',
       value: newAccessToken,
-      ...getSecureCookieOptions(60 * 60),
+      ...getSecureCookieOptions(getAccessTokenCookieMaxAge()),
     });
 
     return response;

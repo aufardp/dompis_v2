@@ -38,11 +38,17 @@ export default function TeknisiLayout({
 
     const fetchAttendance = async () => {
       try {
-        const res = await fetchWithAuth('/api/technicians/attendance/status', { signal: controller.signal });
+        const [res, gateRes] = await Promise.all([
+          fetchWithAuth('/api/technicians/attendance/status', { signal: controller.signal }),
+          fetchWithAuth('/api/technicians/attendance/gate', { signal: controller.signal }).catch(() => null),
+        ]);
         if (!res?.ok || cancelled) return;
         const data = await res.json();
         if (!data.success || cancelled) return;
         setAttendance(data.data);
+        // Gate OFF = skip redirect (allow pagi langsung kerja)
+        const gateRequired = gateRes?.ok ? (await gateRes.json().catch(() => null))?.data?.required ?? true : true;
+        if (gateRequired === false) return;
         const isAttendancePage = window.location.pathname === '/teknisi/attendance';
         if (!data.data.checked_in && !isAttendancePage) {
           router.replace('/teknisi/attendance');
