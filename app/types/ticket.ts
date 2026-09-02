@@ -146,6 +146,7 @@ export type LockedTicket = {
   workzone: string | null;
   teknisi_user_id: number | null;
   status_update: string | null;
+  status: string | null;
   pending_dompis: string | null;
   alamat: string | null;
   service_no: string | null;
@@ -154,6 +155,8 @@ export type LockedTicket = {
   device_name: string | null;
   owner_group: string | null;
   customer_type: string | null;
+  is_manual: boolean | number | null;
+  needs_validation: boolean | number | null;
 };
 
 export type ActorContext = {

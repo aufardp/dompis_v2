@@ -84,6 +84,7 @@ const EXISTING_TICKET_SELECT_FIELDS = {
   alamat: true,
   needs_validation: true,
   validation_reason: true,
+  is_manual: true,
 } as const;
 
 export async function projectSingleTicket(
@@ -104,6 +105,9 @@ export async function projectSingleTicket(
 
   const jenisResult = await classifySingle(raw);
 
+  if (existing?.is_manual) {
+    return { action: 'skipped', incident: raw.incident };
+  }
   const skip = shouldSkipProjection(raw, existing, undefined);
   if (skip) {
     return { action: 'skipped', incident: raw.incident };

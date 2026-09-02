@@ -237,6 +237,7 @@ export interface ExistingTicket {
   alamat: string | null;
   needs_validation: boolean;
   validation_reason: string | null;
+  is_manual: boolean;
 }
 
 interface ExistingProjectionLog {
@@ -846,6 +847,7 @@ async function prepareProjectionItems(
       alamat: true,
       needs_validation: true,
       validation_reason: true,
+      is_manual: true,
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
@@ -895,6 +897,15 @@ async function prepareProjectionItems(
       now,
       syncDate,
     );
+    // Skip projection for manual tickets — they are source of truth, not overwritten by bridge/raw
+    if (existing?.is_manual) {
+      items.push({
+        raw,
+        ...projection,
+        action: 'skipped',
+      });
+      continue;
+    }
     items.push({
       raw,
       ...projection,
