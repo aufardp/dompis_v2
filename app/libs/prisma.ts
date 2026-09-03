@@ -7,6 +7,12 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const connectionLimit = parseInt(process.env.PRISMA_CONNECTION_LIMIT || '20', 10);
+// Pool terpisah untuk operasi bulk/ekspor supaya tidak menyerap koneksi pool
+// request-path. Default kecil; naikkan via ENV hanya bila memang perlu.
+const connectionLimitBulk = parseInt(
+  process.env.PRISMA_BULK_CONNECTION_LIMIT || '6',
+  10,
+);
 const poolTimeoutSeconds = parseInt(process.env.PRISMA_POOL_TIMEOUT || '30', 10);
 const socketTimeoutSeconds = parseInt(
   process.env.PRISMA_SOCKET_TIMEOUT || '60',
@@ -32,7 +38,7 @@ const dbUrl = process.env.DATABASE_URL
   : undefined;
 
 const dbUrlBulk = process.env.DATABASE_URL
-  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}&pool_timeout=${poolTimeoutSeconds}&connect_timeout=15&socket_timeout=${socketTimeoutBulkSeconds}`
+  ? `${process.env.DATABASE_URL}${process.env.DATABASE_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimitBulk}&pool_timeout=${poolTimeoutSeconds}&connect_timeout=15&socket_timeout=${socketTimeoutBulkSeconds}`
   : undefined;
 
 export const prisma =

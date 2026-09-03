@@ -1040,7 +1040,7 @@ export class TicketWorkflowService {
             ? 'Ticket reassigned successfully'
             : 'Ticket assigned successfully',
         };
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
+      }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1149,7 +1149,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket unassigned successfully' };
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
+      }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1245,7 +1245,7 @@ export class TicketWorkflowService {
         );
 
         return { message: 'Ticket picked up successfully' };
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
+      }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1479,7 +1479,7 @@ export class TicketWorkflowService {
             taggedAt: now.toISOString(),
           } : null,
         };
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
+      }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
   }
 
@@ -1651,7 +1651,7 @@ export class TicketWorkflowService {
         }
 
         return { message: 'Ticket updated successfully' };
-      }, { timeout: 15000, isolationLevel: 'ReadCommitted' }),
+      }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

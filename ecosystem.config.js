@@ -16,9 +16,11 @@ module.exports = {
         PORT: '9005',
         NEXT_TELEMETRY_DISABLED: '1',
         REDIS_PORT: '6379',
-        PRISMA_CONNECTION_LIMIT: '20',
-        PRISMA_POOL_TIMEOUT: '30',
+        PRISMA_CONNECTION_LIMIT: '35',
+        PRISMA_BULK_CONNECTION_LIMIT: '6',
+        PRISMA_POOL_TIMEOUT: '45',
         PRISMA_SLOW_QUERY_MS: '2000',
+        DASHBOARD_QUERY_MAX_EXECUTION_MS: '9000',
           TICKETS_CACHE_TTL: '10',
         DASHBOARD_CACHE_TTL: '600',
         CACHE_MAX_BYTES: '4194304',
@@ -115,13 +117,18 @@ module.exports = {
         DATA_WORKER_RUN_ON_START: 'true',
         DATA_WORKER_TRIGGER_PROJECTION: 'true',
         DATA_WORKER_BACKFILL_ENABLED: 'false',
-        EXTERNAL_TABLE_NAMES: 'nossa,nossa_closed,piloting_tickets',
+        // nossa & nossa_closed di-ingest oleh dompis-bridge-worker (jalur QOSMIC).
+        // Data-worker hanya piloting_tickets — cegah dua penulis `ticket_raw`
+        // bertabrakan (deadlock 1213).
+        EXTERNAL_TABLE_NAMES: 'piloting_tickets',
         INGESTION_ENABLED: 'true',
         INGESTION_TIMEOUT_MINUTES: '30',
         INGESTION_CHUNK_SIZE: '100',
         INGESTION_BATCH_SIZE: '500',
         INGESTION_WRITE_CHUNK_SIZE: '500',
-        INGESTION_CONCURRENCY: '2',
+        // 1 = tanpa paralelisme antar-tabel pada jalur tulis `ticket_raw`
+        // (paralel = self-deadlock InnoDB pada 8 secondary index).
+        INGESTION_CONCURRENCY: '1',
         INGESTION_RETRY_MAX: '3',
         INGESTION_RETRY_BASE_MS: '250',
         INGESTION_MAX_CONSECUTIVE_ERRORS: '5',

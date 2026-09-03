@@ -2176,30 +2176,43 @@ private static async fetchValidasiTicketIds(
           priorityToday: toWibDateString(todayWibDateForDb()),
           cursor,
         });
-    const validasiTicketIdsPromise = !countOnly && includeValidasi && includeValidasiTickets && validasiBaseWhere
-      ? this.fetchValidasiTicketIds(validasiBaseWhere, {
-          sort,
-          offset: validasiOffset,
-          limit: safeValidasiLimit,
-          cursor,
-        })
-      : Promise.resolve({ ids: [], nextCursor: null });
+    const validasiTicketIdsPromise: Promise<{ ids: number[]; nextCursor: string | null }> = (
+      !countOnly && includeValidasi && includeValidasiTickets && validasiBaseWhere
+        ? this.fetchValidasiTicketIds(validasiBaseWhere, {
+            sort,
+            offset: validasiOffset,
+            limit: safeValidasiLimit,
+            cursor,
+          })
+        : Promise.resolve({ ids: [], nextCursor: null })
+    ).catch(() => ({ ids: [] as number[], nextCursor: null }));
     const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
-    const validasiCountPromise = !countOnly && includeValidasi && validasiBaseWhere
-      ? getOrSetCacheSwr(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
-      : Promise.resolve(0);
-    const statusOptionsPromise = includeOptions && !countOnly
-      ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
-      : Promise.resolve([] as string[]);
-    const ticketTypeOptionsPromise = includeOptions && !countOnly
-      ? this.getTicketTypeOptions(
-          this.buildMainTableWhere(ticketTypeOptionsWhere ?? where),
-          includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
-            ? this.buildValidasiBaseWhere(ticketTypeOptionsWhere)
-            : null,
-        )
-      : Promise.resolve([] as TicketTypeOption[]);
+    // Promise di bawah dimulai eager tapi baru dikonsumsi di gelombang 2/3 —
+    // dan bisa di-skip total bila path snapshot terpakai. Tanpa handler
+    // seketika, kegagalan (mis. DB overload → P2010) menjadi unhandledRejection
+    // yang bisa menjatuhkan proses web. `.catch` di sini menjadikannya
+    // best-effort dengan fallback aman (kode konsumen memang menganggapnya opsional).
+    const validasiCountPromise: Promise<number> = (
+      !countOnly && includeValidasi && validasiBaseWhere
+        ? getOrSetCacheSwr(`${cacheKeyBase}:validasi_count`, () => this.countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
+        : Promise.resolve(0)
+    ).catch(() => 0);
+    const statusOptionsPromise: Promise<string[]> = (
+      includeOptions && !countOnly
+        ? this.getTicketStatusOptions(statusOptionsWhere ?? where)
+        : Promise.resolve([] as string[])
+    ).catch(() => [] as string[]);
+    const ticketTypeOptionsPromise: Promise<TicketTypeOption[]> = (
+      includeOptions && !countOnly
+        ? this.getTicketTypeOptions(
+            this.buildMainTableWhere(ticketTypeOptionsWhere ?? where),
+            includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
+              ? this.buildValidasiBaseWhere(ticketTypeOptionsWhere)
+              : null,
+          )
+        : Promise.resolve([] as TicketTypeOption[])
+    ).catch(() => [] as TicketTypeOption[]);
 
     // Gelombang 1 — pagination (priority tinggi, user lihat data dulu)
     const [ticketIdsResult] = await Promise.all([

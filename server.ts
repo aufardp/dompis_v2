@@ -52,6 +52,22 @@ async function shutdown(signal: string) {
   logger.info('[Server] Shutdown complete');
 }
 
+// Jaring pengaman: sebuah promise rejection yang tidak tertangani (mis. query
+// analitik dashboard yang gagal karena DB overload) TIDAK boleh menjatuhkan
+// proses web. Cukup dicatat — request individual sudah punya try/catch masing2.
+process.on('unhandledRejection', (reason) => {
+  logger.error('[Server] Unhandled promise rejection (diabaikan):', {
+    error: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+    component: 'server',
+  });
+});
+process.on('uncaughtException', (err) => {
+  logger.error('[Server] Uncaught exception (diabaikan):', {
+    error: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    component: 'server',
+  });
+});
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 

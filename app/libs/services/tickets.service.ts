@@ -1079,6 +1079,14 @@ export class TicketService {
     let lapulError = false;
 
     if (!workzoneFilter.skip) {
+      // Deteksi LAPUL (incident berulang) hanya bermakna pada window pendek dan
+      // query ini berat (full-scan ticket_raw + join). Batasi maksimal 30 hari
+      // agar tidak menahan koneksi pool puluhan detik untuk range lebar.
+      const LAPUL_MAX_DAYS = 30;
+      const lapulRangeFrom =
+        differenceInCalendarDays(rangeTo, rangeFrom) > LAPUL_MAX_DAYS
+          ? startOfDay(subDays(rangeTo, LAPUL_MAX_DAYS))
+          : rangeFrom;
       try {
         lapulRows = await prisma.$queryRaw`
           SELECT
@@ -1088,7 +1096,7 @@ export class TicketService {
             MIN(tr.importedAt) AS first_date
           FROM ticket_raw tr
           INNER JOIN ticket t ON t.incident = tr.incident
-          WHERE tr.importedAt >= ${rangeFrom}
+          WHERE tr.importedAt >= ${lapulRangeFrom}
             AND tr.importedAt <= ${rangeTo}
             ${workzoneFilter.lapul}
           GROUP BY tr.incident, t.workzone

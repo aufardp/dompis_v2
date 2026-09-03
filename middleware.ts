@@ -140,7 +140,18 @@ export async function middleware(req: NextRequest) {
       refreshedAccessToken = data.accessToken;
       return newPayload;
     } catch (err) {
-      logger.error('Silent session refresh failed:', { error: err instanceof Error ? err.message : 'Unknown error' });
+      logger.error('Silent session refresh failed:', {
+        error:
+          err instanceof Error
+            ? (err.stack ?? err.message)
+            : (() => {
+                try {
+                  return JSON.stringify(err);
+                } catch {
+                  return String(err);
+                }
+              })(),
+      });
       return null;
     }
   }

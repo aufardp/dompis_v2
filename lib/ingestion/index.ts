@@ -364,15 +364,17 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       reject(new Error('Ingestion aborted'));
       return;
     }
-    const timeout = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timeout);
-        reject(new Error('Ingestion aborted'));
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error('Ingestion aborted'));
+    };
+    const timeout = setTimeout(() => {
+      // Lepas listener saat timer selesai normal — tanpa ini listener 'abort'
+      // menumpuk di `signal` yang hidup sepanjang run (MaxListenersExceededWarning).
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -1339,6 +1341,10 @@ async function processTable(
       const openOnlyFilter = tableName === 'piloting_tickets'
         ? "`status_validasi` = 'OPEN'"
         : undefined;
+      // Throttle log progres: 1 baris per ~5000 row (bukan per chunk 100) —
+      // hindari ribuan baris INFO per pass yang menutupi error nyata.
+      const PROGRESS_LOG_EVERY = 5000;
+      let lastLoggedProcessed = 0;
       while (hasMore) {
         assertNotAborted(signal);
         const rawRows = await withRetry(
@@ -1450,7 +1456,13 @@ async function processTable(
           snapshotOffset += rawRows.length;
         }
         hasMore = rawRows.length === DEFAULT_CHUNK_SIZE;
-        logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
+        if (
+          !hasMore ||
+          result.processed - lastLoggedProcessed >= PROGRESS_LOG_EVERY
+        ) {
+          lastLoggedProcessed = result.processed;
+          logger.info('[Ingestion] Processing complete:', { tableName, mode, processed: result.processed, totalRows, inserted: result.inserted, updated: result.updated, skipped: result.skipped, quarantined: result.quarantined });
+        }
       }
 
       // Catch CLOSE transitions for piloting_tickets — fetch once right after close
