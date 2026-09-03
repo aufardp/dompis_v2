@@ -34,8 +34,6 @@ module.exports = {
         QOSMIC_BRIDGE_RETRY_MAX: '4',
         QOSMIC_BRIDGE_MAX_CONCURRENT: '3',
         VALIDASI_FLAG_ENABLED: 'true',
-        GEOTAG_REQUIRED_ENABLED: 'false',
-        NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED: 'false',
         WAR_MAP_ENABLED: 'true',
         KML_IMPORT_ENABLED: 'true',
         NEXT_PUBLIC_TEKNISI_CLOSING_REDESIGN_ENABLED: 'true',

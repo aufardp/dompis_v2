@@ -85,6 +85,15 @@ function latLngStringIfValid(lat: number | null, lng: number | null) {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
+function geoErrorMessage(err: GeolocationPositionError): string {
+  if (err.code === err.PERMISSION_DENIED)
+    return 'Izin lokasi belum diberikan. Buka Setelan → Aplikasi → Dompis → Izin → Lokasi → Izinkan, lalu coba lagi.';
+  if (err.code === err.POSITION_UNAVAILABLE)
+    return 'Lokasi tidak tersedia. Nyalakan GPS/Location dan coba di area terbuka.';
+  if (err.code === err.TIMEOUT) return 'Pengambilan lokasi timeout — coba lagi.';
+  return `Gagal mengambil lokasi: ${err.message}`;
+}
+
 export default function LocationTagger({
   ticketId,
   serviceNo,
@@ -259,7 +268,28 @@ const res = await fetchWithAuth(
     setMode('editing');
   }, [onError, onAddressSuggestion]);
 
+  const applyPosition = useCallback(
+    (pos: GeolocationPosition) => {
+      const freshLat = pos.coords.latitude;
+      const freshLng = pos.coords.longitude;
+      const freshAccuracy = Math.round(pos.coords.accuracy);
+      editedRef.current = true;
+      setLat(freshLat);
+      setLng(freshLng);
+      setAccuracy(freshAccuracy);
+      setAccuracyWarning(freshAccuracy > 100);
+      setLocating(false);
+      onError(null);
+      suggestAddress(freshLat, freshLng);
+    },
+    [onError, suggestAddress],
+  );
+
   const requestCurrentPosition = useCallback(() => {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      onError('Aplikasi harus dibuka lewat HTTPS untuk mengambil lokasi.');
+      return;
+    }
     if (!('geolocation' in navigator)) {
       onError('Geolocation tidak didukung browser ini.');
       return;
@@ -268,26 +298,77 @@ const res = await fetchWithAuth(
     setLocating(true);
     setAccuracyWarning(false);
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const freshLat = pos.coords.latitude;
-        const freshLng = pos.coords.longitude;
-        const freshAccuracy = Math.round(pos.coords.accuracy);
-        editedRef.current = true;
-        setLat(freshLat);
-        setLng(freshLng);
-        setAccuracy(freshAccuracy);
-        setAccuracyWarning(freshAccuracy > 100);
-        setLocating(false);
-        suggestAddress(freshLat, freshLng);
-      },
-      (err) => {
-        setLocating(false);
-        onError(`Gagal mengambil lokasi: ${err.message}`);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-    );
-  }, [onError, suggestAddress]);
+    const onFail = (err: GeolocationPositionError) => {
+      // Retry sekali dengan akurasi rendah bila posisi tak tersedia / timeout
+      // (umum di dalam ruangan / WebView) — permission denied tidak di-retry.
+      if (
+        err.code === err.POSITION_UNAVAILABLE ||
+        err.code === err.TIMEOUT
+      ) {
+        onError('Sinyal GPS lemah — mencoba mode akurasi rendah…');
+        navigator.geolocation.getCurrentPosition(
+          applyPosition,
+          (err2) => {
+            setLocating(false);
+            onError(geoErrorMessage(err2));
+          },
+          { enableHighAccuracy: false, timeout: 30000, maximumAge: 120000 },
+        );
+        return;
+      }
+      setLocating(false);
+      onError(geoErrorMessage(err));
+    };
+
+    navigator.geolocation.getCurrentPosition(applyPosition, onFail, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 30000,
+    });
+  }, [onError, applyPosition]);
+
+  const [manualCoordInput, setManualCoordInput] = useState('');
+
+  const applyManualCoords = useCallback(() => {
+    const m = manualCoordInput
+      .trim()
+      .match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) {
+      onError('Format koordinat harus: -6.123456, 106.123456');
+      return;
+    }
+    const mlat = parseFloat(m[1]);
+    const mlng = parseFloat(m[2]);
+    if (
+      !Number.isFinite(mlat) ||
+      !Number.isFinite(mlng) ||
+      mlat < -90 ||
+      mlat > 90 ||
+      mlng < -180 ||
+      mlng > 180
+    ) {
+      onError('Koordinat di luar rentang yang valid.');
+      return;
+    }
+    onError(null);
+    editedRef.current = true;
+    setLat(mlat);
+    setLng(mlng);
+    setAccuracy(null);
+    setAccuracyWarning(false);
+    suggestAddress(mlat, mlng);
+  }, [manualCoordInput, onError, suggestAddress]);
+
+  const useBankCoords = useCallback(() => {
+    if (!bank || bank.latitude == null || bank.longitude == null) return;
+    onError(null);
+    editedRef.current = true;
+    setLat(bank.latitude);
+    setLng(bank.longitude);
+    setAccuracy(bank.accuracyMeters ?? null);
+    setAccuracyWarning(false);
+    suggestAddress(bank.latitude, bank.longitude);
+  }, [bank, onError, suggestAddress]);
 
   const buildTaggedState = useCallback(
     (
@@ -610,6 +691,50 @@ const res = await fetchWithAuth(
             </>
           )}
         </button>
+
+        {/* Fallback: input koordinat manual bila GPS bermasalah (mis. di WebView APK) */}
+        <details className='mb-2 rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60'>
+          <summary className='cursor-pointer text-[11px] font-bold text-slate-500'>
+            GPS bermasalah? Input koordinat manual
+          </summary>
+          <div className='mt-2 flex gap-2'>
+            <input
+              type='text'
+              inputMode='decimal'
+              value={manualCoordInput}
+              onChange={(e) => setManualCoordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyManualCoords();
+                }
+              }}
+              placeholder='-6.123456, 106.123456'
+              className='min-w-0 flex-1 rounded-[10px] border-2 border-slate-200 bg-white px-3 py-2 font-sans text-[12.5px] font-medium text-slate-800 outline-none focus:border-blue-600'
+            />
+            <button
+              type='button'
+              onClick={applyManualCoords}
+              className='shrink-0 rounded-[10px] bg-blue-600 px-3 py-2 text-[12px] font-bold text-white'
+            >
+              Set
+            </button>
+          </div>
+          {bank && bank.latitude != null && bank.longitude != null && (
+            <button
+              type='button'
+              onClick={useBankCoords}
+              className='mt-2 w-full rounded-[10px] border-[1.5px] border-blue-200 bg-white px-3 py-2 text-[11.5px] font-bold text-blue-600 transition-colors hover:bg-blue-50'
+            >
+              Pakai titik dari data bank ({bank.latitude.toFixed(5)},{' '}
+              {bank.longitude.toFixed(5)})
+            </button>
+          )}
+          <p className='mt-1.5 text-[10px] leading-relaxed text-slate-400'>
+            Dari Google Maps: tekan lama titik lokasi → koordinat muncul di atas →
+            salin ke sini. Setelah titik muncul, geser marker peta untuk koreksi.
+          </p>
+        </details>
 
         {/* Mini map */}
         {hasCoords ? (

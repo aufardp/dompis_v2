@@ -99,7 +99,6 @@ function CombinedActionButtons({
   isAlamatEmpty,
   isDeviceNameEmpty,
   isLocationEmpty,
-  geotagRequired,
   isDetailPerbaikanEmpty,
   isEvidenceIncomplete,
   photoCount,
@@ -111,8 +110,7 @@ function CombinedActionButtons({
   const getCloseContent = () => {
     if (isAlamatEmpty) return { Icon: MapPin, main: 'Isi Alamat' };
     if (isDeviceNameEmpty) return { Icon: Smartphone, main: 'Isi Device' };
-    if (geotagRequired && isLocationEmpty)
-      return { Icon: MapPin, main: 'Isi Lokasi' };
+    if (isLocationEmpty) return { Icon: MapPin, main: 'Isi Lokasi' };
     if (isDetailPerbaikanEmpty) return { Icon: FileText, main: 'Isi Detail' };
     if (isEvidenceIncomplete)
       return { Icon: Camera, main: `Foto ${photoCount}/${photoRequired}` };
@@ -175,7 +173,6 @@ interface ModalFooterProps {
   isAlamatEmpty: boolean;
   isDeviceNameEmpty: boolean;
   isLocationEmpty: boolean;
-  geotagRequired: boolean;
   isDetailPerbaikanEmpty: boolean;
   photoCount: number;
   photoRequired?: number;
@@ -203,7 +200,6 @@ export default function ModalFooter({
   isAlamatEmpty,
   isDeviceNameEmpty,
   isLocationEmpty,
-  geotagRequired,
   isDetailPerbaikanEmpty,
   photoCount,
   photoRequired = 2,
@@ -226,7 +222,7 @@ export default function ModalFooter({
     !isEvidenceIncomplete &&
     !isAlamatEmpty &&
     !isDeviceNameEmpty &&
-    !(geotagRequired && isLocationEmpty) &&
+    !isLocationEmpty &&
     !isDetailPerbaikanEmpty &&
     !anyLoading;
 
@@ -326,7 +322,6 @@ export default function ModalFooter({
             isAlamatEmpty={isAlamatEmpty}
             isDeviceNameEmpty={isDeviceNameEmpty}
             isLocationEmpty={isLocationEmpty}
-            geotagRequired={geotagRequired}
             isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
             isEvidenceIncomplete={isEvidenceIncomplete}
             photoCount={photoCount}

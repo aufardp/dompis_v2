@@ -216,8 +216,6 @@ export default function TicketDetailModal({
     return v.length === 0 || DEVICE_EMPTY_VALUES.includes(v);
   })();
 
-  const geotagRequired = process.env.NEXT_PUBLIC_GEOTAG_REQUIRED_ENABLED === 'true';
-
   const isLocationEmpty = useMemo(() => {
     if (!locationTag) return true;
     if (!Number.isFinite(locationTag.latitude)) return true;
@@ -573,7 +571,7 @@ export default function TicketDetailModal({
       return;
     }
 
-    if (geotagRequired && isLocationEmpty) {
+    if (isLocationEmpty) {
       setError('Lokasi (titik koordinat + barcode DC) wajib ditandai sebelum menutup tiket.');
       return;
     }
@@ -636,7 +634,6 @@ export default function TicketDetailModal({
   }, [
     isAlamatEmpty,
     isDeviceNameEmpty,
-    geotagRequired,
     isLocationEmpty,
     isRcaIncomplete,
     isDetailPerbaikanEmpty,
@@ -943,7 +940,7 @@ export default function TicketDetailModal({
                     >
                       <p className='mb-2 text-[10px] font-bold tracking-wide text-(--text-tertiary) uppercase'>
                         Lokasi Penanganan
-                        {isOnProgress && geotagRequired && isLocationEmpty && (
+                        {isOnProgress && isLocationEmpty && (
                           <span className='ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400'>
                             <AlertTriangle size={10} className='mr-1 inline' />
                             WAJIB
@@ -1253,7 +1250,6 @@ export default function TicketDetailModal({
           isAlamatEmpty={isAlamatEmpty}
           isDeviceNameEmpty={isDeviceNameEmpty}
           isLocationEmpty={isLocationEmpty}
-          geotagRequired={geotagRequired}
           isDetailPerbaikanEmpty={isDetailPerbaikanEmpty}
           photoCount={photoCount}
           photoRequired={photoRequired}
