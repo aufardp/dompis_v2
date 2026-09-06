@@ -899,6 +899,7 @@ model users {
   ticket_tracking_technician                        ticket_tracking[]           @relation("ticket_tracking_assigned_toTousers")
   ticket_tracking_usersId_user_rel                  ticket_tracking[]           @relation("ticket_tracking_usersId_userTousers")
   topbar_notification_state                         topbar_notification_state[]
+  user_devices                                      user_devices[]
   user_sa                                           user_sa[]
   user_region                                       user_region[]
 user_branch                                       user_branch[]
@@ -911,6 +912,18 @@ user_branch                                       user_branch[]
 
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
+}
+
+model user_devices {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  fcm_token  String   @unique(map: "uniq_user_devices_fcm_token") @db.VarChar(255)
+  platform   String?  @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+  users      users    @relation(fields: [user_id], references: [id_user], onDelete: Cascade, onUpdate: Cascade, map: "user_devices_user_id_fkey")
+
+  @@index([user_id], map: "idx_user_devices_user")
 }
 
 model topbar_notification_state {

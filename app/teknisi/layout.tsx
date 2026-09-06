@@ -7,6 +7,7 @@ import Image from 'next/image';
 import UserMenu from '../components/layout/user-menu/UserMenu';
 import LogoutConfirmModal from '../components/layout/LogoutConfirmModal';
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
+import FcmTokenRegistrar from './components/FcmTokenRegistrar';
 import { fetchWithAuth } from '@/app/libs/fetcher';
 import { useTheme } from '@/app/contexts/ThemeContext';
 
@@ -148,6 +149,9 @@ export default function TeknisiLayout({
 
       {/* ── Page content ─────────────────────────────────────────────────── */}
       <main className='px-4 pt-4 pb-6'>{children}</main>
+
+      {/* Registers the Android WebView FCM token once per technician session */}
+      <FcmTokenRegistrar />
 
       {/* ── Logout confirm ───────────────────────────────────────────────── */}
       <LogoutConfirmModal

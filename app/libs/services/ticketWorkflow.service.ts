@@ -16,6 +16,7 @@ import {
 import { fastTrackingUpdate } from '@/app/helpers/tracking.helpers';
 import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
+import { notifyTechnicianAssigned } from '@/lib/notifications/notifyTechnicianAssigned';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 import { ApiError } from '@/app/libs/apiError';
 import { SQM_UPDATE_REASON_MAX_LEN } from '@/lib/sqm-update';
@@ -899,7 +900,7 @@ export class TicketWorkflowService {
     const roleId = roleKeyToRoleId(roleKey);
     const now = new Date();
 
-    return commitAndInvalidate(
+    const result = await commitAndInvalidate(
       prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const ticket = await lockTicketRow(tx, ticketId);
 
@@ -1042,6 +1043,14 @@ export class TicketWorkflowService {
         };
       }, { timeout: 25000, maxWait: 8000, isolationLevel: 'ReadCommitted' }),
     );
+
+    // Post-commit, fire-and-forget: push "Tiket baru ditugaskan" to the technician.
+    void notifyTechnicianAssigned({
+      ticketId,
+      technicianUserId: technicianId,
+    }).catch(() => {});
+
+    return result;
   }
 
   static async unassignTicket(ticketId: number, actor: ActorContext) {

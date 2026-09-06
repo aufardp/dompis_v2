@@ -8,6 +8,7 @@ import { fastTrackingUpdate } from '@/app/helpers/tracking.helpers';
 import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
+import { notifyTechnicianAssigned } from '@/lib/notifications/notifyTechnicianAssigned';
 import { autoAssignLogger } from '@/app/libs/autoAssignLogger';
 import { logger } from '@/lib/observability/logger';
 import { todayWibDateForDb } from '@/lib/timezone';
@@ -631,6 +632,11 @@ export class ClusterAutoAssignServiceV2 {
             });
 
             autoAssignLogger.webhookDispatched(a.ticketId, a.incident, true);
+
+            void notifyTechnicianAssigned({
+              ticketId: a.ticketId,
+              technicianUserId: a.teknisiId,
+            }).catch(() => {});
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Unknown error';
             autoAssignLogger.webhookDispatched(

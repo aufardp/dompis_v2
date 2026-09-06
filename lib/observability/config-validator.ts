@@ -89,6 +89,7 @@ const SHARED_CONFIG: EnvVarSpec[] = [
   { name: 'TELEGRAM_BOT_TOKEN', type: 'string', optional: true },
   { name: 'TELEGRAM_CHAT_ID', type: 'string', optional: true },
   { name: 'SLACK_WEBHOOK_URL', type: 'string', optional: true },
+  { name: 'FIREBASE_SERVICE_ACCOUNT', type: 'string', optional: true },
   { name: 'QOSMIC_BRIDGE_ENABLED', type: 'boolean', optional: true },
   { name: 'QOSMIC_BRIDGE_BASE_URL', type: 'string', optional: true },
   { name: 'QOSMIC_BRIDGE_TOKEN', type: 'string', optional: true },

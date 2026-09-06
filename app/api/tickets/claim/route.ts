@@ -15,6 +15,7 @@ import { AttendanceService } from '@/app/libs/services/attendance.service';
 import { getAttendanceGateByTechnicianSegment } from '@/app/libs/services/attendance-gate.service';
 import { createTechEvent } from '@/app/libs/createTechEvent';
 import { buildTechEventEvidence } from '@/app/libs/buildTechEventEvidence';
+import { notifyTechnicianAssigned } from '@/lib/notifications/notifyTechnicianAssigned';
 import { logger } from '@/lib/observability/logger';
 
 export async function POST(req: Request) {
@@ -194,6 +195,11 @@ export async function POST(req: Request) {
         logger.warn('claim tech event failed', { ticketId, error: err instanceof Error ? err.message : String(err) });
       }
     })();
+
+    void notifyTechnicianAssigned({
+      ticketId,
+      technicianUserId: user.id_user,
+    }).catch(() => {});
 
     broadcastTicketInvalidate('assign');
 
