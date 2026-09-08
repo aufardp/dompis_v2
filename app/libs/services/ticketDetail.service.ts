@@ -198,6 +198,7 @@ export async function getTicketDetailForActor(
     maxTtrDiamond: row.status_ttr_3_diamond ? row.status_ttr_3_diamond : null,
     ttrComplyStatus: row.ttr_comply_status,
     ttrDeadlineAt: row.ttr_deadline_at ? row.ttr_deadline_at.toISOString() : null,
+    resolveDate: row.resolve_date ? row.resolve_date.toISOString() : null,
     pendingDompis: row.pending_dompis,
     rca: row.rca,
     subRca: row.sub_rca,

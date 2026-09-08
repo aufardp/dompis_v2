@@ -591,12 +591,11 @@ export function buildProjectionUpsert(
   if (newFlagging) updateData.flagging_manja = newFlagging;
 
   // --- TTR compliance ---
-  // Gunakan resolve_date (dari Nossa) sebagai acuan kepatuhan,
-  // fallback ke closed_at (lokal Dompis) jika resolve_date belum tersedia.
-  const complianceClosedAt = resolvedDate ?? (updateData.closed_at as Date) ?? null;
+  // Acuan kepatuhan = resolve_date (dari Nossa) SAJA. Tanpa resolve_date,
+  // status tak dinilai (null) — closed_at hanya waktu tutup lokal Dompis.
   const updateCompliance = computeTtrCompliance({
     status: (updateData.status as string) ?? null,
-    closedAt: complianceClosedAt,
+    resolveAt: resolvedDate ?? null,
     reportedDate: (updateData.reported_date as string) ?? null,
     customerSegment: (updateData.customer_segment as string) ?? null,
     customerType: (updateData.customer_type as string) ?? null,
@@ -641,12 +640,10 @@ export function buildProjectionUpsert(
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
 
   // --- TTR compliance ---
-  // Gunakan resolve_date (dari Nossa) sebagai acuan kepatuhan,
-  // fallback ke closed_at (lokal Dompis) jika resolve_date belum tersedia.
-  const createComplianceClosedAt = resolvedDate ?? (createData.closed_at as Date) ?? null;
+  // Acuan kepatuhan = resolve_date (dari Nossa) SAJA. Tanpa resolve_date → null.
   const createCompliance = computeTtrCompliance({
     status: (createData.status as string) ?? null,
-    closedAt: createComplianceClosedAt,
+    resolveAt: resolvedDate ?? null,
     reportedDate: (createData.reported_date as string) ?? null,
     customerSegment: (createData.customer_segment as string) || null,
     customerType: (createData.customer_type as string) || null,

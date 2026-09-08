@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
 
         const rows = await prisma.$queryRawUnsafe<MonthlyComplyRow[]>(
           withMaxExecutionTime(`SELECT
-            DATE_FORMAT(closed_at, '%Y-%m') AS month,
+            DATE_FORMAT(COALESCE(resolve_date, closed_at), '%Y-%m') AS month,
             COUNT(*) AS total,
             SUM(ttr_comply_status = 'comply') AS comply_count
           FROM ticket

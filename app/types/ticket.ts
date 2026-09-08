@@ -75,6 +75,7 @@ export interface Ticket {
 
   ttrComplyStatus?: string | null;
   ttrDeadlineAt?: string | null;
+  resolveDate?: string | null;
 
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;

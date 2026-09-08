@@ -18,7 +18,8 @@ export type TtrComplyStatus = 'comply' | 'not_comply';
 
 export interface TtrComplyInput {
   status: string | null;
-  closedAt: Date | null;
+  /** Acuan kepatuhan = resolve_date (dari Nossa). Null → status tak dinilai. */
+  resolveAt: Date | null;
   reportedDate: string | null;
   customerSegment: string | null;
   customerType: string | null;
@@ -130,7 +131,7 @@ export function computeTtrCompliance(
   const isClosed = CLOSE_STATUS_VALUES.includes(
     (ticket.status ?? '').trim().toUpperCase(),
   );
-  if (!isClosed || !ticket.closedAt) {
+  if (!isClosed || !ticket.resolveAt) {
     return { status: null, deadlineAt: null };
   }
 
@@ -149,7 +150,7 @@ export function computeTtrCompliance(
 
   const deadlineAt = new Date(reported.getTime() + hours * 60 * 60 * 1000);
   const status: TtrComplyStatus =
-    ticket.closedAt.getTime() <= deadlineAt.getTime()
+    ticket.resolveAt.getTime() <= deadlineAt.getTime()
       ? 'comply'
       : 'not_comply';
 
@@ -191,7 +192,7 @@ const SQM_WORK_HOUR_TTR_HOURS = 4;
  */
 export function computeSqmWorkHourCompliance(ticket: {
   status: string | null;
-  closedAt: Date | null;
+  resolveAt: Date | null;
   reportedDate: string | null;
 }): SqmWorkHourResult {
   const workHour = getWorkHourCategory(ticket.reportedDate);
@@ -199,7 +200,7 @@ export function computeSqmWorkHourCompliance(ticket: {
     (ticket.status ?? '').trim().toUpperCase(),
   );
 
-  if (!isClosed || !ticket.closedAt || !workHour || workHour === 'non_work_hour') {
+  if (!isClosed || !ticket.resolveAt || !workHour || workHour === 'non_work_hour') {
     return { workHour, status: null, deadlineAt: null };
   }
 
@@ -208,7 +209,7 @@ export function computeSqmWorkHourCompliance(ticket: {
     reported.getTime() + SQM_WORK_HOUR_TTR_HOURS * 60 * 60 * 1000,
   );
   const status: TtrComplyStatus =
-    ticket.closedAt.getTime() <= deadlineAt.getTime()
+    ticket.resolveAt.getTime() <= deadlineAt.getTime()
       ? 'comply'
       : 'not_comply';
 
@@ -227,7 +228,7 @@ export function isManjaP1Ticket(flaggingManja: string | null): boolean {
  */
 export function computeManjaCompliance(ticket: {
   status: string | null;
-  closedAt: Date | null;
+  resolveAt: Date | null;
   bookingDate: string | null;
   flaggingManja: string | null;
 }): TtrComplyResult {
@@ -238,7 +239,7 @@ export function computeManjaCompliance(ticket: {
   const isClosed = CLOSE_STATUS_VALUES.includes(
     (ticket.status ?? '').trim().toUpperCase(),
   );
-  if (!isClosed || !ticket.closedAt) return { status: null, deadlineAt: null };
+  if (!isClosed || !ticket.resolveAt) return { status: null, deadlineAt: null };
 
   const booking = parseWIBDateInput(ticket.bookingDate);
   if (!booking) return { status: null, deadlineAt: null };
@@ -247,7 +248,7 @@ export function computeManjaCompliance(ticket: {
     booking.getTime() + BOOKING_DEADLINE_HOURS * 60 * 60 * 1000,
   );
   const status: TtrComplyStatus =
-    ticket.closedAt.getTime() <= deadlineAt.getTime()
+    ticket.resolveAt.getTime() <= deadlineAt.getTime()
       ? 'comply'
       : 'not_comply';
 

@@ -70,6 +70,36 @@ export function TabSLA({ ticket, ttrLabel, ttrDeadline }: TabSLAProps) {
             </p>
           </div>
         </div>
+
+        {/* Acuan comply = resolve_date (Nossa). closed_at = pencatatan Dompis. */}
+        <div className='mt-3 grid grid-cols-2 gap-3'>
+          <div className='rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800'>
+            <p className='text-[10.5px] font-semibold tracking-wider text-emerald-600 uppercase dark:text-emerald-400'>
+              Resolve Date · Nossa
+            </p>
+            <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
+              {ticket.resolveDate ? formatDateTime(ticket.resolveDate) : '—'}
+            </p>
+            <p className='mt-0.5 text-[11px] text-slate-400'>acuan comply / not-comply</p>
+          </div>
+          <div className='rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800'>
+            <p className='text-[10.5px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500'>
+              Closed · Dompis
+            </p>
+            <p className='mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200'>
+              {ticket.closedAt ? formatDateTime(ticket.closedAt) : '—'}
+            </p>
+            <p className='mt-0.5 text-[11px] text-slate-400'>
+              {ticket.resolveDate && ticket.closedAt
+                ? `selisih ${(
+                    (new Date(ticket.closedAt).getTime() -
+                      new Date(ticket.resolveDate).getTime()) /
+                    3600000
+                  ).toFixed(1)} jam`
+                : 'saat status → close'}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className='mb-5'>

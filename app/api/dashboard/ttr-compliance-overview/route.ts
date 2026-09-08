@@ -35,6 +35,7 @@ const CUSTOMER_TYPE_TO_TIER: Record<string, TierKey> = {
 interface ClosedTicketRow {
   status: string | null;
   closed_at: Date | null;
+  resolve_date: Date | null;
   reported_date: string | null;
   booking_date: string | null;
   customer_segment: string | null;
@@ -154,20 +155,24 @@ export async function GET(request: NextRequest) {
 
         const tickets = await prisma.$queryRawUnsafe<ClosedTicketRow[]>(
           withMaxExecutionTime(`SELECT
-            status, closed_at, reported_date, booking_date,
+            status, closed_at, resolve_date, reported_date, booking_date,
             customer_segment, customer_type, source_ticket,
             flagging_manja, jenis_tiket_1, ttr_comply_status
           FROM ticket
           WHERE (${baseWhere})
-            AND closed_at >= ? AND closed_at <= ?`),
+            AND COALESCE(resolve_date, closed_at) >= ?
+            AND COALESCE(resolve_date, closed_at) <= ?`),
           ...baseParams,
           range.start,
           range.end,
         );
 
-        // --- MTTR (semua tiket closed di periode ini) ---
+        // --- MTTR: reported_date → resolve_date (fallback closed_at bila belum sync) ---
         const mttrSeconds = computeMttrSeconds(
-          tickets.map((t) => ({ reportedDate: t.reported_date, closedAt: t.closed_at })),
+          tickets.map((t) => ({
+            reportedDate: t.reported_date,
+            closedAt: t.resolve_date ?? t.closed_at,
+          })),
         );
 
         // --- Comply / Not Comply keseluruhan (dari ttr_comply_status tersimpan) ---
@@ -208,7 +213,7 @@ export async function GET(request: NextRequest) {
           if (isManjaP1Ticket(t.flagging_manja)) {
             const manjaResult = computeManjaCompliance({
               status: t.status,
-              closedAt: t.closed_at,
+              resolveAt: t.resolve_date,
               bookingDate: t.booking_date,
               flaggingManja: t.flagging_manja,
             });
@@ -221,7 +226,7 @@ export async function GET(request: NextRequest) {
           if (isSqm) {
             const sqmResult = computeSqmWorkHourCompliance({
               status: t.status,
-              closedAt: t.closed_at,
+              resolveAt: t.resolve_date,
               reportedDate: t.reported_date,
             });
             if (sqmResult.workHour === 'work_hour') workHourCount += 1;
