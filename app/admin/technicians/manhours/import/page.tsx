@@ -426,10 +426,10 @@ export default function ImportPage() {
         {/* Breadcrumb */}
         <div className='flex items-center gap-2 text-sm text-slate-500'>
           <Link
-            href='/admin/technicians/manhours'
+            href='/admin/technicians'
             className='hover:text-teal-600'
           >
-            ManHours
+            Teknisi
           </Link>
           <span>/</span>
           <span className='text-slate-800 dark:text-slate-200'>
@@ -883,11 +883,11 @@ export default function ImportPage() {
                       {importResult.success && (
                         <div className='mt-4'>
                           <Link
-                            href={`/admin/technicians/manhours?date_from=${syncDate}&date_to=${syncDate}`}
+                            href={`/admin/technicians/performance?date_from=${syncDate}&date_to=${syncDate}`}
                             className='inline-flex items-center rounded-lg bg-teal-500 px-4 py-2 text-sm font-medium text-white hover:bg-teal-600'
                           >
                             <BarChart3 size={16} className='mr-2' />
-                            Buka Laporan ManHours
+                            Buka Rekap Close Teknisi
                           </Link>
                         </div>
                       )}

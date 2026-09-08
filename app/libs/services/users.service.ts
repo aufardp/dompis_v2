@@ -11,6 +11,8 @@ export interface CreateUserDTO {
   username: string;
   password: string;
   role_id: number;
+  region_id?: number;
+  branch_id?: number;
   area_id: number;
   sa_ids?: number[];
   sa_id?: number;
@@ -27,6 +29,8 @@ export interface UpdateUserDTO {
   username?: string;
   password?: string;
   role_id?: number;
+  region_id?: number;
+  branch_id?: number;
   area_id?: number;
   sa_ids?: number[];
   sa_id?: number;
@@ -52,6 +56,8 @@ export interface UserById {
   username: string;
   password: string;
   role_id: number;
+  region_id: number | null;
+  branch_id: number | null;
   area_id: number;
   created_at: Date;
   updated_at: Date;
@@ -416,6 +422,8 @@ export async function createUser(data: CreateUserDTO) {
       username: data.username,
       password: hashedPassword,
       role_id: data.role_id,
+      region_id: data.region_id ?? null,
+      branch_id: data.branch_id ?? null,
       area_id: data.area_id,
       user_sa: {
         create: saIds.map((saId) => ({
@@ -484,6 +492,8 @@ export async function updateUser(id: number, data: UpdateUserDTO) {
   if (data.technician_segment !== undefined) updateData.technician_segment = data.technician_segment;
   if (data.username !== undefined) updateData.username = data.username;
   if (data.role_id !== undefined) updateData.role_id = data.role_id;
+  if (data.region_id !== undefined) updateData.region_id = data.region_id;
+  if (data.branch_id !== undefined) updateData.branch_id = data.branch_id;
   if (data.area_id !== undefined) updateData.area_id = data.area_id;
 
   if (data.password !== undefined) {

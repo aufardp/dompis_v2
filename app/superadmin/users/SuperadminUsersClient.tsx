@@ -998,6 +998,8 @@ function CreateUserPanel() {
         username: form.username.trim(),
         password: form.password,
         role_id: form.roleId,
+        region_id: regionId,
+        branch_id: branchId,
         area_id: areaId,
         sa_ids: saIds,
         region_ids: scopeRegionIds,
@@ -1335,6 +1337,8 @@ function UserListPanel() {
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [editFields, setEditFields] = useState({
     role_id: 0,
+    region_id: 0,
+    branch_id: 0,
     area_id: 0,
     technician_segment: '' as '' | 'B2B' | 'B2C' | 'BOTH',
     sa_ids: [] as number[],
@@ -1427,6 +1431,8 @@ function UserListPanel() {
     setScopeExpanded(false);
     setEditFields({
       role_id: user.role_id ?? 0,
+      region_id: 0,
+      branch_id: 0,
       area_id: user.area_id ?? 0,
       technician_segment: (user.technician_segment ?? '') as '' | 'B2B' | 'B2C' | 'BOTH',
       sa_ids: [],
@@ -1443,6 +1449,9 @@ function UserListPanel() {
       const d = detail.data ?? {};
       setEditFields((f) => ({
         ...f,
+        region_id: Number(d.region_id) || 0,
+        branch_id: Number(d.branch_id) || 0,
+        area_id: Number(d.area_id) || f.area_id,
         sa_ids: Array.isArray(d.sa_ids) ? d.sa_ids : [],
         region_ids: Array.isArray(d.region_ids) ? d.region_ids : [],
         branch_ids: Array.isArray(d.branch_ids) ? d.branch_ids : [],
@@ -1479,8 +1488,39 @@ function UserListPanel() {
     }
   };
 
+  const editBranchesForRegion = useMemo(
+    () =>
+      editRegions.find((r) => r.id_region === editFields.region_id)?.branches ??
+      [],
+    [editRegions, editFields.region_id],
+  );
+  const editAreasForBranch = useMemo(
+    () =>
+      editBranchesForRegion.find((b) => b.id_branch === editFields.branch_id)
+        ?.areas ?? [],
+    [editBranchesForRegion, editFields.branch_id],
+  );
+
+  const onRegionForEdit = (v: number) =>
+    setEditFields((f) => ({ ...f, region_id: v, branch_id: 0, area_id: 0 }));
+  const onBranchForEdit = (v: number) =>
+    setEditFields((f) => ({ ...f, branch_id: v, area_id: 0 }));
+
   const onAreaForEdit = async (areaId: number) => {
     setEditFields((f) => ({ ...f, area_id: areaId }));
+    // Muat grup service area utk area ini bila belum ada (biar SA-nya bisa dicentang).
+    if (areaId && !editSaGroups.some((g) => g.areaId === areaId)) {
+      const area = editAreasForBranch.find((a) => a.id_area === areaId);
+      const res = await requestJson(`/api/sa?id_area=${areaId}`);
+      setEditSaGroups((g) => [
+        ...g,
+        {
+          areaId,
+          areaName: area?.nama_area ?? areaNameMap[areaId] ?? `Area #${areaId}`,
+          sas: res.success ? (res.data ?? []) : [],
+        },
+      ]);
+    }
   };
 
   const addEditAreaGroup = async (areaId: number) => {
@@ -1523,12 +1563,18 @@ function UserListPanel() {
 
   const saveUser = async () => {
     if (!editUser) return;
+    if (!editFields.region_id || !editFields.branch_id || !editFields.area_id) {
+      showError('Periksa form', 'Pilih region, branch, dan area terlebih dahulu');
+      return;
+    }
     if (editFields.sa_ids.length === 0) {
       showError('Periksa form', 'Pilih minimal 1 service area');
       return;
     }
     const body: Record<string, any> = {
       role_id: editFields.role_id,
+      region_id: editFields.region_id,
+      branch_id: editFields.branch_id,
       area_id: editFields.area_id,
       technician_segment: editFields.technician_segment || null,
       sa_ids: editFields.sa_ids,
@@ -1777,17 +1823,53 @@ function UserListPanel() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Region
+                  </label>
+                  <select
+                    value={editFields.region_id}
+                    onChange={(e) => onRegionForEdit(Number(e.target.value))}
+                    className={inputCls}
+                  >
+                    <option value={0}>Pilih region</option>
+                    {editRegions.map((r) => (
+                      <option key={r.id_region} value={r.id_region}>
+                        {r.nama_region}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Branch
+                  </label>
+                  <select
+                    value={editFields.branch_id}
+                    onChange={(e) => onBranchForEdit(Number(e.target.value))}
+                    className={inputCls}
+                    disabled={!editFields.region_id}
+                  >
+                    <option value={0}>Pilih branch</option>
+                    {editBranchesForRegion.map((b) => (
+                      <option key={b.id_branch} value={b.id_branch}>
+                        {b.nama_branch} ({b.kode_branch})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
                     Area
                   </label>
                   <select
                     value={editFields.area_id}
                     onChange={(e) => onAreaForEdit(Number(e.target.value))}
                     className={inputCls}
+                    disabled={!editFields.branch_id}
                   >
                     <option value={0}>Pilih area</option>
-                    {Object.entries(areaNameMap).map(([id, label]) => (
-                      <option key={id} value={id}>
-                        {label}
+                    {editAreasForBranch.map((a) => (
+                      <option key={a.id_area} value={a.id_area}>
+                        {a.nama_area}
                       </option>
                     ))}
                   </select>

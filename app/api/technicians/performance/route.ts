@@ -2,55 +2,28 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
-import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
-import { getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { getOrSetCache } from '@/lib/cache';
+import {
+  getRekapCloseTeknisi,
+  type RecapSpesialisasi,
+} from '@/app/libs/services/recap-close.service';
 
-const CACHE_TTL_SECONDS = 30;
+const CACHE_TTL_SECONDS = 60;
+const WIB_OFFSET = '+07:00';
 
-function buildCacheKey(
-  role: string,
-  userId: number,
-  month: number,
-  year: number,
-  workzone: string | undefined,
-) {
-  return `technicians_performance:${role}:${userId}:${year}-${String(month).padStart(2, '0')}:${workzone || 'all'}`;
+/** "YYYY-MM-DD" → Date pada 00:00 WIB. Invalid → null. */
+function parseWibDate(raw: string | null): Date | null {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const d = new Date(`${raw}T00:00:00${WIB_OFFSET}`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-type AdminSaRow = { sa_id: number | null };
-type TechSaRow = { user_id: number | null; service_area: { nama_sa: string | null } | null };
-type TechIdRow = { user_id: number | null } | { id_user: number };
-type Technician = { id_user: number; nama: string | null; nik: string | null };
-type ClosedCountRow = { teknisi_user_id: number | null; _count: number };
-
-function toInt(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.floor(n) : fallback;
-}
-
-function monthRange(year: number, month: number) {
-  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const end = new Date(year, month, 1, 0, 0, 0, 0);
-  return { start, end };
-}
-
-function buildWorkzoneTicketFilter(
-  workzones: string[],
-  selected?: string,
-): Record<string, unknown> | undefined {
-  const filters: Record<string, unknown>[] = [];
-  const wz = selected?.trim();
-  if (wz) filters.push({ workzone: wz });
-  if (workzones.length > 0) {
-    filters.push({ OR: workzones.map((w) => ({ workzone: w })) });
-  }
-  if (filters.length === 0) return undefined;
-  return { AND: filters };
+function normalizeSpesialisasi(raw: string | null): RecapSpesialisasi {
+  const v = (raw ?? '').trim().toLowerCase();
+  return v === 'b2c' ? 'b2c' : 'b2b';
 }
 
 export async function GET(req: NextRequest) {
@@ -69,219 +42,58 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const month = toInt(searchParams.get('month'), 0);
-    const year = toInt(searchParams.get('year'), 0);
-    const selectedWorkzone = searchParams.get('workzone') || undefined;
-
-    if (!month || month < 1 || month > 12 || !year || year < 2000) {
+    const dateFrom = parseWibDate(searchParams.get('date_from'));
+    const dateToRaw = parseWibDate(searchParams.get('date_to'));
+    if (!dateFrom || !dateToRaw) {
       return NextResponse.json(
-        { success: false, message: 'Invalid month/year' },
+        { success: false, message: 'date_from / date_to wajib (YYYY-MM-DD)' },
+        { status: 400 },
+      );
+    }
+    const dateTo = new Date(dateToRaw.getTime() + 24 * 60 * 60 * 1000);
+    if (dateTo <= dateFrom) {
+      return NextResponse.json(
+        { success: false, message: 'Rentang tanggal tidak valid' },
         { status: 400 },
       );
     }
 
-    const { start, end } = monthRange(year, month);
+    const serviceArea = searchParams.get('service_area')?.trim() || undefined;
+    const spesialisasi = normalizeSpesialisasi(searchParams.get('spesialisasi'));
+    const q = searchParams.get('q')?.trim() || undefined;
+    const includeEmpty = searchParams.get('include_empty') === '1';
 
-    const userWorkzones = (await getWorkzonesForUser(user.id_user)).filter(
-      (w) => w && w.trim() !== '',
+    const cacheKey = [
+      'technicians_recap_close',
+      user.role,
+      user.id_user,
+      searchParams.get('date_from'),
+      searchParams.get('date_to'),
+      serviceArea ?? 'all',
+      spesialisasi,
+      includeEmpty ? 'inc' : 'act',
+      q ?? '',
+    ].join(':');
+
+    const result = await getOrSetCache(
+      cacheKey,
+      () =>
+        getRekapCloseTeknisi({
+          adminUserId: user.id_user,
+          dateFrom,
+          dateTo,
+          serviceArea,
+          spesialisasi,
+          q,
+          includeEmpty,
+        }),
+      CACHE_TTL_SECONDS,
     );
-    const wzFilter = buildWorkzoneTicketFilter(userWorkzones, selectedWorkzone);
 
-    const cacheKey = buildCacheKey(user.role, user.id_user, month, year, selectedWorkzone);
-    const result = await getOrSetCache(cacheKey, async () => {
-      // Technician universe
-      const adminSaRows = await prisma.user_sa.findMany({
-        take: 50,
-        where: { user_id: user.id_user },
-        select: { sa_id: true },
-      }) as unknown as AdminSaRow[];
-      const adminSaIds = adminSaRows
-        .map((r: AdminSaRow) => r.sa_id)
-        .filter((v: number | null): v is number => v != null);
-
-      const technicianRoleId = 4;
-      const technicianIds =
-        adminSaIds.length > 0
-          ? await prisma.user_sa
-              .findMany({
-                take: 1000,
-                where: { sa_id: { in: adminSaIds } },
-                select: { user_id: true },
-              })
-              .then((rows: TechIdRow[]) => [
-                ...new Set(
-                  rows
-                    .map((r: TechIdRow) => (r as { user_id: number | null }).user_id)
-                    .filter((v: number | null): v is number => v != null),
-                ),
-              ])
-          : await prisma.users
-              .findMany({
-                take: 1000,
-                where: { role_id: technicianRoleId },
-                select: { id_user: true },
-              })
-              .then((rows: TechIdRow[]) =>
-                rows.map((r: TechIdRow) => (r as { id_user: number }).id_user),
-              );
-
-      if (technicianIds.length === 0) {
-        return {
-          month,
-          year,
-          workzone: selectedWorkzone || null,
-          userWorkzones,
-          rows: [],
-        };
-      }
-
-      // Workzones per technician
-      const techSa = await prisma.user_sa.findMany({
-        take: 1000,
-        where: { user_id: { in: technicianIds } },
-        include: { service_area: { select: { nama_sa: true } } },
-      }) as unknown as TechSaRow[];
-      const techWorkzones = new Map<number, string[]>();
-      for (const usa of techSa) {
-        if (!usa.user_id || !usa.service_area?.nama_sa) continue;
-        const existing = techWorkzones.get(usa.user_id) || [];
-        existing.push(usa.service_area.nama_sa);
-        techWorkzones.set(usa.user_id, existing);
-      }
-
-      const selectedWz = selectedWorkzone?.trim().toLowerCase();
-      const finalTechnicianIds = selectedWz
-        ? technicianIds.filter((id: number) => {
-            const wzs = techWorkzones.get(id) || [];
-            return wzs.some((wz: string) =>
-              String(wz || '')
-                .toLowerCase()
-                .trim() === selectedWz,
-            );
-          })
-        : technicianIds;
-
-      if (finalTechnicianIds.length === 0) {
-        return {
-          month,
-          year,
-          workzone: selectedWorkzone || null,
-          userWorkzones,
-          rows: [],
-        };
-      }
-
-      const technicians = await prisma.users.findMany({
-        take: 1000,
-        where: {
-          id_user: { in: finalTechnicianIds },
-          role_id: technicianRoleId,
-        },
-        select: { id_user: true, nama: true, nik: true },
-        orderBy: { nama: 'asc' },
-      }) as unknown as Technician[];
-
-      // Closed counts from ticket table
-      const closedWhere = {
-        teknisi_user_id: { in: finalTechnicianIds },
-        status_update: { in: ['close', 'closed', 'CLOSE', 'CLOSED'] },
-        closed_at: { gte: start, lt: end },
-        ...(wzFilter ? wzFilter : {}),
-      };
-
-      const closedCounts = await prisma.ticket.groupBy({
-        by: ['teknisi_user_id'],
-        where: closedWhere,
-        _count: true,
-      }) as unknown as ClosedCountRow[];
-      const closedCountMap = new Map<number, number>();
-      for (const row of closedCounts) {
-        if (row.teknisi_user_id)
-          closedCountMap.set(row.teknisi_user_id, row._count);
-      }
-
-      // Avg resolve hours (tracking) via raw SQL join to apply workzone filter
-    const wzConditions: any[] = [];
-    if (selectedWorkzone) {
-      wzConditions.push(Prisma.sql`LOWER(t.workzone) = LOWER(${selectedWorkzone})`);
-    }
-    if (userWorkzones.length > 0) {
-      const wzList = userWorkzones.filter((wz: string) => wz && wz.trim() !== '');
-      if (wzList.length > 0) {
-        const orClauses: any[] = wzList.map(
-          (wz: string) => Prisma.sql`LOWER(t.workzone) = LOWER(${wz})`,
-        );
-        wzConditions.push(
-          Prisma.sql`(${Prisma.join(orClauses, ' OR ')})`,
-        );
-      }
-    }
-    const wzSql = wzConditions.length > 0
-      ? Prisma.sql`AND ${Prisma.join(wzConditions, ' AND ')}`
-      : Prisma.sql``;
-
-      const avgRows = await prisma.$queryRaw(
-        Prisma.sql`
-      SELECT tt.assigned_to as tech_id,
-             AVG(TIMESTAMPDIFF(SECOND, tt.assigned_at, tt.closed_at)) / 3600 as avg_hours,
-             COUNT(*) as n
-      FROM ticket_tracking tt
-      JOIN ticket t ON t.id_ticket = tt.ticket_id
-      WHERE tt.assigned_at IS NOT NULL
-        AND tt.closed_at IS NOT NULL
-        AND tt.closed_at >= ${start}
-        AND tt.closed_at < ${end}
-        AND t.status_update IS NOT NULL
-        AND LOWER(t.status_update) IN ('close','closed')
-        AND t.teknisi_user_id = tt.assigned_to
-        AND t.teknisi_user_id IN (${Prisma.join(finalTechnicianIds)})
-        ${wzSql}
-      GROUP BY tt.assigned_to
-    `,
-      ) as unknown as Array<{ tech_id: number; avg_hours: number | null; n: number }>;
-
-      const avgMap = new Map<number, number>();
-      for (const r of avgRows) {
-        if (r.tech_id) avgMap.set(r.tech_id, Number(r.avg_hours || 0));
-      }
-
-      const rows = technicians
-        .map((t: Technician) => {
-          const wzs = techWorkzones.get(t.id_user) || [];
-          return {
-            id_user: t.id_user,
-            nama: t.nama ?? '',
-            nik: t.nik,
-            workzone: wzs.length > 0 ? wzs.join(', ') : 'Unknown',
-            closed_count: closedCountMap.get(t.id_user) || 0,
-            avg_resolve_time_hours: avgMap.get(t.id_user) ?? null,
-          };
-        })
-        .sort((a, b) => {
-          if (b.closed_count !== a.closed_count)
-            return b.closed_count - a.closed_count;
-          const aName = String((a as any).nama ?? '');
-          const bName = String((b as any).nama ?? '');
-          return aName.localeCompare(bName);
-        });
-
-      return {
-        month,
-        year,
-        workzone: selectedWorkzone || null,
-        userWorkzones,
-        rows,
-      };
-    }, CACHE_TTL_SECONDS);
-
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
+    return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
-    const message = getErrorMessage(error, 'Failed to load performance');
     return NextResponse.json(
-      { success: false, message },
+      { success: false, message: getErrorMessage(error, 'Gagal memuat rekap') },
       { status: getErrorStatus(error, 400) },
     );
   }

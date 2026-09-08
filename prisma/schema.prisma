@@ -31,6 +31,7 @@ model branch {
   areas       area[]
   region      region?       @relation(fields: [region_id], references: [id_region])
   user_branch user_branch[]
+  users       users[]
 
   @@index([kode_branch])
   @@index([region_id])
@@ -139,6 +140,14 @@ model manhours_config {
   @@index([is_active, sort_order])
 }
 
+model technician_bobot_config {
+  bucket_key String   @id @db.VarChar(20)
+  label      String   @db.VarChar(50)
+  bobot      Decimal  @default(1.00) @db.Decimal(4, 2)
+  sort_order Int      @default(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+}
+
 model region {
   id_region   Int           @id @default(autoincrement())
   nama_region String        @unique @db.VarChar(100)
@@ -147,6 +156,7 @@ model region {
   updated_at  DateTime      @default(now()) @db.Timestamp(0)
   branches    branch[]
   user_region user_region[]
+  users       users[]
 }
 
 model roles {
@@ -879,6 +889,8 @@ model users {
   username                                          String?                     @unique(map: "username") @db.VarChar(50)
   password                                          String?                     @db.VarChar(255)
   role_id                                           Int?
+  region_id                                         Int?
+  branch_id                                         Int?
   area_id                                           Int?
   created_at                                        DateTime                    @default(now()) @db.Timestamp(0)
   updated_at                                        DateTime                    @default(now()) @db.Timestamp(0)
@@ -909,9 +921,13 @@ user_branch                                       user_branch[]
   kml_layers                                        kml_layer[]
   area                                              area?                        @relation(fields: [area_id], references: [id_area], onDelete: NoAction, onUpdate: NoAction, map: "users_ibfk_1")
   roles                                             roles?                      @relation(fields: [role_id], references: [id_role], onDelete: Restrict, onUpdate: Restrict, map: "users_ibfk_3")
+  region                                            region?                      @relation(fields: [region_id], references: [id_region], onDelete: SetNull, onUpdate: Cascade, map: "users_region_id_fkey")
+  branch                                            branch?                      @relation(fields: [branch_id], references: [id_branch], onDelete: SetNull, onUpdate: Cascade, map: "users_branch_id_fkey")
 
   @@index([area_id], map: "id_area")
   @@index([role_id], map: "id_role")
+  @@index([region_id], map: "idx_users_region")
+  @@index([branch_id], map: "idx_users_branch")
 }
 
 model user_devices {

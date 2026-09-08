@@ -35,6 +35,14 @@ export const userSchema = z.object({
       message: "Role wajib dipilih",
    }),
 
+   region_id: z.coerce.number().refine((val) => val > 0, {
+      message: "Region wajib dipilih",
+   }),
+
+   branch_id: z.coerce.number().refine((val) => val > 0, {
+      message: "Branch wajib dipilih",
+   }),
+
    area_id: z.coerce.number().refine((val) => val > 0, {
       message: "Area wajib dipilih",
    }),
@@ -64,6 +72,8 @@ export const updateUserSchema = userSchema.extend({
    username: z.string().optional(),
    password: z.string().min(6).optional(),
    role_id: z.number().optional(),
+   region_id: z.coerce.number().positive().optional(),
+   branch_id: z.coerce.number().positive().optional(),
    area_id: z.number().optional(),
    sa_ids: z.array(z.coerce.number().positive()).optional(),
    region_ids: z.array(z.coerce.number().positive()).optional(),

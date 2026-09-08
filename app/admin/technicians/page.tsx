@@ -890,15 +890,15 @@ export default function TechniciansPage() {
                 className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400'
               >
                 <CheckCircle size={14} />
-                Rekap Pekerjaan Bulanan
+                Rekap Close Teknisi
               </Link>
               <span className='text-gray-300 dark:text-gray-600'>|</span>
               <Link
-                href='/admin/technicians/manhours'
+                href='/admin/technicians/manhours/import'
                 className='inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400'
               >
                 <TrendingUp size={14} />
-                Produktivitas ManHours
+                Import Lembar Kerja
               </Link>
             </div>
           </div>
