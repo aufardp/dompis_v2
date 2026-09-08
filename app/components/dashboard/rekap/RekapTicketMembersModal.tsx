@@ -44,6 +44,7 @@ export interface RekapMemberTicket {
   classificationPath: string | null;
   classificationFlag: string | null;
   closedAt: string | null;
+  resolveDate: string | null;
   syncDate: string | null;
 }
 
@@ -578,11 +579,18 @@ function MemberTicketRow({
         <p className='truncate text-xs text-(--text-secondary)'>
           {renderValue(ticket.customerSegment)}
         </p>
-        <p className='truncate text-[11px] text-(--text-secondary)'>
-          {formatCompactDateTime(ticket.reportedDate)}
-          {' → '}
-          {formatCompactDateTime(ticket.closedAt)}
-        </p>
+        <div className='flex min-w-0 flex-col'>
+          <p className='truncate text-[11px] text-(--text-secondary)'>
+            {formatCompactDateTime(ticket.reportedDate)}
+            {' → '}
+            {formatCompactDateTime(ticket.resolveDate ?? ticket.closedAt)}
+          </p>
+          {ticket.resolveDate && ticket.closedAt && ticket.resolveDate !== ticket.closedAt ? (
+            <p className='truncate text-[10px] text-emerald-600 dark:text-emerald-400' title={`resolve: ${ticket.resolveDate} | closed: ${ticket.closedAt}`}>
+              resolve: {formatCompactDateTime(ticket.resolveDate)}
+            </p>
+          ) : null}
+        </div>
         <div className='flex items-center justify-end gap-1'>
           {copyButton}
           <ChevronRight
@@ -648,10 +656,15 @@ function MemberTicketRow({
               ? ` · ${renderValue(ticket.customerSegment)}`
               : ''}
           </span>
-          <span className='shrink-0 text-(--text-muted)'>
-            {formatCompactDateTime(ticket.reportedDate)}
-            {' → '}
-            {formatCompactDateTime(ticket.closedAt)}
+          <span className='flex shrink-0 flex-col items-end text-(--text-muted)'>
+            <span>
+              {formatCompactDateTime(ticket.reportedDate)}
+              {' → '}
+              {formatCompactDateTime(ticket.resolveDate ?? ticket.closedAt)}
+            </span>
+            {ticket.resolveDate && ticket.closedAt && ticket.resolveDate !== ticket.closedAt ? (
+              <span className='text-[10px] text-emerald-600 dark:text-emerald-400'>resolve: {formatCompactDateTime(ticket.resolveDate)}</span>
+            ) : null}
           </span>
         </div>
       </div>

@@ -575,7 +575,8 @@ export function buildProjectionUpsert(
       updateData.status_update = statusResolution.statusUpdate;
     }
     if (statusResolution.closedAt !== undefined) {
-      updateData.closed_at = statusResolution.closedAt;
+      // write-once: jangan timpa closed_at yang sudah terisi dari resolve_date
+      updateData.closed_at = (existing?.closed_at as Date) ?? statusResolution.closedAt;
     }
   } else if (existing) {
     updateData.status = raw.status ?? existing.status ?? null;
@@ -589,6 +590,22 @@ export function buildProjectionUpsert(
 
   const newFlagging = computeFlaggingManja(raw.booking_date as string | null);
   if (newFlagging) updateData.flagging_manja = newFlagging;
+
+  // --- resolve_date = stop-clock TTR → tiket dianggap selesai ---
+  // Bila resolve_date (Nossa) terisi & status belum masuk CLOSE_STATUS_VALUES,
+  // stamp tiket ke keadaan selesai: status='RESOLVED' (anggota CLOSE_STATUS_VALUES,
+  // jadi semua close-test lolos tanpa ubah konsumen), status_update='close',
+  // closed_at=COALESCE(closed_at lama, resolve_date). ticket_raw.status tetap asli.
+  {
+    const curStatus = String(updateData.status ?? existing?.status ?? '')
+      .trim()
+      .toUpperCase();
+    if (resolvedDate && !CLOSE_STATUS_VALUES.includes(curStatus)) {
+      updateData.status = 'RESOLVED';
+      updateData.status_update = 'close';
+      updateData.closed_at = (existing?.closed_at as Date) ?? resolvedDate;
+    }
+  }
 
   // --- TTR compliance ---
   // Acuan kepatuhan = resolve_date (dari Nossa) SAJA. Tanpa resolve_date,
@@ -638,6 +655,16 @@ export function buildProjectionUpsert(
     createData.status_update = 'open';
   }
   createData.flagging_manja = computeFlaggingManja(raw.booking_date as string | null);
+
+  // --- resolve_date = stop-clock TTR → tiket dianggap selesai (lihat blok update) ---
+  {
+    const curStatus = String(createData.status ?? '').trim().toUpperCase();
+    if (resolvedDate && !CLOSE_STATUS_VALUES.includes(curStatus)) {
+      createData.status = 'RESOLVED';
+      createData.status_update = 'close';
+      createData.closed_at = (createData.closed_at as Date) ?? resolvedDate;
+    }
+  }
 
   // --- TTR compliance ---
   // Acuan kepatuhan = resolve_date (dari Nossa) SAJA. Tanpa resolve_date → null.

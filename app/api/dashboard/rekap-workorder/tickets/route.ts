@@ -32,6 +32,7 @@ interface RekapMemberTicketRow {
   classification_path: string | null;
   classification_flag: string | null;
   closed_at: Date | null;
+  resolve_date: Date | null;
   sync_date: Date | null;
 }
 
@@ -80,6 +81,7 @@ function mapTicket(t: any) {
     classificationPath: t.classification_path,
     classificationFlag: t.classification_flag,
     closedAt: toWibString(t.closed_at),
+    resolveDate: toWibString(t.resolve_date),
     syncDate: toWibDateString(t.sync_date),
   };
 }
@@ -234,6 +236,7 @@ export async function GET(request: NextRequest) {
               t.classification_path,
               t.classification_flag,
               t.closed_at,
+              t.resolve_date,
               t.sync_date
             FROM ticket t
             JOIN service_area sa ON sa.nama_sa = t.workzone
