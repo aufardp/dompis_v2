@@ -307,7 +307,7 @@ module.exports = {
     },
     {
       name: 'dompis-audit-log-purge',
-      script: 'tsx',
+      script: './node_modules/.bin/tsx',
       args: 'scripts/audit-log-purge.ts',
       cwd: '/www/wwwroot/dompis_v2',
       instances: 1,
