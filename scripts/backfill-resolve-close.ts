@@ -34,31 +34,44 @@ async function main() {
     await connectDB();
     console.log('[Backfill] Database connected');
 
-    // Long query timeout for bulk scan
-    try {
-      await prisma.$executeRaw`SET SESSION max_execution_time = 60000`;
-    } catch {
-      // MariaDB may use different variable - ignore
+    // Disable timeout for backfill — COUNT + chunk scans can exceed dashboard 30s.
+    // Use hint MAX_EXECUTION_TIME(0) + SET SESSION 0; SET may not affect pooled $queryRaw conn,
+    // so hint is authoritative.
+    for (const sql of [
+      'SET SESSION max_execution_time = 0',
+      'SET SESSION MAX_EXECUTION_TIME = 0',
+    ] as const) {
+      try {
+        await prisma.$executeRawUnsafe(sql);
+      } catch {}
     }
 
     const batchSize = parseInt(process.env.BACKFILL_BATCH_SIZE || '500', 10);
     const limitArg = process.env.BACKFILL_LIMIT ? parseInt(process.env.BACKFILL_LIMIT, 10) : null;
     const dryRun = process.argv.includes('--dry-run');
 
-    // Pre-count for logging
-    const preCount = await prisma.$queryRaw<{ cnt: bigint }[]>`
-      SELECT COUNT(*) as cnt FROM ticket
-      WHERE resolve_date IS NOT NULL
-        AND UPPER(TRIM(COALESCE(status, ''))) NOT IN (${Prisma.join(CLOSE_LIST)})
-    `;
-    const totalToFix = Number(preCount[0]?.cnt ?? 0);
-    console.log(`[Backfill] Kandidat: ${totalToFix} tiket (resolve_date NOT NULL & status NOT IN close)`);
-    if (dryRun) {
+    // No pre-count: COUNT(*) with UPPER(TRIM(...)) full-scans and times out at 60s
+    // under load (see P2010 at 13:48). Enumerate directly via PK chunks.
+    let totalToFix: number | null = null;
+    if (!dryRun) {
+      console.log('[Backfill] Kandidat: hitung via chunk scan (tanpa COUNT agar tidak timeout)');
+    } else {
+      // dry-run: quick estimate with unlimited timeout hint, best-effort
+      try {
+        const preCount = await prisma.$queryRawUnsafe<{ cnt: bigint }[]>(
+          `SELECT /*+ MAX_EXECUTION_TIME(0) */ COUNT(*) as cnt FROM ticket WHERE resolve_date IS NOT NULL AND UPPER(TRIM(COALESCE(status, ''))) NOT IN (${CLOSE_LIST.map(() => '?').join(',')})`,
+          ...CLOSE_LIST,
+        );
+        totalToFix = Number(preCount[0]?.cnt ?? 0);
+      } catch {
+        totalToFix = null;
+      }
+      console.log(`[Backfill] Kandidat (estimate): ${totalToFix ?? 'unknown'} tiket`);
       console.log('[Backfill] --dry-run: tidak ada perubahan');
-      return;
-    }
-    if (totalToFix === 0) {
-      console.log('[Backfill] Tidak ada yang perlu di-stamp.');
+      if (totalToFix === 0) {
+        console.log('[Backfill] Tidak ada yang perlu di-stamp.');
+        return;
+      }
       return;
     }
 
@@ -69,35 +82,32 @@ async function main() {
     while (!interrupted) {
       if (limitArg !== null && scanned >= limitArg) break;
 
-      // Ambil chunk ids yang match kondisi, ordered by id_ticket
-      const rows = await prisma.$queryRaw<{ id_ticket: number; closed_at: Date | null; resolve_date: Date | null }[]>`
-        SELECT id_ticket, closed_at, resolve_date
-        FROM ticket
-        WHERE resolve_date IS NOT NULL
-          AND UPPER(TRIM(COALESCE(status, ''))) NOT IN (${Prisma.join(CLOSE_LIST)})
-          AND id_ticket > ${lastId}
-        ORDER BY id_ticket ASC
-        LIMIT ${batchSize}
-      `;
+      // Chunk via PK — hint MAX_EXECUTION_TIME(0) so 60s dashboard cap doesn't kill it.
+      // Keep UPPER(TRIM(...)) for correctness (case/space); PK order + resolve_date IS NOT NULL
+      // still hits PRIMARY quickly; full table scan only if many rows have resolve_date.
+      const rows = await prisma.$queryRawUnsafe<{ id_ticket: number; closed_at: Date | null; resolve_date: Date | null }[]>(
+        `SELECT /*+ MAX_EXECUTION_TIME(0) */ id_ticket, closed_at, resolve_date FROM ticket WHERE resolve_date IS NOT NULL AND UPPER(TRIM(COALESCE(status, ''))) NOT IN (${CLOSE_LIST.map(() => '?').join(',')}) AND id_ticket > ? ORDER BY id_ticket ASC LIMIT ?`,
+        ...CLOSE_LIST,
+        lastId,
+        batchSize,
+      );
 
       if (rows.length === 0) break;
 
       const ids = rows.map((r) => r.id_ticket);
 
       // Bulk update write-once: closed_at = COALESCE(closed_at, resolve_date)
-      const result = await prisma.$executeRaw`
-        UPDATE ticket
-        SET status = 'RESOLVED',
-            status_update = 'close',
-            closed_at = COALESCE(closed_at, resolve_date)
-        WHERE id_ticket IN (${Prisma.join(ids)})
-      `;
+      const result = await prisma.$executeRawUnsafe(
+        `UPDATE /*+ MAX_EXECUTION_TIME(0) */ ticket SET status = 'RESOLVED', status_update = 'close', closed_at = COALESCE(closed_at, resolve_date) WHERE id_ticket IN (${ids.map(() => '?').join(',')})`,
+        ...ids,
+      );
 
       const affected = Number(result);
       scanned += rows.length;
       stamped += affected;
       lastId = ids[ids.length - 1]!;
-      console.log(`[Backfill] ${stamped}/${totalToFix} stamped (chunk ${rows.length}, affected ${affected}, last id ${lastId})`);
+      const totalLabel = totalToFix !== null ? `${stamped}/${totalToFix}` : `${stamped}`;
+      console.log(`[Backfill] ${totalLabel} stamped (chunk ${rows.length}, affected ${affected}, last id ${lastId})`);
 
       if (rows.length < batchSize) break;
 
@@ -106,7 +116,7 @@ async function main() {
     }
 
     console.log('\n=== BACKFILL RESULT ===');
-    console.log(`Stamped RESOLVED/close: ${stamped}`);
+    console.log(`Stamped RESOLVED/close: ${stamped} (scanned ${scanned})`);
     if (stamped > 0) console.log('Jalankan: npm run backfill:ttr-comply');
     console.log('========================\n');
   } catch (error) {
