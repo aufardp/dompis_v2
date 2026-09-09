@@ -32,7 +32,7 @@ import {
 } from '@/lib/observability/gauge-counters';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setMySQLSessionTimeout } from '@/lib/workers/task-runner';
-import { isQosmicBridgeConfigured, isQosmicBridgeDown } from '@/lib/external-db/qosmic-bridge/client';
+import { isQosmicBridgeConfigured, isQosmicBridgeDown, probeBridgeHealth } from '@/lib/external-db/qosmic-bridge/client';
 import { broadcastBridgeFreshness } from '@/app/libs/sseBroadcast';
 import {
   iterateNossaOpen,
@@ -1303,6 +1303,38 @@ async function processTable(
           logger.info('[Ingestion] Bridge rescan skipped (cooldown active)', {
             component: 'ingestion', tableName, batchId, mode,
           });
+        } else if (await isQosmicBridgeDown()) {
+          // Auto-pause enqueue saat QOSMIC down — probe dulu, jika masih down skip tanpa isi DLQ
+          const probed = await probeBridgeHealth().catch(() => false);
+          if (!probed) {
+            logger.warn('[Ingestion] Bridge ingestion di-pause — QOSMIC down (auto-detect)', {
+              component: 'ingestion', tableName, batchId, mode,
+            });
+            // Release cooldown agar cycle berikutnya bisa probe lagi (jangan kunci 10 menit saat down)
+            await redis.del(cooldownKey).catch(() => {});
+          } else {
+            logger.info('[Ingestion] Bridge probe sukses — lanjut enqueue', {
+              component: 'ingestion', tableName, batchId, mode,
+            });
+            // Lanjut ke enqueue di bawah — probe sudah mark healthy
+            // Re-check tidak diperlukan, langsung enqueue
+            const { ingestionQueue } = await import('@/lib/external-db/qosmic-bridge/bridge-queue');
+            const existingJob = await ingestionQueue.getJob(jobName);
+            if (existingJob) {
+              const existingState = await existingJob.getState();
+              if (existingState === 'completed' || existingState === 'failed') {
+                await existingJob.remove();
+              } else {
+                logger.info('[Ingestion] Bridge scan already queued or running', {
+                  component: 'ingestion', tableName, batchId, jobId: jobName, state: existingState,
+                });
+              }
+            }
+            const jobStillExists = await ingestionQueue.getJob(jobName);
+            if (!jobStillExists) {
+              await ingestionQueue.add(jobName, { table: tableName, correlationId: batchId }, { jobId: jobName });
+            }
+          }
         } else {
           logger.info('[Ingestion] Pushing bridge ingestion job', {
             component: 'ingestion', tableName, batchId, mode,

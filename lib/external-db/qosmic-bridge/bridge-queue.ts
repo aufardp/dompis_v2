@@ -3,7 +3,7 @@ import { redis, isRedisReady } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 import { WorkerTaskState, shouldRunWithCircuitBreaker, nowWIB, runWithCorrelationContext } from '@/lib/workers/task-runner';
 import { iterateNossaOpen, iterateNossaClosedIncremental, iterateNossaClosedWindow, fetchByIncident } from './nossa';
-import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY } from './client';
+import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY, isQosmicBridgeDown, probeBridgeHealth } from './client';
 import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
@@ -149,6 +149,18 @@ async function handleIngestNossa(job: any): Promise<{ processed: number }> {
   let processed = 0;
 
   await runWithCorrelationContext(correlationId, async () => {
+    // Auto-pause saat QOSMIC down — jangan isi DLQ dengan fail berulang.
+    // Probe dulu: jika health check sukses, lanjut; jika masih down, skip job sebagai 'paused' bukan 'failed'.
+    if (await isQosmicBridgeDown()) {
+      const probed = await probeBridgeHealth();
+      if (!probed) {
+        logger.warn('[Bridge] Ingest di-pause — QOSMIC masih down (auto-detect)', { tableName, batchId, jobId: job.id });
+        // Reset circuit agar tidak trip karena pause
+        circuitState.consecutiveErrors = 0;
+        return;
+      }
+    }
+
     logger.info('[Bridge] Ingest starting', { tableName, batchId, jobId: job.id });
 
     const nossaClosedIncrementalDays = Math.max(
@@ -167,21 +179,34 @@ async function handleIngestNossa(job: any): Promise<{ processed: number }> {
       columns: [],
     };
 
-    for await (const rows of iterator) {
-      const rawRows = rows as QosmicRawRow[];
-      if (rawRows.length === 0) continue;
+    try {
+      for await (const rows of iterator) {
+        const rawRows = rows as QosmicRawRow[];
+        if (rawRows.length === 0) continue;
 
-      const result: ChunkResult = {
-        processed: 0, inserted: 0, updated: 0,
-        skipped: 0, failed: 0, quarantined: 0,
-        retried: 0, errors: [],
-      };
+        const result: ChunkResult = {
+          processed: 0, inserted: 0, updated: 0,
+          skipped: 0, failed: 0, quarantined: 0,
+          retried: 0, errors: [],
+        };
 
-      await processRawRows(rawRows as Record<string, unknown>[], tableName, batchId, cursor, result);
+        await processRawRows(rawRows as Record<string, unknown>[], tableName, batchId, cursor, result);
 
-      processed += result.processed;
+        processed += result.processed;
 
-      await job.updateProgress({ processed });
+        await job.updateProgress({ processed });
+      }
+    } catch (err) {
+      // Jika QOSMIC down di tengah iterasi, jangan throw sebagai failed — pause dan biarkan di-retry cycle berikut
+      const isDown = await isQosmicBridgeDown().catch(() => false);
+      if (isDown) {
+        logger.warn('[Bridge] Ingest ter-interrupt karena QOSMIC down di tengah jalan — di-pause', {
+          tableName, batchId, jobId: job.id, error: err instanceof Error ? err.message : String(err),
+        });
+        circuitState.consecutiveErrors = 0;
+        return;
+      }
+      throw err;
     }
 
     logger.info('[Bridge] Ingest complete', { tableName, batchId, processed });

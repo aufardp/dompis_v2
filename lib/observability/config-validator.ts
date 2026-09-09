@@ -64,6 +64,42 @@ const WORKER_CONFIG: Record<string, EnvVarSpec[]> = {
     { name: 'WORKER_STARTUP_DELAY_MS', type: 'int', min: 0, max: 120000 },
     { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 10 },
   ],
+  'bridge-worker': [
+    { name: 'QOSMIC_BRIDGE_ENABLED', type: 'boolean', optional: true },
+    { name: 'QOSMIC_BRIDGE_BASE_URL', type: 'string', optional: true },
+    { name: 'QOSMIC_BRIDGE_TOKEN', type: 'string', optional: true },
+    { name: 'QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN', type: 'int', min: 1, max: 60, optional: true },
+    { name: 'QOSMIC_BRIDGE_MAX_CONCURRENT', type: 'int', min: 1, max: 10, optional: true },
+    { name: 'BRIDGE_JOB_INGESTION_ENABLED', type: 'boolean', optional: true },
+    { name: 'BRIDGE_JOB_BACKFILL_ENABLED', type: 'boolean', optional: true },
+    { name: 'BRIDGE_JOB_SEARCH_ENABLED', type: 'boolean', optional: true },
+    { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 20, optional: true },
+    // Alias untuk PM2 name dompis-bridge-worker
+    { name: 'WORKER_STARTUP_DELAY_MS', type: 'int', min: 0, max: 120000, optional: true },
+  ],
+  'dompis-bridge-worker': [
+    { name: 'QOSMIC_BRIDGE_ENABLED', type: 'boolean', optional: true },
+    { name: 'QOSMIC_BRIDGE_BASE_URL', type: 'string', optional: true },
+    { name: 'QOSMIC_BRIDGE_TOKEN', type: 'string', optional: true },
+    { name: 'QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN', type: 'int', min: 1, max: 60, optional: true },
+    { name: 'QOSMIC_BRIDGE_MAX_CONCURRENT', type: 'int', min: 1, max: 10, optional: true },
+    { name: 'BRIDGE_JOB_INGESTION_ENABLED', type: 'boolean', optional: true },
+    { name: 'BRIDGE_JOB_BACKFILL_ENABLED', type: 'boolean', optional: true },
+    { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 20, optional: true },
+  ],
+  'data-worker': [
+    { name: 'DATA_WORKER_ENABLED', type: 'boolean', optional: true },
+    { name: 'DATA_WORKER_INTERVAL_MINUTES', type: 'int', min: 1, max: 60, optional: true },
+    { name: 'INGESTION_ENABLED', type: 'boolean', optional: true },
+    { name: 'STATUS_REFRESH_ENABLED', type: 'boolean', optional: true },
+    { name: 'ACTIVE_REFRESH_ENABLED', type: 'boolean', optional: true },
+    { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 20, optional: true },
+    { name: 'EXTERNAL_TABLE_NAMES', type: 'string', optional: true },
+  ],
+  'dompis-data-worker': [
+    { name: 'DATA_WORKER_ENABLED', type: 'boolean', optional: true },
+    { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 20, optional: true },
+  ],
 };
 
 const SHARED_CONFIG: EnvVarSpec[] = [

@@ -17,6 +17,7 @@ import {
   getDLQCounts,
   getBridgeCircuitState,
 } from '@/lib/external-db/qosmic-bridge/bridge-queue';
+import { isQosmicBridgeDown, probeBridgeHealth } from '@/lib/external-db/qosmic-bridge/client';
 
 const WORKER_NAME = 'bridge-worker';
 const DLQ_CHECK_INTERVAL = 15;
@@ -49,6 +50,22 @@ async function checkDLQ(): Promise<void> {
   }
 }
 
+async function probeHealth(): Promise<void> {
+  try {
+    const down = await isQosmicBridgeDown();
+    if (!down) return; // sudah healthy, tidak perlu probe
+    logger.info('[Bridge] Health probe scheduled — QOSMIC down, mencoba ping');
+    const ok = await probeBridgeHealth();
+    if (ok) {
+      logger.info('[Bridge] Health probe berhasil — auto-resume ingestion');
+    } else {
+      logger.info('[Bridge] Health probe masih down — tetap pause');
+    }
+  } catch (err) {
+    logger.warn('[Bridge] Health probe error', { error: String(err) });
+  }
+}
+
 async function startWorker(): Promise<void> {
   logger.info('[Bridge] Worker starting');
 
@@ -69,6 +86,13 @@ async function startWorker(): Promise<void> {
       'bridge-dlq-check',
       0,
       { maxIntervalMinutes: 30, idleThreshold: 10 },
+    ),
+    scheduleEveryMinutes(
+      1,
+      () => runWithCorrelationContext(WORKER_NAME, () => void probeHealth()),
+      'bridge-health-probe',
+      0,
+      { maxIntervalMinutes: 5, idleThreshold: 1 },
     ),
   );
 

@@ -99,6 +99,35 @@ export async function isQosmicBridgeDown(): Promise<boolean> {
   return down;
 }
 
+/**
+ * Active health probe — dipanggil periodik oleh bridge-worker saat HEALTH_KEY
+ * expired (down). Mencoba 1 request ringan (nossa?incident=dummy&limit=1) dengan
+ * timeout pendek. Jika sukses, `markBridgeHealthy()` akan dipanggil oleh
+ * `qosmicBridgeGet` sehingga `isQosmicBridgeDown()` kembali false tanpa nunggu
+ * job ingestion gagal dulu. Tidak throw bila masih down.
+ */
+export async function probeBridgeHealth(): Promise<boolean> {
+  if (!isQosmicBridgeConfigured()) return false;
+  // Jika sudah healthy, tidak perlu probe
+  if (!await isQosmicBridgeDown()) return true;
+  try {
+    // Probe ringan: pakai qosmicBridgeGet agar retry/rate-limit & markHealthy reuse
+    // Incident dummy yang pasti tidak ada — bridge tetap return 200 dengan array kosong
+    await qosmicBridgeGet<unknown>('/nossa', {
+      label: 'health-probe',
+      query: { incident: 'INC00000000', limit: 1 },
+    });
+    // qosmicBridgeGet sukses → markBridgeHealthy sudah dipanggil
+    logger.info('[QosmicBridge] Health probe sukses — bridge pulih');
+    return true;
+  } catch (e) {
+    logger.warn('[QosmicBridge] Health probe gagal — tetap down', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return false;
+  }
+}
+
 export class QosmicBridgeError extends Error {
   constructor(
     message: string,
