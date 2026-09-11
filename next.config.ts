@@ -8,6 +8,11 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig: NextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: false,
+  // Type-check dilepas dari fase `next build` (dobel kerja + tambah beban
+  // memori) — dijalankan terpisah lewat `npm run typecheck` sebagai gerbang
+  // CI/pre-deploy sendiri. (Next 16 sudah tak menjalankan ESLint bawaan saat
+  // build — `eslint.ignoreDuringBuilds` bukan lagi opsi yang valid di sini.)
+  typescript: { ignoreBuildErrors: true },
   // Turbopack — stable default di Next 16, filesystem cache terpisah dev/build
   turbopack: {
     // leaflet/window shim bila Turbopack complain fs
