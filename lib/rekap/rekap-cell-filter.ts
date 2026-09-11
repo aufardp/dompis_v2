@@ -44,8 +44,7 @@ const NOT_OBSOLETE_SQL = `(t.classification_path IS NULL OR t.classification_pat
 const SQM_JENIS_SQL = `(LOWER(t.jenis_tiket_1) LIKE '%sqm%' OR LOWER(t.jenis_tiket_1) LIKE '%sqm-ccan%')`;
 const SQM_UPDATE_FLAG_SQL = isSqmUpdateReasonSql('t');
 
-const buildCloseClause = (): string =>
-  `UPPER(TRIM(COALESCE(t.status, ''))) IN ${CLOSE_STATUS_SQL}`;
+const buildCloseClause = (): string => `t.status IN ${CLOSE_STATUS_SQL}`;
 const buildOpenClause = (): string => `NOT (${buildCloseClause()})`;
 
 /**

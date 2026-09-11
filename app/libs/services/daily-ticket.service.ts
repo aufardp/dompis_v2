@@ -902,10 +902,10 @@ export function buildStatusCategorySql(tbl = ''): string {
 
   return `
     CASE
-      WHEN UPPER(TRIM(COALESCE(${t}status, ''))) IN (${closeStatusesSql}) THEN 'close'
-      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'assigned' THEN 'assigned'
-      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'on_progress' THEN 'on_progress'
-      WHEN LOWER(TRIM(COALESCE(${t}status_update, ''))) = 'pending' THEN 'pending'
+      WHEN ${t}status IN (${closeStatusesSql}) THEN 'close'
+      WHEN ${t}status_update = 'assigned' THEN 'assigned'
+      WHEN ${t}status_update = 'on_progress' THEN 'on_progress'
+      WHEN ${t}status_update = 'pending' THEN 'pending'
       ELSE 'open'
     END
   `;
@@ -2358,11 +2358,11 @@ private static async fetchValidasiTicketIds(
     return `
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) IN (${closeStatusList}) THEN 1 ELSE 0 END) AS close,
-        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned,
-        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) = 'on_progress' THEN 1 ELSE 0 END) AS onProgress,
-        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND LOWER(TRIM(COALESCE(status_update, ''))) = 'pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN UPPER(TRIM(COALESCE(status, ''))) NOT IN (${closeStatusList}) AND (LOWER(TRIM(COALESCE(status_update, ''))) NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close') OR status_update IS NULL) THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN status IN (${closeStatusList}) THEN 1 ELSE 0 END) AS close,
+        SUM(CASE WHEN status NOT IN (${closeStatusList}) AND status_update IN ('assigned', 'on_progress', 'pending', 'escalated') THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN status NOT IN (${closeStatusList}) AND status_update = 'on_progress' THEN 1 ELSE 0 END) AS onProgress,
+        SUM(CASE WHEN status NOT IN (${closeStatusList}) AND status_update = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status NOT IN (${closeStatusList}) AND (status_update NOT IN ('assigned', 'on_progress', 'pending', 'escalated', 'close') OR status_update IS NULL) THEN 1 ELSE 0 END) AS open,
         SUM(CASE WHEN LOWER(COALESCE(guarantee_status, '')) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
         SUM(CASE WHEN ticket_id_gamas IS NOT NULL AND LOWER(TRIM(ticket_id_gamas)) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas,
         SUM(CASE WHEN flagging_manja = 'P1' THEN 1 ELSE 0 END) AS p1,
@@ -3206,7 +3206,7 @@ static async getTicketManagementOverviewSummary(
         AND closed_at IS NOT NULL
         AND closed_at >= ?
         AND closed_at < ?
-        AND UPPER(TRIM(status)) IN (${closeStatusSql})
+        AND status IN (${closeStatusSql})
       GROUP BY HOUR(closed_at)
     `;
 
@@ -3268,7 +3268,7 @@ static async getTicketManagementOverviewSummary(
         FROM ticket
         WHERE ${whereClause}
           AND closed_at IS NOT NULL
-          AND UPPER(TRIM(COALESCE(status, ''))) IN (${closeStatusSql})
+          AND status IN (${closeStatusSql})
           AND closed_at >= ?
         GROUP BY day
       ) combined

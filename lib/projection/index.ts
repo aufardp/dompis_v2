@@ -569,8 +569,13 @@ export function buildProjectionUpsert(
     raw.status ?? null,
     existing?.teknisi_user_id ?? null,
   );
+  const normalizeStatus = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    return s ? s.toUpperCase() : s || null;
+  };
   if (statusResolution && !statusResolution.protected) {
-    updateData.status = raw.status ?? existing?.status ?? null;
+    const rawNorm = normalizeStatus(raw.status);
+    updateData.status = rawNorm ?? normalizeStatus(existing?.status) ?? null;
     if (statusResolution.statusUpdate !== undefined) {
       updateData.status_update = statusResolution.statusUpdate;
     }
@@ -579,7 +584,8 @@ export function buildProjectionUpsert(
       updateData.closed_at = (existing?.closed_at as Date) ?? statusResolution.closedAt;
     }
   } else if (existing) {
-    updateData.status = raw.status ?? existing.status ?? null;
+    const rawNorm = normalizeStatus(raw.status);
+    updateData.status = rawNorm ?? normalizeStatus(existing.status) ?? null;
     if (existing.status_update !== undefined) {
       updateData.status_update = existing.status_update;
     }
@@ -642,7 +648,7 @@ export function buildProjectionUpsert(
     ...base,
     alamat: raw.street_address,
   };
-  createData.status = raw.status ?? null;
+  createData.status = normalizeStatus(raw.status) ?? null;
   const createResolution = resolveProjectionStatusUpdate(
     null,
     raw.status ?? null,

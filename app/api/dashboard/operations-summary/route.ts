@@ -24,7 +24,19 @@ import { buildDeptJenisWhere } from '@/lib/dept';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_TTL_SECONDS = DASHBOARD_CACHE_TTL;
+const CACHE_TTL_SECONDS = Math.max(DASHBOARD_CACHE_TTL, 90);
+
+// Batched Promise — jalankan maksimal 3 query bersamaan agar tidak exhaust 35 koneksi Prisma
+// (sebelumnya 7 paralel → herd + 3024). Tetap realtime (+200ms).
+async function runInBatches(tasks: Array<() => Promise<any>>, batchSize = 3): Promise<any[]> {
+  const results: any[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map((fn) => fn()));
+    results.push(...batchResults);
+  }
+  return results;
+}
 const CLOSE_STATUS_SQL = CLOSE_STATUS_VALUES.map((v) => `'${v}'`).join(', ');
 const EMPTY_COUNTS = {
   total: 0,
@@ -644,24 +656,41 @@ async function buildOperationsSummaryResult(
   const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
   const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
 
-  const [
-    b2cStats,
-    b2cRegulerStats,
-    b2bGroups,
-    b2bRegulerGroups,
-    netralGroups,
-    serviceAreas,
-    focusRaw,
-  ] = await Promise.all([
-    buildB2CSummary(b2cWhere),
-    buildB2CSummary(b2cRegulerWhere),
-    buildB2BGroupsOptimized(b2bWhere),
-    buildB2BGroupsOptimized(b2bRegulerWhere),
-    buildB2BGroupsOptimized(netralWhere),
-    buildServiceAreas(where),
-    (() => {
-      const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere);
-      return queryRawWithOptionalIndex<Array<{
+  const [b2cStats, b2cRegulerStats, b2bGroups, b2bRegulerGroups, netralGroups, serviceAreas, focusRaw] =
+    (await runInBatches(
+      [
+        () => buildB2CSummary(b2cWhere),
+        () => buildB2CSummary(b2cRegulerWhere),
+        () => buildB2BGroupsOptimized(b2bWhere),
+        () => buildB2BGroupsOptimized(b2bRegulerWhere),
+        () => buildB2BGroupsOptimized(netralWhere),
+        () => buildServiceAreas(where),
+        () => {
+          const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere);
+          return queryRawWithOptionalIndex<
+            Array<{
+              total: bigint;
+              close_count: bigint;
+              assigned_count: bigint;
+              open_count: bigint;
+              diamond: bigint;
+              p1: bigint;
+              gamas: bigint;
+              ffg: bigint;
+              carry_over: bigint;
+            }>
+          >(sqlWithIndex, sqlWithoutIndex, params);
+        },
+      ],
+      3,
+    )) as [
+      Awaited<ReturnType<typeof buildB2CSummary>>,
+      Awaited<ReturnType<typeof buildB2CSummary>>,
+      Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
+      Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
+      Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
+      Awaited<ReturnType<typeof buildServiceAreas>>,
+      Array<{
         total: bigint;
         close_count: bigint;
         assigned_count: bigint;
@@ -671,9 +700,8 @@ async function buildOperationsSummaryResult(
         gamas: bigint;
         ffg: bigint;
         carry_over: bigint;
-      }>>(sqlWithIndex, sqlWithoutIndex, params);
-    })(),
-  ]);
+      }>,
+    ];
 
   const focusRow = focusRaw?.[0];
 

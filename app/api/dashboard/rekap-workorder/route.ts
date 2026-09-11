@@ -1597,7 +1597,7 @@ async function getRekapAging(
           JOIN service_area sa ON sa.nama_sa = t.workzone
           WHERE ${whereClause}
             AND (${bucketWhere})
-            AND NOT (UPPER(TRIM(COALESCE(t.status, ''))) IN (${closeStatusSql}))
+            AND t.status NOT IN (${closeStatusSql})
           GROUP BY sa.nama_sa
         `;
         const rows = await prisma.$queryRawUnsafe<
