@@ -7,9 +7,15 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
-
+  output: 'standalone',
+  productionBrowserSourceMaps: false,
   experimental: {
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react'],
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react', 'recharts', 'leaflet', 'react-leaflet', 'supercluster'],
+    serverComponentsExternalPackages: ['sharp', '@prisma/client', 'bullmq', 'ioredis', 'firebase-admin', 'mysql2'],
+    webpackBuildWorker: true,
+  },
+  images: {
+    localPatterns: [{ pathname: '/assets/**', search: '?v=*' }],
   },
 };
 

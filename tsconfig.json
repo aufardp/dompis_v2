@@ -32,12 +32,21 @@
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*",
+    "lib/**/*",
+    "components/**/*",
+    "middleware.ts",
+    "server.ts",
+    "next.config.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next",
+    "dist-workers",
+    "scripts",
+    "worker*.ts",
+    "worker-runtime"
   ]
 }

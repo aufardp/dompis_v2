@@ -2,7 +2,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { isAdminRole } from '@/app/libs/rolesUtil';
@@ -124,6 +123,7 @@ export async function GET(req: NextRequest) {
       'Resolve (jam)': d.resolve_hours ?? '-',
     }));
 
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,

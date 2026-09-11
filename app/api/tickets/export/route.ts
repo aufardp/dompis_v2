@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { TicketService } from '@/app/libs/services/tickets.service';
@@ -277,6 +276,7 @@ export async function GET(request: Request) {
       });
     }
 
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.aoa_to_sheet([columns, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tickets');

@@ -2,7 +2,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
 import prisma from '@/app/libs/prisma';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError } from '@/app/libs/apiError';
@@ -112,7 +111,8 @@ export async function POST(req: Request) {
     // Parse mapping: { "Kusmono GGN": 12, "Ahmad Arif": 15 }
     const nameToIdMap: Record<string, number> = JSON.parse(mappingJson);
 
-    // Parse Excel di server
+    // Parse Excel di server — dynamic import agar tidak ter-bundle di build
+    const XLSX = await import('xlsx');
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(Buffer.from(buffer), {
       type: 'buffer',

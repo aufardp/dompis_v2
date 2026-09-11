@@ -2,7 +2,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError } from '@/app/libs/apiError';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
@@ -70,7 +69,8 @@ export async function POST(req: Request) {
     if (file.size > 50 * 1024 * 1024)
       throw new ApiError(400, 'File terlalu besar (maks 50MB)');
 
-    // Parse di server — tidak ada batasan memori browser
+    // Parse di server — dynamic import agar tidak ter-bundle di build
+    const XLSX = await import('xlsx');
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(Buffer.from(buffer), {
       type: 'buffer',

@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { ApiError, getErrorMessage } from '@/app/libs/apiError';
-import * as XLSX from 'xlsx';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 
 const ODC_COLUMN_ALIASES = [
@@ -118,7 +117,8 @@ export async function POST(req: Request, { params }: RouteParams) {
     const isZIP = bytes[0] === 0x50 && bytes[1] === 0x4B; // "PK" = ZIP/XLSX
     const isOLE2 = bytes[0] === 0xD0 && bytes[1] === 0xCF; // OLE2 = old .xls
 
-    // Parse based on actual binary format, NOT filename extension
+    // Parse based on actual binary format, NOT filename extension — dynamic xlsx agar tidak ter-bundle
+    const XLSX = await import('xlsx');
     if (isZIP) {
       const workbook = XLSX.read(Buffer.from(buffer), {
         type: 'buffer',
