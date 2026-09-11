@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { getOrSetCacheSwr } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import {
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:assurance-guarantee:tickets',
-      'v1',
+      'v2',
       decoded.role,
       decoded.id_user,
       isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
@@ -197,7 +197,7 @@ export async function GET(request: NextRequest) {
           })),
         };
       },
-      30,
+      Math.max(DASHBOARD_CACHE_TTL, 90),
     );
 
     return NextResponse.json({ success: true, data });

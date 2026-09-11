@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:assurance-guarantee',
-      'v1',
+      'v2',
       decoded.role,
       decoded.id_user,
       isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
           target: target ? Number(target.targetValue) : null,
         };
       },
-      DASHBOARD_CACHE_TTL,
+      Math.max(DASHBOARD_CACHE_TTL, 90),
     );
 
     return NextResponse.json({ success: true, data });

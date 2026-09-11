@@ -55,7 +55,8 @@ export async function getRecurringDisruptionTickets(
        HAVING COUNT(*) >= 2
      ) rep ON t.service_no = rep.service_no
      WHERE t.reported_date >= ?
-       AND (${whereClause})`),
+       AND (${whereClause})
+     LIMIT 5000`),
     windowStartStr,
     ...params,
     windowStartStr,
@@ -109,23 +110,24 @@ function buildFilteredRecurringSql(
 
   if (options.customerTypes && options.customerTypes.length > 0) {
     extraConditions.push(
-      `UPPER(TRIM(t.customer_type)) IN (${options.customerTypes.map(() => '?').join(',')})`,
+      `t.customer_type IN (${options.customerTypes.map(() => '?').join(',')})`,
     );
-    extraParams.push(...options.customerTypes.map((c) => c.toUpperCase()));
+    extraParams.push(...options.customerTypes.map((c) => c.toUpperCase().trim()));
   }
 
   if (options.gamas === 'gamas') {
-    extraConditions.push(`UPPER(TRIM(t.source_ticket)) = 'GAMAS'`);
+    extraConditions.push(`t.source_ticket = 'GAMAS'`);
   } else if (options.gamas === 'non-gamas') {
     extraConditions.push(
-      `(t.source_ticket IS NULL OR UPPER(TRIM(t.source_ticket)) != 'GAMAS')`,
+      `(t.source_ticket IS NULL OR t.source_ticket != 'GAMAS')`,
     );
   }
 
   const search = options.search?.trim();
   if (search) {
-    extraConditions.push(`(t.incident LIKE ? OR t.service_no LIKE ?)`);
-    extraParams.push(`%${search}%`, `%${search}%`);
+    // Ganti LIKE '%q%' (full scan) → exact untuk incident + prefix untuk service_no (pakai indeks)
+    extraConditions.push(`(t.incident = ? OR t.service_no LIKE ?)`);
+    extraParams.push(search, `${search}%`);
   }
 
   const extraWhere =
