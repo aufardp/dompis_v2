@@ -18,8 +18,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['sharp', '@prisma/client', 'bullmq', 'ioredis', 'firebase-admin', 'mysql2'],
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react', 'recharts', 'leaflet', 'react-leaflet', 'supercluster'],
-    // keep for 15 compat, 16 prefers top-level serverExternalPackages
-    webpackBuildWorker: true,
+    cpus: 1,
+    webpackBuildWorker: false,
   },
   images: {
     localPatterns: [{ pathname: '/assets/**' }],
