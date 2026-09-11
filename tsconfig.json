@@ -38,7 +38,9 @@
     "middleware.ts",
     "server.ts",
     "next.config.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
