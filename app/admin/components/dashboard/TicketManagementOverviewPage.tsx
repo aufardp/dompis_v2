@@ -22,8 +22,9 @@ import {
   TICKET_MANAGEMENT_OVERVIEW_ITEMS,
 } from '@/app/config/ticket-management-nav';
 import AssignTechnicianModal from './assign/AssignTechnicianModal';
-import HourlyChart from './HourlyChart';
-import SymptomChart from './SymptomChart';
+import dynamic from 'next/dynamic';
+const HourlyChart = dynamic(() => import('./HourlyChart'), { ssr: false, loading: () => <div className='h-[260px] w-full animate-pulse rounded-xl bg-(--surface-2)' /> });
+const SymptomChart = dynamic(() => import('./SymptomChart'), { ssr: false, loading: () => <div className='h-[300px] w-full animate-pulse rounded-xl bg-(--surface-2)' /> });
 import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
 import TtrComplianceHeaderRow from './overview/TtrComplianceHeaderRow';
 import SqmDailyTrendTable from './overview/SqmDailyTrendTable';

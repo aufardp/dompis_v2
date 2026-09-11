@@ -75,7 +75,7 @@ const ROLE_HOME: Record<string, string> = {
 };
 
 // --- MAIN MIDDLEWARE ---
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const correlationId = crypto.randomUUID();

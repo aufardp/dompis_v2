@@ -45,7 +45,7 @@ export function ChartContainer({
     <ChartContext.Provider value={{ config }}>
       <div
         className={cn(
-          'bg-surface relative overflow-hidden rounded-xl border border-(--border) p-4',
+          'bg-surface relative w-full min-w-0 overflow-hidden rounded-xl border border-(--border) p-4',
           'transition-all duration-300 ease-in-out',
           className,
         )}

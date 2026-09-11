@@ -46,8 +46,8 @@ export default function HourlyCloseChart({
 }) {
   return (
     <div className='rounded-2xl border border-(--border) bg-(--surface)'>
-      <div className='h-62.5 p-3 sm:h-80 sm:p-4'>
-        <ResponsiveContainer width='100%' height='100%'>
+      <div className='h-[260px] w-full min-w-0 p-3 sm:h-80 sm:p-4'>
+        <ResponsiveContainer width='100%' height='100%' minWidth={0} minHeight={200}>
           <BarChart
             data={data}
             margin={{ top: 12, right: 18, bottom: 8, left: 0 }}

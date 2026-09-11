@@ -112,8 +112,8 @@ export default function HourlyChart({
       {isLoading ? (
         <HourlyChartLoading />
       ) : (
-        <div className='h-[260px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
-          <ResponsiveContainer width='100%' height='100%'>
+        <div className='h-[260px] w-full min-w-0 animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
+          <ResponsiveContainer width='100%' height='100%' minWidth={0} minHeight={200}>
             <BarChart
               data={chartData}
               margin={{ left: 24, right: 24, top: 6, bottom: 6 }}

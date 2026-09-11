@@ -123,8 +123,8 @@ export default function SymptomChart({
           <p className='text-xs text-(--text-muted)'>No symptom data available</p>
         </div>
       ) : (
-        <div className='h-[300px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
-          <ResponsiveContainer width='100%' height='100%'>
+        <div className='h-[300px] w-full min-w-0 animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0'>
+          <ResponsiveContainer width='100%' height='100%' minWidth={0} minHeight={200}>
             <BarChart
               data={chartData}
               layout='vertical'
