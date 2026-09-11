@@ -150,7 +150,9 @@ module.exports = {
         STATUS_REFRESH_CIRCUIT_RESET_MINUTES: '10',
         STATUS_REFRESH_RUN_ON_START: 'true',
         STATUS_REFRESH_TRIGGER_PROJECTION: 'true',
-        ACTIVE_REFRESH_ENABLED: 'true',
+        // Opsi B 2026-09-11: active-refresh dihapus total (hapus 2.8M UPDATE/hari, 79981 backlog)
+        // resetStaleAssigned dipindah ke projection midnight cron, sync_date bump & viewer GC ke snapshot-worker
+        ACTIVE_REFRESH_ENABLED: 'false',
         ACTIVE_REFRESH_BATCH_SIZE: '150',
         ACTIVE_REFRESH_MIN_BATCH_SIZE: '100',
         ACTIVE_REFRESH_MAX_BATCH_SIZE: '400',
@@ -160,7 +162,7 @@ module.exports = {
         ACTIVE_REFRESH_SLOW_RUN_THRESHOLD_MS: '60000',
         ACTIVE_REFRESH_MAX_CONSECUTIVE_ERRORS: '5',
         ACTIVE_REFRESH_CIRCUIT_RESET_MINUTES: '10',
-        ACTIVE_REFRESH_RUN_ON_START: 'true',
+        ACTIVE_REFRESH_RUN_ON_START: 'false',
         LIVE_REFRESH_ENABLED: 'false',
         QOSMIC_BRIDGE_ENABLED: 'true',
         QOSMIC_BRIDGE_BASE_URL: 'https://qosmic.solusee.id/api/metabase-bridge',
@@ -173,7 +175,7 @@ module.exports = {
         BRIDGE_JOB_REFRESH_ENABLED: 'false',
         BRIDGE_JOB_SEARCH_ENABLED: 'true',
         INGESTION_NOSSA_MIN_INTERVAL_MINUTES: '1',
-        INGESTION_NOSSA_CLOSED_MIN_INTERVAL_MINUTES: '10',
+        INGESTION_NOSSA_CLOSED_MIN_INTERVAL_MINUTES: '5',
         STATUS_REFRESH_BRIDGE_BATCH_SIZE: '5',
         STATUS_REFRESH_PILOTING_BATCH_SIZE: '300',
       },

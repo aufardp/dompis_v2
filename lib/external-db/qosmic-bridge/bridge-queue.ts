@@ -66,7 +66,24 @@ async function releaseWriteLock(incident: string, ownerId: string): Promise<void
 }
 
 // ── Circuit Breaker State ────────────────────────────────────────────
+// Pisah circuit interactive vs ingestion agar 5 fail ingestion tidak trip search (800ms probe) — Opsi P1 2026-09-11
 const circuitState: WorkerTaskState = {
+  running: false,
+  lastRunAt: null,
+  consecutiveErrors: 0,
+  circuitOpenedAt: null,
+  lastError: null,
+  abortController: null,
+};
+const circuitStateInteractive: WorkerTaskState = {
+  running: false,
+  lastRunAt: null,
+  consecutiveErrors: 0,
+  circuitOpenedAt: null,
+  lastError: null,
+  abortController: null,
+};
+const circuitStateIngestion: WorkerTaskState = {
   running: false,
   lastRunAt: null,
   consecutiveErrors: 0,
@@ -90,10 +107,15 @@ export function getBridgeCircuitState(): {
   circuitOpenedAt: Date | null;
   lastError: string | null;
 } {
+  // Return worst of interactive vs ingestion
+  const worst = circuitStateIngestion.consecutiveErrors >= circuitStateInteractive.consecutiveErrors
+    ? circuitStateIngestion : circuitStateInteractive;
+  // Fallback to legacy circuitState for backward compat
+  const legacyWorst = worst.consecutiveErrors >= circuitState.consecutiveErrors ? worst : circuitState;
   return {
-    consecutiveErrors: circuitState.consecutiveErrors,
-    circuitOpenedAt: circuitState.circuitOpenedAt,
-    lastError: circuitState.lastError,
+    consecutiveErrors: legacyWorst.consecutiveErrors,
+    circuitOpenedAt: legacyWorst.circuitOpenedAt,
+    lastError: legacyWorst.lastError,
   };
 }
 
@@ -155,7 +177,8 @@ async function handleIngestNossa(job: any): Promise<{ processed: number }> {
       const probed = await probeBridgeHealth();
       if (!probed) {
         logger.warn('[Bridge] Ingest di-pause — QOSMIC masih down (auto-detect)', { tableName, batchId, jobId: job.id });
-        // Reset circuit agar tidak trip karena pause
+        // Reset ingestion circuit agar tidak trip karena pause
+        circuitStateIngestion.consecutiveErrors = 0;
         circuitState.consecutiveErrors = 0;
         return;
       }
@@ -203,6 +226,7 @@ async function handleIngestNossa(job: any): Promise<{ processed: number }> {
         logger.warn('[Bridge] Ingest ter-interrupt karena QOSMIC down di tengah jalan — di-pause', {
           tableName, batchId, jobId: job.id, error: err instanceof Error ? err.message : String(err),
         });
+        circuitStateIngestion.consecutiveErrors = 0;
         circuitState.consecutiveErrors = 0;
         return;
       }
@@ -342,10 +366,14 @@ let workerBackfill: Worker | null = null;
 
 // ── Error / Completion Hooks ─────────────────────────────────────────
 
-function setupWorkerHooks(worker: Worker): void {
+function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
   worker.on('completed', (job) => {
     const returnValue = job.returnvalue;
     if (returnValue && (returnValue as any).reason === 'circuit_open') return;
+    circuit.consecutiveErrors = 0;
+    circuit.circuitOpenedAt = null;
+    circuit.lastError = null;
+    // keep legacy in sync
     circuitState.consecutiveErrors = 0;
     circuitState.circuitOpenedAt = null;
     circuitState.lastError = null;
@@ -359,15 +387,17 @@ function setupWorkerHooks(worker: Worker): void {
     });
 
     if (isTransientBridgeError(err)) {
-      circuitState.consecutiveErrors++;
+      circuit.consecutiveErrors++;
+      circuit.lastError = err.message;
+      circuitState.consecutiveErrors = Math.max(circuitState.consecutiveErrors, circuit.consecutiveErrors);
       circuitState.lastError = err.message;
     }
   });
 }
 
-function createWorker(name: string, handler: (job: any) => Promise<any>, concurrency: number): Worker {
+function createWorker(name: string, handler: (job: any) => Promise<any>, concurrency: number, circuit: WorkerTaskState = circuitState): Worker {
   const w = new Worker(name, handler, { connection: CONNECTION, concurrency });
-  setupWorkerHooks(w);
+  setupWorkerHooks(w, circuit);
   return w;
 }
 
@@ -383,7 +413,7 @@ export async function startBridgeWorkers(): Promise<void> {
   workerInteractive = createWorker(
     'bridge-interactive',
     async (job) => {
-      if (!shouldRunWithCircuitBreaker(circuitState, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
+      if (!shouldRunWithCircuitBreaker(circuitStateInteractive, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
         logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
         return { skipped: true, reason: 'circuit_open' };
       }
@@ -401,6 +431,7 @@ export async function startBridgeWorkers(): Promise<void> {
       }
     },
     2,
+    circuitStateInteractive,
   );
 
   workerIngestion = createWorker(
@@ -408,7 +439,7 @@ export async function startBridgeWorkers(): Promise<void> {
     async (job) => {
       if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
 
-      if (!shouldRunWithCircuitBreaker(circuitState, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
+      if (!shouldRunWithCircuitBreaker(circuitStateIngestion, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
         logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
         return { skipped: true, reason: 'circuit_open' };
       }
@@ -422,6 +453,7 @@ export async function startBridgeWorkers(): Promise<void> {
       }
     },
     1,
+    circuitStateIngestion,
   );
 
   workerBackfill = createWorker(

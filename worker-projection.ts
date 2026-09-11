@@ -257,6 +257,11 @@ async function startWorker(): Promise<void> {
   await forceCleanupLock('projection');
   await cleanupWorkerLock('projection', TIMEOUT_MINUTES * 60_000);
   await testExternalConnection();
+  // Opsi B: bersihkan backlog active-refresh yang stale (79981) karena worker sudah disabled
+  try {
+    await redis.del('active-refresh:backlog');
+    await redis.del('active-refresh:metrics');
+  } catch {}
   startWorkerHeartbeat(WORKER_NAME, state);
   await subscribeProjectionRequests().catch((error) => {
     logger.error('Projection request subscriber disabled; interval fallback remains active', error, {});
@@ -279,6 +284,22 @@ async function startWorker(): Promise<void> {
       cron.schedule(FULL_SCAN_CRON, () => runWithCorrelationContext(WORKER_NAME, () => void runProjectionTask('full'))),
     );
   }
+
+  // Opsi B: active-refresh dihapus total — midnight resetStaleAssigned dipindah ke sini (1×/hari, bukan per-menit)
+  // Ganti 2.8M UPDATE/hari dengan 1 batch 500/hari
+  scheduledTasks.push(
+    cron.schedule('0 0 * * *', () =>
+      runWithCorrelationContext(WORKER_NAME, async () => {
+        try {
+          const { resetAllStaleAssignedTickets } = await import('@/lib/active-refresh');
+          const count = await resetAllStaleAssignedTickets();
+          if (count > 0) logger.info('[Projection] Midnight reset stale assigned', { count });
+        } catch (e) {
+          logger.warn('[Projection] Midnight reset failed', { error: String(e) });
+        }
+      }),
+    ),
+  );
 
   installShutdownHandlers(WORKER_NAME, scheduledTasks, state);
 
