@@ -201,7 +201,11 @@ module.exports = {
       kill_timeout: 120000,
       env: {
         NODE_ENV: 'production',
-        WORKER_STARTUP_DELAY_MS: '0',
+        // Sebelumnya '0' — sama persis dengan dompis-data-worker, jadi
+        // keduanya mulai kerja berat (ingestion/BullMQ) di detik yang sama
+        // pas restart bersamaan. Digeser supaya beban startup tersebar:
+        // data-worker=0, snapshot=5s, projection=10s, bridge=20s, ops=40s.
+        WORKER_STARTUP_DELAY_MS: '20000',
         NEXT_TELEMETRY_DISABLED: '1',
         REDIS_PORT: '6379',
         PRISMA_CONNECTION_LIMIT: '6',
