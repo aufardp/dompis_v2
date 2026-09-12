@@ -24,16 +24,23 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react', 'recharts', 'leaflet', 'react-leaflet', 'supercluster'],
     // cpus:1 + webpackBuildWorker:false sebelumnya dipasang untuk "menghemat"
-    // memori, tapi itu memaksa seluruh build (155 API routes + semua
-    // halaman) jalan serial di SATU proses Node tanpa worker terpisah —
-    // artinya tidak ada proses yang di-recycle OS di tengah build, jadi RSS
-    // menumpuk terus sepanjang build (linear naik sampai OOM), bukannya
-    // dibatasi. Uji coba: kembalikan ke default Next (worker terpisah per
-    // batch kompilasi) supaya memori tiap worker dilepas saat proses itu
-    // selesai — kandidat fix untuk RSS yang terus naik tanpa plateau.
+    // memori, tapi justru itu penyebab `next build` OOM (RSS naik linear
+    // sampai puluhan GB tanpa plateau): memaksa seluruh build jalan serial
+    // di SATU proses Node tanpa worker terpisah, jadi tidak ada proses yang
+    // di-recycle OS di tengah build. Dikembalikan ke default Next (worker
+    // terpisah per batch kompilasi) — terverifikasi di VPS: peak RSS turun
+    // dari 14-20GB (killed) jadi ~800MB (build selesai).
   },
   images: {
     localPatterns: [{ pathname: '/assets/**' }],
+  },
+  // File upload user (bukti tiket, dsb.) tidak perlu ikut disalin ke bundel
+  // `.next/standalone/` — app baca langsung dari public/uploads asli saat
+  // runtime. Tanpa exclude ini, tracing standalone menduplikasi seluruh isi
+  // public/uploads/** (49GB di produksi) di SETIAP build, sampai bikin disk
+  // penuh (ENOSPC) mid-build.
+  outputFileTracingExcludes: {
+    '*': ['public/uploads/**'],
   },
 };
 
