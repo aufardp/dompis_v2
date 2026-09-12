@@ -14,8 +14,12 @@
 --      nama kolom + tambah index composite yang tepat + ganti tipe di
 --      schema.prisma jadi definitif.
 --
--- ALGORITHM=INSTANT: MySQL 8 hanya menulis metadata, tidak menyalin/mengunci
--- tabel — aman untuk tabel `ticket` yang besar & terus menerima trafik.
+-- ALGORITHM=INSTANT ditolak MySQL karena tabel `ticket` sudah punya index
+-- FULLTEXT (InnoDB cuma izinkan satu operasi FULLTEXT-related dalam antrean
+-- ALTER, dan itu memblokir INSTANT untuk ALTER lain juga di tabel yang sama).
+-- Fallback ke ALGORITHM=COPY, LOCK=SHARED — tabel disalin ulang (butuh waktu
+-- & I/O sebanding ukuran tabel), tapi baca/tulis konkuren tetap boleh jalan
+-- selama proses (LOCK=SHARED = boleh SELECT, tidak boleh DML lain).
 ALTER TABLE `ticket`
   ADD COLUMN `reported_date_dt` DATETIME NULL AFTER `reported_date`,
-  ALGORITHM=INSTANT;
+  ALGORITHM=COPY, LOCK=SHARED;
