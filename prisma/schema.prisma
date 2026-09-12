@@ -257,6 +257,11 @@ model ticket {
   incident                    String                      @unique(map: "INCIDENT") @db.VarChar(100)
   summary                     String?                     @db.Text
   reported_date               String?                     @db.VarChar(100)
+  // Fase 1 migrasi reported_date VARCHAR -> DATETIME (lihat migration
+  // 20260912030000_add_reported_date_dt). Diisi paralel oleh projection;
+  // `reported_date` VARCHAR di atas tetap sumber utama sampai Fase 2 (swap
+  // nama kolom) dilakukan setelah backfill diverifikasi.
+  reported_date_dt             DateTime?                   @db.Timestamp(0)
   owner_group                 String?                     @db.VarChar(50)
   customer_segment            String?                     @db.VarChar(100)
   service_type                String?                     @db.VarChar(50)

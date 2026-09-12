@@ -21,8 +21,26 @@ module.exports = {
         PRISMA_POOL_TIMEOUT: '45',
         PRISMA_SLOW_QUERY_MS: '2000',
         DASHBOARD_QUERY_MAX_EXECUTION_MS: '30000',
+        // Batas berapa banyak komputasi cache-miss (query dashboard berat)
+        // boleh jalan bersamaan lintas-request — sisanya antre, bukan
+        // langsung menembak MySQL bareng-bareng (lihat lib/sql/query-gate.ts).
+        // 6 dari 35 slot pool Prisma disisakan untuk query berat; sisanya
+        // tetap bebas untuk trafik ringan (auth, ticket list, dst).
+        CACHE_COMPUTE_CONCURRENCY: '6',
         TICKETS_CACHE_TTL: '10',
-        DASHBOARD_CACHE_TTL: '90',
+        // Sebelumnya '90' — dikombinasikan dengan SWR_STALE_FACTOR default
+        // (3x), cache widget dashboard benar-benar hangus setelah cuma 4.5
+        // menit idle (90*3=270s). Begitu itu terjadi (mis. selama outage
+        // singkat), permintaan pertama yang datang lagi memaksa SEMUA widget
+        // dashboard (operations-summary, hourly-tickets, top-symptoms,
+        // ttr-compliance, sqm-trend, assurance-guarantee) recompute penuh
+        // secara BERSAMAAN → pool koneksi Prisma (35) habis dalam hitungan
+        // detik → efek domino timeout ke semua query lain (bahkan `SELECT 1`).
+        // Dinaikkan ke 300 (5 menit) → window stale-servable jadi 900s/15
+        // menit sebelum cache benar-benar hangus, jauh mengurangi peluang
+        // stampede ini terulang tanpa mengorbankan kesegaran data (dashboard
+        // operasional, bukan data real-time).
+        DASHBOARD_CACHE_TTL: '300',
         CACHE_MAX_BYTES: '4194304',
         DAILY_EXPORT_MAX_ROWS: '100000',
         SEMESTA_EXPORT_MAX_ROWS: '100000',

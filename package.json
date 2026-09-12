@@ -27,6 +27,7 @@
     "backfill:validasi": "tsx scripts/backfill-validation-flags.ts",
     "backfill:ttr-comply": "tsx scripts/backfill-ttr-comply.ts",
     "backfill:resolve-close": "tsx scripts/backfill-resolve-close.ts",
+    "backfill:reported-date-dt": "tsx scripts/backfill-reported-date-dt.ts",
     "backfill:normalize-status": "tsx scripts/backfill-normalize-status.ts",
     "test:ingestion": "tsx scripts/test-ingestion.ts",
     "test:measure": "tsx scripts/test-measure.ts",

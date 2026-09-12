@@ -20,6 +20,7 @@ import { computeTtrCompliance } from '@/app/libs/tickets/ttr-comply';
 import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
+import { parseWIBDateInput } from '@/app/utils/datetime';
 
 const TIMEZONE = 'Asia/Jakarta';
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
@@ -316,7 +317,7 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 
 const TICKET_BULK_COLUMNS: readonly string[] = [
   'sync_date', 'import_batch', 'synced_at', 'incident',
-  'workzone', 'customer_type', 'summary', 'reported_date',
+  'workzone', 'customer_type', 'summary', 'reported_date', 'reported_date_dt',
   'owner_group', 'customer_segment', 'service_type', 'ticket_id_gamas',
   'contact_phone', 'contact_name', 'booking_date', 'source_ticket',
   'customer_name', 'service_no', 'symptom', 'device_name',
@@ -515,6 +516,12 @@ export function buildProjectionUpsert(
     customer_type: raw.customer_type,
     summary: raw.summary,
     reported_date: raw.reported_date,
+    // Fase 1 migrasi reported_date VARCHAR -> DATETIME (lihat migration
+    // 20260912030000_add_reported_date_dt). Parse pakai helper yang sudah
+    // dipakai untuk kolom string-date lain di app ini (toleran format
+    // slash spreadsheet & ISO); gagal parse -> null, tidak melempar error
+    // (konsisten dengan validasi ingestion yang cuma warn, bukan block).
+    reported_date_dt: parseWIBDateInput(raw.reported_date as string | null),
     owner_group: raw.owner_group,
     customer_segment: raw.customer_segment,
     service_type: raw.service_type,

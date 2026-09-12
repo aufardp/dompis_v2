@@ -1,6 +1,7 @@
 import { logger } from '@/lib/observability/logger';
 import redis, { ensureRedisReady } from '@/lib/redis';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { withQueryGate } from '@/lib/sql/query-gate';
 
 export interface CacheOptions {
   ttl?: number;
@@ -240,7 +241,7 @@ export async function getOrSetCache<T>(
 
   const computation = (async () => {
     try {
-      const data = await fn();
+      const data = await withQueryGate(fn);
       // Simpan nilai MENTAH — konsumen getOrSetCache tidak mengenal envelope.
       await setCache(key, data, ttl);
       return data;
@@ -282,7 +283,7 @@ async function computeAndStoreSwr<T>(
   storeTtl: number,
 ): Promise<T> {
   try {
-    const data = await fn();
+    const data = await withQueryGate(fn);
     await setCache(
       key,
       { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
@@ -303,7 +304,7 @@ function revalidateInBackground<T>(
 
   const computation = (async () => {
     try {
-      const data = await fn();
+      const data = await withQueryGate(fn);
       await setCache(
         key,
         { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
