@@ -58,7 +58,14 @@ const UNSPEC_SQL = (() => {
   return `(${quoted.join(',')})`;
 })();
 
-function buildKpiCustomerBaseSql(tbl: string): string {
+// Builder di bawah ini (buildKpiCustomerBaseSql dst.) adalah logika LAMA
+// (LIKE-chain per baris) yang digantikan oleh kolom generated
+// `operational_bucket`/`kpi_seg` (lihat migration
+// 20260913070000_add_operational_bucket) untuk buildKpiBucketFilterSql/
+// buildKpiSummaryCaseSql di bawah. Tetap diexport & tidak dihapus — dipakai
+// untuk validasi (bandingkan hasil LIKE-chain vs kolom generated) dan
+// sebagai fallback kalau kolom generated ternyata salah pada suatu edge case.
+export function buildKpiCustomerBaseSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   const kpiCustomerJenisFilters = [
     'reguler',
@@ -96,17 +103,17 @@ function buildKpiCustomerBaseSql(tbl: string): string {
   ) AND (${jenisFilterSql})`;
 }
 
-function buildKpiProactiveSql(tbl: string): string {
+export function buildKpiProactiveSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND NOT ${isSqmUpdateReasonSql(tbl)} AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
 }
 
-function buildNonKpiUnspecSql(tbl: string): string {
+export function buildNonKpiUnspecSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND ${t}jenis_tiket_2 IN ${UNSPEC_SQL}`;
 }
 
-function buildNonTechnicalSql(tbl: string): string {
+export function buildNonTechnicalSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   return `(${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)}) AND (
     (
@@ -148,34 +155,32 @@ function buildNonTechnicalSql(tbl: string): string {
   )`;
 }
 
-function buildSqmUpdateSql(tbl: string): string {
+export function buildSqmUpdateSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   return `LOWER(${t}source_ticket) = 'proactive' AND ${NOT_OBSOLETE_SQL.replace(/classification_path/g, `${t}classification_path`)} AND ${isSqmUpdateReasonSql(tbl)} AND (LOWER(${t}jenis_tiket_1) LIKE '%sqm%' OR LOWER(${t}jenis_tiket_1) LIKE '%sqm-ccan%')`;
 }
 
-function buildObsoleteSql(tbl: string): string {
+export function buildObsoleteSql(tbl: string): string {
   const t = tbl ? `${tbl}.` : '';
   return `${t}classification_path = 'Z_PERMINTAAN_044'`;
 }
 
-/** Full bucket filter SQL (without leading AND). OR's regulerOnly for kpi_customer. */
+/**
+ * Full bucket filter SQL (without leading AND).
+ *
+ * Dulu ini merangkai LIKE-chain per bucket (lihat buildKpiCustomerBaseSql
+ * dkk. di atas) yang dievaluasi per baris pada setiap request — 10-30s+
+ * untuk tabel `ticket` penuh. Sekarang tinggal bandingkan kolom generated
+ * `operational_bucket` (lihat migration 20260913070000_add_operational_bucket),
+ * yang MySQL hitung otomatis di setiap baris saat ditulis (bukan saat dibaca)
+ * dan bisa dipakai index (`idx_ticket_operational_bucket`).
+ */
 export function buildKpiBucketFilterSql(bucket: KpiBucketKey, tbl: string = ''): string {
-  switch (bucket) {
-    case 'kpi_customer':
-      return buildKpiCustomerBaseSql(tbl);
-    case 'kpi_proactive':
-      return buildKpiProactiveSql(tbl);
-    case 'non_kpi_unspec':
-      return buildNonKpiUnspecSql(tbl);
-    case 'non_technical':
-      return buildNonTechnicalSql(tbl);
-    case 'sqm_update':
-      return buildSqmUpdateSql(tbl);
-    case 'obsolete':
-      return buildObsoleteSql(tbl);
-    default:
-      return buildKpiCustomerBaseSql(tbl);
-  }
+  const t = tbl ? `${tbl}.` : '';
+  // 'all' bukan salah satu dari 6 bucket sungguhan — perilaku lama (switch
+  // default) memperlakukannya sama seperti kpi_customer, dipertahankan di sini.
+  const key: Exclude<KpiBucketKey, 'all'> = bucket === 'all' ? 'kpi_customer' : bucket;
+  return `${t}operational_bucket = '${key}'`;
 }
 
 /** Daily filter + MainTableWhere SQL (with table alias). Includes leading AND. */
@@ -198,15 +203,24 @@ export function buildDailyFilterSql(today: string, tbl: string = ''): Prisma.Sql
   `;
 }
 
-/** CASE expressions for summary query (includes reguler_only column). */
+/**
+ * CASE expressions for summary query (includes reguler_only column).
+ * Sama seperti buildKpiBucketFilterSql — dulu 6x LIKE-chain per baris,
+ * sekarang cukup bandingkan kolom generated `operational_bucket`.
+ */
 export function buildKpiSummaryCaseSql(tbl: string = ''): string {
-  const customerCase = `SUM(CASE WHEN ${buildKpiCustomerBaseSql(tbl)} THEN 1 ELSE 0 END) AS kpi_customer`;
-  const proactiveCase = `SUM(CASE WHEN ${buildKpiProactiveSql(tbl)} THEN 1 ELSE 0 END) AS kpi_proactive`;
-  const unspecCase = `SUM(CASE WHEN ${buildNonKpiUnspecSql(tbl)} THEN 1 ELSE 0 END) AS non_kpi_unspec`;
-  const nonTechnicalCase = `SUM(CASE WHEN ${buildNonTechnicalSql(tbl)} THEN 1 ELSE 0 END) AS non_technical`;
-  const sqmUpdateCase = `SUM(CASE WHEN ${buildSqmUpdateSql(tbl)} THEN 1 ELSE 0 END) AS sqm_update`;
-  const obsoleteCase = `SUM(CASE WHEN ${buildObsoleteSql(tbl)} THEN 1 ELSE 0 END) AS obsolete`;
-  const regulerCase = `SUM(CASE WHEN LOWER(${tbl ? `${tbl}.` : ''}jenis_tiket_1) IN ('reguler','regular','reg','REGULER','REGULAR','REG') THEN 1 ELSE 0 END) AS reguler_only`;
+  const t = tbl ? `${tbl}.` : '';
+  const bucketCase = (bucket: Exclude<KpiBucketKey, 'all'>) =>
+    `SUM(CASE WHEN ${t}operational_bucket = '${bucket}' THEN 1 ELSE 0 END) AS ${bucket}`;
+  const regulerCase = `SUM(CASE WHEN LOWER(${t}jenis_tiket_1) IN ('reguler','regular','reg','REGULER','REGULAR','REG') THEN 1 ELSE 0 END) AS reguler_only`;
 
-  return [sqmUpdateCase, customerCase, proactiveCase, unspecCase, nonTechnicalCase, regulerCase, obsoleteCase].join(',');
+  return [
+    bucketCase('sqm_update'),
+    bucketCase('kpi_customer'),
+    bucketCase('kpi_proactive'),
+    bucketCase('non_kpi_unspec'),
+    bucketCase('non_technical'),
+    regulerCase,
+    bucketCase('obsolete'),
+  ].join(',');
 }

@@ -40,7 +40,10 @@ export async function getKpiBucketSummaryMatrix(
       const NON_KPI_BUCKETS: BucketKeyNoAll[] = ['kpi_proactive', 'non_kpi_unspec', 'non_technical', 'sqm_update', 'obsolete'];
 
       // 3-segmen: netral priority, permintaan dinamis, lalu b2c/b2b via jenis
-      const SEG_SQL = `CASE WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare') THEN 'netral' WHEN LOWER(TRIM(COALESCE(jenis_tiket_2,'')))='permintaan' THEN CASE WHEN customer_segment IN ('DCS','PL-TSEL') THEN 'b2c' ELSE 'b2b' END WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') THEN 'b2c' ELSE 'b2b' END AS seg`;
+      // Dulu CASE-chain per baris (LOWER/TRIM/REPLACE) — sekarang kolom
+      // generated `kpi_seg` (lihat migration 20260913070000_add_operational_bucket),
+      // dihitung MySQL otomatis per baris saat ditulis, bukan saat dibaca.
+      const SEG_SQL = `kpi_seg AS seg`;
 
       const buildSegmentAggregateColumns = (bucket: BucketKeyNoAll): string[] => {
         return [
@@ -196,7 +199,10 @@ export async function getTicketManagementOverviewSummary(
       type BucketKeyNoKpi = (typeof NON_KPI_BUCKETS)[number];
       const ALL_BUCKETS = ['kpi_customer', ...NON_KPI_BUCKETS] as const;
 
-      const SEG_SQL = `CASE WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('unknown','digital-spbu','non-numbering','billing','infracare') THEN 'netral' WHEN LOWER(TRIM(COALESCE(jenis_tiket_2,'')))='permintaan' THEN CASE WHEN customer_segment IN ('DCS','PL-TSEL') THEN 'b2c' ELSE 'b2b' END WHEN LOWER(TRIM(REPLACE(REPLACE(COALESCE(jenis_tiket_2,''),' ','-'),'_','-'))) IN ('reguler','hvc','sqm','unspec') THEN 'b2c' ELSE 'b2b' END AS seg`;
+      // Dulu CASE-chain per baris (LOWER/TRIM/REPLACE) — sekarang kolom
+      // generated `kpi_seg` (lihat migration 20260913070000_add_operational_bucket),
+      // dihitung MySQL otomatis per baris saat ditulis, bukan saat dibaca.
+      const SEG_SQL = `kpi_seg AS seg`;
 
       const buildSegmentAggregateColumns = (bucket: string): string[] => {
         return [

@@ -5,7 +5,11 @@ function redirectToLogin() {
   window.location.assign('/login');
 }
 
-const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
+// Beberapa endpoint dashboard punya query berat dengan hint server
+// MAX_EXECUTION_TIME(120000) — timeout client harus lebih longgar dari itu,
+// kalau tidak browser membatalkan request (muncul sebagai "canceled" di
+// Network tab) padahal server masih berjalan dan akan berhasil.
+const DEFAULT_FETCH_TIMEOUT_MS = 130_000;
 const REFRESH_FETCH_TIMEOUT_MS = 10_000;
 const RECENT_LOGIN_WINDOW_MS = 10_000;
 const RECENT_LOGIN_RETRIES = 5;

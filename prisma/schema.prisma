@@ -262,6 +262,13 @@ model ticket {
   // `reported_date` VARCHAR di atas tetap sumber utama sampai Fase 2 (swap
   // nama kolom) dilakukan setelah backfill diverifikasi.
   reported_date_dt             DateTime?                   @db.Timestamp(0)
+  // Kolom STORED GENERATED (lihat migration 20260913070000_add_operational_bucket)
+  // — dihitung otomatis oleh MySQL dari kolom lain di baris yang sama, persis
+  // logika app/libs/services/kpi-bucket-sql.ts & daily-ticket-kpi-matrix.ts.
+  // JANGAN pernah ditulis lewat Prisma (create/update) — MySQL menolak INSERT/UPDATE
+  // eksplisit ke kolom generated.
+  operational_bucket           String?                     @db.VarChar(20)
+  kpi_seg                      String?                     @db.VarChar(10)
   owner_group                 String?                     @db.VarChar(50)
   customer_segment            String?                     @db.VarChar(100)
   service_type                String?                     @db.VarChar(50)
@@ -374,6 +381,7 @@ model ticket {
   @@index([booking_date], map: "idx_ticket_booking_date")
   @@index([closed_at, booking_date], map: "idx_ticket_closed_booking")
   @@index([is_manual], map: "idx_ticket_is_manual")
+  @@index([workzone, operational_bucket, status, status_update, closed_at], map: "idx_ticket_operational_bucket")
 }
 
 model ticket_activity_log {
