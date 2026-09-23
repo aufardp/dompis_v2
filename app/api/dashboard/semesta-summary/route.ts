@@ -3,6 +3,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getCache, setCache } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
@@ -13,14 +14,15 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_SECONDS = 60;
 
-function buildCacheKey(
+async function buildCacheKey(
   params: URLSearchParams,
   role: string,
   userId: number,
-): string {
+): Promise<string> {
   const cloned = new URLSearchParams(params);
   cloned.sort();
-  return `dashboard:semesta-summary:${role}:${userId}:${cloned.toString()}`;
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard:semesta-summary:${scope}:${cloned.toString()}`;
 }
 
 export async function GET(request: Request) {
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
       'super_admin',
     ]);
 
-    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
     const cached = await getCache(cacheKey);
 
     if (cached) {

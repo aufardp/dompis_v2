@@ -19,6 +19,7 @@ import {
 import { computeMttrSeconds, formatMttr } from '@/app/libs/tickets/mttr';
 import { logger } from '@/lib/observability/logger';
 import { withMaxExecutionTime, isQueryOverloadError } from '@/lib/sql/max-execution-time';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -127,11 +128,14 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:ttr-compliance-overview',
-      'v1',
+      'v2',
       period,
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      buildScopeKeyWithWorkzones(
+        isSuperAdmin,
+        decoded.role,
+        decoded.id_user,
+        workzones,
+      ),
       selectedWorkzone ?? 'all',
       branchParam ?? '',
     ].join(':');
@@ -160,9 +164,13 @@ export async function GET(request: NextRequest) {
             flagging_manja, jenis_tiket_1, ttr_comply_status
           FROM ticket
           WHERE (${baseWhere})
-            AND COALESCE(resolve_date, closed_at) >= ?
-            AND COALESCE(resolve_date, closed_at) <= ?`),
+            AND (
+              (resolve_date >= ? AND resolve_date <= ?)
+              OR (resolve_date IS NULL AND closed_at >= ? AND closed_at <= ?)
+            )`),
           ...baseParams,
+          range.start,
+          range.end,
           range.start,
           range.end,
         );

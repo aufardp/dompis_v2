@@ -73,9 +73,11 @@ function KpiCard({ def, value, total }: { def: CardDef; value: number; total: nu
 export default function KpiStrip({
   kpi,
   loading,
+  error,
 }: {
   kpi?: SemestaAnalyticsV2Kpi | null;
   loading?: boolean;
+  error?: string | null;
 }) {
   const total = kpi?.total ?? 0;
 
@@ -84,24 +86,34 @@ export default function KpiStrip({
     [],
   );
 
+  if (error && !kpi && !loading) {
+    return (
+      <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-thin">
+        <div className="flex h-[88px] w-full items-center justify-center rounded-xl border border-red-500/20 bg-red-500/5 px-4 text-xs font-medium text-red-400">
+          {error.includes('disiapkan') ? 'Data sedang disiapkan...' : 'Gagal memuat data analytics.'}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <phantom-ui suppressHydrationWarning fallback-radius={8}
-      loading={loading || !kpi}
+      loading={loading || (!kpi && !error)}
       animation='shimmer'
       reveal={0.12}
       loading-label='Loading KPI strip'
     >
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-        {loading || !kpi
+        {loading || (!kpi && !error)
           ? skeletonCards
-          : CARDS.map((def) => (
+          : kpi ? CARDS.map((def) => (
               <KpiCard
                 key={def.key}
                 def={def}
                 value={kpi[def.key] ?? 0}
                 total={total}
               />
-            ))}
+            )) : null}
       </div>
     </phantom-ui>
   );

@@ -11,6 +11,7 @@ import { buildTicketRoleScopeSql } from '@/app/libs/tickets/scope';
 import { toWibString } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 
 const TIER_KEYS = ['diamond', 'platinum', 'gold', 'reguler'] as const;
 type TierKey = (typeof TIER_KEYS)[number];
@@ -111,10 +112,13 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:assurance-guarantee:tickets',
-      'v2',
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      'v3',
+      buildScopeKeyWithWorkzones(
+        isSuperAdmin,
+        decoded.role,
+        decoded.id_user,
+        workzones,
+      ),
       selectedWorkzone ?? 'all',
       branchParam ?? '',
       tier,

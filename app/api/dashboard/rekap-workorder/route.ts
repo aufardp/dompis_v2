@@ -3,6 +3,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { getOrSetCacheSwr } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 import { toWibDateString } from '@/lib/timezone';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 import { type KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
@@ -232,7 +233,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (scopeWorkzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
+    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${buildScopeKeyWithWorkzones(isSuperAdmin, decoded.role, decoded.id_user, scopeWorkzones)}:${bucket}:${branchParam ?? ''}`;
 
     const data = await getOrSetCacheSwr(
       cacheKey,

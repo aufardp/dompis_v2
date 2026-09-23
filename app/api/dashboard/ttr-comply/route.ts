@@ -7,6 +7,7 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 
 interface MonthlyComplyRow {
   month: string;
@@ -63,10 +64,13 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:ttr-comply',
-      'v1',
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      'v2',
+      buildScopeKeyWithWorkzones(
+        isSuperAdmin,
+        decoded.role,
+        decoded.id_user,
+        workzones,
+      ),
       selectedWorkzone ?? 'all',
       branchParam ?? '',
     ].join(':');

@@ -15,6 +15,7 @@ import {
 import { getB2BGroupKey } from '@/app/config/b2b-groups';
 import { normalizeCustomerType } from '@/app/config/customer-types';
 import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
@@ -64,11 +65,12 @@ function isMissingIndexError(error: unknown): boolean {
   return message.includes('Code: `1176`') || /doesn't exist in table/i.test(message);
 }
 
-function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
+async function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   const filterParams = new URLSearchParams(params);
   filterParams.delete('_t');
   filterParams.sort();
-  return `dashboard_operations_summary:${role}:${userId}:${filterParams.toString()}`;
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard_operations_summary:${scope}:${filterParams.toString()}`;
 }
 
 function withWhere(
@@ -806,7 +808,7 @@ export async function GET(request: Request) {
         undefined,
     };
 
-    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
     const result = await getOrSetCacheSwr(
       cacheKey,
       () => buildOperationsSummaryResult(user, filters),

@@ -5,6 +5,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { logger } from '@/lib/observability/logger';
 import { getErrorMessage } from '@/app/libs/apiError';
 import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
@@ -172,7 +173,8 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number(request.nextUrl.searchParams.get('page') ?? '1') || 1);
     const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get('limit') ?? '20') || 20));
 
-    const cacheKey = `dashboard:durasi:detail:${decoded.role}:${decoded.id_user}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}:${branchParam ?? ''}`;
+    const scope = await getDashboardScopePart(decoded.role, decoded.id_user);
+    const cacheKey = `dashboard:durasi:detail:${scope}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}:${branchParam ?? ''}`;
 
     const data = await getOrSetCacheSwr(cacheKey, async () => {
       const allTickets = await fetchAllTickets(

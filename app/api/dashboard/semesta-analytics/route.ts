@@ -3,6 +3,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { getCache, setCache } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
@@ -11,10 +12,11 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_SECONDS = 120;
 
-function buildCacheKey(params: URLSearchParams, role: string, userId: number): string {
+async function buildCacheKey(params: URLSearchParams, role: string, userId: number): Promise<string> {
   const cloned = new URLSearchParams(params);
   cloned.sort();
-  return `dashboard:semesta-analytics:${role}:${userId}:${cloned.toString()}`;
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard:semesta-analytics:${scope}:${cloned.toString()}`;
 }
 
 export async function GET(request: Request) {
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
       'super_admin',
     ]);
 
-    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
     const cached = await getCache(cacheKey);
 
     if (cached) {

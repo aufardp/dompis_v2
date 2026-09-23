@@ -75,7 +75,7 @@ export default function TtrComplianceHeaderRow({
   workzone?: string;
   branch?: string;
 }) {
-  const { data, isLoading } = useTtrComplianceOverview({
+  const { data, isLoading, isError, error, refetch } = useTtrComplianceOverview({
     period,
     workzone,
     branch,
@@ -118,6 +118,15 @@ export default function TtrComplianceHeaderRow({
       </div>
 
       <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
+        {isError && !isLoading ? (
+          <div className='col-span-full flex h-24 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 text-center'>
+            <div>
+              <p className='text-xs font-medium text-amber-700 dark:text-amber-300'>{(error as Error)?.message?.includes('disiapkan') ? 'Data sedang disiapkan...' : 'Gagal memuat data.'}</p>
+              <button onClick={() => refetch()} className='mt-2 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white'>Coba lagi</button>
+            </div>
+          </div>
+        ) : (
+          <>
         <StatCard
           icon={Gauge}
           label='MTTR Close'
@@ -171,6 +180,8 @@ export default function TtrComplianceHeaderRow({
           }
           tone='red'
         />
+          </>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { buildTicketRoleScopeSql } from '@/app/libs/tickets/scope';
 import { isGamasTicket } from '@/app/libs/tickets/ttr-comply';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 
 const TIER_KEYS = ['diamond', 'platinum', 'gold', 'reguler'] as const;
 type TierKey = (typeof TIER_KEYS)[number];
@@ -64,10 +65,13 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:assurance-guarantee',
-      'v2',
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      'v3',
+      buildScopeKeyWithWorkzones(
+        isSuperAdmin,
+        decoded.role,
+        decoded.id_user,
+        workzones,
+      ),
       selectedWorkzone ?? 'all',
       branchParam ?? '',
     ].join(':');
@@ -93,18 +97,21 @@ export async function GET(request: NextRequest) {
 
         let gamasTotal = 0;
         let nonGamasTotal = 0;
+        let total = 0;
 
         for (const row of rows) {
           const gamas = isGamasTicket(row.source_ticket);
-          if (gamas) gamasTotal += 1;
-          else nonGamasTotal += 1;
+          const count = Number(row.cnt);
+          total += count;
+          if (gamas) gamasTotal += count;
+          else nonGamasTotal += count;
 
           const tierKey = row.customer_type
             ? CUSTOMER_TYPE_TO_TIER[row.customer_type.trim().toUpperCase()]
             : undefined;
           if (tierKey) {
-            if (gamas) tiers[tierKey].gamas += 1;
-            else tiers[tierKey].nonGamas += 1;
+            if (gamas) tiers[tierKey].gamas += count;
+            else tiers[tierKey].nonGamas += count;
           }
         }
 
@@ -113,7 +120,7 @@ export async function GET(request: NextRequest) {
         });
 
         return {
-          total: rows.length,
+          total,
           gamasTotal,
           nonGamasTotal,
           tiers,

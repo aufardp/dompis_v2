@@ -6,6 +6,7 @@ import { getOrSetCacheSwr } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { resolveBranchScope, getWorkzonesForUser } from '@/app/helpers/ticket.helpers';
 import { toWibString, toWibDateString } from '@/lib/timezone';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { logger } from '@/lib/observability/logger';
 import { buildCellFilterSql } from '@/lib/rekap/rekap-cell-filter';
 import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
@@ -147,13 +148,12 @@ export async function GET(request: NextRequest) {
       Math.max(1, Number(request.nextUrl.searchParams.get('limit') ?? '20') || 20),
     );
 
+    const scope = await getDashboardScopePart(decoded.role, decoded.id_user);
     const cacheKey = [
       'dashboard:rekap',
       'v27',
       'members',
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      scope,
       selectedWorkzone ?? 'all',
       branchParam ?? '',
       bucket,

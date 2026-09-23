@@ -24,7 +24,7 @@ export default function AssuranceGuaranteeCard({
   workzone?: string;
   branch?: string;
 }) {
-  const { data, isLoading } = useAssuranceGuarantee({ workzone, branch });
+  const { data, isLoading, isError, error, refetch } = useAssuranceGuarantee({ workzone, branch });
   const [spec, setSpec] = useState<AssuranceGuaranteeSpec | null>(null);
 
   return (
@@ -50,7 +50,11 @@ export default function AssuranceGuaranteeCard({
             Total Ggn Berulang
           </p>
           <p className='text-lg leading-none font-semibold text-(--text-primary)'>
-            {isLoading ? '...' : (data?.total ?? 0).toLocaleString('id-ID')}
+            {isError && !isLoading
+              ? 'Gagal memuat'
+              : isLoading
+                ? '...'
+                : (data?.total ?? 0).toLocaleString('id-ID')}
           </p>
         </button>
       </div>
@@ -80,11 +84,13 @@ export default function AssuranceGuaranteeCard({
                   }
                   className={`mt-1 block text-base font-semibold text-(--text-primary) ${clickableCls}`}
                 >
-                  {isLoading
-                    ? '...'
-                    : ((t?.gamas ?? 0) + (t?.nonGamas ?? 0)).toLocaleString(
-                        'id-ID',
-                      )}
+                  {isError && !isLoading
+                    ? 'ERR'
+                    : isLoading
+                      ? '...'
+                      : ((t?.gamas ?? 0) + (t?.nonGamas ?? 0)).toLocaleString(
+                          'id-ID',
+                        )}
                 </button>
                 <p className='mt-1 text-[10px] font-medium text-(--text-secondary)'>
                   <button
@@ -172,13 +178,14 @@ export default function AssuranceGuaranteeCard({
         )}
       </div>
 
-      <AssuranceGuaranteeTicketsModal
-        open={Boolean(spec)}
-        spec={spec}
-        onClose={() => setSpec(null)}
-        workzone={workzone}
-        branch={branch}
-      />
+      {isError && !isLoading && (
+        <div className='absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-(--surface)/90 p-4 text-center'>
+          <div>
+            <p className='text-[10px] text-amber-700 dark:text-amber-300'>{(error as Error)?.message?.includes('disiapkan') ? 'Data sedang disiapkan...' : 'Gagal memuat.'}</p>
+            <button onClick={() => refetch()} className='mt-1 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-semibold text-white'>Retry</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ const SERVICE_NO_PLACEHOLDER_SQL = `
 export interface RecurringDisruptionRow {
   customer_type: string | null;
   source_ticket: string | null;
+  cnt: number | bigint;
 }
 
 /**
@@ -41,7 +42,7 @@ export async function getRecurringDisruptionTickets(
   const windowStartStr = windowStart.toISOString().slice(0, 19).replace('T', ' ');
 
   return prisma.$queryRawUnsafe<RecurringDisruptionRow[]>(
-    withMaxExecutionTime(`SELECT t.customer_type, t.source_ticket
+    withMaxExecutionTime(`SELECT t.customer_type, t.source_ticket, COUNT(*) AS cnt
      FROM ticket t
      JOIN (
        SELECT service_no
@@ -56,7 +57,7 @@ export async function getRecurringDisruptionTickets(
      ) rep ON t.service_no = rep.service_no
      WHERE t.reported_date >= ?
        AND (${whereClause})
-     LIMIT 5000`),
+     GROUP BY t.customer_type, t.source_ticket`),
     windowStartStr,
     ...params,
     windowStartStr,

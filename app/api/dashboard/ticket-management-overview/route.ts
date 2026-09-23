@@ -5,6 +5,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getOrSetCacheSwr } from '@/lib/cache';
 import { logger } from '@/lib/observability/logger';
+import { normalizeRoleKey } from '@/app/libs/roles';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,9 @@ export async function GET(request: Request) {
     const branchParam = searchParams.get('branch');
     const branchId = branchParam ? Number(branchParam) : undefined;
 
-    const cacheKey = `ticket_mgmt_overview:v6:${user.role}:${user.id_user}:${workzone || 'all'}:${branchId ?? 'all'}`;
+    const r = normalizeRoleKey(user.role);
+    const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${user.id_user}` : `wz:${user.id_user}`;
+    const cacheKey = `ticket_mgmt_overview:v7:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
     const data = await getOrSetCacheSwr(cacheKey, async () => {
       const summary = await DailyTicketService.getTicketManagementOverviewSummary(

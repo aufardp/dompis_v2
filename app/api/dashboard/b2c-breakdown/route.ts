@@ -6,6 +6,7 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { parseSearchType } from '@/lib/search-intent';
 import { DASHBOARD_CACHE_TTL, getOrSetCacheSwr } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
@@ -29,11 +30,12 @@ export async function GET(request: Request) {
     ]);
 
     const { searchParams } = new URL(request.url);
+    const scope = await getDashboardScopePart(user.role, user.id_user);
     const cacheKey = (() => {
       const filterParams = new URLSearchParams(searchParams);
       if (filterParams.has('_t')) return null;
       filterParams.sort();
-      return `dashboard_b2c_breakdown:${user.role}:${user.id_user}:${filterParams.toString()}`;
+      return `dashboard_b2c_breakdown:${scope}:${filterParams.toString()}`;
     })();
     const rawBucket = normalizeOperationalBucketKey(searchParams.get('bucket'));
     const filters = {

@@ -164,20 +164,47 @@ async function warmupDashboardSummary(): Promise<void> {
 
   try {
     const startTime = Date.now();
+    // Warmup superadmin scope (covers all users via de-personalized keys)
     await Promise.allSettled([
-      DailyTicketService.getKpiBucketSummaryMatrix(
-        'superadmin',
-        0,
-        { dept: 'all', includeClosed: true },
-        undefined,
-        undefined,
-      ),
-      DailyTicketService.getTicketManagementOverviewSummary(
-        'superadmin',
-        0,
-        undefined,
-        undefined,
-      ),
+      // Existing warmup
+      DailyTicketService.getKpiBucketSummaryMatrix('superadmin', 0, { dept: 'all', includeClosed: true }, undefined, undefined),
+      DailyTicketService.getTicketManagementOverviewSummary('superadmin', 0, undefined, undefined),
+      
+      // TTR Compliance Overview for all periods
+      (async () => {
+        const { computeTtrComplianceOverview } = await import('@/app/libs/services/dashboard-overview');
+        await Promise.all([
+          computeTtrComplianceOverview('today', true, null, undefined, null),
+          computeTtrComplianceOverview('week', true, null, undefined, null),
+          computeTtrComplianceOverview('month', true, null, undefined, null),
+        ]);
+      })(),
+      
+      // SQM Daily Trend
+      (async () => {
+        const { computeSqmDailyTrend } = await import('@/app/libs/services/dashboard-overview');
+        await computeSqmDailyTrend(true, null, undefined, null);
+      })(),
+      
+      // Assurance Guarantee
+      (async () => {
+        const { computeAssuranceGuarantee } = await import('@/app/libs/services/dashboard-overview');
+        await computeAssuranceGuarantee(true, null, undefined, null);
+      })(),
+      
+      // Other important widgets
+      (async () => {
+        const { DailyTicketService } = await import('@/app/libs/services/daily-ticket.service');
+        await Promise.allSettled([
+          DailyTicketService.getTicketManagementOverviewSummary('superadmin', 0, undefined, undefined),
+          DailyTicketService.getTopSymptoms('superadmin', 0, 10, {}),
+          DailyTicketService.getB2CBreakdown('superadmin', 0, {}),
+          DailyTicketService.getOperationsSummary('superadmin', 0, {}),
+          DailyTicketService.getSemestaSummary('superadmin', 0, {}),
+          DailyTicketService.getSemestaAnalytics('superadmin', 0, {}),
+          DailyTicketService.getDurasiSummary('superadmin', 0, {}),
+        ]);
+      })(),
     ]);
     logger.info('Dashboard summary warmup complete', {
       durationMs: Date.now() - startTime,

@@ -52,6 +52,12 @@ export function useTtrComplianceOverview({
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: false,
+    retry: (count, err) => {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Data sedang disiapkan')) return count < 1;
+      return count < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -87,6 +93,12 @@ export function useSqmDailyTrend({ workzone, branch, enabled = true }: BaseOptio
     staleTime: 60_000,
     refetchInterval: 120_000,
     refetchOnWindowFocus: false,
+    retry: (count, err) => {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Data sedang disiapkan')) return count < 1;
+      return count < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -122,6 +134,12 @@ export function useAssuranceGuarantee({ workzone, branch, enabled = true }: Base
     staleTime: 60_000,
     refetchInterval: 120_000,
     refetchOnWindowFocus: false,
+    retry: (count, err) => {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Data sedang disiapkan')) return count < 1;
+      return count < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams();

@@ -7,16 +7,18 @@ import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
-function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
+async function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   const filterParams = new URLSearchParams(params);
   if (filterParams.has('_t')) return null;
   filterParams.sort();
-  return `dashboard_hourly_tickets:${role}:${userId}:${filterParams.toString()}`;
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard_hourly_tickets:${scope}:${filterParams.toString()}`;
 }
 
 export async function GET(request: Request) {
@@ -49,7 +51,7 @@ export async function GET(request: Request) {
       operationalBucket: rawBucket ? [rawBucket] : undefined,
     };
 
-    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
     const data = cacheKey
       ? await getOrSetCacheSwr(
           cacheKey,

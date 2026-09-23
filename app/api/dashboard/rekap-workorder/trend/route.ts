@@ -7,12 +7,13 @@ import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue } from '@/lib/http-query';
 import { normalizeOperationalBucketKey } from '@/app/config/operational-buckets';
 import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
-function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
+async function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   const bucket = normalizeOperationalBucketKey(params.get('bucket'));
   const workzone = String(params.get('workzone') || '').trim();
   const branch = String(params.get('branch') || '').trim();
@@ -24,7 +25,8 @@ function buildCacheKey(params: URLSearchParams, role: string, userId: number) {
   if (branch) filterParams.set('branch', branch);
   filterParams.set('days', String(Number.isFinite(days) ? days : 7));
 
-  return `dashboard_rekap_trend:${role}:${userId}:${filterParams.toString()}`;
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard_rekap_trend:${scope}:${filterParams.toString()}`;
 }
 
 export async function GET(request: Request) {
@@ -62,7 +64,7 @@ export async function GET(request: Request) {
       includeClosed: true,
     };
 
-    const cacheKey = buildCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
     const data = await getOrSetCacheSwr(
       cacheKey,
       () =>

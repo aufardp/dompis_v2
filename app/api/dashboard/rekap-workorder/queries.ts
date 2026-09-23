@@ -17,6 +17,8 @@ import {
 import { logger } from '@/lib/observability/logger';
 import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
 import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
+import { normalizeRoleKey } from '@/app/libs/roles';
+import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import type {
   RekapTicketRow,
   CustomerSqmOverlayRow,
@@ -40,7 +42,9 @@ export function buildRekapTicketsCacheKey(
   dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): string {
   const normalizedDept = dept === 'neutral' ? 'netral' : dept;
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${role}:${userId}:${bucket}:${normalizedDept}:${workzone || 'all'}:${branchId ?? ''}`;
+  const r = normalizeRoleKey(role);
+  const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`;
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${scope}:${bucket}:${normalizedDept}:${workzone || 'all'}:${branchId ?? ''}`;
 }
 
 export function buildRekapTeknisiCacheKey(
@@ -65,7 +69,9 @@ export function buildRekapAgingCacheKey(
   workzone: string | undefined,
   branchId?: number | string,
 ): string {
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:aging:${role}:${userId}:${bucket}:${workzone || 'all'}:${branchId ?? ''}`;
+  const r = normalizeRoleKey(role);
+  const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`;
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:aging:${scope}:${bucket}:${workzone || 'all'}:${branchId ?? ''}`;
 }
 
 export async function getFilteredRekapTickets(

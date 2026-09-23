@@ -32,6 +32,7 @@ import {
   buildRegulerJenis1Where,
 } from './ticket-buckets';
 import { toWibString, toWibDateString, getTodayWibRange } from '@/lib/timezone';
+import { normalizeRoleKey } from '@/app/libs/roles';
 import { resolveEffectiveFlagging } from '../flagging-manja';
 import { normalizeSearchInput, type SearchType } from '@/lib/search-intent';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
@@ -176,8 +177,9 @@ export function buildKpiBucketSummaryCacheKey(
   filters?: TicketFilters,
 ): string {
   const normalized = normalizeCacheFilterValue(filters ?? {});
-  const scopedUserId = role === 'superadmin' || role === 'super_admin' ? 0 : userId;
-  return `dashboard:kpi_bucket_summary:v2:${role}:${scopedUserId}:${JSON.stringify(normalized)}`;
+  const r = normalizeRoleKey(role);
+  const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`;
+  return `dashboard:kpi_bucket_summary:v2:${scope}:${JSON.stringify(normalized)}`;
 }
 
 export function normalizeStatusUpdateFilter(value: unknown): string {

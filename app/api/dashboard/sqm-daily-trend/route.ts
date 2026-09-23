@@ -12,6 +12,7 @@ import { getWorkHourCategory } from '@/app/libs/tickets/ttr-comply';
 import { parseWIBDateInput } from '@/app/utils/datetime';
 import { logger } from '@/lib/observability/logger';
 import { withMaxExecutionTime, isQueryOverloadError } from '@/lib/sql/max-execution-time';
+import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 
 const TIMEZONE = 'Asia/Jakarta';
 const TREND_DAYS = 28;
@@ -64,10 +65,13 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:sqm-daily-trend',
-      'v1',
-      decoded.role,
-      decoded.id_user,
-      isSuperAdmin ? 'all' : (workzones ?? []).slice().sort().join(','),
+      'v2',
+      buildScopeKeyWithWorkzones(
+        isSuperAdmin,
+        decoded.role,
+        decoded.id_user,
+        workzones,
+      ),
       selectedWorkzone ?? 'all',
       branchParam ?? '',
     ].join(':');
@@ -93,7 +97,7 @@ export async function GET(request: NextRequest) {
            FROM ticket t
            WHERE (${baseWhere})
              AND (${bucketWhere})
-             AND t.reported_date >= ?`),
+             AND COALESCE(t.reported_date_dt, STR_TO_DATE(t.reported_date, '%Y-%m-%d %H:%i:%s')) >= ?`),
           ...baseParams,
           startWibStr,
         );

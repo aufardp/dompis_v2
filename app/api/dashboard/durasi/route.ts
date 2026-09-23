@@ -3,6 +3,7 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { prisma } from '@/app/libs/prisma';
 import { getOrSetCacheSwr } from '@/lib/cache';
+import { getDashboardScopePart, buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { nowWib, toWibDateString } from '@/lib/timezone';
@@ -165,14 +166,15 @@ const PANEL_CONFIGS = [
   { type: 'UNSPEC', label: 'UNSPEC', filter: (t: RawDurasiRow) => matchesDurasiPanel(t, 'UNSPEC'), bucketFn: (t: RawDurasiRow) => bucketStandard(calculateDurationHours(t.reported_date)), buckets: STANDARD_BUCKETS },
 ];
 
-function buildDurasiTicketsCacheKey(
+async function buildDurasiTicketsCacheKey(
   role: string,
   userId: number,
   bucket: KpiBucketKey,
   syncDate: string,
   branchParam?: string | null,
-): string {
-  return `dashboard:durasi:raw:${syncDate}:${role}:${userId}:${bucket}:${branchParam ?? ''}`;
+): Promise<string> {
+  const scope = await getDashboardScopePart(role, userId);
+  return `dashboard:durasi:raw:${syncDate}:${scope}:${bucket}:${branchParam ?? ''}`;
 }
 
 type PanelAccumulator = {
@@ -363,7 +365,7 @@ async function getFilteredTickets(
   syncDate: string,
   branchParam?: string | null,
 ): Promise<RawDurasiRow[]> {
-  const cacheKey = buildDurasiTicketsCacheKey(role, userId, bucket, syncDate, branchParam);
+  const cacheKey = await buildDurasiTicketsCacheKey(role, userId, bucket, syncDate, branchParam);
   return getOrSetCacheSwr(cacheKey, async () => {
     const filtersList = BUCKET_FILTERS[bucket];
     const parts: string[] = [];
@@ -467,7 +469,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const cacheKey = `dashboard:durasi:${today}:${decoded.id_user}:${isSuperAdmin ? 'all' : (workzones ?? []).sort().join(',')}:${bucket}:${branchParam ?? ''}`;
+    const cacheKey = `dashboard:durasi:${today}:${await getDashboardScopePart(decoded.role, decoded.id_user)}:${bucket}:${branchParam ?? ''}`;
 
     const data = await getOrSetCacheSwr(cacheKey, async () => {
       const overview = await DailyTicketService.getTicketManagementOverviewSummary(

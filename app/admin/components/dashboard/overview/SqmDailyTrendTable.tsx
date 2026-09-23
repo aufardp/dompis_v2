@@ -28,7 +28,7 @@ export default function SqmDailyTrendTable({
   workzone?: string;
   branch?: string;
 }) {
-  const { data, isLoading } = useSqmDailyTrend({ workzone, branch });
+  const { data, isLoading, isError, error, refetch } = useSqmDailyTrend({ workzone, branch });
   const days = data?.days ?? [];
 
   const weeks = useMemo(() => {
@@ -50,7 +50,14 @@ export default function SqmDailyTrendTable({
         </p>
       </div>
 
-      {isLoading ? (
+      {isError && !isLoading ? (
+        <div className='flex h-32 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 text-center'>
+          <div>
+            <p className='text-xs font-medium text-amber-700 dark:text-amber-300'>{(error as Error)?.message?.includes('disiapkan') ? 'Data sedang disiapkan...' : 'Gagal memuat data.'}</p>
+            <button onClick={() => refetch()} className='mt-2 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white'>Coba lagi</button>
+          </div>
+        </div>
+      ) : isLoading ? (
         <div className='h-32 animate-pulse rounded-2xl bg-(--surface-2)' />
       ) : (
         <div className='overflow-x-auto'>
