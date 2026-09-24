@@ -325,15 +325,14 @@ export async function getHourlyTicketCounts(
 
   const sql = `
     SELECT
-      HOUR(reported_date + INTERVAL 7 HOUR) AS hour,
+      HOUR(reported_date_dt) AS hour,
       COUNT(*) AS count
     FROM ticket
     WHERE ${whereClause}
-      AND reported_date IS NOT NULL
-      AND TRIM(reported_date) != ''
-      AND reported_date >= ?
-      AND reported_date < ?
-    GROUP BY HOUR(reported_date + INTERVAL 7 HOUR)
+      AND reported_date_dt IS NOT NULL
+      AND reported_date_dt >= ?
+      AND reported_date_dt < ?
+    GROUP BY HOUR(reported_date_dt)
   `;
 
   const rows = await prisma.$queryRawUnsafe<Array<{ hour: number; count: bigint | number }>>(
