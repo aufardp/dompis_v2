@@ -382,6 +382,10 @@ model ticket {
   @@index([closed_at, booking_date], map: "idx_ticket_closed_booking")
   @@index([is_manual], map: "idx_ticket_is_manual")
   @@index([workzone, operational_bucket, status, status_update, closed_at], map: "idx_ticket_operational_bucket")
+  @@index([resolve_date, closed_at], map: "idx_ticket_resolve_closed")
+  @@index([reported_date_dt, operational_bucket], map: "idx_ticket_reported_dt_bucket")
+  @@index([service_no, reported_date], map: "idx_ticket_service_reported")
+  @@index([workzone, reported_date, reported_date_dt], map: "idx_ticket_hourly_ops")
 }
 
 model ticket_activity_log {
