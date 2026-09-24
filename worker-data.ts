@@ -195,14 +195,13 @@ async function warmupDashboardSummary(): Promise<void> {
       // Other important widgets
       (async () => {
         const { DailyTicketService } = await import('@/app/libs/services/daily-ticket.service');
+        const { TicketService } = await import('@/app/libs/services/tickets.service');
         await Promise.allSettled([
           DailyTicketService.getTicketManagementOverviewSummary('superadmin', 0, undefined, undefined),
           DailyTicketService.getTopSymptoms('superadmin', 0, 10, {}),
           DailyTicketService.getB2CBreakdown('superadmin', 0, {}),
-          DailyTicketService.getOperationsSummary('superadmin', 0, {}),
-          DailyTicketService.getSemestaSummary('superadmin', 0, {}),
-          DailyTicketService.getSemestaAnalytics('superadmin', 0, {}),
-          DailyTicketService.getDurasiSummary('superadmin', 0, {}),
+          TicketService.getSemestaAnalyticsV2('superadmin', 0, {}),
+          TicketService.getSemestaAnalytics('superadmin', 0, {}),
         ]);
       })(),
     ]);
