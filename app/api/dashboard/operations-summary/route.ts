@@ -22,6 +22,7 @@ import { toEnumValue } from '@/lib/http-query';
 import { logger } from '@/lib/observability/logger';
 import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import { buildDeptJenisWhere } from '@/lib/dept';
+import { getTodayWibRange, toWibString } from '@/lib/timezone';
 
 export const dynamic = 'force-dynamic';
 
@@ -282,6 +283,8 @@ function statusBucket(status: string | null, statusUpdate: string | null): 'open
 
 function buildFocusCountsRawSql(
   baseWhere: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): [string, string, any[]] {
   const [whereClause, params] = buildSqlWhereClause(baseWhere);
   const sqlWithIndex = `
@@ -300,6 +303,8 @@ function buildFocusCountsRawSql(
       ) THEN 1 ELSE 0 END) AS carry_over
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
   `;
   const sqlWithoutIndex = `
     SELECT
@@ -317,12 +322,16 @@ function buildFocusCountsRawSql(
       ) THEN 1 ELSE 0 END) AS carry_over
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
   `;
-  return [sqlWithIndex, sqlWithoutIndex, params];
+  return [sqlWithIndex, sqlWithoutIndex, [...params, todayStart, todayEnd]];
 }
 
 function buildB2BGroupsRawSql(
   b2bWhere: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): [string, string, any[]] {
   const [whereClause, params] = buildSqlWhereClause(b2bWhere);
 
@@ -338,6 +347,8 @@ function buildB2BGroupsRawSql(
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY jenis_tiket_1, status, status_update
   `;
   const sqlWithoutIndex = `
@@ -352,13 +363,17 @@ function buildB2BGroupsRawSql(
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY jenis_tiket_1, status, status_update
   `;
-  return [sqlWithIndex, sqlWithoutIndex, params];
+  return [sqlWithIndex, sqlWithoutIndex, [...params, todayStart, todayEnd]];
 }
 
 function buildB2CSummaryRawSql(
   b2cWhere: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): [string, string, any[]] {
   const [whereClause, params] = buildSqlWhereClause(b2cWhere);
 
@@ -375,6 +390,8 @@ function buildB2CSummaryRawSql(
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY customer_type, status, status_update, COALESCE(jenis_tiket_2, jenis_tiket_1)
   `;
   const sqlWithoutIndex = `
@@ -390,13 +407,17 @@ function buildB2CSummaryRawSql(
       SUM(CASE WHEN flagging_manja = 'P+' THEN 1 ELSE 0 END) AS p_plus
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY customer_type, status, status_update, COALESCE(jenis_tiket_2, jenis_tiket_1)
   `;
-  return [sqlWithIndex, sqlWithoutIndex, params];
+  return [sqlWithIndex, sqlWithoutIndex, [...params, todayStart, todayEnd]];
 }
 
 function buildServiceAreasRawSql(
   where: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): [string, string, any[]] {
   const [whereClause, params] = buildSqlWhereClause(where);
 
@@ -414,6 +435,8 @@ function buildServiceAreasRawSql(
       SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS hvc_diamond
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY workzone
     ORDER BY total DESC
     LIMIT 10
@@ -432,15 +455,19 @@ function buildServiceAreasRawSql(
       SUM(CASE WHEN customer_type = 'HVC_DIAMOND' THEN 1 ELSE 0 END) AS hvc_diamond
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY workzone
     ORDER BY total DESC
     LIMIT 10
   `;
-  return [sqlWithIndex, sqlWithoutIndex, params];
+  return [sqlWithIndex, sqlWithoutIndex, [...params, todayStart, todayEnd]];
 }
 
 function buildStatusCountsRawSql(
   where: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): [string, string, any[]] {
   const [whereClause, params] = buildSqlWhereClause(where);
 
@@ -451,6 +478,8 @@ function buildStatusCountsRawSql(
       COUNT(*) AS total
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY status, status_update
   `;
   const sqlWithoutIndex = `
@@ -460,10 +489,12 @@ function buildStatusCountsRawSql(
       COUNT(*) AS total
     FROM ticket
     WHERE ${whereClause}
+      AND closed_at >= ?
+      AND closed_at < ?
     GROUP BY status, status_update
   `;
 
-  return [sqlWithIndex, sqlWithoutIndex, params];
+  return [sqlWithIndex, sqlWithoutIndex, [...params, todayStart, todayEnd]];
 }
 
 async function queryRawWithOptionalIndex<T>(
@@ -484,6 +515,8 @@ async function queryRawWithOptionalIndex<T>(
 
 async function buildB2CSummary(
   b2cWhere: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ): Promise<{
   summary: SummaryCounts;
   reguler: SummaryCounts;
@@ -491,7 +524,7 @@ async function buildB2CSummary(
   hvcPlatinum: SummaryCounts;
   hvcDiamond: SummaryCounts;
 }> {
-  const [sqlWithIndex, sqlWithoutIndex, params] = buildB2CSummaryRawSql(b2cWhere);
+  const [sqlWithIndex, sqlWithoutIndex, params] = buildB2CSummaryRawSql(b2cWhere, todayStart, todayEnd);
   const rows: Array<{
     customer_type: string | null;
     status: string | null;
@@ -564,8 +597,10 @@ async function buildB2CSummary(
 
 async function buildB2BGroupsOptimized(
   b2bWhere: Prisma.ticketWhereInput,
+  todayStart: string,
+  todayEnd: string,
 ) {
-  const [sqlWithIndex, sqlWithoutIndex, params] = buildB2BGroupsRawSql(b2bWhere);
+  const [sqlWithIndex, sqlWithoutIndex, params] = buildB2BGroupsRawSql(b2bWhere, todayStart, todayEnd);
   const rows: Array<{
     jenis_tiket_1: string | null;
     status: string | null;
@@ -601,8 +636,8 @@ async function buildB2BGroupsOptimized(
   return Object.fromEntries(groups.entries());
 }
 
-async function buildServiceAreas(where: Prisma.ticketWhereInput) {
-  const [sqlWithIndex, sqlWithoutIndex, params] = buildServiceAreasRawSql(where);
+async function buildServiceAreas(where: Prisma.ticketWhereInput, todayStart: string, todayEnd: string) {
+  const [sqlWithIndex, sqlWithoutIndex, params] = buildServiceAreasRawSql(where, todayStart, todayEnd);
   const rows: Array<{
     workzone: string | null;
     total: bigint;
@@ -658,17 +693,20 @@ async function buildOperationsSummaryResult(
   const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
   const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
 
+  const todayStart = toWibString(getTodayWibRange().start) as string;
+  const todayEnd = toWibString(getTodayWibRange().end) as string;
+
   const [b2cStats, b2cRegulerStats, b2bGroups, b2bRegulerGroups, netralGroups, serviceAreas, focusRaw] =
     (await runInBatches(
       [
-        () => buildB2CSummary(b2cWhere),
-        () => buildB2CSummary(b2cRegulerWhere),
-        () => buildB2BGroupsOptimized(b2bWhere),
-        () => buildB2BGroupsOptimized(b2bRegulerWhere),
-        () => buildB2BGroupsOptimized(netralWhere),
-        () => buildServiceAreas(where),
+        () => buildB2CSummary(b2cWhere, todayStart, todayEnd),
+        () => buildB2CSummary(b2cRegulerWhere, todayStart, todayEnd),
+        () => buildB2BGroupsOptimized(b2bWhere, todayStart, todayEnd),
+        () => buildB2BGroupsOptimized(b2bRegulerWhere, todayStart, todayEnd),
+        () => buildB2BGroupsOptimized(netralWhere, todayStart, todayEnd),
+        () => buildServiceAreas(where, todayStart, todayEnd),
         () => {
-          const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere);
+          const [sqlWithIndex, sqlWithoutIndex, params] = buildFocusCountsRawSql(activeWhere, todayStart, todayEnd);
           return queryRawWithOptionalIndex<
             Array<{
               total: bigint;
