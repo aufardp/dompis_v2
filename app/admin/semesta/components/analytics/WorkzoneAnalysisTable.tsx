@@ -6,29 +6,61 @@ import { ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import type { WorkzoneAnalytics } from '../../hooks/useSemestaAnalyticsV2';
 
 type SortKey = keyof WorkzoneAnalytics;
-const SORTABLE_COLS: { key: SortKey; label: string }[] = [
+
+type Col = {
+  key: SortKey;
+  label: string;
+  bar?: string;
+};
+
+const COLUMNS: Col[] = [
   { key: 'workzone', label: 'Workzone' },
-  { key: 'total', label: 'Total' },
-  { key: 'gamas', label: 'Gamas' },
-  { key: 'sqm', label: 'SQM' },
-  { key: 'sqmCcan', label: 'SQM-CCAN' },
-  { key: 'unspec', label: 'Unspec' },
-  { key: 'unspecB2b', label: 'Unspec B2B' },
-  { key: 'gaul', label: 'GAUL' },
-  { key: 'lapul', label: 'LAPUL' },
+  { key: 'total', label: 'Total', bar: 'bg-blue-400' },
+  { key: 'gamas', label: 'Gamas', bar: 'bg-cyan-400' },
+  { key: 'sqm', label: 'SQM', bar: 'bg-violet-400' },
+  { key: 'sqmCcan', label: 'SQM-CCAN', bar: 'bg-purple-400' },
+  { key: 'unspec', label: 'Unspec', bar: 'bg-slate-400' },
+  { key: 'unspecB2b', label: 'Unspec B2B', bar: 'bg-red-400' },
+  { key: 'gaul', label: 'GAUL', bar: 'bg-amber-400' },
 ];
 
-function Badge({ value, color }: { value: number; color: string }) {
-  if (value === 0) return <span className="text-(--text-muted)">—</span>;
+const SORTABLE_COLS = COLUMNS;
+
+const TOTAL_KEYS: SortKey[] = [
+  'total',
+  'gamas',
+  'sqm',
+  'sqmCcan',
+  'unspec',
+  'unspecB2b',
+  'gaul',
+];
+
+function CellBar({
+  value,
+  max,
+  bar,
+}: {
+  value: number;
+  max: number;
+  bar?: string;
+}) {
+  if (value === 0) {
+    return <span className="text-(--text-muted)">—</span>;
+  }
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
-        color,
-      )}
-    >
-      {value.toLocaleString('en-US')}
-    </span>
+    <div className="flex items-center gap-2" title={`${value} (${pct.toFixed(1)}%)`}>
+      <span className="w-12 shrink-0 text-right font-semibold text-(--text-primary) tabular-nums">
+        {value.toLocaleString('en-US')}
+      </span>
+      <div className="h-1.5 w-full min-w-[40px] overflow-hidden rounded-full bg-(--surface-2)">
+        <div
+          className={cn('h-full rounded-full transition-all', bar)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -120,17 +152,27 @@ export default function WorkzoneAnalysisTable({
     });
   }, [data, sortKey, sortDir, showAll]);
 
-  const maxTotal = useMemo(
-    () => Math.max(...(data?.map((d) => d.total) ?? [1]), 1),
-    [data],
-  );
+  const maxByKey = useMemo(() => {
+    const out = {} as Record<SortKey, number>;
+    for (const key of TOTAL_KEYS) {
+      out[key] = Math.max(...(data?.map((d) => d[key] as number) ?? [0]), 1);
+    }
+    return out;
+  }, [data]);
+
+  const totals = useMemo(() => {
+    if (!data) return null;
+    const out = {} as Record<SortKey, number>;
+    for (const key of TOTAL_KEYS) {
+      out[key] = data.reduce((sum, row) => sum + ((row[key] as number) ?? 0), 0);
+    }
+    return out;
+  }, [data]);
 
   const exportCsv = useCallback(() => {
     if (!data) return;
     const header = SORTABLE_COLS.map((c) => c.label).join(',');
-    const rows = data.map((r) =>
-      SORTABLE_COLS.map((c) => r[c.key]).join(','),
-    );
+    const rows = data.map((r) => SORTABLE_COLS.map((c) => r[c.key]).join(','));
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -148,6 +190,14 @@ export default function WorkzoneAnalysisTable({
 
   if (loading) {
     return <WorkzoneAnalysisLoading />;
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-surface rounded-xl border border-(--border) px-4 py-8 text-center text-[12px] text-(--text-muted)">
+        Tidak ada data workzone pada rentang ini
+      </div>
+    );
   }
 
   return (
@@ -174,7 +224,7 @@ export default function WorkzoneAnalysisTable({
         <table className="w-full text-left text-[12px]">
           <thead>
             <tr className="border-b border-(--border)">
-              {SORTABLE_COLS.map((col) => (
+              {COLUMNS.map((col) => (
                 <th
                   key={col.key}
                   onClick={() => handleSort(col.key)}
@@ -200,70 +250,48 @@ export default function WorkzoneAnalysisTable({
                 <td className='px-3 py-3 font-semibold text-(--text-primary)'>
                   {row.workzone}
                 </td>
-                <td className='px-3 py-3'>
-                  <div className='flex items-center gap-2'>
-                    <span className='font-semibold text-(--text-primary)'>
-                      {row.total.toLocaleString('en-US')}
-                    </span>
-                    <div className='bg-surface-2 h-1.5 w-16 overflow-hidden rounded-full'>
-                      <div
-                        className='h-full rounded-full bg-blue-400 transition-all'
-                        style={{
-                          width: `${(row.total / maxTotal) * 100}%`,
-                        }}
+                {TOTAL_KEYS.map((key) => {
+                  const col = COLUMNS.find((c) => c.key === key)!;
+                  return (
+                    <td key={key} className='px-3 py-3'>
+                      <CellBar
+                        value={row[key] as number}
+                        max={maxByKey[key]}
+                        bar={col.bar}
                       />
-                    </div>
-                  </div>
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge value={row.gamas} color='bg-cyan-500/10 text-cyan-300' />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge value={row.sqm} color='bg-violet-500/10 text-violet-300' />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge
-                    value={row.sqmCcan}
-                    color='bg-purple-500/10 text-purple-300'
-                  />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge value={row.unspec} color='bg-slate-500/10 text-slate-300' />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge value={row.unspecB2b} color='bg-red-500/10 text-red-300' />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge
-                    value={row.gaul}
-                    color={
-                      row.gaul > 0
-                        ? 'bg-amber-500/15 text-amber-300'
-                        : 'text-(--text-muted)'
-                    }
-                  />
-                </td>
-                <td className='px-3 py-3'>
-                  <Badge
-                    value={row.lapul}
-                    color={
-                      row.lapul > 0
-                        ? 'bg-orange-500/15 text-orange-300'
-                        : 'text-(--text-muted)'
-                    }
-                  />
-                </td>
+                    </td>
+                  );
+                })}
               </tr>
             ))}
+            {totals && (
+              <tr className="border-t-2 border-(--border) bg-(--surface-2)">
+                <td className='px-3 py-3 font-semibold text-(--text-primary)'>
+                  Total
+                </td>
+                {TOTAL_KEYS.map((key) => {
+                  const col = COLUMNS.find((c) => c.key === key)!;
+                  return (
+                    <td key={key} className='px-3 py-3'>
+                      <CellBar
+                        value={totals[key]}
+                        max={maxByKey[key]}
+                        bar={col.bar}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {data && data.length > 15 && !showAll && (
+      {data.length > 15 && !showAll && (
         <div className="border-t border-(--border) px-4 py-3 text-center">
           <button
             onClick={() => setShowAll(true)}
-            className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition"
+            className="text-[11px] font-semibold text-blue-400 transition hover:text-blue-300"
           >
             Tampilkan semua ({data.length} workzone)
           </button>

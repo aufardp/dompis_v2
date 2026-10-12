@@ -38,26 +38,25 @@ export async function GET(request: Request) {
       'super_admin',
     ]);
 
-    const statusUpdate =
-      searchParams.get('statusUpdate') ||
-      searchParams.get('status') ||
-      undefined;
+    const statusUpdate = searchParams.get('statusUpdate') || undefined;
+    const ticketStatus = searchParams.get('ticketStatus') || undefined;
+    const operationalBucket = searchParams.get('operationalBucket') || undefined;
+    const jenisTicket1 = searchParams.get('jenisTicket1') || undefined;
+    const ticketType = searchParams.get('ticketType') || undefined;
     const searchType = parseSearchType(searchParams.get('searchType'));
     const dateRange = (searchParams.get('dateRange') as 'today' | 'thisMonth' | 'all' | undefined) || undefined;
 
     // Role-aware limit: teknisi gets 500 for dashboard pagination, others 100
     const maxLimit = user.role === 'teknisi' ? 500 : 100;
 
-    const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']);
     const filters = {
       search: searchParams.get('search') || '',
       searchType,
       statusUpdate,
-      dept: rawDept === 'neutral' ? 'netral' : rawDept,
-      ticketType:
-        searchParams.get('ticketType') ||
-        searchParams.get('jenisTiket') ||
-        undefined,
+      ticketStatus,
+      operationalBucket,
+      jenisTicket1,
+      ticketType,
       workzone: searchParams.get('workzone') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,

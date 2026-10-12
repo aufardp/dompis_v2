@@ -19,16 +19,14 @@ export function useSemestaTickets(
   search: string,
   page: number,
   workzone?: string,
-  ctype?: string,
-  statusUpdate?: string,
-  dept?: string,
+  ticketStatus?: string,
   ticketType?: string,
   startDate?: string,
   endDate?: string,
 ) {
   const searchType = detectSearchType(search);
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: queryKeys.tickets.semesta({ search, searchType, page, workzone, ctype, statusUpdate, dept, ticketType, startDate, endDate }),
+    queryKey: queryKeys.tickets.semesta({ search, searchType, page, workzone, ticketStatus, ticketType, startDate, endDate }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     placeholderData: search.trim() ? undefined : keepPreviousData,
@@ -43,9 +41,7 @@ export function useSemestaTickets(
         if (searchType) params.append('searchType', searchType);
       }
       if (workzone) params.append('workzone', workzone);
-      if (ctype) params.append('ctype', ctype);
-      if (statusUpdate) params.append('statusUpdate', statusUpdate);
-      if (dept) params.append('dept', dept);
+      if (ticketStatus) params.append('ticketStatus', ticketStatus);
       if (ticketType) params.append('ticketType', ticketType);
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);

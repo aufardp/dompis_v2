@@ -15,6 +15,8 @@ import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import {
   getJenisWhereClause,
   JENIS_MAP,
+  JENIS_TIKET_LIST,
+  type JenisKey,
 } from '@/app/config/jenis-tiket';
 import {
    type AnomalyBucketKey,
@@ -329,6 +331,43 @@ export function applyTicketTypeWhere(
 
   if (variants.size > 0) {
     clauses.push({ jenis_tiket_2: { in: [...variants] } });
+  }
+
+  if (clauses.length === 0) return;
+
+  where.AND = [
+    ...(where.AND ?? []),
+    clauses.length === 1 ? clauses[0] : { OR: clauses },
+  ];
+}
+
+export function applyJenisTicket1Where(
+  where: Record<string, any>,
+  jenisTicket1?: string | string[],
+) {
+  const types = normalizeStringList(jenisTicket1);
+  if (types.length === 0) return;
+
+  const variants = new Set<string>();
+  const clauses: Record<string, any>[] = [];
+  for (const type of types) {
+    if (type === '__blank__') {
+      clauses.push({ OR: [{ jenis_tiket_1: null }, { jenis_tiket_1: '' }] });
+      continue;
+    }
+
+    const config = JENIS_TIKET_LIST.find((j) => j.key === type.toLowerCase());
+    if (config) {
+      for (const alias of config.dbAliases) {
+        variants.add(alias);
+        variants.add(alias.toLowerCase());
+        variants.add(alias.toUpperCase());
+      }
+    }
+  }
+
+  if (variants.size > 0) {
+    clauses.push({ jenis_tiket_1: { in: [...variants].filter(Boolean) } });
   }
 
   if (clauses.length === 0) return;

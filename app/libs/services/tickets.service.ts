@@ -22,8 +22,15 @@ import { ApiError } from '@/app/libs/apiError';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 import {
+  applyTicketStatusWhere,
+} from './daily-ticket-helpers';
+import {
+  buildOperationalBucketWhere,
+} from './ticket-buckets';
+import {
   getJenisWhereClause,
   JENIS_LABELS,
+  JENIS_TIKET_LIST,
   normalizeJenis,
   type JenisKey,
 } from '@/app/config/jenis-tiket';
@@ -33,8 +40,11 @@ type TicketFilters = {
   search?: string;
   searchType?: SearchType;
   statusUpdate?: string;
+  ticketStatus?: string;
   dept?: string;
   ticketType?: string;
+  jenisTicket1?: string;
+  operationalBucket?: string;
   workzone?: number | string;
   ctype?: string;
   startDate?: string;
@@ -367,6 +377,8 @@ function mapTicket(t: any) {
     syncedAt: toWibString(t.synced_at),
     technicianName: t.users?.nama,
     worklogSummary: t.worklog_summary,
+    jenisTiket1: t.jenis_tiket_1,
+    ttrComplyStatus: t.ttr_comply_status,
   };
 }
 
@@ -581,8 +593,11 @@ export class TicketService {
       search = '',
       searchType,
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
+      jenisTicket1,
+      operationalBucket,
       workzone,
       ctype,
       startDate,
@@ -644,6 +659,33 @@ export class TicketService {
       }
     }
 
+    if (ticketStatus) {
+      const statusWhere: Record<string, any> = {};
+      applyTicketStatusWhere(statusWhere, ticketStatus);
+      if (Object.keys(statusWhere).length > 0) {
+        andClauses.push(statusWhere);
+      }
+    }
+
+    if (operationalBucket) {
+      andClauses.push({ operational_bucket: operationalBucket });
+    }
+
+    if (jenisTicket1) {
+      const variants = new Set<string>();
+      const config = JENIS_TIKET_LIST.find((j) => j.key === jenisTicket1.toLowerCase());
+      if (config) {
+        for (const alias of config.dbAliases) {
+          variants.add(alias);
+          variants.add(alias.toLowerCase());
+          variants.add(alias.toUpperCase());
+        }
+      }
+      if (variants.size > 0) {
+        andClauses.push({ jenis_tiket_2: { in: [...variants] } });
+      }
+    }
+
     if (ctype) {
       andClauses.push({ customer_type: ctype });
     }
@@ -688,8 +730,10 @@ export class TicketService {
       search = '',
       searchType,
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
+      jenisTicket1,
       workzone,
       ctype,
       startDate,
@@ -705,8 +749,10 @@ export class TicketService {
     const where = await this.buildTicketWhere(role, userId, {
       search,
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
+      jenisTicket1,
       workzone,
       ctype,
       startDate,
@@ -933,6 +979,8 @@ export class TicketService {
         users: {
           select: { nama: true },
         },
+        jenis_tiket_1: true,
+        ttr_comply_status: true,
       },
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
       take: safeLimit,

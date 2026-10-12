@@ -12,24 +12,38 @@ import {
 import type { DateRange } from 'react-day-picker';
 import AdminLayout from '@/app/components/layout/AdminLayout';
 import { useSemestaTickets } from '@/app/hooks/useSemestaTickets';
-import { TicketCtype } from '@/app/types/ticket';
+
 import { cn } from '@/app/libs/utils';
 import { SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useTicketAnalytics } from './hooks/useTicketAnalytics';
 import { useSemestaAnalyticsV2 } from './hooks/useSemestaAnalyticsV2';
 import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
+import { JENIS_TIKET_LIST } from '@/app/config/jenis-tiket';
+import {
+  CLOSE_STATUS_VALUES,
+  OPEN_STATUS_VALUES,
+} from '@/app/libs/ticket-utils';
 
 const StatsCards = dynamic(() => import('./components/dashboard/StatsCards'), {
   ssr: false,
   loading: () => (
-    <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading stats cards'>
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading stats cards'
+    >
       <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
         {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className='h-24 rounded-xl border border-(--border) bg-(--surface)' />
+          <div
+            key={i}
+            className='h-24 rounded-xl border border-(--border) bg-(--surface)'
+          />
         ))}
       </div>
     </phantom-ui>
@@ -41,7 +55,14 @@ const TicketTypeChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading ticket type chart'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading ticket type chart'
+      >
         <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -53,7 +74,14 @@ const WorkzoneChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading workzone chart'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading workzone chart'
+      >
         <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -65,7 +93,14 @@ const TicketTrendChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading ticket trend chart'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading ticket trend chart'
+      >
         <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -82,7 +117,14 @@ const TicketTableSemesta = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading semesta tickets'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading semesta tickets'
+      >
         <div className='h-[420px] rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -94,7 +136,14 @@ const DateRangePicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading date range picker'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading date range picker'
+      >
         <div className='h-10 w-[220px] rounded-lg border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -102,31 +151,42 @@ const DateRangePicker = dynamic(
 );
 
 // --- New V2 analytics components ---
-const KpiStrip = dynamic(
-  () => import('./components/analytics/KpiStrip'),
-  {
-    ssr: false,
-    loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading KPI strip'>
-        <div className='flex gap-3 overflow-x-auto pb-2'>
-          {Array.from({ length: 8 }, (_, i) => (
-            <div
-              key={i}
-              className='h-[104px] w-[180px] shrink-0 rounded-xl border border-(--border) bg-(--surface)'
-            />
-          ))}
-        </div>
-      </phantom-ui>
-    ),
-  },
-);
+const KpiStrip = dynamic(() => import('./components/analytics/KpiStrip'), {
+  ssr: false,
+  loading: () => (
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
+      loading
+      animation='shimmer'
+      reveal={0.12}
+      loading-label='Loading KPI strip'
+    >
+      <div className='flex gap-3 overflow-x-auto pb-2'>
+        {Array.from({ length: 3 }, (_, i) => (
+          <div
+            key={i}
+            className='h-[80px] w-[180px] shrink-0 rounded-xl border border-(--border) bg-(--surface)'
+          />
+        ))}
+      </div>
+    </phantom-ui>
+  ),
+});
 
 const TrendByJenisChart = dynamic(
   () => import('./components/analytics/TrendByJenisChart'),
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading trend by jenis chart'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading trend by jenis chart'
+      >
         <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -138,7 +198,14 @@ const B2cB2bTrendChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading B2C B2B trend chart'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading B2C B2B trend chart'
+      >
         <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -150,7 +217,14 @@ const WorkzoneAnalysisTable = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading workzone analysis table'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading workzone analysis table'
+      >
         <div className='h-[320px] rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
@@ -162,88 +236,42 @@ const TopGaulList = dynamic(
   {
     ssr: false,
     loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading top GAUL list'>
+      <phantom-ui
+        suppressHydrationWarning
+        fallback-radius={8}
+        loading
+        animation='shimmer'
+        reveal={0.12}
+        loading-label='Loading top GAUL list'
+      >
         <div className='h-[260px] rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
 );
 
-const TopLapulList = dynamic(
-  () => import('./components/analytics/TopLapulList'),
-  {
-    ssr: false,
-    loading: () => (
-      <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading top LAPUL list'>
-        <div className='h-[260px] rounded-xl border border-(--border) bg-(--surface)' />
-      </phantom-ui>
-    ),
-  },
-);
 
 const AnalyticsSkeleton = dynamic(
   () => import('./components/analytics/AnalyticsSkeleton'),
   { ssr: false },
 );
 
-// --- Old analytics (keep for backward compat with ticket table) ---
-type Dept = 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
-type TicketType = 'all' | 'reguler' | 'sqm' | 'unspec';
-type StatusFilter =
-  | 'all'
-  | 'open'
-  | 'assigned'
-  | 'on_progress'
-  | 'pending'
-  | 'escalated'
-  | 'closed';
-
-const DEPT_OPTIONS = [
-  { key: 'all', label: 'Semua' },
-  { key: 'b2b', label: 'B2B' },
-  { key: 'b2c', label: 'B2C' },
-  { key: 'netral', label: 'Netral' },
-];
-
-const TYPE_OPTIONS = [
-  { key: 'all', label: 'Semua' },
-  { key: 'reguler', label: 'Customer' },
-  { key: 'sqm', label: 'SQM' },
-  { key: 'unspec', label: 'Unspec' },
-];
-
 const PRESET_OPTIONS = [
+  { key: 'today', label: 'Hari Ini' },
   { key: '7d', label: '7 Hari' },
   { key: '30d', label: '30 Hari' },
   { key: 'month', label: 'Bulan Ini' },
 ] as const;
 
-// --- Legacy types kept for ticket table ---
-const CTYPE_OPTIONS = [
+const JENIS_TIKET_OPTIONS = [
   { key: 'all', label: 'Semua' },
-  { key: 'REGULER', label: 'Reguler' },
-  { key: 'HVC_GOLD', label: 'HVC Gold' },
-  { key: 'HVC_PLATINUM', label: 'HVC Platinum' },
-  { key: 'HVC_DIAMOND', label: 'HVC Diamond' },
-  { key: 'datin_k1', label: 'DATIN K1' },
-  { key: 'datin_k1k2', label: 'DATIN K1K2' },
-  { key: 'datin_k3', label: 'DATIN K3' },
-  { key: 'indibiz_4', label: 'Indibiz 4' },
-  { key: 'indibiz_24', label: 'Indibiz 24' },
-  { key: 'reseller_6', label: 'Reseller 6' },
-  { key: 'reseller_36', label: 'Reseller 36' },
-  { key: 'wifi_24', label: 'WiFi 24' },
+  ...JENIS_TIKET_LIST.map((j) => ({ key: j.key, label: j.label })),
 ];
 
-const STATUS_OPTIONS = [
+const INSERA_STATUS_OPTIONS = [
   { key: 'all', label: 'Semua Status' },
-  { key: 'OPEN', label: 'Open' },
-  { key: 'ASSIGNED', label: 'Assigned' },
-  { key: 'ON_PROGRESS', label: 'On Progress' },
-  { key: 'PENDING', label: 'Pending' },
-  { key: 'ESCALATED', label: 'Escalated' },
-  { key: 'CANCELLED', label: 'Cancelled' },
-  { key: 'CLOSE', label: 'Closed' },
+  ...OPEN_STATUS_VALUES.map((s) => ({ key: s, label: s })),
+  ...CLOSE_STATUS_VALUES.map((s) => ({ key: s, label: s })),
 ];
 
 function Dropdown({
@@ -296,12 +324,12 @@ export default function SemestaPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope();
-  const [ctypeFilter, setCtypeFilter] = useState<TicketCtype | 'all'>('all');
-  const [deptFilter, setDeptFilter] = useState<'all' | 'b2b' | 'b2c' | 'netral' | 'neutral'>('all');
-  const [ticketTypeFilter, setTicketTypeFilter] = useState<string>('all');
-  const [hasilVisitFilter, setHasilVisitFilter] = useState<string>('all');
+  const [jenisTicket1Filter, setJenisTicket1Filter] = useState<string>('all');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfDay(subDays(new Date(), 29)),
+    from: startOfDay(
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    ),
     to: endOfDay(new Date()),
   });
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -317,39 +345,18 @@ export default function SemestaPage() {
   const endDate =
     dateFilterActive && dateRange?.to ? toYmd(dateRange.to) : undefined;
 
-  // --- V2 analytics filters (simplified: no status/ctype) ---
+  // --- V2 analytics filters ---
   const analyticsFilters: SemestaAnalyticsV2Filters = useMemo(
-    () => {
-      const normalizedDept = deptFilter === 'neutral' ? 'netral' : deptFilter;
-      return {
-        startDate,
-        endDate,
-        workzone: workzoneFilter || undefined,
-        dept: normalizedDept !== 'all' ? (normalizedDept as 'b2b' | 'b2c' | 'netral') : undefined,
-        ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-      };
-    },
-    [startDate, endDate, workzoneFilter, deptFilter, ticketTypeFilter],
+    () => ({
+      startDate,
+      endDate,
+      workzone: workzoneFilter || undefined,
+      ticketType: jenisTicket1Filter !== 'all' ? jenisTicket1Filter : undefined,
+    }),
+    [startDate, endDate, workzoneFilter, jenisTicket1Filter],
   );
 
-  // --- V1 analytics (kept for backward compat with ticket table filters) ---
-  const normalizedDeptForAnalytics = deptFilter === 'neutral' ? 'netral' : deptFilter;
-  const { data: analyticsData, loading: analyticsLoading } = useTicketAnalytics({
-    search: searchQuery || undefined,
-    workzone: workzoneFilter || undefined,
-    ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
-    dept: normalizedDeptForAnalytics !== 'all' ? normalizedDeptForAnalytics : undefined,
-    ticketType: ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-    statusUpdate: hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
-    startDate,
-    endDate,
-  });
-
-  // --- V2 analytics hook ---
-  const { data: analyticsV2, loading: analyticsV2Loading } =
-    useSemestaAnalyticsV2(analyticsFilters);
-
-  // --- Ticket table (kept unchanged) ---
+  // --- Ticket table ---
   const {
     tickets,
     loading: ticketsLoading,
@@ -359,18 +366,15 @@ export default function SemestaPage() {
     searchQuery,
     currentPage,
     workzoneFilter || undefined,
-    ctypeFilter !== 'all' ? ctypeFilter : undefined,
-    hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
-    normalizedDeptForAnalytics !== 'all' ? normalizedDeptForAnalytics : undefined,
-    ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
+    ticketStatusFilter !== 'all' ? ticketStatusFilter : undefined,
+    jenisTicket1Filter !== 'all' ? jenisTicket1Filter : undefined,
     startDate,
     endDate,
   );
 
-  const metrics = analyticsData?.metrics;
-  const byType = analyticsData?.byType ?? [];
-  const byWorkzone = analyticsData?.byWorkzone ?? [];
-  const trend = analyticsData?.trend ?? [];
+  // --- V2 analytics hook ---
+  const { data: analyticsV2, loading: analyticsV2Loading } =
+    useSemestaAnalyticsV2(analyticsFilters);
 
   useUrlSearchQuery({
     searchParams,
@@ -398,7 +402,10 @@ export default function SemestaPage() {
         type: 'success',
       });
       window.requestAnimationFrame(() => {
-        tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        tableRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
       });
     } else {
       setSearchToast({ message: 'Tidak ditemukan', type: 'error' });
@@ -415,51 +422,55 @@ export default function SemestaPage() {
     setCurrentPage(1);
   }, []);
 
-  const handleDeptChange = (dept: string) => {
-    const normalized = dept === 'neutral' ? 'netral' : dept;
-    setDeptFilter(normalized as 'all' | 'b2b' | 'b2c' | 'netral');
+  const handleJenisTicket1Change = (jenis: string) => {
+    setJenisTicket1Filter(jenis);
     setCurrentPage(1);
   };
 
-  const handleTicketTypeChange = (type: string) => {
-    setTicketTypeFilter(type);
+  const handleTicketStatusChange = (status: string) => {
+    setTicketStatusFilter(status);
     setCurrentPage(1);
   };
 
-  const handleHasilVisitChange = (status: string) => {
-    setHasilVisitFilter(status);
-    setCurrentPage(1);
-  };
+  const handlePreset = (presetKey: 'today' | '7d' | '30d' | 'month') => {
+    const now = new Date();
+    let newDateRange: DateRange | undefined;
 
-  const handleCtypeChange = (ctype: string) => {
-    setCtypeFilter(ctype as TicketCtype | 'all');
-    setCurrentPage(1);
-  };
+    if (presetKey === 'today') {
+      newDateRange = { from: startOfDay(now), to: endOfDay(now) };
+    } else if (presetKey === '7d') {
+      newDateRange = { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
+    } else if (presetKey === '30d') {
+      newDateRange = { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
+    } else if (presetKey === 'month') {
+      newDateRange = {
+        from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)),
+        to: endOfDay(now),
+      };
+    }
 
-  const handlePreset = (days: number, label: string) => {
-    setDateRange({
-      from: startOfDay(subDays(new Date(), days - 1)),
-      to: endOfDay(new Date()),
-    });
+    setDateRange(newDateRange);
     setCurrentPage(1);
   };
 
   const resetAllFilters = () => {
     setSearchQuery('');
     setWorkzoneFilter('');
-    setCtypeFilter('all');
-    setDeptFilter('all');
-    setTicketTypeFilter('all');
-    setHasilVisitFilter('all');
-    setDateRange(undefined);
+    setJenisTicket1Filter('all');
+    setTicketStatusFilter('all');
+    setDateRange({
+      // Reset to default: start of this month to today
+      from: startOfDay(
+        new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      ),
+      to: endOfDay(new Date()),
+    });
     setCurrentPage(1);
   };
 
   const activeFilterCount =
-    (deptFilter !== 'all' ? 1 : 0) +
-    (ticketTypeFilter !== 'all' ? 1 : 0) +
-    (hasilVisitFilter !== 'all' ? 1 : 0) +
-    (ctypeFilter !== 'all' ? 1 : 0) +
+    (jenisTicket1Filter !== 'all' ? 1 : 0) +
+    (ticketStatusFilter !== 'all' ? 1 : 0) +
     (workzoneFilter ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
 
@@ -491,7 +502,7 @@ export default function SemestaPage() {
 
   const trendSubtitle = useMemo(() => {
     if (!dateFilterActive || !dateRange?.from || !dateRange?.to) {
-      return 'Last 30 days';
+      return 'Hari Ini';
     }
     const days =
       differenceInCalendarDays(
@@ -510,7 +521,7 @@ export default function SemestaPage() {
       onWorkzoneChange={handleWorkzoneChange}
       selectedWorkzone={workzoneFilter}
     >
-      <div className='flex flex-col gap-8 font-dm-sans text-[13px] leading-5'>
+      <div className='font-dm-sans flex flex-col gap-8 text-[13px] leading-5'>
         {/* Page Header */}
         <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
           <div className='bg-(--surface-2) px-5 py-5 md:px-6'>
@@ -537,13 +548,15 @@ export default function SemestaPage() {
                   </p>
                 </div>
               </div>
-              <div className='grid gap-3 sm:grid-cols-3 lg:min-w-[360px]'>
+              <div className='grid gap-3 sm:grid-cols-3 lg:min-w-90'>
                 <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                     Scope
                   </p>
                   <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
-                    {workzoneFilter ? `Workzone ${workzoneFilter}` : 'All Workzone'}
+                    {workzoneFilter
+                      ? `Workzone ${workzoneFilter}`
+                      : 'All Workzone'}
                   </p>
                 </div>
                 <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
@@ -574,9 +587,6 @@ export default function SemestaPage() {
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Filter Workspace
               </p>
-              <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                Date, department, type, and status filters drive the table and charts below.
-              </p>
             </div>
             {activeFilterCount > 0 && (
               <button
@@ -596,7 +606,7 @@ export default function SemestaPage() {
             <div className='flex items-center justify-between lg:hidden'>
               <button
                 onClick={() => setShowMobileFilters((v) => !v)}
-                className='bg-surface flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 font-dm-sans text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
+                className='bg-surface font-dm-sans flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
               >
                 <SlidersHorizontal size={14} />
                 Filters
@@ -609,7 +619,7 @@ export default function SemestaPage() {
               {activeFilterCount > 0 && (
                 <button
                   onClick={resetAllFilters}
-                  className='flex items-center gap-1 font-dm-sans text-xs font-semibold text-red-400 hover:text-red-500'
+                  className='font-dm-sans flex items-center gap-1 text-xs font-semibold text-red-400 hover:text-red-500'
                 >
                   <X size={12} /> Reset
                 </button>
@@ -625,8 +635,8 @@ export default function SemestaPage() {
             >
               <div className='flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center'>
                 {/* Date */}
-                <div className='flex items-center gap-2'>
-                  <span className='font-outfit w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+                <div className='flex flex-1 items-center gap-2'>
+                  <span className='font-outfit shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
                     Tanggal
                   </span>
                   <DateRangePicker
@@ -642,60 +652,28 @@ export default function SemestaPage() {
                   />
                 </div>
 
-                {/* Preset chips */}
-                <div className='flex items-center gap-1.5'>
-                  {PRESET_OPTIONS.map((p) => {
-                    const days = p.key === '7d' ? 7 : p.key === '30d' ? 30 : 0;
-                    return (
-                      <button
-                        key={p.key}
-                        onClick={() => handlePreset(days || 30, p.label)}
-                        className={cn(
-                          'rounded-lg px-3 py-1.5 text-[11px] font-semibold transition',
-                          'border border-(--border)',
-                          'hover:border-blue-400/40 hover:text-blue-400',
-                        )}
-                      >
-                        {p.label}
-                      </button>
-                    );
-                  })}
+                {/* Filters */}
+                <div className='flex flex-wrap items-center gap-3'>
+                  <Dropdown
+                    label='Jenis'
+                    value={jenisTicket1Filter}
+                    options={JENIS_TIKET_OPTIONS}
+                    onChange={handleJenisTicket1Change}
+                  />
+
+                  <Dropdown
+                    label='Status'
+                    value={ticketStatusFilter}
+                    options={INSERA_STATUS_OPTIONS}
+                    onChange={handleTicketStatusChange}
+                  />
                 </div>
-
-                <Dropdown
-                  label='Dept'
-                  value={deptFilter}
-                  options={DEPT_OPTIONS}
-                  onChange={handleDeptChange}
-                />
-
-                <Dropdown
-                  label='Jenis'
-                  value={ticketTypeFilter}
-                  options={TYPE_OPTIONS}
-                  onChange={handleTicketTypeChange}
-                />
-
-                {/* Status & Customer — moved to table scope, kept for ticket table filter */}
-                <Dropdown
-                  label='Status'
-                  value={hasilVisitFilter}
-                  options={STATUS_OPTIONS}
-                  onChange={handleHasilVisitChange}
-                />
-
-                <Dropdown
-                  label='Customer'
-                  value={ctypeFilter}
-                  options={CTYPE_OPTIONS}
-                  onChange={handleCtypeChange}
-                />
 
                 {activeFilterCount > 0 && (
                   <button
                     onClick={resetAllFilters}
                     className={cn(
-                      'flex items-center gap-1 rounded-lg px-3 py-2 font-dm-sans text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
+                      'font-dm-sans flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
                       'lg:ml-auto',
                     )}
                   >
@@ -723,7 +701,8 @@ export default function SemestaPage() {
                     Operational Snapshot
                   </p>
                   <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                    KPI mix, ticket trend, and workzone load from the current filter scope.
+                    KPI mix, ticket trend, and workzone load from the current
+                    filter scope.
                   </p>
                 </div>
                 <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
@@ -747,57 +726,13 @@ export default function SemestaPage() {
                 data={analyticsV2.byWorkzone}
                 loading={false}
               />
-              <div className='grid gap-5 lg:grid-cols-2'>
-                <TopGaulList
-                  data={analyticsV2.topGaulServices}
-                  loading={false}
-                />
-                <TopLapulList
-                  data={analyticsV2.topLapulIncidents}
-                  loading={false}
-                />
-              </div>
+              <TopGaulList
+                data={analyticsV2.topGaulServices}
+                loading={false}
+              />
             </div>
           </div>
-        ) : (
-          /* Fallback: show old V1 charts if V2 fails to load */
-          <>
-            {analyticsLoading ? (
-              <DashboardSkeleton />
-            ) : (metrics?.total ?? 0) === 0 ? (
-              <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3 font-dm-sans text-sm text-(--text-secondary) shadow-sm'>
-                {dateFilterActive
-                  ? 'No tickets found for the selected date range and filters.'
-                  : 'No tickets found.'}
-              </div>
-            ) : (
-              <>
-                <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
-                  <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
-                    <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                      Legacy Analytics
-                    </p>
-                    <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                      Shown when the v2 analytics payload is unavailable.
-                    </p>
-                  </div>
-                  <div className='space-y-5 p-4 md:p-5'>
-                    <StatsCards metrics={metrics} loading={analyticsLoading} />
-                    <div className='grid gap-6 lg:grid-cols-2'>
-                      <TicketTypeChart data={byType} loading={analyticsLoading} />
-                      <WorkzoneChart data={byWorkzone} loading={analyticsLoading} />
-                    </div>
-                    <TicketTrendChart
-                      data={trend}
-                      loading={analyticsLoading}
-                      subtitle={trendSubtitle}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        )}
+        ) : null}
 
         {/* Ticket Table — unchanged, separate hook */}
         <div ref={tableRef} className='scroll-mt-20'>
@@ -809,7 +744,8 @@ export default function SemestaPage() {
                     Ticket Table
                   </p>
                   <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                    The list below follows the same filter scope as the analytics above.
+                    The list below follows the same filter scope as the
+                    analytics above.
                   </p>
                 </div>
                 <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
@@ -822,14 +758,8 @@ export default function SemestaPage() {
                 tickets={ticketTableData}
                 loading={ticketsLoading}
                 downloadFilters={{
-                  dept: deptFilter,
                   search: searchQuery.trim() || undefined,
                   workzone: workzoneFilter || undefined,
-                  ctype: ctypeFilter !== 'all' ? ctypeFilter : undefined,
-                  ticketType:
-                    ticketTypeFilter !== 'all' ? ticketTypeFilter : undefined,
-                  statusUpdate:
-                    hasilVisitFilter !== 'all' ? hasilVisitFilter : undefined,
                   startDate,
                   endDate,
                 }}

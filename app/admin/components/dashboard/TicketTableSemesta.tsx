@@ -47,13 +47,16 @@ export type SortField =
   | 'jenisTiket'
   | 'workzone'
   | 'technicianName'
-  | 'reportedDate';
+  | 'reportedDate'
+  | 'priority';
 
 export type SortOrder = 'asc' | 'desc';
 
 export interface AdminTicketTableSemestaProps {
   tickets?: TicketRow[];
   loading?: boolean;
+  isRefreshing?: boolean;
+  searching?: boolean;
   pagination?: {
     currentPage: number;
     totalPages: number;
@@ -62,13 +65,8 @@ export interface AdminTicketTableSemestaProps {
     onPageChange: (page: number) => void;
   };
   downloadFilters?: {
-    dept: 'all' | 'b2b' | 'b2c' | 'netral' | 'neutral';
     search?: string;
     workzone?: string;
-    branch?: string;
-    ctype?: string;
-    ticketType?: string;
-    statusUpdate?: string;
     startDate?: string;
     endDate?: string;
   };
@@ -78,6 +76,7 @@ export interface TicketRow {
   idTicket?: number;
   ticket?: string;
   serviceNo?: string;
+  ticketIdGamas?: string | null;
   contactName?: string | null;
   contactPhone?: string | null;
   alamat?: string | null;
@@ -86,13 +85,14 @@ export interface TicketRow {
   customerType?: string;
   summary?: string;
   jenisTiket?: string;
+  jenisTiket1?: string | null;
   workzone?: string;
   technicianName?: string | null;
   teknisiUserId?: number | null;
   hasilVisit?: string | null;
   closedAt?: string | null;
   reportedDate?: string | null;
-  status?: string;
+  status?: string | null;
   status_update?: string | null;
   maxTtrReguler?: string | null;
   maxTtrGold?: string | null;
@@ -100,6 +100,8 @@ export interface TicketRow {
   maxTtrDiamond?: string | null;
   flaggingManja?: string | null;
   guaranteeStatus?: string | null;
+  sqmUpdateReason?: string | null;
+  ttrComplyStatus?: string | null;
 }
 
 interface SortConfig {
@@ -122,7 +124,15 @@ type DrawerTicket = {
   customerSegment?: string;
   workzone?: string;
   status: string;
-  hasilVisit?: 'OPEN' | 'ASSIGNED' | 'ON_PROGRESS' | 'PENDING' | 'ESCALATED' | 'CANCELLED' | 'CLOSE' | null;
+  hasilVisit?:
+    | 'OPEN'
+    | 'ASSIGNED'
+    | 'ON_PROGRESS'
+    | 'PENDING'
+    | 'ESCALATED'
+    | 'CANCELLED'
+    | 'CLOSE'
+    | null;
   status_update?: string | null;
   jenisTiket?: string;
   maxTtrReguler?: string | null;
@@ -164,27 +174,33 @@ const SortIcon = ({
 };
 
 const COL_LABELS: Record<string, string> = {
+  rank: '#',
+  ticket: 'Ticket',
   service: 'Service',
   customer: 'Customer',
   address: 'Address',
-  bookingDate: 'Booking Date',
+  booking: 'Booking',
   type: 'Type',
   maxTtr: 'Max TTR',
   age: 'Age / SLA',
   jenis: 'Jenis Tiket',
   workzone: 'Workzone',
-  technician: 'Technician',
+  technician: 'Teknisi',
   statusInsera: 'Status Insera',
   statusDompis: 'Status Dompis',
+  comply: 'Comply',
+  actions: 'Aksi',
 };
 
 type ColKey = keyof typeof COL_LABELS;
 
 const DEFAULT_COLS: Record<ColKey, boolean> = {
+  rank: true,
+  ticket: true,
   service: true,
   customer: true,
   address: true,
-  bookingDate: true,
+  booking: true,
   type: true,
   maxTtr: true,
   age: true,
@@ -193,11 +209,15 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   technician: true,
   statusInsera: true,
   statusDompis: true,
+  comply: true,
+  actions: true,
 };
 
 function TicketTableSemestaLoadingMobile() {
   return (
-    <phantom-ui suppressHydrationWarning fallback-radius={8}
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
@@ -241,7 +261,9 @@ function TicketTableSemestaLoadingMobile() {
 
 function TicketTableSemestaLoadingDesktop({ label }: { label: string }) {
   return (
-    <phantom-ui suppressHydrationWarning fallback-radius={8}
+    <phantom-ui
+      suppressHydrationWarning
+      fallback-radius={8}
       loading
       animation='shimmer'
       reveal={0.12}
@@ -335,7 +357,7 @@ export default function TicketTableSemesta({
 
   type TicketItem = TicketRow;
 
-const handleOpenDrawer = useCallback((ticket: TicketItem) => {
+  const handleOpenDrawer = useCallback((ticket: TicketItem) => {
     if (!ticket || !ticket.idTicket) return;
     setDrawerTicket({
       idTicket: ticket.idTicket,
@@ -350,8 +372,12 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       ctype: ticket.ctype,
       customerType: ticket.customerType ?? '',
       workzone: ticket.workzone ?? '',
-      status: ticket.status_update ?? ticket.status_update ?? ticket.status ?? '',
-      hasilVisit: (ticket.hasilVisit ?? null) as Exclude<DrawerTicket, null>['hasilVisit'],
+      status:
+        ticket.status_update ?? ticket.status_update ?? ticket.status ?? '',
+      hasilVisit: (ticket.hasilVisit ?? null) as Exclude<
+        DrawerTicket,
+        null
+      >['hasilVisit'],
       status_update: ticket.status_update ?? ticket.status_update ?? null,
       jenisTiket: ticket.jenisTiket ?? '',
       maxTtrReguler: ticket.maxTtrReguler ?? null,
@@ -375,20 +401,21 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
     try {
       const params = new URLSearchParams();
       params.set('format', downloadFormat);
-      params.set('dept', downloadFilters.dept === 'neutral' ? 'netral' : downloadFilters.dept);
 
       if (downloadFilters.search) params.set('search', downloadFilters.search);
-      if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
-      if (downloadFilters.branch) params.set('branch', downloadFilters.branch);
-      if (downloadFilters.ctype) params.set('ctype', downloadFilters.ctype);
-      if (downloadFilters.ticketType) params.set('ticketType', downloadFilters.ticketType);
-      if (downloadFilters.statusUpdate) params.set('statusUpdate', downloadFilters.statusUpdate);
-      if (downloadFilters.startDate) params.set('startDate', downloadFilters.startDate);
-      if (downloadFilters.endDate) params.set('endDate', downloadFilters.endDate);
+      if (downloadFilters.workzone)
+        params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.startDate)
+        params.set('startDate', downloadFilters.startDate);
+      if (downloadFilters.endDate)
+        params.set('endDate', downloadFilters.endDate);
 
-      const res = await fetchWithAuth(`/api/tickets/export?${params.toString()}`, {
-        timeoutMs: 120_000,
-      });
+      const res = await fetchWithAuth(
+        `/api/tickets/export?${params.toString()}`,
+        {
+          timeoutMs: 120_000,
+        },
+      );
       if (!res) {
         alert('Export gagal: session expired');
         return;
@@ -436,8 +463,18 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
       let aVal: any;
       let bVal: any;
       if (sortConfig.field === 'age') {
-        aVal = calculateAgeInHours(a.reportedDate, a.hasilVisit, a.closedAt, a.status);
-        bVal = calculateAgeInHours(b.reportedDate, b.hasilVisit, b.closedAt, b.status);
+        aVal = calculateAgeInHours(
+          a.reportedDate,
+          a.hasilVisit,
+          a.closedAt,
+          a.status,
+        );
+        bVal = calculateAgeInHours(
+          b.reportedDate,
+          b.hasilVisit,
+          b.closedAt,
+          b.status,
+        );
       } else {
         aVal = a[sortConfig.field as keyof typeof a];
         bVal = b[sortConfig.field as keyof typeof b];
@@ -475,129 +512,138 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                   className='group rounded-3xl border border-(--border) bg-(--surface) p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400/20 hover:shadow-md sm:p-4'
                 >
                   <div className='flex items-start justify-between gap-2 sm:gap-3'>
-                          <div className='min-w-0 flex-1'>
-                            <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
-                              <p className='truncate text-sm font-semibold text-(--text-primary)'>
-                                {ticket.ticket || '-'}
-                              </p>
-                              <span className='text-xs text-(--text-muted)'>
-                                {ticket.reportedDate
-                                  ? formatDate(ticket.reportedDate)
-                                  : '-'}
-                              </span>
-                            </div>
-                            <p className='mt-1 truncate text-sm text-(--text-secondary)'>
-                              {ticket.summary || '-'}
-                            </p>
-                          </div>
-
-                          <div className='flex shrink-0 flex-col items-end gap-1'>
-                            <Badge
-                              size='sm'
-                              color={getStatusColor(ticket.hasilVisit || '')}
-                            >
-                              {ticket.hasilVisit || '-'}
-                            </Badge>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
-                            >
-                              {getTicketAge(ticket)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-(--text-secondary) sm:grid-cols-2'>
-                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-                            <Hash className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
-                            <div className='min-w-0'>
-                              <p className='text-[11px] text-(--text-muted)'>Service</p>
-                              <p className='truncate font-semibold'>
-                                {ticket.serviceNo || '-'}
-                              </p>
-                            </div>
-                          </div>
-                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-                            <MapPin className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
-                            <div className='min-w-0'>
-                              <p className='text-[11px] text-(--text-muted)'>Workzone</p>
-                              <p className='truncate font-semibold'>
-                                {ticket.workzone || '-'}
-                              </p>
-                            </div>
-                          </div>
-                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-                            <User className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
-                            <div className='min-w-0'>
-                              <p className='text-[11px] text-(--text-muted)'>Type</p>
-                              <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
-                            </div>
-                          </div>
-                          <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
-                            <Clock3 className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
-                            <div className='min-w-0'>
-                              <p className='text-[11px] text-(--text-muted)'>Max TTR</p>
-                              <MaxTtrCell ticket={ticket} />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className='mt-3 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--bg) p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
-                          <div className='min-w-0'>
-                            <p className='text-[11px] text-(--text-muted)'>Customer</p>
-                            <p className='truncate text-sm font-semibold text-(--text-primary)'>
-                              {ticket.contactName || '-'}
-                            </p>
-                          </div>
-                          <div className='min-w-0 text-right sm:shrink-0'>
-                            <p className='text-[11px] text-(--text-muted)'>Phone</p>
-                            <p className='inline-flex items-center gap-1 text-sm font-medium text-(--text-secondary)'>
-                              <Phone className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
-                              <span className='tabular-nums'>
-                                {ticket.contactPhone || '-'}
-                              </span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className='mt-3 flex items-center justify-between gap-3'>
-                          <div className='min-w-0 flex-1'>
-                            <p className='text-[11px] text-(--text-muted)'>Technician</p>
-                            <p className='truncate text-sm font-medium text-(--text-primary)'>
-                              {ticket.technicianName || (
-                                <span className='italic text-(--text-muted)'>
-                                  Unassigned
-                                </span>
-                              )}
-                            </p>
-                            <p className='mt-0.5 text-xs text-(--text-muted)'>
-                              Jenis tiket: {ticket.jenisTiket || '-'}
-                            </p>
-                            <div className='mt-2 flex flex-wrap gap-2'>
-                              <span
-                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status || '')}`}
-                              >
-                                Insera: {getStatusLabel(ticket.status || '')}
-                              </span>
-                              <span
-                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status_update || '')}`}
-                              >
-                                Dompis:{' '}
-                                {getStatusLabel(ticket.status_update || '')}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleOpenDrawer(ticket)}
-                            className='flex shrink-0 items-center gap-1.5 rounded-2xl border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-500/5 hover:text-blue-600'
-                          >
-                            <Eye size={13} />
-                            Detail
-                          </button>
-                        </div>
+                    <div className='min-w-0 flex-1'>
+                      <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
+                        <p className='truncate text-sm font-semibold text-(--text-primary)'>
+                          {ticket.ticket || '-'}
+                        </p>
+                        <span className='text-xs text-(--text-muted)'>
+                          {ticket.reportedDate
+                            ? formatDate(ticket.reportedDate)
+                            : '-'}
+                        </span>
                       </div>
-                    );
-                  })}
-                </>
+                      <p className='mt-1 truncate text-sm text-(--text-secondary)'>
+                        {ticket.summary || '-'}
+                      </p>
+                    </div>
+
+                    <div className='flex shrink-0 flex-col items-end gap-1'>
+                      <Badge
+                        size='sm'
+                        color={getStatusColor(ticket.hasilVisit || '')}
+                      >
+                        {ticket.hasilVisit || '-'}
+                      </Badge>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${getTicketAgeColorClass(ticket)}`}
+                      >
+                        {getTicketAge(ticket)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='mt-3 grid grid-cols-1 gap-2 text-xs text-(--text-secondary) sm:grid-cols-2'>
+                    <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                      <Hash className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+                      <div className='min-w-0'>
+                        <p className='text-[11px] text-(--text-muted)'>
+                          Service
+                        </p>
+                        <p className='truncate font-semibold'>
+                          {ticket.serviceNo || '-'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                      <MapPin className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+                      <div className='min-w-0'>
+                        <p className='text-[11px] text-(--text-muted)'>
+                          Workzone
+                        </p>
+                        <p className='truncate font-semibold'>
+                          {ticket.workzone || '-'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                      <User className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+                      <div className='min-w-0'>
+                        <p className='text-[11px] text-(--text-muted)'>Type</p>
+                        <CustomerTypeBadge ctype={ticket.ctype} size='sm' />
+                      </div>
+                    </div>
+                    <div className='flex items-center gap-2 rounded-2xl border border-(--border) bg-(--bg) px-2.5 py-2'>
+                      <Clock3 className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+                      <div className='min-w-0'>
+                        <p className='text-[11px] text-(--text-muted)'>
+                          Max TTR
+                        </p>
+                        <MaxTtrCell ticket={ticket} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='mt-3 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--bg) p-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-3 sm:py-2'>
+                    <div className='min-w-0'>
+                      <p className='text-[11px] text-(--text-muted)'>
+                        Customer
+                      </p>
+                      <p className='truncate text-sm font-semibold text-(--text-primary)'>
+                        {ticket.contactName || '-'}
+                      </p>
+                    </div>
+                    <div className='min-w-0 text-right sm:shrink-0'>
+                      <p className='text-[11px] text-(--text-muted)'>Phone</p>
+                      <p className='inline-flex items-center gap-1 text-sm font-medium text-(--text-secondary)'>
+                        <Phone className='h-3.5 w-3.5 text-(--text-muted) sm:h-4 sm:w-4' />
+                        <span className='tabular-nums'>
+                          {ticket.contactPhone || '-'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className='mt-3 flex items-center justify-between gap-3'>
+                    <div className='min-w-0 flex-1'>
+                      <p className='text-[11px] text-(--text-muted)'>
+                        Technician
+                      </p>
+                      <p className='truncate text-sm font-medium text-(--text-primary)'>
+                        {ticket.technicianName || (
+                          <span className='text-(--text-muted) italic'>
+                            Unassigned
+                          </span>
+                        )}
+                      </p>
+                      <p className='mt-0.5 text-xs text-(--text-muted)'>
+                        Jenis tiket: {ticket.jenisTiket || '-'}
+                      </p>
+                      <div className='mt-2 flex flex-wrap gap-2'>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status || '')}`}
+                        >
+                          Insera: {getStatusLabel(ticket.status || '')}
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase badge-${getStatusColor(ticket.status_update || '')}`}
+                        >
+                          Dompis: {getStatusLabel(ticket.status_update || '')}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleOpenDrawer(ticket)}
+                      className='flex shrink-0 items-center gap-1.5 rounded-2xl border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition hover:border-blue-300 hover:bg-blue-500/5 hover:text-blue-600'
+                    >
+                      <Eye size={13} />
+                      Detail
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </>
         )}
       </div>
 
@@ -607,11 +653,9 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
           {/* Table toolbar */}
           <div className='flex flex-col gap-3 border-b border-(--border) bg-(--surface-2) px-4 py-4 lg:flex-row lg:items-center lg:justify-between'>
             <div>
-              <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                Live Table
-              </p>
               <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                {pagination?.total ?? sortedTickets.length} tiket in the current scope
+                {pagination?.total ?? sortedTickets.length} tiket in the current
+                scope
               </p>
             </div>
 
@@ -648,38 +692,62 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
             <table className='w-full text-sm'>
               <thead className='bg-surface-2 text-xs font-semibold tracking-wide text-(--text-secondary) uppercase'>
                 <tr>
-                  <th className='w-10 px-3 py-3 text-center'>#</th>
-                  <th className='w-16 px-3 py-3 text-center'>No</th>
-                  {renderSortableHeader('Ticket', 'ticket')}
+                  {visibleCols.rank && (
+                    <th className='w-10 px-3 py-3 text-center'>
+                      {COL_LABELS.rank}
+                    </th>
+                  )}
+                  {visibleCols.ticket &&
+                    renderSortableHeader(COL_LABELS.ticket, 'ticket')}
                   {visibleCols.service &&
-                    renderSortableHeader('Service', 'serviceNo')}
+                    renderSortableHeader(COL_LABELS.service, 'serviceNo')}
                   {visibleCols.customer &&
-                    renderSortableHeader('Customer', 'contactName')}
+                    renderSortableHeader(COL_LABELS.customer, 'contactName')}
                   {visibleCols.address && (
-                    <th className='px-3 py-3 text-center'>Address</th>
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.address}
+                    </th>
                   )}
-                  {visibleCols.bookingDate &&
-                    renderSortableHeader('Booking Date', 'bookingDate')}
+                  {visibleCols.booking &&
+                    renderSortableHeader(COL_LABELS.booking, 'bookingDate')}
                   {visibleCols.type &&
-                    renderSortableHeader('Type', 'customerType')}
+                    renderSortableHeader(COL_LABELS.type, 'customerType')}
                   {visibleCols.maxTtr && (
-                    <th className='px-3 py-3 text-center'>Max TTR</th>
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.maxTtr}
+                    </th>
                   )}
-                  {visibleCols.age && renderSortableHeader('Age / SLA', 'age')}
+                  {visibleCols.age &&
+                    renderSortableHeader(COL_LABELS.age, 'age')}
                   {visibleCols.jenis &&
-                    renderSortableHeader('Jenis Tiket', 'jenisTiket')}
+                    renderSortableHeader(COL_LABELS.jenis, 'jenisTiket')}
                   {visibleCols.workzone &&
-                    renderSortableHeader('Workzone', 'workzone')}
+                    renderSortableHeader(COL_LABELS.workzone, 'workzone')}
                   {visibleCols.technician &&
-                    renderSortableHeader('Teknisi', 'technicianName')}
+                    renderSortableHeader(
+                      COL_LABELS.technician,
+                      'technicianName',
+                    )}
                   {visibleCols.statusInsera && (
-                    <th className='px-3 py-3 text-center'>Status Insera</th>
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.statusInsera}
+                    </th>
                   )}
                   {visibleCols.statusDompis && (
-                    <th className='px-3 py-3 text-center'>Status Dompis</th>
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.statusDompis}
+                    </th>
                   )}
-                  {/* Detail column */}
-                  <th className='px-3 py-3 text-center'>Aksi</th>
+                  {visibleCols.comply && (
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.comply}
+                    </th>
+                  )}
+                  {visibleCols.actions && (
+                    <th className='px-3 py-3 text-center'>
+                      {COL_LABELS.actions}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className='divide-y divide-(--border)'>
@@ -719,7 +787,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                       ticket.hasilVisit,
                       ticket.closedAt,
                     );
-                    const globalIndex = idx + 1;
+                    const globalIndex = (currentPage - 1) * pageSize + idx + 1;
 
                     return (
                       <TicketRowSemesta
@@ -733,7 +801,7 @@ const handleOpenDrawer = useCallback((ticket: TicketItem) => {
                             toggleExpand(ticketId as number);
                           }
                         }}
-                        rowNumber={globalIndex}
+                        rank={globalIndex}
                         ticketAge={ageFormatted}
                         severity={severity}
                         slaLabel={slaLabel}

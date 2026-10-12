@@ -49,7 +49,7 @@ export default function DateRangePicker({
       onChange({ from: startOfDay(subDays(now, 29)), to: endOfDay(now) });
       return;
     }
-    // month
+    // month: tanggal 1 bulan ini hingga hari ini
     onChange({
       from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)),
       to: endOfDay(now),

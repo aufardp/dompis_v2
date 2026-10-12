@@ -20,6 +20,7 @@ export interface TicketRowSemestaProps {
     idTicket?: number;
     ticket?: string;
     serviceNo?: string;
+    ticketIdGamas?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
     alamat?: string | null;
@@ -28,6 +29,7 @@ export interface TicketRowSemestaProps {
     customerType?: string;
     summary?: string;
     jenisTiket?: string;
+    jenisTiket1?: string | null;
     workzone?: string;
     technicianName?: string | null;
     teknisiUserId?: number | null;
@@ -42,10 +44,12 @@ export interface TicketRowSemestaProps {
     maxTtrDiamond?: string | null;
     flaggingManja?: string | null;
     guaranteeStatus?: string | null;
+    sqmUpdateReason?: string | null;
+    ttrComplyStatus?: string | null;
   };
   isExpanded?: boolean;
   onToggleExpand?: () => void;
-  rowNumber?: number;
+  rank?: number;
   ticketAge?: string;
   severity?: TicketSeverity;
   slaLabel?: 'On Track' | 'At Risk' | 'Overdue';
@@ -73,7 +77,7 @@ export default function TicketRowSemesta({
   ticket,
   isExpanded = false,
   onToggleExpand,
-  rowNumber = 0,
+  rank = 0,
   ticketAge,
   severity = 'normal',
   slaLabel,
@@ -82,12 +86,19 @@ export default function TicketRowSemesta({
   const severityStyles = SEVERITY_COLORS[severity];
 
   const sla = slaLabel ? SLA_STYLES[slaLabel] : null;
+  const isClosed = (ticket.status_update || '').toLowerCase().includes('close');
   const techInitial = ticket.technicianName?.charAt(0).toUpperCase();
 
   const isGuarantee =
     String(ticket.guaranteeStatus ?? '')
       .trim()
       .toLowerCase() === 'guarantee';
+  const gamasId = String(ticket.ticketIdGamas ?? '').trim();
+  const hasValidGamasId =
+    gamasId !== '' &&
+    !['-', '--', 'null', 'undefined', 'n/a', 'na'].includes(
+      gamasId.toLowerCase(),
+    );
   const flagLabel = getEffectiveFlaggingLabel(ticket);
 
   const handleDetailClick = () => {
@@ -104,26 +115,27 @@ export default function TicketRowSemesta({
           'hover:bg-surface-2',
         )}
       >
-        {/* Expand toggle */}
-        <td className='w-10 px-3 py-3 text-center'>
-          <button
-            onClick={handleDetailClick}
-            className='flex items-center justify-center rounded-md p-1 text-(--text-secondary) transition hover:bg-(--border) hover:text-(--text-primary)'
-            title={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            {isExpanded ? (
-              <ChevronUp className='h-4 w-4' />
-            ) : (
-              <ChevronDown className='h-4 w-4' />
-            )}
-          </button>
-        </td>
-
-        {/* Row Number */}
+        {/* Rank */}
         <td className='px-3 py-3 text-center'>
-          <span className='font-mono text-xs font-bold text-(--text-primary)'>
-            #{rowNumber}
-          </span>
+          <div className='flex items-center justify-center gap-1.5'>
+            <span
+              className={clsx(
+                'h-4 w-1 rounded-full',
+                severityStyles.border.replace('border-l-', 'bg-'),
+              )}
+              style={{
+                background:
+                  severity === 'critical'
+                    ? '#ef4444'
+                    : severity === 'warning'
+                      ? '#f59e0b'
+                      : '#94a3b8',
+              }}
+            />
+            <span className='font-mono text-sm font-bold text-(--text-primary)'>
+              #{rank ?? '-'}
+            </span>
+          </div>
         </td>
 
         {/* Ticket ID + date */}
@@ -140,13 +152,18 @@ export default function TicketRowSemesta({
 
         {/* Service No */}
         <td className='px-4 py-3 text-center'>
-          <div className='inline-flex items-center justify-center gap-2'>
+          <div className='inline-flex flex-wrap items-center justify-center gap-1'>
             <span className='font-mono text-xs text-(--text-primary)'>
               {ticket.serviceNo ?? '-'}
             </span>
             {isGuarantee && (
               <span className='rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/15 dark:text-rose-400'>
                 FFG
+              </span>
+            )}
+            {hasValidGamasId && (
+              <span className='rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/15 dark:text-sky-400'>
+                GAMAS {gamasId}
               </span>
             )}
           </div>
@@ -199,7 +216,7 @@ export default function TicketRowSemesta({
                     ? 'Manja H+'
                     : flagLabel === 'EXPIRED'
                       ? 'Manja Expired'
-                    : flagLabel}
+                      : flagLabel}
               </span>
             )}
           </div>
@@ -310,6 +327,21 @@ export default function TicketRowSemesta({
           >
             {getStatusLabel(ticket.status_update ?? '')}
           </span>
+        </td>
+
+        {/* Comply */}
+        <td className='px-4 py-3 text-center'>
+          {ticket.ttrComplyStatus === 'comply' ? (
+            <span className='rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'>
+              Comply
+            </span>
+          ) : ticket.ttrComplyStatus === 'not_comply' ? (
+            <span className='rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-400'>
+              Not Comply
+            </span>
+          ) : (
+            <span className='text-xs text-(--text-secondary) italic'>-</span>
+          )}
         </td>
 
         {/* Action: Detail only */}
