@@ -69,6 +69,8 @@ export interface AdminTicketTableSemestaProps {
     workzone?: string;
     startDate?: string;
     endDate?: string;
+    ticketStatus?: string[];
+    ticketType?: string[];
   };
 }
 
@@ -409,6 +411,13 @@ export default function TicketTableSemesta({
         params.set('startDate', downloadFilters.startDate);
       if (downloadFilters.endDate)
         params.set('endDate', downloadFilters.endDate);
+
+      if (downloadFilters.ticketStatus && downloadFilters.ticketStatus.length > 0) {
+        downloadFilters.ticketStatus.forEach((s) => params.append('ticketStatus', s));
+      }
+      if (downloadFilters.ticketType && downloadFilters.ticketType.length > 0) {
+        downloadFilters.ticketType.forEach((t) => params.append('ticketType', t));
+      }
 
       const res = await fetchWithAuth(
         `/api/tickets/export?${params.toString()}`,

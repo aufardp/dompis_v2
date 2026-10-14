@@ -908,6 +908,7 @@ export class TicketService {
       search = '',
       searchType,
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
       workzone,
@@ -921,6 +922,7 @@ export class TicketService {
     const where = await this.buildTicketWhere(role, userId, {
       search,
       statusUpdate,
+      ticketStatus,
       dept,
       ticketType,
       workzone,

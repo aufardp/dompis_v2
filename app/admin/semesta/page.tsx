@@ -769,6 +769,8 @@ export default function SemestaPage() {
                   workzone: workzoneFilter || undefined,
                   startDate,
                   endDate,
+                  ticketStatus: ticketStatusFilter,
+                  ticketType: jenisTicket1Filter,
                 }}
                 pagination={{
                   currentPage: pagination.currentPage,

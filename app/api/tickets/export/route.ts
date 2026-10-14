@@ -229,7 +229,8 @@ export async function GET(request: Request) {
     const workzone = searchParams.get('workzone') || undefined;
     const ctype = searchParams.get('ctype') || undefined;
     const statusUpdate = searchParams.get('statusUpdate') || undefined;
-    const ticketType = searchParams.get('ticketType') || undefined;
+    const ticketStatus = searchParams.getAll('ticketStatus');
+    const ticketType = searchParams.getAll('ticketType');
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
 
@@ -240,6 +241,7 @@ export async function GET(request: Request) {
       ctype,
       statusUpdate,
       dept,
+      ticketStatus,
       ticketType,
       startDate,
       endDate,
