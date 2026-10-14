@@ -21,6 +21,7 @@ import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
+import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
 import { CheckboxDropdown } from './components/filters/CheckboxDropdown';
 import { JENIS_TIKET_LIST } from '@/app/config/jenis-tiket';
 import {
@@ -341,6 +342,9 @@ export default function SemestaPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope();
+  // Topbar filter branch — URL is the source of truth, so the Semesta scope
+  // follows whatever branch is selected globally.
+  const { branch: branchFilter } = usePersistentBranchScope();
   const [jenisTicket1Filter, setJenisTicket1Filter] = useState<string[]>([
     'all',
   ]);
@@ -372,11 +376,12 @@ export default function SemestaPage() {
       startDate,
       endDate,
       workzone: workzoneFilter || undefined,
+      branchId: branchFilter || undefined,
       ticketType: jenisTicket1Filter.includes('all')
         ? undefined
         : jenisTicket1Filter.join(','),
     }),
-    [startDate, endDate, workzoneFilter, jenisTicket1Filter],
+    [startDate, endDate, workzoneFilter, branchFilter, jenisTicket1Filter],
   );
 
   // --- Ticket table ---
@@ -393,6 +398,7 @@ export default function SemestaPage() {
     jenisTicket1Filter.includes('all') ? undefined : jenisTicket1Filter,
     startDate,
     endDate,
+    branchFilter || undefined,
   );
 
   // --- V2 analytics hook ---
@@ -498,6 +504,8 @@ export default function SemestaPage() {
       ? 1
       : 0) +
     (workzoneFilter ? 1 : 0) +
+    // Branch comes from the topbar and is cleared globally, not from the
+    // Filter Workspace reset button — so don't count it here.
     (dateFilterActive ? 1 : 0);
 
   const ticketTableData = tickets.map((t) => ({
@@ -716,7 +724,7 @@ export default function SemestaPage() {
                   </p>
                 </div>
                 <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
-                  V2 Analytics
+                  Analytics
                 </span>
               </div>
             </div>
@@ -771,6 +779,7 @@ export default function SemestaPage() {
                   endDate,
                   ticketStatus: ticketStatusFilter,
                   ticketType: jenisTicket1Filter,
+                  branchId: branchFilter || undefined,
                 }}
                 pagination={{
                   currentPage: pagination.currentPage,

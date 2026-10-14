@@ -62,6 +62,7 @@ export async function GET(request: Request) {
       jenisTicket1,
       ticketType,
       workzone: searchParams.get('workzone') || undefined,
+      branchId: searchParams.get('branch') || searchParams.get('branchId') || undefined,
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,

@@ -4,6 +4,7 @@ import prisma from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import {
+  getBranchServiceAreaNames,
   getWorkzonesForUser,
   resolveWorkzoneName,
 } from '../../helpers/ticket.helpers';
@@ -29,6 +30,7 @@ import {
 import {
   buildOperationalBucketWhere,
 } from './ticket-buckets';
+import { applyBranchScopeWhere } from './daily-ticket-where';
 import {
   getJenisWhereClause,
   JENIS_LABELS,
@@ -37,6 +39,48 @@ import {
   type JenisKey,
 } from '@/app/config/jenis-tiket';
 import { classifyTicket } from '@/app/libs/tickets/jenis';
+
+/**
+ * Column set shared by the buffered XLSX export and the streaming CSV export.
+ * Kept in one place so both formats always emit the same fields.
+ */
+const EXPORT_TICKET_SELECT = {
+  id_ticket: true,
+  incident: true,
+  summary: true,
+  reported_date: true,
+  owner_group: true,
+  service_type: true,
+  service_no: true,
+  contact_name: true,
+  contact_phone: true,
+  booking_date: true,
+  workzone: true,
+  customer_type: true,
+  customer_segment: true,
+  jenis_tiket_2: true,
+  flagging_manja: true,
+  guarantee_status: true,
+  status_update: true,
+  status_date: true,
+  status: true,
+  worklog_summary: true,
+  symptom: true,
+  alamat: true,
+  device_name: true,
+  pending_dompis: true,
+  sqm_update_reason: true,
+  source_ticket: true,
+  description_solution_dompis: true,
+  rca: true,
+  sub_rca: true,
+  closed_at: true,
+  teknisi_user_id: true,
+  ticket_id_gamas: true,
+  users: { select: { nama: true } },
+  jenis_tiket_1: true,
+  ttr_comply_status: true,
+} as const;
 
 type TicketFilters = {
   search?: string;
@@ -48,6 +92,7 @@ type TicketFilters = {
   jenisTicket1?: string | string[];
   operationalBucket?: string;
   workzone?: number | string;
+  branchId?: number | string;
   ctype?: string;
   startDate?: string;
   endDate?: string;
@@ -601,6 +646,7 @@ export class TicketService {
       jenisTicket1,
       operationalBucket,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
@@ -612,6 +658,8 @@ export class TicketService {
       ...(await this.buildWorkzoneWhere(role, userId, selectedWorkzone)),
     };
 
+    await applyBranchScopeWhere(where, branchId);
+
     const andClauses: Record<string, any>[] = [];
 
     const searchWhere = buildTicketSearchWhere(search, searchType);
@@ -622,10 +670,21 @@ export class TicketService {
     // dateRange filter: 'today' -> reported_date >= today 00:00 WIB
     //                  'thisMonth' -> closed_at >= first day of month 00:00 WIB
     //                  'all' or undefined -> no date filter
+    //
+    // Range filters go through `reported_date_dt` (DATETIME), not the
+    // `reported_date` VARCHAR. Two reasons:
+    //  - String comparison on the VARCHAR defeats every index: MySQL fell back
+    //    to a full scan of all 829k rows (28s for a 6-month analytics query).
+    //  - The VARCHAR holds two formats ("2026-09-13 11:35:19" and
+    //    "13/09/2026 11:35"). Lexically, "13/09/..." < "2026-...", so every
+    //    slash-format row silently fell outside any date range and never
+    //    appeared in the dashboard at all.
+    // Now that reported_date_dt is backfilled for every row, both problems
+    // are gone and the range finally includes all tickets.
     if (dateRange === 'today') {
       const { start } = getTodayWibRange();
       andClauses.push({
-        reported_date: { gte: start },
+        reported_date_dt: { gte: start },
       });
     } else if (dateRange === 'thisMonth') {
       const now = nowWib();
@@ -637,18 +696,18 @@ export class TicketService {
       // Legacy startDate/endDate support
       if (startDate && endDate) {
         andClauses.push({
-          reported_date: {
-            gte: startDate,
-            lte: `${endDate} 23:59:59`,
+          reported_date_dt: {
+            gte: new Date(`${startDate}T00:00:00+07:00`),
+            lte: new Date(`${endDate}T23:59:59+07:00`),
           },
         });
       } else if (startDate) {
         andClauses.push({
-          reported_date: { gte: startDate },
+          reported_date_dt: { gte: new Date(`${startDate}T00:00:00+07:00`) },
         });
       } else if (endDate) {
         andClauses.push({
-          reported_date: { lte: `${endDate} 23:59:59` },
+          reported_date_dt: { lte: new Date(`${endDate}T23:59:59+07:00`) },
         });
       }
     }
@@ -734,6 +793,7 @@ export class TicketService {
       ticketType,
       jenisTicket1,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
@@ -753,6 +813,7 @@ export class TicketService {
       ticketType,
       jenisTicket1,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
@@ -899,10 +960,14 @@ export class TicketService {
     };
   }
 
-  static async getExportTickets(
+  /**
+   * Shared WHERE for exports. Split out of getExportTickets so the streaming
+   * CSV path can count and then page through rows with the exact same filter.
+   */
+  private static async buildExportWhere(
     role: string,
     userId: number,
-    filters?: TicketFilters & { maxRows?: number },
+    filters: TicketFilters | undefined,
   ) {
     const {
       search = '',
@@ -912,25 +977,79 @@ export class TicketService {
       dept,
       ticketType,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
-      maxRows = 10000,
     } = filters ?? {};
 
-    const safeLimit = Math.min(maxRows, Math.max(1, Math.floor(maxRows)));
-    const where = await this.buildTicketWhere(role, userId, {
+    return this.buildTicketWhere(role, userId, {
       search,
       statusUpdate,
       ticketStatus,
       dept,
       ticketType,
       workzone,
+      branchId,
       ctype,
       startDate,
       endDate,
       searchType,
     });
+  }
+
+  static async countExportTickets(
+    role: string,
+    userId: number,
+    filters?: TicketFilters,
+  ): Promise<number> {
+    const where = await this.buildExportWhere(role, userId, filters);
+    return prisma.ticket.count({ where });
+  }
+
+  /**
+   * Yields export rows in keyset-paginated chunks. CSV exports stream through
+   * this so peak memory stays at one chunk instead of the whole result set —
+   * `OFFSET` paging would degrade badly past a few hundred thousand rows.
+   */
+  static async *iterateExportTickets(
+    role: string,
+    userId: number,
+    filters: TicketFilters | undefined,
+    maxRows: number,
+    chunkSize = 2000,
+  ): AsyncGenerator<Array<Record<string, unknown>>> {
+    const where = await this.buildExportWhere(role, userId, filters);
+    let emitted = 0;
+    let cursorId = 0;
+
+    while (emitted < maxRows) {
+      const take = Math.min(chunkSize, maxRows - emitted);
+      const rows = await prisma.ticket.findMany({
+        where: { AND: [where, { id_ticket: { gt: cursorId } }] },
+        select: EXPORT_TICKET_SELECT,
+        orderBy: { id_ticket: 'asc' },
+        take,
+      });
+      if (rows.length === 0) return;
+
+      cursorId = Number((rows[rows.length - 1] as { id_ticket: number }).id_ticket);
+      emitted += rows.length;
+      yield rows as unknown as Array<Record<string, unknown>>;
+
+      if (rows.length < take) return;
+    }
+  }
+
+  static async getExportTickets(
+    role: string,
+    userId: number,
+    filters?: TicketFilters & { maxRows?: number },
+  ) {
+    const { maxRows = 10000 } = filters ?? {};
+
+    const safeLimit = Math.min(maxRows, Math.max(1, Math.floor(maxRows)));
+    const where = await this.buildExportWhere(role, userId, filters);
 
     if (maxRows > 0) {
       const total = await prisma.ticket.count({ where });
@@ -944,45 +1063,7 @@ export class TicketService {
 
     const tickets = await prisma.ticket.findMany({
       where,
-      select: {
-        id_ticket: true,
-        incident: true,
-        summary: true,
-        reported_date: true,
-        owner_group: true,
-        service_type: true,
-        service_no: true,
-        contact_name: true,
-        contact_phone: true,
-        booking_date: true,
-        workzone: true,
-        customer_type: true,
-        customer_segment: true,
-        jenis_tiket_2: true,
-        flagging_manja: true,
-        guarantee_status: true,
-        status_update: true,
-        status_date: true,
-        status: true,
-        worklog_summary: true,
-        symptom: true,
-        alamat: true,
-        device_name: true,
-        pending_dompis: true,
-        sqm_update_reason: true,
-        source_ticket: true,
-        description_solution_dompis: true,
-        rca: true,
-        sub_rca: true,
-        closed_at: true,
-        teknisi_user_id: true,
-        ticket_id_gamas: true,
-        users: {
-          select: { nama: true },
-        },
-        jenis_tiket_1: true,
-        ttr_comply_status: true,
-      },
+      select: EXPORT_TICKET_SELECT,
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
       take: safeLimit,
     });
@@ -997,6 +1078,7 @@ export class TicketService {
       startDate?: string;
       endDate?: string;
       workzone?: string;
+      branchId?: string;
       dept?: string;
       ticketType?: string | string[];
     },
@@ -1005,6 +1087,7 @@ export class TicketService {
       startDate: filters?.startDate,
       endDate: filters?.endDate,
       workzone: filters?.workzone,
+      branchId: filters?.branchId,
       dept: filters?.dept,
       ticketType: filters?.ticketType,
     });
@@ -1032,6 +1115,10 @@ export class TicketService {
     });
 
     // --- WORKZONE FILTER for raw SQL queries ---
+    // `filters.workzone` arriving here is a service-area ID (what the topbar
+    // select emits), but these queries compare against `ticket.workzone`, which
+    // stores the workzone NAME — so resolve it first or the filter matches
+    // nothing.
     const workzoneFilter = await (async (): Promise<{
       gaul: Prisma.Sql;
       lapul: Prisma.Sql;
@@ -1039,39 +1126,60 @@ export class TicketService {
     }> => {
       const noAccess = { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: true };
 
-      if (role === 'superadmin' || role === 'super_admin') {
-        if (filters?.workzone) {
-          const eq = Prisma.sql`= ${filters.workzone}`;
-          return {
-            gaul: Prisma.sql`AND t1.workzone ${eq}`,
-            lapul: Prisma.sql`AND t.workzone ${eq}`,
-            skip: false,
-          };
+      const selectedWorkzone = filters?.workzone
+        ? await this.resolveSelectedWorkzone(filters.workzone)
+        : null;
+
+      // Mirror buildTicketWhere: role workzone scope, then the explicitly selected
+      // workzone, then branch (which intersects whatever is left). Keeping the
+      // same order here keeps these raw SQL queries consistent with the Prisma
+      // groupBy above.
+      const roleWorkzones =
+        role === 'superadmin' || role === 'super_admin'
+          ? null
+          : await getWorkzonesForUser(userId);
+
+      if (roleWorkzones && roleWorkzones.length === 0) return noAccess;
+
+      let scoped: string[] | null = roleWorkzones;
+      if (selectedWorkzone) {
+        if (roleWorkzones && !roleWorkzones.includes(selectedWorkzone)) {
+          return noAccess;
         }
-        return { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: false };
+        scoped = [selectedWorkzone];
       }
 
-      const userWorkzones = await getWorkzonesForUser(userId);
-      if (userWorkzones.length === 0) return noAccess;
-
-      if (filters?.workzone) {
-        if (userWorkzones.includes(filters.workzone)) {
-          const eq = Prisma.sql`= ${filters.workzone}`;
-          return {
-            gaul: Prisma.sql`AND t1.workzone ${eq}`,
-            lapul: Prisma.sql`AND t.workzone ${eq}`,
-            skip: false,
-          };
+      if (filters?.branchId) {
+        const branchId = Number(filters.branchId);
+        if (Number.isFinite(branchId) && branchId > 0) {
+          const branchSas = await getBranchServiceAreaNames(branchId);
+          if (branchSas.length === 0) return noAccess;
+          scoped = scoped
+            ? scoped.filter((wz) => branchSas.includes(wz))
+            : branchSas;
+          if (scoped.length === 0) return noAccess;
         }
-        return noAccess;
       }
 
-      const inClause = Prisma.sql`IN (${Prisma.join(userWorkzones)})`;
-      return {
-        gaul: Prisma.sql`AND t1.workzone ${inClause}`,
-        lapul: Prisma.sql`AND t.workzone ${inClause}`,
-        skip: false,
-      };
+      if (scoped && scoped.length === 1) {
+        const eq = Prisma.sql`= ${scoped[0]}`;
+        return {
+          gaul: Prisma.sql`AND t1.workzone ${eq}`,
+          lapul: Prisma.sql`AND t.workzone ${eq}`,
+          skip: false,
+        };
+      }
+
+      if (scoped) {
+        const inClause = Prisma.sql`IN (${Prisma.join(scoped)})`;
+        return {
+          gaul: Prisma.sql`AND t1.workzone ${inClause}`,
+          lapul: Prisma.sql`AND t.workzone ${inClause}`,
+          skip: false,
+        };
+      }
+
+      return { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: false };
     })();
 
     // --- QUERY 2: GAUL detection ---
@@ -1080,7 +1188,7 @@ export class TicketService {
       occurrences: bigint;
       workzone: string | null;
       last_incident: string;
-      last_date: string;
+      last_date: Date | string | null;
     }> = [];
     let gaulError = false;
 
@@ -1092,21 +1200,21 @@ export class TicketService {
             COUNT(DISTINCT t1.incident) AS occurrences,
             t1.workzone,
             MAX(t1.incident) AS last_incident,
-            MAX(t1.reported_date) AS last_date
+            MAX(t1.reported_date_dt) AS last_date
           FROM ticket t1
           WHERE t1.service_no IS NOT NULL
             AND t1.service_no != ''
             AND t1.service_no != 'NN'
-            AND t1.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
-            AND t1.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
+            AND t1.reported_date_dt >= ${rangeFrom}
+            AND t1.reported_date_dt <= ${rangeTo}
             ${workzoneFilter.gaul}
             AND EXISTS (
               SELECT 1 FROM ticket t2
               WHERE t2.service_no = t1.service_no
                 AND t2.incident != t1.incident
-                AND ABS(DATEDIFF(t2.reported_date, t1.reported_date)) <= 60
-                AND t2.reported_date >= ${format(rangeFrom, 'yyyy-MM-dd')}
-                AND t2.reported_date <= ${format(rangeTo, 'yyyy-MM-dd')}
+                AND ABS(DATEDIFF(t2.reported_date_dt, t1.reported_date_dt)) <= 60
+                AND t2.reported_date_dt >= ${rangeFrom}
+                AND t2.reported_date_dt <= ${rangeTo}
             )
           GROUP BY t1.service_no, t1.workzone
           ORDER BY occurrences DESC
@@ -1304,9 +1412,12 @@ export class TicketService {
     }));
 
     // Build gaul trend per date
+    // last_date comes from a DATETIME column, so it arrives as a JS Date in
+    // UTC. Slicing its toString() would bucket it by the UTC day, which is
+    // off by one for WIB (UTC+7) — format through the timezone helper instead.
     const gaulByDate = new Map<string, number>();
     for (const r of gaulRows) {
-      const d = String(r.last_date ?? '').slice(0, 10);
+      const d = toWibDateString(r.last_date);
       if (d) gaulByDate.set(d, (gaulByDate.get(d) ?? 0) + Number(r.occurrences));
     }
     const trendGaul = allDates.map(date => ({
@@ -1337,7 +1448,7 @@ export class TicketService {
         occurrences: Number(r.occurrences),
         workzone: r.workzone ?? '',
         lastIncident: r.last_incident,
-        lastDate: r.last_date,
+        lastDate: toWibDateString(r.last_date),
       })),
       topLapulIncidents: lapulRows.slice(0, 10).map(r => ({
         incident: r.incident,

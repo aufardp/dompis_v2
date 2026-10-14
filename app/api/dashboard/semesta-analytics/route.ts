@@ -53,6 +53,7 @@ export async function GET(request: Request) {
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
       workzone: searchParams.get('workzone') || undefined,
+      branchId: searchParams.get('branch') || searchParams.get('branchId') || undefined,
       dept: searchParams.get('dept') || undefined,
       ticketType: searchParams.getAll('ticketType').filter((s) => s !== 'all'),
     });

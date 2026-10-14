@@ -71,6 +71,7 @@ export interface AdminTicketTableSemestaProps {
     endDate?: string;
     ticketStatus?: string[];
     ticketType?: string[];
+    branchId?: string;
   };
 }
 
@@ -407,6 +408,8 @@ export default function TicketTableSemesta({
       if (downloadFilters.search) params.set('search', downloadFilters.search);
       if (downloadFilters.workzone)
         params.set('workzone', downloadFilters.workzone);
+      if (downloadFilters.branchId)
+        params.set('branch', downloadFilters.branchId);
       if (downloadFilters.startDate)
         params.set('startDate', downloadFilters.startDate);
       if (downloadFilters.endDate)
@@ -422,7 +425,11 @@ export default function TicketTableSemesta({
       const res = await fetchWithAuth(
         `/api/tickets/export?${params.toString()}`,
         {
-          timeoutMs: 120_000,
+          // The server streams CSV now, but the browser still assembles the
+          // whole file via res.blob() before saving it. A 500k-row CSV can
+          // take well over two minutes to build, so give CSV a much longer
+          // leash than the buffered XLSX path.
+          timeoutMs: downloadFormat === 'csv' ? 600_000 : 120_000,
         },
       );
       if (!res) {
@@ -669,30 +676,39 @@ export default function TicketTableSemesta({
             </div>
 
             {hasDownload && (
-              <div className='flex flex-wrap items-center gap-2'>
-                <select
-                  value={downloadFormat}
-                  onChange={(e) =>
-                    setDownloadFormat(e.target.value as 'csv' | 'xlsx')
-                  }
-                  className='h-9 rounded-2xl border border-(--border) bg-(--surface) px-3 text-xs font-semibold text-(--text-primary) outline-none'
-                >
-                  <option value='csv'>CSV</option>
-                  <option value='xlsx'>XLSX</option>
-                </select>
-                <button
-                  type='button'
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className='inline-flex h-9 items-center gap-2 rounded-2xl bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  {downloading ? (
-                    <Loader2 className='h-3.5 w-3.5 animate-spin' />
-                  ) : (
-                    <Download className='h-3.5 w-3.5' />
-                  )}
-                  Download
-                </button>
+              <div className='flex flex-col items-end gap-1.5'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <select
+                    value={downloadFormat}
+                    onChange={(e) =>
+                      setDownloadFormat(e.target.value as 'csv' | 'xlsx')
+                    }
+                    title='CSV menangani export besar (hingga 500.000 baris); XLSX dibatasi 50.000 baris'
+                    className='h-9 rounded-2xl border border-(--border) bg-(--surface) px-3 text-xs font-semibold text-(--text-primary) outline-none'
+                  >
+                    <option value='csv'>CSV — untuk data besar</option>
+                    <option value='xlsx'>XLSX — maks 50.000 baris</option>
+                  </select>
+                  <button
+                    type='button'
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className='inline-flex h-9 items-center gap-2 rounded-2xl bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60'
+                  >
+                    {downloading ? (
+                      <Loader2 className='h-3.5 w-3.5 animate-spin' />
+                    ) : (
+                      <Download className='h-3.5 w-3.5' />
+                    )}
+                    Download
+                  </button>
+                </div>
+                {downloadFormat === 'csv' && (
+                  <p className='text-[10px] text-(--text-muted)'>
+                    File bisa berukuran besar. Jangan tutup tab selama proses
+                    berjalan.
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -1,0 +1,197 @@
+[
+  {
+    "id_ticket": 1387651,
+    "incident": "#VALUE!",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 12728133,
+    "incident": "INC47652857",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 12728134,
+    "incident": "INC47652859",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 12728135,
+    "incident": "INC47652685",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 13479206,
+    "incident": "INCIDENT",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 21948695,
+    "incident": "#N/A",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729896,
+    "incident": "Nama Pelanggan : bapak supardi",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729897,
+    "incident": "NIK (hanya jika dibutuhkan) : (hanya boleh di isi untuk input DSC)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729898,
+    "incident": "CP :628123135227",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729899,
+    "incident": "Email :",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729900,
+    "incident": "OrderID Dan status stuck order (untuk kendala stuck order/order tidak jalan)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729901,
+    "incident": "Tgl Kejadian : 24 april 2026",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729902,
+    "incident": "Detail case : tbc dan obsolete ZTE F609",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729903,
+    "incident": "Capt lightshoot :https://prnt.sc/zSWB7ahA133",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729904,
+    "incident": "Loker : CC SMG",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729905,
+    "incident": "Solusi : add note tiket",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729906,
+    "incident": "Pool ID : network",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729907,
+    "incident": "Lapul :",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729908,
+    "incident": "Gaul :",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27729909,
+    "incident": "Hasil cek tools terakhir :https://prnt.sc/zSWB7ahA133",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784321,
+    "incident": "Tanggal cek tools : 24 april 2026",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784322,
+    "incident": "Note : (Tambahan dari pelanggan)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784323,
+    "incident": "KATEGORI : (pilih salah satu KATEGORI URGENSI CASE)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784324,
+    "incident": "Status Nomor di DSC: (khusus Case Teknis)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784325,
+    "incident": "Sub Status: (khusus Case Teknis)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784326,
+    "incident": "Status Pembayaran: (khusus Case Teknis)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784327,
+    "incident": "KKontak : (khusus CAPS)",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784328,
+    "incident": "#RESTRIKSISQM",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784329,
+    "incident": "Jam Caring: -",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784330,
+    "incident": "Hasil Caring: Tidak dihubungi",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784331,
+    "incident": "Update Caring: 1-QHLQZAH INC48527249 BACKEND",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784332,
+    "incident": "kami cek jaringan masih terpantau down moban kawal perbaikan secepatnya",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784333,
+    "incident": "https://prnt.sc/WrA-USyQI9kV",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 27784334,
+    "incident": "#23255899_OBC Repeat Call",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 41685876,
+    "incident": "INC49018213",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 42747563,
+    "incident": "#REF!",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 42747564,
+    "incident": "a",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 69450799,
+    "incident": "One",
+    "reported_date": ""
+  },
+  {
+    "id_ticket": 70018926,
+    "incident": "INC49387372",
+    "reported_date": ""
+  }
+]

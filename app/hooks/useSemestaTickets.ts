@@ -23,10 +23,11 @@ export function useSemestaTickets(
   ticketType?: string[],
   startDate?: string,
   endDate?: string,
+  branchId?: string,
 ) {
   const searchType = detectSearchType(search);
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: queryKeys.tickets.semesta({ search, searchType, page, workzone, ticketStatus, ticketType, startDate, endDate }),
+    queryKey: queryKeys.tickets.semesta({ search, searchType, page, workzone, ticketStatus, ticketType, startDate, endDate, branchId }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     placeholderData: search.trim() ? undefined : keepPreviousData,
@@ -49,6 +50,7 @@ export function useSemestaTickets(
       }
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
+      if (branchId) params.append('branch', branchId);
 
       const res = await fetchWithAuth(`/api/tickets?${params.toString()}`);
 

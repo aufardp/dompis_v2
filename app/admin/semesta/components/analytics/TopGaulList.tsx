@@ -122,7 +122,7 @@ export default function TopGaulList({
                   {item.workzone}
                 </span>
                 <span className="text-[10px] text-(--text-muted)">
-                  {item.lastDate?.slice(0, 10) ?? ''}
+                  {item.lastDate ?? ''}
                 </span>
               </div>
             </div>
