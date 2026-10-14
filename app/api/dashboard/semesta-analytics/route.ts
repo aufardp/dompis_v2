@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       endDate: searchParams.get('endDate') || undefined,
       workzone: searchParams.get('workzone') || undefined,
       dept: searchParams.get('dept') || undefined,
-      ticketType: searchParams.get('ticketType') || undefined,
+      ticketType: searchParams.getAll('ticketType').filter((s) => s !== 'all'),
     });
 
     await setCache(cacheKey, result, CACHE_TTL_SECONDS);

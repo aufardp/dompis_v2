@@ -21,6 +21,7 @@ import type { SemestaAnalyticsV2Filters } from './hooks/useSemestaAnalyticsV2';
 import SearchToast from '@/app/admin/components/dashboard/SearchToast';
 import { useUrlSearchQuery } from '@/app/hooks/useUrlSearchQuery';
 import { usePersistentWorkzoneScope } from '@/app/hooks/usePersistentWorkzoneScope';
+import { CheckboxDropdown } from './components/filters/CheckboxDropdown';
 import { JENIS_TIKET_LIST } from '@/app/config/jenis-tiket';
 import {
   CLOSE_STATUS_VALUES,
@@ -125,7 +126,7 @@ const TicketTableSemesta = dynamic(
         reveal={0.12}
         loading-label='Loading semesta tickets'
       >
-        <div className='h-[420px] rounded-xl border border-(--border) bg-(--surface)' />
+        <div className='h-105 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
@@ -144,7 +145,7 @@ const DateRangePicker = dynamic(
         reveal={0.12}
         loading-label='Loading date range picker'
       >
-        <div className='h-10 w-[220px] rounded-lg border border-(--border) bg-(--surface)' />
+        <div className='h-10 w-55 rounded-lg border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
@@ -166,7 +167,7 @@ const KpiStrip = dynamic(() => import('./components/analytics/KpiStrip'), {
         {Array.from({ length: 3 }, (_, i) => (
           <div
             key={i}
-            className='h-[80px] w-[180px] shrink-0 rounded-xl border border-(--border) bg-(--surface)'
+            className='h-20 w-45 shrink-0 rounded-xl border border-(--border) bg-(--surface)'
           />
         ))}
       </div>
@@ -187,7 +188,7 @@ const TrendByJenisChart = dynamic(
         reveal={0.12}
         loading-label='Loading trend by jenis chart'
       >
-        <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
+        <div className='h-85 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
@@ -206,7 +207,7 @@ const B2cB2bTrendChart = dynamic(
         reveal={0.12}
         loading-label='Loading B2C B2B trend chart'
       >
-        <div className='h-[340px] rounded-xl border border-(--border) bg-(--surface)' />
+        <div className='h-85 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
@@ -225,7 +226,7 @@ const WorkzoneAnalysisTable = dynamic(
         reveal={0.12}
         loading-label='Loading workzone analysis table'
       >
-        <div className='h-[320px] rounded-xl border border-(--border) bg-(--surface)' />
+        <div className='h-80 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
@@ -244,12 +245,11 @@ const TopGaulList = dynamic(
         reveal={0.12}
         loading-label='Loading top GAUL list'
       >
-        <div className='h-[260px] rounded-xl border border-(--border) bg-(--surface)' />
+        <div className='h-65 rounded-xl border border-(--border) bg-(--surface)' />
       </phantom-ui>
     ),
   },
 );
-
 
 const AnalyticsSkeleton = dynamic(
   () => import('./components/analytics/AnalyticsSkeleton'),
@@ -280,13 +280,26 @@ function Dropdown({
   options,
   onChange,
   className = '',
+  multiple = false,
 }: {
   label: string;
-  value: string;
+  value: string | string[];
   options: { key: string; label: string }[];
-  onChange: (value: string) => void;
+  onChange: (value: string | string[]) => void;
   className?: string;
+  multiple?: boolean;
 }) {
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (multiple) {
+      const selectedValues = Array.from(e.target.selectedOptions).map(
+        (option) => option.value,
+      );
+      onChange(selectedValues);
+    } else {
+      onChange(e.target.value);
+    }
+  };
+
   return (
     <div className={cn('flex items-center gap-2', className)}>
       <span className='w-16 shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
@@ -295,11 +308,13 @@ function Dropdown({
       <div className='relative'>
         <select
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={handleChange}
+          multiple={multiple}
           className={cn(
             'bg-surface-2 appearance-none rounded-lg border border-(--border) px-4 py-2 pr-8 text-xs font-semibold text-(--text-primary)',
             'cursor-pointer transition-all duration-150',
             'hover:border-blue-400/40 focus:border-blue-400/60 focus:ring-1 focus:ring-blue-400/20 focus:outline-none',
+            multiple && 'h-32 p-2', // Style for multiple select
           )}
         >
           {options.map((opt) => (
@@ -308,7 +323,9 @@ function Dropdown({
             </option>
           ))}
         </select>
-        <ChevronDown className='pointer-events-none absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 text-(--text-secondary)' />
+        {!multiple && (
+          <ChevronDown className='pointer-events-none absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 text-(--text-secondary)' />
+        )}
       </div>
     </div>
   );
@@ -324,8 +341,12 @@ export default function SemestaPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const { workzone: workzoneFilter, setWorkzone: setWorkzoneFilter } =
     usePersistentWorkzoneScope();
-  const [jenisTicket1Filter, setJenisTicket1Filter] = useState<string>('all');
-  const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
+  const [jenisTicket1Filter, setJenisTicket1Filter] = useState<string[]>([
+    'all',
+  ]);
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<string[]>([
+    'all',
+  ]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfDay(
       new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -351,7 +372,9 @@ export default function SemestaPage() {
       startDate,
       endDate,
       workzone: workzoneFilter || undefined,
-      ticketType: jenisTicket1Filter !== 'all' ? jenisTicket1Filter : undefined,
+      ticketType: jenisTicket1Filter.includes('all')
+        ? undefined
+        : jenisTicket1Filter.join(','),
     }),
     [startDate, endDate, workzoneFilter, jenisTicket1Filter],
   );
@@ -366,8 +389,8 @@ export default function SemestaPage() {
     searchQuery,
     currentPage,
     workzoneFilter || undefined,
-    ticketStatusFilter !== 'all' ? ticketStatusFilter : undefined,
-    jenisTicket1Filter !== 'all' ? jenisTicket1Filter : undefined,
+    ticketStatusFilter.includes('all') ? undefined : ticketStatusFilter,
+    jenisTicket1Filter.includes('all') ? undefined : jenisTicket1Filter,
     startDate,
     endDate,
   );
@@ -422,13 +445,13 @@ export default function SemestaPage() {
     setCurrentPage(1);
   }, []);
 
-  const handleJenisTicket1Change = (jenis: string) => {
-    setJenisTicket1Filter(jenis);
+  const handleJenisTicket1Change = (jenis: string | string[]) => {
+    setJenisTicket1Filter(Array.isArray(jenis) ? jenis : [jenis]);
     setCurrentPage(1);
   };
 
-  const handleTicketStatusChange = (status: string) => {
-    setTicketStatusFilter(status);
+  const handleTicketStatusChange = (status: string | string[]) => {
+    setTicketStatusFilter(Array.isArray(status) ? status : [status]);
     setCurrentPage(1);
   };
 
@@ -456,10 +479,9 @@ export default function SemestaPage() {
   const resetAllFilters = () => {
     setSearchQuery('');
     setWorkzoneFilter('');
-    setJenisTicket1Filter('all');
-    setTicketStatusFilter('all');
+    setJenisTicket1Filter(['all']);
+    setTicketStatusFilter(['all']);
     setDateRange({
-      // Reset to default: start of this month to today
       from: startOfDay(
         new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       ),
@@ -469,8 +491,12 @@ export default function SemestaPage() {
   };
 
   const activeFilterCount =
-    (jenisTicket1Filter !== 'all' ? 1 : 0) +
-    (ticketStatusFilter !== 'all' ? 1 : 0) +
+    (jenisTicket1Filter.length > 0 && !jenisTicket1Filter.includes('all')
+      ? 1
+      : 0) +
+    (ticketStatusFilter.length > 0 && !ticketStatusFilter.includes('all')
+      ? 1
+      : 0) +
     (workzoneFilter ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
 
@@ -532,7 +558,7 @@ export default function SemestaPage() {
                     Semesta
                   </span>
                   <span className='rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
-                    Daily Ops Board
+                    Review Ops Board
                   </span>
                 </div>
                 <div>
@@ -581,8 +607,8 @@ export default function SemestaPage() {
         </div>
 
         {/* Filter Bar */}
-        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='flex items-center justify-between border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+        <div className='relative rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='flex items-center justify-between rounded-t-3xl border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
             <div>
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Filter Workspace
@@ -654,36 +680,20 @@ export default function SemestaPage() {
 
                 {/* Filters */}
                 <div className='flex flex-wrap items-center gap-3'>
-                  <Dropdown
+                  <CheckboxDropdown
                     label='Jenis'
-                    value={jenisTicket1Filter}
                     options={JENIS_TIKET_OPTIONS}
+                    selected={jenisTicket1Filter}
                     onChange={handleJenisTicket1Change}
                   />
 
-                  <Dropdown
+                  <CheckboxDropdown
                     label='Status'
-                    value={ticketStatusFilter}
                     options={INSERA_STATUS_OPTIONS}
+                    selected={ticketStatusFilter}
                     onChange={handleTicketStatusChange}
                   />
                 </div>
-
-                {activeFilterCount > 0 && (
-                  <button
-                    onClick={resetAllFilters}
-                    className={cn(
-                      'font-dm-sans flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-400/10',
-                      'lg:ml-auto',
-                    )}
-                  >
-                    <X size={12} />
-                    Reset
-                    <span className='rounded-full bg-red-400/20 px-1.5 py-0.5 text-[9px] font-bold'>
-                      {activeFilterCount}
-                    </span>
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -726,10 +736,7 @@ export default function SemestaPage() {
                 data={analyticsV2.byWorkzone}
                 loading={false}
               />
-              <TopGaulList
-                data={analyticsV2.topGaulServices}
-                loading={false}
-              />
+              <TopGaulList data={analyticsV2.topGaulServices} loading={false} />
             </div>
           </div>
         ) : null}

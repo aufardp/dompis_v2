@@ -131,6 +131,13 @@ const MENU_ITEMS: Array<{
     hint: 'Trail akses & compliance',
     superadminOnly: true,
   },
+  {
+    label: 'Ingest Insiden',
+    path: '/admin/ingest-incident',
+    icon: RefreshCcw,
+    hint: 'Tarik insiden Nossa tunggal',
+    superadminOnly: true,
+  },
 ];
 
 const TOOLS_ITEMS: Array<{

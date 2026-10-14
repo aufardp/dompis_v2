@@ -23,6 +23,8 @@ import { ApiError } from '@/app/libs/apiError';
 
 import {
   applyTicketStatusWhere,
+  applyTicketTypeWhere,
+  normalizeStringList,
 } from './daily-ticket-helpers';
 import {
   buildOperationalBucketWhere,
@@ -40,10 +42,10 @@ type TicketFilters = {
   search?: string;
   searchType?: SearchType;
   statusUpdate?: string;
-  ticketStatus?: string;
+  ticketStatus?: string | string[];
   dept?: string;
-  ticketType?: string;
-  jenisTicket1?: string;
+  ticketType?: string | string[];
+  jenisTicket1?: string | string[];
   operationalBucket?: string;
   workzone?: number | string;
   ctype?: string;
@@ -671,18 +673,11 @@ export class TicketService {
       andClauses.push({ operational_bucket: operationalBucket });
     }
 
-    if (jenisTicket1) {
-      const variants = new Set<string>();
-      const config = JENIS_TIKET_LIST.find((j) => j.key === jenisTicket1.toLowerCase());
-      if (config) {
-        for (const alias of config.dbAliases) {
-          variants.add(alias);
-          variants.add(alias.toLowerCase());
-          variants.add(alias.toUpperCase());
-        }
-      }
-      if (variants.size > 0) {
-        andClauses.push({ jenis_tiket_2: { in: [...variants] } });
+    if (jenisTicket1 && normalizeStringList(jenisTicket1).length > 0) {
+      const where: Record<string, any> = {};
+      applyTicketTypeWhere(where, jenisTicket1);
+      if (where.AND && Array.isArray(where.AND) && where.AND.length > 0) {
+        andClauses.push(where.AND[0]);
       }
     }
 
@@ -690,8 +685,12 @@ export class TicketService {
       andClauses.push({ customer_type: ctype });
     }
 
-    if (ticketType && ticketType !== 'all') {
-      andClauses.push(getJenisWhereClause(ticketType));
+    if (ticketType && normalizeStringList(ticketType).length > 0) {
+      const where: Record<string, any> = {};
+      applyTicketTypeWhere(where, ticketType);
+      if (where.AND && Array.isArray(where.AND) && where.AND.length > 0) {
+        andClauses.push(where.AND[0]);
+      }
     }
 
     if (dept && dept !== 'all') {
@@ -997,7 +996,7 @@ export class TicketService {
       endDate?: string;
       workzone?: string;
       dept?: string;
-      ticketType?: string;
+      ticketType?: string | string[];
     },
   ) {
     const where = await this.buildTicketWhere(role, userId, {

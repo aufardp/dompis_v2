@@ -19,8 +19,8 @@ export function useSemestaTickets(
   search: string,
   page: number,
   workzone?: string,
-  ticketStatus?: string,
-  ticketType?: string,
+  ticketStatus?: string[],
+  ticketType?: string[],
   startDate?: string,
   endDate?: string,
 ) {
@@ -41,8 +41,12 @@ export function useSemestaTickets(
         if (searchType) params.append('searchType', searchType);
       }
       if (workzone) params.append('workzone', workzone);
-      if (ticketStatus) params.append('ticketStatus', ticketStatus);
-      if (ticketType) params.append('ticketType', ticketType);
+      if (ticketStatus && ticketStatus.length > 0) {
+        ticketStatus.forEach((s) => params.append('ticketStatus', s));
+      }
+      if (ticketType && ticketType.length > 0) {
+        ticketType.forEach((t) => params.append('ticketType', t));
+      }
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
 

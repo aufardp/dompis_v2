@@ -39,10 +39,14 @@ export async function GET(request: Request) {
     ]);
 
     const statusUpdate = searchParams.get('statusUpdate') || undefined;
-    const ticketStatus = searchParams.get('ticketStatus') || undefined;
+    const ticketStatus = searchParams
+      .getAll('ticketStatus')
+      .filter((s) => s !== 'all');
     const operationalBucket = searchParams.get('operationalBucket') || undefined;
     const jenisTicket1 = searchParams.get('jenisTicket1') || undefined;
-    const ticketType = searchParams.get('ticketType') || undefined;
+    const ticketType = searchParams
+      .getAll('ticketType')
+      .filter((s) => s !== 'all');
     const searchType = parseSearchType(searchParams.get('searchType'));
     const dateRange = (searchParams.get('dateRange') as 'today' | 'thisMonth' | 'all' | undefined) || undefined;
 
