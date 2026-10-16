@@ -411,6 +411,16 @@ export const JENIS_TIKET_LIST: JenisTiketConfig[] = [
     ttrLabel: '1.5 Jam',
     dbAliases: ['ip-transit', 'ip_transit', 'ip transit', 'iptransit', 'IP TRANSIT', 'IP_TRANSIT'],
   },
+  {
+    key: 'preman',
+    label: 'Preman',
+    segment: 'b2b',
+    color: 'bg-stone-50 text-stone-700 dark:bg-stone-500/15 dark:text-stone-300',
+    priority: 1,
+    slaOverrideHours: 24,
+    ttrLabel: '24 Jam',
+    dbAliases: ['preman', 'PREMAN', 'Preman'],
+  },
 ] as const;
 
 export type JenisKey = (typeof JENIS_TIKET_LIST)[number]['key'];
@@ -449,6 +459,7 @@ export const NETRAL_JENIS_KEYS: JenisKey[] = [
   'gamas-gpon',
   'gamas-distribusi',
   'gamas-odp',
+  'preman',
 ];
 
 export const NETRAL_JENIS_ALIASES = NETRAL_JENIS_KEYS.flatMap((key) => {

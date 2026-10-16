@@ -28,6 +28,13 @@ function isObsolete(source: TechnicianBucketSource): boolean {
   return trimLower(source.classification_path) === 'z_permintaan_044';
 }
 
+function isPreman(source: TechnicianBucketSource): boolean {
+  return (
+    trimLower(source.jenis_tiket_1).includes('preman') ||
+    trimLower(source.jenis_tiket_2).includes('preman')
+  );
+}
+
 function isNonTechnical(source: TechnicianBucketSource): boolean {
   const classification = trimLower(source.classification_flag);
   const jenis1 = trimLower(source.jenis_tiket_1);
@@ -65,6 +72,12 @@ export function classifyTechnicianBucket(
 
   if (isProactive && channel === '28' && isUnspec) return 'non_kpi_unspec';
   if (isProactive && isSqmUpdateRow(source) && isSqm) return 'sqm_update';
+  // PREMAN already means "proactive maintenance", so it doesn't also need
+  // source_ticket='proactive' — 248 of the 1.492 PREMAN tickets have a NULL
+  // source_ticket even though their summary says PROACTIVE. Kept in sync with
+  // the operational_bucket generated column
+  // (prisma/migrations/20261015090000_preman_into_proactive_bucket).
+  if (isPreman(source)) return 'kpi_proactive';
   if (isProactive && (channel === '50' || channel === '83') && isSqm) return 'kpi_proactive';
 
   if (isCustomer) return 'kpi_customer';

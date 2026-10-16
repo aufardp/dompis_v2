@@ -143,6 +143,17 @@ function like(str: string | null, pattern: string): boolean {
 }
 
 /**
+ * "preman" diikuti penomoran opsional, diakhiri batas kata.
+ *
+ * Di data nyata penomoran ticket ini ditulis dalam beberapa bentuk:
+ *   "PREMAN", "PREMAN 3", "PREMAN1", "PREMAN_2", "PREMAN_P1", "PREMAN-P1".
+ * Semuanya harus tertangkap. Batas kata diletakkan SESUDAH penomoran supaya
+ * kata yang kebetulan memuat huruf — "premana", "premananda" — tidak ikut
+ * diklasifikasikan sebagai PREMAN.
+ */
+const PREMAN_PATTERN = /preman(?:[\s_-]?p?\d+)?\b/i;
+
+/**
  * Sama seperti `like()`, tapi tidak peduli pemisah kata (spasi, underscore,
  * strip) di kedua sisi — "PREMIUM SITE", "PREMIUM_SITE", "premium-site"
  * semuanya dianggap cocok dengan pattern "PREMIUM SITE".
@@ -242,6 +253,20 @@ function checkNonNumberingOverride(
     };
   }
 
+  return null;
+}
+
+/**
+ * Kata "PREMAN" di summary → PREMAN. Ini ticket proactive maintenance
+ * ("[PROACTIVE PREMAN 3]", "PROACTIVE | PREMAN_P1 |", dst).
+ *
+ * Diperiksa SESUDAH override GAMAS supaya tiket yang sekaligus membawa
+ * penanda GAMAS tidak kehilangan klasifikasinya.
+ */
+function checkPremanOverride(input: JenisVlookupInput): JenisVlookupResult | null {
+  if (PREMAN_PATTERN.test(input.summary ?? '')) {
+    return { jenis_tiket_1: 'PREMAN', jenis_tiket_2: 'PREMAN' };
+  }
   return null;
 }
 
@@ -513,6 +538,9 @@ export async function classifyJenisFromVlookup(
   const gamasOverride = checkGamasOverride(input);
   if (gamasOverride) return gamasOverride;
 
+  const premanOverride = checkPremanOverride(input);
+  if (premanOverride) return premanOverride;
+
   const infraCareOverride = checkInfraCareOverride(input);
   if (infraCareOverride) return infraCareOverride;
 
@@ -553,6 +581,9 @@ export async function batchClassifyJenisFromVlookup(
 
     const gamasOverride = checkGamasOverride(input);
     if (gamasOverride) return gamasOverride;
+
+    const premanOverride = checkPremanOverride(input);
+    if (premanOverride) return premanOverride;
 
     const infraCareOverride = checkInfraCareOverride(input);
     if (infraCareOverride) return infraCareOverride;
