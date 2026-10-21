@@ -99,28 +99,31 @@ async function resolveDailyBucketPath(
   path: BucketRoute;
   tab: 'main' | 'validasi';
 } | null> {
-  const hits = await Promise.all(
-    DAILY_BUCKET_ROUTES.map(async (item) => {
-      const filters = {
-        dept: 'all' as const,
-        search: q,
-        searchType,
-        operationalBucket: [item.bucket],
+  // Cek bucket sesuai urutan prioritas dan berhenti di hit pertama.
+  // Sebelumnya 12 bucket dievaluasi paralel (hingga 24 COUNT sekaligus) padahal
+  // hanya satu yang dipakai — membanjiri pool koneksi Prisma.
+  for (const item of DAILY_BUCKET_ROUTES) {
+    const filters = {
+      dept: 'all' as const,
+      search: q,
+      searchType,
+      operationalBucket: [item.bucket],
+    };
+
+    if (await DailyTicketService.hasDailyValidasiHit(role, userId, filters)) {
+      return {
+        bucket: item.bucket,
+        path: item.path,
+        tab: 'validasi' as const,
       };
-      const validasiHit = await DailyTicketService.hasDailyValidasiHit(
-        role,
-        userId,
-        filters,
-      );
-      if (validasiHit) return { found: true, path: item.path, bucket: item.bucket, tab: 'validasi' as const };
+    }
 
-      const found = await DailyTicketService.hasDailyTicketHit(role, userId, filters);
-      return { found, path: item.path, bucket: item.bucket, tab: 'main' as const };
-    }),
-  );
+    if (await DailyTicketService.hasDailyTicketHit(role, userId, filters)) {
+      return { bucket: item.bucket, path: item.path, tab: 'main' as const };
+    }
+  }
 
-  const hit = hits.find((item) => item.found);
-  return hit ? { bucket: hit.bucket, path: hit.path, tab: hit.tab } : null;
+  return null;
 }
 
 async function resolveExactDailyBucketPath(

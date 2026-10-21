@@ -157,6 +157,9 @@ export async function GET(request: NextRequest) {
           branchSas,
         });
 
+        // Dipecah UNION ALL: cabang resolve_date memakai idx_ticket_resolve_closed,
+        // cabang fallback memakai idx_ticket_closed_booking. Pola OR + IS NULL
+        // membuat keduanya tidak terpakai.
         const tickets = await prisma.$queryRawUnsafe<ClosedTicketRow[]>(
           withMaxExecutionTime(`SELECT
             status, closed_at, resolve_date, reported_date, booking_date,
@@ -164,13 +167,20 @@ export async function GET(request: NextRequest) {
             flagging_manja, jenis_tiket_1, ttr_comply_status
           FROM ticket
           WHERE (${baseWhere})
-            AND (
-              (resolve_date >= ? AND resolve_date <= ?)
-              OR (resolve_date IS NULL AND closed_at >= ? AND closed_at <= ?)
-            )`),
+            AND resolve_date >= ? AND resolve_date <= ?
+          UNION ALL
+          SELECT
+            status, closed_at, resolve_date, reported_date, booking_date,
+            customer_segment, customer_type, source_ticket,
+            flagging_manja, jenis_tiket_1, ttr_comply_status
+          FROM ticket
+          WHERE (${baseWhere})
+            AND resolve_date IS NULL
+            AND closed_at >= ? AND closed_at <= ?`),
           ...baseParams,
           range.start,
           range.end,
+          ...baseParams,
           range.start,
           range.end,
         );

@@ -140,18 +140,9 @@ export async function proxy(req: NextRequest) {
       refreshedAccessToken = data.accessToken;
       return newPayload;
     } catch (err) {
-      logger.error('Silent session refresh failed:', {
-        error:
-          err instanceof Error
-            ? (err.stack ?? err.message)
-            : (() => {
-                try {
-                  return JSON.stringify(err);
-                } catch {
-                  return String(err);
-                }
-              })(),
-      });
+      // Argumen kedua logger.error adalah error-nya, bukan context — dibungkus
+      // `{ error: ... }` dia jadi objek biasa dan cuma tercetak "[object Object]".
+      logger.error('Silent session refresh failed', err);
       return null;
     }
   }

@@ -36,8 +36,7 @@ function withAdditionalWhere(
   where: Prisma.ticketWhereInput,
   ...clauses: Prisma.ticketWhereInput[]
 ): Prisma.ticketWhereInput {
-  const activeClauses = clauses.filter((clause) => Object.keys(clause).length > 0);
-  if (activeClauses.length === 0) return where;
+  const activeClauses = clauses.filter((clause) => Object.keys(clause).length > 0);  if (activeClauses.length === 0) return where;
   return {
     AND: [where, ...activeClauses],
   };
@@ -217,6 +216,17 @@ async function fetchValidasiTicketIds(
   return { ids: rows.map((row) => row.id_ticket), nextCursor };
 }
 
+const OPS_SUMMARY_INDEX = 'idx_ticket_ops_summary';
+
+// Cabang "aktif" (status NOT IN closed) jadi covering range scan lewat index
+// ops-summary. Scope yang sudah punya filter workzone dibiarkan memakai
+// idx_ticket_dashboard_main yang lebih selektif.
+function opsSummarySource(branchSql: string): string {
+  return branchSql.includes('workzone')
+    ? 'ticket'
+    : `ticket FORCE INDEX (${OPS_SUMMARY_INDEX})`;
+}
+
 async function countStatusesAndCustomerTypes(
   where: Record<string, any>,
 ): Promise<{ summary: Record<string, number>; customerTypeSummary: CustomerTypeSummary }> {
@@ -254,7 +264,7 @@ async function countStatusesAndCustomerTypes(
         SUM(reguler) AS reguler
       FROM (
         SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
-        FROM ticket WHERE ${s1}
+        FROM ${opsSummarySource(s1)} WHERE ${s1}
         UNION ALL
         SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
         FROM ticket WHERE ${s2}
@@ -281,7 +291,18 @@ async function countStatusesAndCustomerTypes(
     params = ps;
   }
 
-  const [row] = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(sql, ...params);
+  let row: Record<string, unknown> | undefined;
+  try {
+    [row] = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(sql, ...params);
+  } catch (error) {
+    // Migration index belum jalan: ulangi tanpa FORCE INDEX.
+    const message = String((error as { message?: string })?.message ?? '');
+    if (!message.includes('1176') && !/doesn't exist in table/i.test(message)) {
+      throw error;
+    }
+    const fallback = sql.split(`FORCE INDEX (${OPS_SUMMARY_INDEX}) `).join('');
+    [row] = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(fallback, ...params);
+  }
 
   const summary: Record<string, number> = {
     total: Number(row?.total ?? 0),

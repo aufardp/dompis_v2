@@ -221,21 +221,25 @@ export async function GET(req: NextRequest) {
               closed_at: true,
             },
           },
-          _count: {
-            select: {
-              history: {
-                where: {
-                  tagged_at: {
-                    gte: new Date(
-                      Date.now() - HOT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
-                    ),
-                  },
-                },
-              },
-            },
-          },
         },
       });
+
+      const lookbackStart = new Date(
+        Date.now() - HOT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const historyGroups = rows.length
+        ? await prisma.service_location_history.groupBy({
+            by: ['service_location_id'],
+            where: {
+              service_location_id: { in: rows.map((r) => r.id) },
+              tagged_at: { gte: lookbackStart },
+            },
+            _count: { _all: true },
+          })
+        : [];
+      const historyCountByLocation = new Map(
+        historyGroups.map((g) => [g.service_location_id, g._count._all]),
+      );
 
       const points = rows
         .map((r) => ({
@@ -250,8 +254,8 @@ export async function GET(req: NextRequest) {
           barcodeDc: r.barcode_dc,
           workzone: r.workzone,
           taggedCount: r.tagged_count,
-          historyCount60d: r._count.history,
-          isHot: r._count.history >= 3,
+          historyCount60d: historyCountByLocation.get(r.id) ?? 0,
+          isHot: (historyCountByLocation.get(r.id) ?? 0) >= 3,
           updatedAt: r.updated_at,
           lastTicket: r.last_ticket
             ? {

@@ -327,9 +327,11 @@ export async function getRekapCloseTeknisi(
     attRows.map((r) => [Number(r.tech_id), Number(r.d)]),
   );
 
-  // Tiket close dalam rentang
+  // Tiket close dalam rentang. Kolom status/status_update memakai collation
+  // case-insensitive (utf8mb4_unicode_ci), jadi tidak perlu UPPER/LOWER —
+  // wrapper itu mematikan index.
   const wzClause = serviceArea?.trim()
-    ? Prisma.sql`AND LOWER(t.workzone) = LOWER(${serviceArea.trim()})`
+    ? Prisma.sql`AND t.workzone = ${serviceArea.trim()}`
     : Prisma.empty;
 
   const tickets = await prisma.$queryRaw<TicketRow[]>(Prisma.sql`
@@ -339,8 +341,8 @@ export async function getRekapCloseTeknisi(
            t.jenis_tiket_1, t.jenis_tiket_2
     FROM ticket t
     WHERE t.teknisi_user_id IN (${Prisma.join(techIds)})
-      AND UPPER(t.status) = 'CLOSED'
-      AND LOWER(t.status_update) = 'close'
+      AND t.status = 'CLOSED'
+      AND t.status_update = 'close'
       AND t.closed_at >= ${dateFrom} AND t.closed_at < ${dateTo}
       ${wzClause}
     LIMIT 200000

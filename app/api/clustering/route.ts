@@ -49,9 +49,8 @@ export async function GET(req: Request) {
         areas: {
           orderBy: { sort_order: 'asc' },
         },
-        nodes: {
-          where: { is_active: true },
-          select: { id: true },
+        _count: {
+          select: { nodes: { where: { is_active: true } } },
         },
         assignments: {
           where: {
@@ -81,7 +80,7 @@ export async function GET(req: Request) {
       created_by: number | null;
       created_at: Date;
       updated_at: Date;
-      nodes: Array<{ id: number }>;
+      _count: { nodes: number };
       areas: Array<{ nama_area: string }>;
       assignments: Array<{ teknisi: { id_user: number; nama: string | null; nik: string | null } }>;
     }) => ({
@@ -93,7 +92,7 @@ export async function GET(req: Request) {
       created_by: c.created_by,
       created_at: c.created_at.toISOString(),
       updated_at: c.updated_at.toISOString(),
-      node_count: c.nodes.length,
+      node_count: c._count.nodes,
       area_names: c.areas.map((a) => a.nama_area),
       teknisi_today: c.assignments.map((a) => ({
         id_user: a.teknisi.id_user,

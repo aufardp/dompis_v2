@@ -82,22 +82,20 @@ export async function GET(req: NextRequest) {
     // Get admin's workzones for filtering
     const adminWorkzones = await getWorkzonesForUser(user.id_user);
 
-    // Calculate manhours
-    const rows = await calculateManhours(
-      {
-        dateFrom,
-        dateTo,
-        sto,
-        name,
-      },
-      adminWorkzones,
-    );
-
-    // Get configs for dynamic column headers
-    const configs = await getManhourConfigs();
-
-    // Get STO options for filter dropdown
-    const stoOptions = await getStoOptions(adminWorkzones);
+    // Calculate manhours + config/STO options secara paralel (independen)
+    const [rows, configs, stoOptions] = await Promise.all([
+      calculateManhours(
+        {
+          dateFrom,
+          dateTo,
+          sto,
+          name,
+        },
+        adminWorkzones,
+      ),
+      getManhourConfigs(),
+      getStoOptions(adminWorkzones),
+    ]);
 
     return NextResponse.json({
       success: true,

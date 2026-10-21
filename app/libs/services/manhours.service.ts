@@ -256,8 +256,10 @@ export async function calculateManhours(
 
   const technicianIdsList = filteredTechnicians.map((t: { id_user: number }) => t.id_user);
 
-  // Get closed tickets in date range grouped by technician and jenis
-  const tickets = await prisma.ticket.findMany({
+  // Get closed tickets in date range grouped by technician and jenis.
+  // groupBy menghindari menarik semua baris tiket ke Node (bisa puluhan ribu).
+  const ticketGroups = await prisma.ticket.groupBy({
+    by: ['teknisi_user_id', 'jenis_tiket_1'],
     where: {
       teknisi_user_id: { in: technicianIdsList },
       closed_at: {
@@ -266,10 +268,7 @@ export async function calculateManhours(
       },
       jenis_tiket_1: { not: null },
     },
-    select: {
-      teknisi_user_id: true,
-      jenis_tiket_1: true,
-    },
+    _count: { _all: true },
   });
 
   // Get effective hours (working_hours) from attendance in date range
@@ -292,9 +291,9 @@ export async function calculateManhours(
   // Aggregate tickets per technician per category
   const ticketCounts: Record<number, Record<string, number>> = {};
 
-  for (const ticket of tickets) {
-    const techId = ticket.teknisi_user_id!;
-    const jenisKey = normalizeJenisForManhours(ticket.jenis_tiket_1);
+  for (const group of ticketGroups) {
+    const techId = group.teknisi_user_id!;
+    const jenisKey = normalizeJenisForManhours(group.jenis_tiket_1);
 
     if (!jenisKey) continue;
 
@@ -304,7 +303,8 @@ export async function calculateManhours(
 
     // Count all tickets that match canonical MANHOUR_VALUES keys
     // DB configMap only used for overriding manhour values, not filtering
-    ticketCounts[techId][jenisKey] = (ticketCounts[techId][jenisKey] || 0) + 1;
+    ticketCounts[techId][jenisKey] =
+      (ticketCounts[techId][jenisKey] || 0) + group._count._all;
   }
 
   // Aggregate HARI KERJA EFEKTIF per technician

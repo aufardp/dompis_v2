@@ -79,13 +79,34 @@ export interface LogContext {
   [key: string]: unknown;
 }
 
-function serializeError(error: unknown): Record<string, unknown> {
+function serializeError(error: unknown, depth = 0): Record<string, unknown> {
   if (error instanceof Error) {
-    return {
+    const serialized: Record<string, unknown> = {
       name: error.name,
       message: error.message,
       stack: error.stack,
     };
+    // `fetch failed` menyimpan penyebab aslinya (ECONNREFUSED, timeout, dst.)
+    // di `cause` yang non-enumerable — tanpa ini pesannya tidak informatif.
+    if (error.cause !== undefined && depth < 3) {
+      serialized.cause = serializeError(error.cause, depth + 1);
+    }
+    return serialized;
+  }
+  // Error lintas-realm (mis. dari Edge runtime) gagal `instanceof Error`,
+  // tapi tetap punya message/name/stack yang berguna.
+  if (typeof error === 'object' && error !== null) {
+    const record = error as Record<string, unknown>;
+    const serialized: Record<string, unknown> = {
+      message: typeof record.message === 'string' ? record.message : String(error),
+    };
+    if (typeof record.name === 'string') serialized.name = record.name;
+    if (typeof record.stack === 'string') serialized.stack = record.stack;
+    const details = Object.fromEntries(
+      Object.entries(record).filter(([key]) => !['message', 'name', 'stack'].includes(key)),
+    );
+    if (Object.keys(details).length > 0) serialized.details = details;
+    return serialized;
   }
   return { message: String(error) };
 }

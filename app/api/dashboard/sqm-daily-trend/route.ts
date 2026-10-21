@@ -92,12 +92,16 @@ export async function GET(request: NextRequest) {
         const startWib = startOfDay(subDays(wibNow, TREND_DAYS - 1));
         const startWibStr = format(startWib, 'yyyy-MM-dd 00:00:00');
 
+        // `reported_date_dt` sudah di-backfill (hanya segelintir baris NULL),
+        // jadi bandingkan langsung supaya index reported_date_dt terpakai.
+        // Baris NULL tetap ikut (range IS NULL di index) lalu disaring lagi
+        // oleh dayMap di bawah berdasarkan reported_date aslinya.
         const tickets = await prisma.$queryRawUnsafe<TrendTicketRow[]>(
           withMaxExecutionTime(`SELECT t.reported_date
            FROM ticket t
            WHERE (${baseWhere})
              AND (${bucketWhere})
-             AND COALESCE(t.reported_date_dt, STR_TO_DATE(t.reported_date, '%Y-%m-%d %H:%i:%s')) >= ?`),
+             AND (t.reported_date_dt >= ? OR t.reported_date_dt IS NULL)`),
           ...baseParams,
           startWibStr,
         );

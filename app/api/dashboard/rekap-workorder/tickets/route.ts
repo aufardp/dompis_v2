@@ -212,53 +212,65 @@ export async function GET(request: NextRequest) {
 
         const offset = (page - 1) * limit;
 
-        const [rows, countRows] = await Promise.all([
-          prisma.$queryRawUnsafe<RekapMemberTicketRow[]>(
-            `SELECT /*+ MAX_EXECUTION_TIME(60000) */
-              t.id_ticket,
-              t.incident,
-              t.summary,
-              t.reported_date,
-              t.status,
-              t.status_update,
-              t.customer_type,
-              t.customer_segment,
-              t.customer_name,
-              t.service_no,
-              t.contact_name,
-              t.contact_phone,
-              t.source_ticket,
-              t.workzone,
-              COALESCE(a.nama_area, '') AS area,
-              sa.nama_sa AS sa_name,
-              t.jenis_tiket_1,
-              t.jenis_tiket_2,
-              t.classification_path,
-              t.classification_flag,
-              t.closed_at,
-              t.resolve_date,
-              t.sync_date
-            FROM ticket t
-            JOIN service_area sa ON sa.nama_sa = t.workzone
-            JOIN area a ON a.id_area = sa.area_id
-            WHERE ${fullWhere}
-            ORDER BY t.id_ticket ASC
-            LIMIT ${limit} OFFSET ${offset}`,
-            ...params,
-            ...cellParams,
-          ),
-          prisma.$queryRawUnsafe<{ total: bigint }[]>(
-            withMaxExecutionTime(`SELECT COUNT(*) AS total
-            FROM ticket t
-            JOIN service_area sa ON sa.nama_sa = t.workzone
-            JOIN area a ON a.id_area = sa.area_id
-            WHERE ${fullWhere}`),
-            ...params,
-            ...cellParams,
-          ),
-        ]);
+        // COUNT(*) OVER() menghindari scan+JOIN kedua untuk query yang sama.
+        const rows = await prisma.$queryRawUnsafe<
+          Array<RekapMemberTicketRow & { __total: bigint }>
+        >(
+          `SELECT /*+ MAX_EXECUTION_TIME(60000) */
+            t.id_ticket,
+            t.incident,
+            t.summary,
+            t.reported_date,
+            t.status,
+            t.status_update,
+            t.customer_type,
+            t.customer_segment,
+            t.customer_name,
+            t.service_no,
+            t.contact_name,
+            t.contact_phone,
+            t.source_ticket,
+            t.workzone,
+            COALESCE(a.nama_area, '') AS area,
+            sa.nama_sa AS sa_name,
+            t.jenis_tiket_1,
+            t.jenis_tiket_2,
+            t.classification_path,
+            t.classification_flag,
+            t.closed_at,
+            t.resolve_date,
+            t.sync_date,
+            COUNT(*) OVER() AS __total
+          FROM ticket t
+          JOIN service_area sa ON sa.nama_sa = t.workzone
+          JOIN area a ON a.id_area = sa.area_id
+          WHERE ${fullWhere}
+          ORDER BY t.id_ticket ASC
+          LIMIT ${limit} OFFSET ${offset}`,
+          ...params,
+          ...cellParams,
+        );
 
-        const total = Number(countRows[0]?.total ?? 0);
+        // Halaman di luar rentang tidak menghasilkan baris, jadi total harus
+        // dihitung terpisah (kasus jarang; halaman normal pakai window count).
+        const total =
+          rows.length > 0
+            ? Number(rows[0].__total ?? 0)
+            : page > 1
+              ? Number(
+                  (
+                    await prisma.$queryRawUnsafe<{ total: bigint }[]>(
+                      withMaxExecutionTime(`SELECT COUNT(*) AS total
+                      FROM ticket t
+                      JOIN service_area sa ON sa.nama_sa = t.workzone
+                      JOIN area a ON a.id_area = sa.area_id
+                      WHERE ${fullWhere}`),
+                      ...params,
+                      ...cellParams,
+                    )
+                  )[0]?.total ?? 0,
+                )
+              : 0;
         const meta: RekapMembersMeta = {
           bucket,
           detail: detail || null,

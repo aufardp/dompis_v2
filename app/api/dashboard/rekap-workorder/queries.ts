@@ -115,7 +115,7 @@ export async function getFilteredRekapTickets(
       COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
       t.status,
       LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-      t.closed_at,
+      MIN(t.closed_at) AS closed_at,
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
@@ -129,7 +129,7 @@ export async function getFilteredRekapTickets(
     WHERE ${whereClause}
       AND (${bucketWhere})
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
-             jenis_tiket, status, status_update, closed_at,
+             jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path,
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
@@ -185,7 +185,7 @@ export async function getCustomerSqmOverlayTickets(
       COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
       t.status,
       LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-      t.closed_at,
+      MIN(t.closed_at) AS closed_at,
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
@@ -199,7 +199,7 @@ export async function getCustomerSqmOverlayTickets(
     WHERE ${whereClause}
       AND ((${proactiveWhere}) OR (${sqmWhere}))
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
-             jenis_tiket, status, status_update, closed_at,
+             jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path, overlay_kind,
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
@@ -263,7 +263,7 @@ export async function getCustomerGamasOverlayTickets(
       COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
       t.status,
       LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-      t.closed_at,
+      MIN(t.closed_at) AS closed_at,
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
@@ -277,7 +277,7 @@ export async function getCustomerGamasOverlayTickets(
     WHERE ${whereClause}
       AND ${gamasWhere}
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
-             jenis_tiket, status, status_update, closed_at,
+             jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path,
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
@@ -351,7 +351,7 @@ export async function getLegacyCustomerRekapTickets(
       COALESCE(t.jenis_tiket_2, t.jenis_tiket_1) AS jenis_tiket,
       t.status,
       LOWER(COALESCE(t.status_update, 'open')) AS status_update,
-      t.closed_at,
+      MIN(t.closed_at) AS closed_at,
       t.source_ticket,
       t.classification_flag,
       t.classification_path,
@@ -364,7 +364,7 @@ export async function getLegacyCustomerRekapTickets(
     JOIN area a          ON a.id_area = sa.area_id
     WHERE ${whereClause}
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
-             jenis_tiket, status, status_update, closed_at,
+             jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path,
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone

@@ -47,8 +47,9 @@ export async function GET(req: NextRequest) {
           ? (bucketParam as RecapCountKey)
           : null;
 
+    // Collation case-insensitive: bandingkan langsung agar index terpakai.
     const wzClause = serviceArea
-      ? Prisma.sql`AND LOWER(t.workzone) = LOWER(${serviceArea})`
+      ? Prisma.sql`AND t.workzone = ${serviceArea}`
       : Prisma.empty;
 
     const rows = await prisma.$queryRaw<
@@ -84,8 +85,8 @@ export async function GET(req: NextRequest) {
              t.channel, t.summary, t.sqm_update_reason
       FROM ticket t
       WHERE t.teknisi_user_id = ${techId}
-        AND UPPER(t.status) = 'CLOSED'
-        AND LOWER(t.status_update) = 'close'
+        AND t.status = 'CLOSED'
+        AND t.status_update = 'close'
         AND t.closed_at >= ${dateFrom} AND t.closed_at < ${dateTo}
         ${wzClause}
       ORDER BY t.closed_at DESC
