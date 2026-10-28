@@ -1667,6 +1667,9 @@ export default function TicketManagementBucketPage({
                 }}
                 downloadFilters={{
                   dept: 'all',
+                  ticketType: ticketTypeFilter,
+                  statusUpdate: statusUpdateFilter,
+                  flagging: flaggingFilter,
                   operationalBucket,
                   regulerOnly,
                   anomalyBucket,
@@ -1677,6 +1680,7 @@ export default function TicketManagementBucketPage({
                   endDate: endDateStr,
                   excludeSymptom: extraWorkboard?.symptom,
                   ticketStatus: CLOSE_STATUS_VALUES,
+                  includeClosed: true,
                 }}
                 sortField={closeSortField as any}
                 sortOrder={closeSortOrder}

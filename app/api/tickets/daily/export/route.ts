@@ -7,6 +7,11 @@ import { normalizeJenis } from '@/app/config/jenis-tiket';
 import { getCache, setCache } from '@/lib/cache';
 import { parseSearchType } from '@/lib/search-intent';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
+import {
+  TICKET_EXPORT_COLUMNS,
+  buildTicketExportRow,
+} from '@/app/libs/tickets/ticket-export';
+import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,194 +55,9 @@ function buildExportCacheKey(
   ticketStatus: string[],
   flagging: string[],
   validasiOnly: boolean,
+  includeClosed: boolean,
 ): string {
-  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${branchId ?? ''}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}:${validasiOnly ? 'v' : 'm'}`;
-}
-
-function getExportColumns() {
-  return [
-    'Ticket',
-    'Summary',
-    'Reported Date',
-    'Owner Group',
-    'Customer Segment',
-    'Service Type',
-    'Witel',
-    'Workzone',
-    'Status',
-    'Status Date',
-    'Ticket ID Gamas',
-    'Contact Phone',
-    'Contact Name',
-    'Booking Date',
-    'Source Ticket',
-    'Channel',
-    'Customer Type',
-    'Customer Name',
-    'Service No',
-    'Incident Domain',
-    'Symptom',
-    'Solution',
-    'Description Actual Solution',
-    'Description Solution Dompis',
-    'Device Name',
-    'Worklog Summary',
-    'Classification Flag',
-    'Realm',
-    'TSC Result',
-    'SCC Result',
-    'SN ONT',
-    'Tipe ONT',
-    'RK Information',
-    'Classification Path',
-    'LAPUL',
-    'GAUL',
-    'ONU RX',
-    'Pending Reason',
-    'Guarantee Status',
-    'Status Insera',
-    'Status Dompis',
-    'Jenis Tiket 1',
-    'Jenis Tiket 2',
-    'Address',
-    'Flagging Manja',
-    'Flagging',
-    'Pending Dompis',
-    'SQM Update Reason',
-    'RCA',
-    'Sub RCA',
-    'Technician',
-    'Technician User ID',
-    'Closed At',
-    'Age / SLA',
-  ];
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '';
-  try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  } catch {
-    return '';
-  }
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '';
-  try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hours}:${minutes}`;
-  } catch {
-    return '';
-  }
-}
-
-function getStatusLabel(raw: string | null | undefined): string {
-  if (!raw) return 'Open';
-  const v = raw.trim().toLowerCase();
-  const map: Record<string, string> = {
-    open: 'Open',
-    assigned: 'Assigned',
-    on_progress: 'On Progress',
-    pending: 'Pending',
-    close: 'Close',
-  };
-  return map[v] ?? raw;
-}
-
-function getTicketStatusLabel(raw: string | null | undefined): string {
-  if (!raw) return 'Open';
-  const v = raw.trim().toLowerCase();
-  const map: Record<string, string> = {
-    open: 'Open',
-    assigned: 'Assigned',
-    on_progress: 'On Progress',
-    pending: 'Pending',
-    escalated: 'Escalated',
-    cancelled: 'Cancelled',
-    close: 'Close',
-    closed: 'Closed',
-  };
-  return map[v] ?? raw;
-}
-
-function getFlaggingLabel(ticket: {
-  flaggingManja?: string | null;
-  guaranteeStatus?: string | null;
-  ticketIdGamas?: string | null;
-}): string {
-  const { flaggingManja, guaranteeStatus, ticketIdGamas } = ticket;
-
-  if (flaggingManja === 'P1') return 'P1';
-  if (flaggingManja === 'P+') return 'P+';
-  if (flaggingManja === 'EXPIRED') return 'EXPIRED';
-
-  const gs = (guaranteeStatus ?? '').trim().toLowerCase();
-  if (gs === 'guarantee') return 'FFG';
-
-  const gamasRaw = ticketIdGamas ?? ticket.ticketIdGamas ?? null;
-  const gamas = String(gamasRaw ?? '').trim();
-  const invalidGamas = ['-', '--', 'null', 'undefined', 'n/a', 'na', ''];
-  if (gamas && !invalidGamas.includes(gamas.toLowerCase())) {
-    return 'GAMAS';
-  }
-
-  return '';
-}
-
-function getMaxTtr(
-  ticket: {
-    ctype?: string;
-    customerType?: string;
-    maxTtrReguler?: string | null;
-    maxTtrGold?: string | null;
-    maxTtrPlatinum?: string | null;
-    maxTtrDiamond?: string | null;
-  },
-  jenisRaw: string | null | undefined,
-): string {
-  const ctype = (ticket.ctype || ticket.customerType || '').toUpperCase();
-
-  if (ctype === 'HVC_GOLD' || jenisRaw?.toUpperCase().includes('GOLD')) {
-    return ticket.maxTtrGold ?? '';
-  }
-  if (ctype === 'HVC_PLATINUM' || jenisRaw?.toUpperCase().includes('PLATINUM')) {
-    return ticket.maxTtrPlatinum ?? '';
-  }
-  if (ctype === 'HVC_DIAMOND' || jenisRaw?.toUpperCase().includes('DIAMOND')) {
-    return ticket.maxTtrDiamond ?? '';
-  }
-  return ticket.maxTtrReguler ?? '';
-}
-
-function computeAge(reportedDate: string | null | undefined): string {
-  if (!reportedDate) return '';
-  try {
-    const d = new Date(reportedDate);
-    if (isNaN(d.getTime())) return '';
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-    const remainingHours = diffHours % 24;
-    if (diffDays > 0) {
-      return `${diffDays}d ${remainingHours}h`;
-    }
-    return `${diffHours}h`;
-  } catch {
-    return '';
-  }
+  return `daily_export:${userId}:${dept}:${search}:${searchType ?? ''}:${workzone}:${branchId ?? ''}:${ctype}:${startDate}:${endDate}:${ticketType.sort().join(',')}:${ticketGroup.sort().join(',')}:${operationalBucket.sort().join(',')}:${anomalyBucket.sort().join(',')}:${regulerOnly}:${statusUpdate.sort().join(',')}:${ticketStatus.sort().join(',')}:${flagging.sort().join(',')}:${validasiOnly ? 'v' : 'm'}:${includeClosed ? 'c' : 'o'}`;
 }
 
 function filterTicketByJenis(
@@ -280,8 +100,9 @@ function filterTicketByStatus(
   const status = statusRaw.trim().toLowerCase();
 
   return statusFilter.some((f) => {
-    if (f === 'close') return isTicketClosed(statusRaw);
-    return status === f;
+    const normalizedFilter = String(f ?? '').trim().toLowerCase();
+    if (normalizedFilter === 'close') return isTicketClosed(statusRaw);
+    return status === normalizedFilter;
   });
 }
 
@@ -291,10 +112,12 @@ function filterTicketByTicketStatus(
 ): boolean {
   if (ticketStatusFilter.length === 0) return true;
 
-  const status = String(ticket.status ?? '').trim();
+  const status = String(ticket.status ?? '').trim().toUpperCase();
   if (!status) return false;
 
-  return ticketStatusFilter.includes(status);
+  return ticketStatusFilter.some(
+    (f) => String(f ?? '').trim().toUpperCase() === status,
+  );
 }
 
 function filterTicketByFlagging(
@@ -341,67 +164,7 @@ function applyFilters(tickets: any[], dept: string, filters: {
   });
 }
 
-function buildTicketRow(ticket: any) {
-  const jenisRaw = ticket.jenisTiket ?? ticket.jenis_tiket_2 ?? '';
-  return [
-    ticket.ticket ?? ticket.incident ?? '',
-    ticket.summary ?? '',
-    formatDateTime(ticket.reportedDate ?? ticket.reported_date),
-    ticket.ownerGroup ?? ticket.owner_group ?? '',
-    ticket.customerSegment ?? ticket.customer_segment ?? '',
-    ticket.serviceType ?? ticket.service_type ?? '',
-    ticket.witel ?? '',
-    ticket.workzone ?? '',
-    getTicketStatusLabel(ticket.status ?? ticket.statusInsera),
-    formatDateTime(ticket.statusDate ?? ticket.status_date),
-    ticket.ticketIdGamas ?? ticket.ticket_id_gamas ?? '',
-    ticket.contactPhone ?? ticket.contact_phone ?? '',
-    ticket.contactName ?? ticket.contact_name ?? '',
-    formatDate(ticket.bookingDate ?? ticket.booking_date),
-    ticket.sourceTicket ?? ticket.source_ticket ?? '',
-    ticket.channel ?? '',
-    ticket.ctype ?? ticket.customerType ?? ticket.customer_type ?? '',
-    ticket.customerName ?? ticket.customer_name ?? '',
-    ticket.serviceNo ?? ticket.service_no ?? '',
-    ticket.incidentDomain ?? ticket.incident_domain ?? '',
-    ticket.symptom ?? '',
-    ticket.solution ?? '',
-    ticket.descriptionActualSolution ?? ticket.description_actual_solution ?? '',
-    ticket.descriptionSolutionDompis ?? ticket.description_solution_dompis ?? '',
-    ticket.deviceName ?? ticket.device_name ?? '',
-    ticket.worklogSummary ?? ticket.worklog_summary ?? '',
-    ticket.classificationFlag ?? ticket.classification_flag ?? '',
-    ticket.realm ?? '',
-    ticket.tscResult ?? ticket.tsc_result ?? '',
-    ticket.sccResult ?? ticket.scc_result ?? '',
-    ticket.snOnt ?? ticket.sn_ont ?? '',
-    ticket.tipeOnt ?? ticket.tipe_ont ?? '',
-    ticket.rkInformation ?? ticket.rk_information ?? '',
-    ticket.classificationPath ?? ticket.classification_path ?? '',
-    ticket.lapul ?? '',
-    ticket.gaul ?? '',
-    ticket.onuRx ?? ticket.onu_rx ?? '',
-    ticket.pendingReason ?? ticket.pending_reason ?? '',
-    ticket.guaranteeStatus ?? ticket.guarantee_status ?? '',
-    getTicketStatusLabel(ticket.status ?? ticket.statusInsera),
-    getTicketStatusLabel(ticket.status_update ?? ticket.statusUpdate),
-    ticket.jenisTiket1 ?? ticket.jenis_tiket_1 ?? '',
-    jenisRaw,
-    ticket.alamat ?? '',
-    ticket.flaggingManja ?? ticket.flagging_manja ?? '',
-    getFlaggingLabel(ticket),
-    ticket.pendingDompis ?? ticket.pending_dompis ?? '',
-    ticket.sqmUpdateReason ?? ticket.sqm_update_reason ?? '',
-    ticket.rca ?? '',
-    ticket.subRca ?? ticket.sub_rca ?? '',
-    ticket.technicianName ?? ticket.users?.nama ?? '',
-    ticket.teknisiUserId ?? ticket.teknisi_user_id ?? '',
-    formatDateTime(ticket.closedAt ?? ticket.closed_at),
-    computeAge(ticket.reportedDate ?? ticket.reported_date),
-  ];
-}
-
-function arrayToCsv(rows: string[][]): string {
+function arrayToCsv(rows: Array<Array<string | number>>): string {
   return rows
     .map((row) =>
       row.map((cell) => {
@@ -466,6 +229,11 @@ export async function GET(request: Request) {
     const flaggingRaw = searchParams.getAll('flagging');
     const gamasOnly = searchParams.get('gamasOnly') === 'true';
     const validasiOnly = searchParams.get('validasiOnly') === 'true';
+    const includeClosed =
+      searchParams.get('includeClosed') === 'true' ||
+      [...ticketStatusRaw, ...statusUpdateRaw].some((value) =>
+        CLOSE_STATUS_VALUES.includes(value.trim().toUpperCase()),
+      );
 
     const filters = {
       ticketType: ticketTypeRaw,
@@ -497,6 +265,7 @@ export async function GET(request: Request) {
       ticketStatusRaw,
       flaggingRaw,
       validasiOnly,
+      includeClosed,
     );
 
     const cached = await getCache(cacheKey);
@@ -525,6 +294,7 @@ export async function GET(request: Request) {
             endDate: endDate || undefined,
             validasiPage: 1,
             validasiLimit: FETCH_PAGE_SIZE,
+            includeClosed,
             includeValidasi: true,
             includeOptions: false,
             ticketGroup: ticketGroupRaw,
@@ -562,6 +332,7 @@ export async function GET(request: Request) {
                   endDate: endDate || undefined,
                   validasiPage: p,
                   validasiLimit: FETCH_PAGE_SIZE,
+                  includeClosed,
                   includeValidasi: true,
                   includeSummary: false,
                   includeOptions: false,
@@ -609,6 +380,7 @@ export async function GET(request: Request) {
           page: 1,
           limit: FETCH_PAGE_SIZE,
           dept,
+          includeClosed,
           search: search || undefined,
           searchType,
           workzone: workzone || undefined,
@@ -648,6 +420,7 @@ export async function GET(request: Request) {
               page: p,
               limit: FETCH_PAGE_SIZE,
               dept,
+              includeClosed,
               search: search || undefined,
               searchType,
               workzone: workzone || undefined,
@@ -695,8 +468,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const columns = getExportColumns();
-    const rows = filtered.map(buildTicketRow);
+    const columns = TICKET_EXPORT_COLUMNS;
+    const rows = filtered.map(buildTicketExportRow);
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;

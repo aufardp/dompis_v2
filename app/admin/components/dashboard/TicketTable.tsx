@@ -107,6 +107,7 @@ export interface AdminTicketTableProps {
     flagging?: string[];
     excludeSymptom?: string;
     gamasOnly?: boolean;
+    includeClosed?: boolean;
     workzone?: string;
     branch?: string;
     search?: string;
@@ -392,6 +393,7 @@ export default function TicketTable({
         params.append('flagging', f);
       }
       if (downloadFilters.gamasOnly) params.set('gamasOnly', 'true');
+      if (downloadFilters.includeClosed) params.set('includeClosed', 'true');
       if (downloadFilters.workzone) params.set('workzone', downloadFilters.workzone);
       if (downloadFilters.branch) params.set('branch', downloadFilters.branch);
       if (downloadFilters.search) params.set('search', downloadFilters.search);

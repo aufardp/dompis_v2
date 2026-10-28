@@ -39,48 +39,7 @@ import {
   type JenisKey,
 } from '@/app/config/jenis-tiket';
 import { classifyTicket } from '@/app/libs/tickets/jenis';
-
-/**
- * Column set shared by the buffered XLSX export and the streaming CSV export.
- * Kept in one place so both formats always emit the same fields.
- */
-const EXPORT_TICKET_SELECT = {
-  id_ticket: true,
-  incident: true,
-  summary: true,
-  reported_date: true,
-  owner_group: true,
-  service_type: true,
-  service_no: true,
-  contact_name: true,
-  contact_phone: true,
-  booking_date: true,
-  workzone: true,
-  customer_type: true,
-  customer_segment: true,
-  jenis_tiket_2: true,
-  flagging_manja: true,
-  guarantee_status: true,
-  status_update: true,
-  status_date: true,
-  status: true,
-  worklog_summary: true,
-  symptom: true,
-  alamat: true,
-  device_name: true,
-  pending_dompis: true,
-  sqm_update_reason: true,
-  source_ticket: true,
-  description_solution_dompis: true,
-  rca: true,
-  sub_rca: true,
-  closed_at: true,
-  teknisi_user_id: true,
-  ticket_id_gamas: true,
-  users: { select: { nama: true } },
-  jenis_tiket_1: true,
-  ttr_comply_status: true,
-} as const;
+import { TICKET_EXPORT_SELECT } from '@/app/libs/tickets/ticket-export';
 
 type TicketFilters = {
   search?: string;
@@ -1027,7 +986,7 @@ export class TicketService {
       const take = Math.min(chunkSize, maxRows - emitted);
       const rows = await prisma.ticket.findMany({
         where: { AND: [where, { id_ticket: { gt: cursorId } }] },
-        select: EXPORT_TICKET_SELECT,
+        select: TICKET_EXPORT_SELECT,
         orderBy: { id_ticket: 'asc' },
         take,
       });
@@ -1063,7 +1022,7 @@ export class TicketService {
 
     const tickets = await prisma.ticket.findMany({
       where,
-      select: EXPORT_TICKET_SELECT,
+      select: TICKET_EXPORT_SELECT,
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
       take: safeLimit,
     });
