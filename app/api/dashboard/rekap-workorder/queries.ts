@@ -7,7 +7,7 @@ import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCacheSwr } from '@/lib/cache';
 import { getTodayWibRange } from '@/lib/timezone';
-import { toZonedTime } from 'date-fns-tz';
+import { format, toZonedTime } from 'date-fns-tz';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import {
@@ -106,7 +106,7 @@ export async function getFilteredRekapTickets(
         });
       const bucketWhere = buildRekapBucketFilterSql(bucket);
       const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+    SELECT
       a.nama_area                     AS area,
       sa.nama_sa                      AS sa_name,
       t.workzone,
@@ -134,7 +134,10 @@ export async function getFilteredRekapTickets(
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
   `;
-      return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...params);
+      return prisma.$queryRawUnsafe<RekapTicketRow[]>(
+        withMaxExecutionTime(fullSql),
+        ...params,
+      );
     },
     60,
   );
@@ -172,7 +175,7 @@ export async function getCustomerSqmOverlayTickets(
          AND (LOWER(jenis_tiket_1) LIKE '%sqm%' OR LOWER(jenis_tiket_1) LIKE '%sqm-ccan%')`;
 
       const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+    SELECT
       CASE
         WHEN (${proactiveWhere}) THEN 'proactive'
         WHEN (${sqmWhere}) THEN 'sqm_update'
@@ -205,7 +208,7 @@ export async function getCustomerSqmOverlayTickets(
     ORDER BY area, sa_name, workzone
   `;
       const rows = await prisma.$queryRawUnsafe<CustomerSqmOverlayRow[]>(
-        fullSql,
+        withMaxExecutionTime(fullSql),
         ...params,
       );
       const proactive: RekapTicketRow[] = [];
@@ -254,7 +257,7 @@ export async function getCustomerGamasOverlayTickets(
       const gamasWhere = `LOWER(t.source_ticket) = 'gamas'`;
 
       const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+    SELECT
       a.nama_area                     AS area,
       sa.nama_sa                      AS sa_name,
       t.workzone,
@@ -282,7 +285,10 @@ export async function getCustomerGamasOverlayTickets(
              is_sqm_update, jenis_tiket_1, jenis_tiket_2
     ORDER BY area, sa_name, workzone
   `;
-      return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...params);
+      return prisma.$queryRawUnsafe<RekapTicketRow[]>(
+        withMaxExecutionTime(fullSql),
+        ...params,
+      );
     },
     60,
   );
@@ -306,7 +312,7 @@ export async function getLegacyCustomerBucketRows(
     });
 
   const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+    SELECT
       a.nama_area AS area,
       sa.nama_sa AS sa_name,
       t.workzone,
@@ -321,7 +327,10 @@ export async function getLegacyCustomerBucketRows(
     ORDER BY area, sa_name, workzone
   `;
 
-  return prisma.$queryRawUnsafe<LegacyCustomerBucketRow[]>(fullSql, ...params);
+  return prisma.$queryRawUnsafe<LegacyCustomerBucketRow[]>(
+    withMaxExecutionTime(fullSql),
+    ...params,
+  );
 }
 
 export async function getLegacyCustomerRekapTickets(
@@ -342,7 +351,7 @@ export async function getLegacyCustomerRekapTickets(
     });
 
   const fullSql = `
-    SELECT /*+ MAX_EXECUTION_TIME(120000) */
+    SELECT
       a.nama_area                     AS area,
       sa.nama_sa                      AS sa_name,
       t.workzone,
@@ -370,7 +379,10 @@ export async function getLegacyCustomerRekapTickets(
     ORDER BY area, sa_name, workzone
   `;
 
-  return prisma.$queryRawUnsafe<RekapTicketRow[]>(fullSql, ...params);
+  return prisma.$queryRawUnsafe<RekapTicketRow[]>(
+    withMaxExecutionTime(fullSql),
+    ...params,
+  );
 }
 
 export async function getCustomerRekapTicketsSafe(
@@ -489,19 +501,29 @@ export async function getRekapAging(
     async () => {
       try {
         const [whereClause, params] =
-          await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-            dept: 'all',
-            includeClosed: true,
-            workzone,
-            branchId,
-          });
+          await DailyTicketService.buildDailyTicketSqlParams(
+            role,
+            userId,
+            {
+              dept: 'all',
+              includeClosed: true,
+              workzone,
+              branchId,
+            },
+            { applyDailyFilter: false },
+          );
         const bucketWhere = buildRekapBucketFilterSql(bucket);
         const closeStatusSql = CLOSE_STATUS_VALUES.map(
           (status) => `'${status.replace(/'/g, "''")}'`,
         ).join(', ');
         const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
         const nowTs = wibNow.getTime();
-        const threshold = (hours: number) => new Date(nowTs - hours * 3_600_000);
+        // booking_date = VARCHAR → bandingkan sebagai string (bukan Date)
+        // supaya tidak ada konversi implisit per baris.
+        const threshold = (hours: number) =>
+          format(new Date(nowTs - hours * 3_600_000), 'yyyy-MM-dd HH:mm:ss', {
+            timeZone: 'UTC',
+          });
 
         const sql = `
           SELECT

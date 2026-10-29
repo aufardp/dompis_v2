@@ -358,11 +358,12 @@ export async function getHourlyCloseCounts(
   userId: number,
   filters?: TicketFilters,
 ): Promise<Array<{ hour: number; count: number }>> {
-  const where = await buildDailyTicketWhere(role, userId, filters);
-  const mainTableWhere = buildMainTableWhere(where, {
-    includeClosed: filters?.includeClosed === true,
+  // Rentang closed_at + status close sudah membatasi hasil; filter harian
+  // (OR status) hanya memaksa full table scan tanpa menambah akurasi.
+  const where = await buildDailyTicketWhere(role, userId, filters, {
+    applyDailyFilter: false,
   });
-  const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+  const [whereClause, params] = buildSqlWhereClause(where);
   const { start, end } = getTodayWibRange();
   const currentHourWib = toZonedTime(new Date(), 'Asia/Jakarta').getHours();
 
@@ -406,15 +407,22 @@ export async function getDailyTrend(
   filters?: TicketFilters,
   days = 7,
 ): Promise<Array<{ date: string; masuk: number; close: number }>> {
-  const where = await buildDailyTicketWhere(role, userId, filters);
-  const mainTableWhere = buildMainTableWhere(where, {
-    includeClosed: filters?.includeClosed === true,
+  // Trend punya batas waktu sendiri (booking_date / closed_at >= awal periode),
+  // jadi filter harian tidak diperlukan — dan justru merusak index range.
+  const where = await buildDailyTicketWhere(role, userId, filters, {
+    applyDailyFilter: false,
   });
-  const [whereClause, params] = buildSqlWhereClause(mainTableWhere);
+  const [whereClause, params] = buildSqlWhereClause(where);
 
   const wibNow = toZonedTime(new Date(), 'Asia/Jakarta');
   const startWib = startOfDay(subDays(wibNow, days - 1));
   const startUtc = fromZonedTime(startWib, 'Asia/Jakarta');
+  // booking_date bertipe VARCHAR. Kirim sebagai string (bukan Date) supaya
+  // MySQL tidak meng-cast kolom per baris — dengan begitu index
+  // idx_ticket_booking_date tetap bisa dipakai untuk range scan.
+  const startUtcString = format(startUtc, 'yyyy-MM-dd HH:mm:ss', {
+    timeZone: 'UTC',
+  });
 
   const closeStatusSql = CLOSE_STATUS_VALUES.map((status) => `'${status}'`).join(', ');
 
@@ -451,7 +459,7 @@ export async function getDailyTrend(
       masuk: bigint | number;
       close: bigint | number;
     }>
-  >(withMaxExecutionTime(sql), ...params, startUtc, ...params, startUtc);
+  >(withMaxExecutionTime(sql), ...params, startUtcString, ...params, startUtc);
 
   const map = new Map<string, { date: string; masuk: number; close: number }>();
   for (let i = 0; i < days; i++) {

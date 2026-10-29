@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { getOrSetCacheSwr } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
@@ -397,7 +397,7 @@ export async function GET(request: NextRequest) {
           teknisiRegisteredRows,
         );
       },
-      120,
+      Math.max(DASHBOARD_CACHE_TTL, 120),
     );
 
     return NextResponse.json(data);

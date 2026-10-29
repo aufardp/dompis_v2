@@ -804,11 +804,15 @@ export async function buildDailyTicketSqlParams(
   role: string,
   userId: number,
   filters?: TicketFilters,
+  options: { applyDailyFilter?: boolean } = {},
 ): Promise<[string, any[]]> {
-  const where = await buildDailyTicketWhere(role, userId, filters);
-  const mainTableWhere = buildMainTableWhere(where, {
-    includeClosed: filters?.includeClosed === true,
-  });
+  const where = await buildDailyTicketWhere(role, userId, filters, options);
+  const mainTableWhere =
+    options.applyDailyFilter === false
+      ? where
+      : buildMainTableWhere(where, {
+          includeClosed: filters?.includeClosed === true,
+        });
   return buildSqlWhereClause(mainTableWhere);
 }
 

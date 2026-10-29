@@ -199,6 +199,7 @@ export async function buildDailyTicketWhere(
   role: string,
   userId: number,
   filters?: TicketFilters,
+  options: { applyDailyFilter?: boolean } = {},
 ): Promise<Record<string, any>> {
   const {
     search = '',
@@ -239,7 +240,13 @@ export async function buildDailyTicketWhere(
   const isLegacyKpi = Array.isArray(operationalBucket)
     ? operationalBucket.includes('kpi_customer')
     : operationalBucket === 'kpi_customer';
-  await applyDailyTicketFilter(where, undefined, isLegacyKpi);
+  // Query yang sudah punya batas waktu eksplisit (trend, hourly-close, aging)
+  // tidak perlu filter harian: filter itu berbentuk OR
+  // (status NOT IN closed OR (status IN closed AND closed_at >= hari ini))
+  // yang mematikan index range pada closed_at/booking_date.
+  if (options.applyDailyFilter !== false) {
+    await applyDailyTicketFilter(where, undefined, isLegacyKpi);
+  }
 
   const searchWhere = buildTicketSearchWhere(search, searchType);
   if (searchWhere) {

@@ -380,6 +380,8 @@ model ticket {
   @@index([ttr_comply_status, resolve_date], map: "idx_ticket_ttr_comply")
   @@index([booking_date], map: "idx_ticket_booking_date")
   @@index([closed_at, booking_date], map: "idx_ticket_closed_booking")
+  @@index([status, closed_at], map: "idx_ticket_status_closed_at")
+  @@index([pending_dompis], map: "idx_ticket_pending_dompis")
   @@index([is_manual], map: "idx_ticket_is_manual")
   @@index([workzone, operational_bucket, status, status_update, closed_at], map: "idx_ticket_operational_bucket")
   @@index([resolve_date, closed_at], map: "idx_ticket_resolve_closed")
