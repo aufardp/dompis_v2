@@ -92,8 +92,10 @@ export default function PriorityPage() {
   }, [data]);
 
   const branchDataMap = useMemo(() => {
-    if (!data?.branches) return {} as Record<PriorityBranchCode, BranchFullPrioritySummary>;
-    const map: Record<PriorityBranchCode, BranchFullPrioritySummary> = {} as any;
+    if (!data?.branches)
+      return {} as Record<PriorityBranchCode, BranchFullPrioritySummary>;
+    const map: Record<PriorityBranchCode, BranchFullPrioritySummary> =
+      {} as any;
     PRIORITY_BRANCH_CODES.forEach((code) => {
       if (data.branches[code]) {
         map[code] = data.branches[code];
@@ -285,7 +287,7 @@ export default function PriorityPage() {
                   <div className='grid grid-cols-3 gap-1.5 text-center'>
                     <div className='bg-bg/50 rounded border border-(--border) p-2'>
                       <p className='text-[9px] font-bold tracking-tight text-(--text-muted) uppercase'>
-                        TIKET REGULER
+                        REGULER
                       </p>
                       <p className='mt-1 text-sm font-extrabold text-blue-600 dark:text-blue-400'>
                         {formatNumber(card.reguler_open)}
@@ -293,7 +295,7 @@ export default function PriorityPage() {
                     </div>
                     <div className='bg-bg/50 rounded border border-(--border) p-2'>
                       <p className='text-[9px] font-bold tracking-tight text-(--text-muted) uppercase'>
-                        TIKET SQM
+                        SQM
                       </p>
                       <p className='mt-1 text-sm font-extrabold text-amber-600 dark:text-amber-400'>
                         {formatNumber(card.sqm_open)}
@@ -301,7 +303,7 @@ export default function PriorityPage() {
                     </div>
                     <div className='bg-bg/50 rounded border border-(--border) p-2'>
                       <p className='text-[9px] font-bold tracking-tight text-(--text-muted) uppercase'>
-                        UNDERSPEC
+                        UNSPEC
                       </p>
                       <p className='mt-1 text-sm font-extrabold text-red-600 dark:text-red-400'>
                         {formatNumber(card.underspec_open)}
@@ -443,7 +445,25 @@ export default function PriorityPage() {
                             'border-r border-(--border)',
                         )}
                       >
-                        {formatNumber(val)}
+                        {val > 0 ? (
+                          <button
+                            onClick={() =>
+                              handleOpenDrillDown(
+                                b.code as PriorityBranchCode,
+                                'reguler',
+                                `${b.name} - Tiket Open HI`,
+                                undefined,
+                                undefined,
+                                'open_hi',
+                              )
+                            }
+                            className='cursor-pointer text-amber-600 hover:underline dark:text-amber-500'
+                          >
+                            {formatNumber(val)}
+                          </button>
+                        ) : (
+                          '0'
+                        )}
                       </td>
                     );
                   })}
@@ -466,7 +486,25 @@ export default function PriorityPage() {
                             'border-r border-(--border)',
                         )}
                       >
-                        {formatNumber(val)}
+                        {val > 0 ? (
+                          <button
+                            onClick={() =>
+                              handleOpenDrillDown(
+                                b.code as PriorityBranchCode,
+                                'reguler',
+                                `${b.name} - Tiket Close HI`,
+                                undefined,
+                                undefined,
+                                'close_hi',
+                              )
+                            }
+                            className='cursor-pointer text-emerald-600 hover:underline dark:text-emerald-500'
+                          >
+                            {formatNumber(val)}
+                          </button>
+                        ) : (
+                          '0'
+                        )}
                       </td>
                     );
                   })}
@@ -845,7 +883,7 @@ export default function PriorityPage() {
           <div className='bg-surface flex items-center justify-between rounded border border-(--border) px-4 py-2.5 shadow-sm'>
             <div className='flex items-center gap-2 text-xs font-bold tracking-wider text-(--text-primary) uppercase'>
               <AlertTriangle className='h-4 w-4 text-amber-500' />
-              TIKET SQM & UNDERSPEC OPEN
+              TIKET SQM & UNSPEC OPEN
             </div>
           </div>
 
@@ -866,7 +904,7 @@ export default function PriorityPage() {
                     TIKET SQM
                   </th>
                   <th colSpan={2} className='bg-bg/40 px-2 py-2'>
-                    TIKET/SALDO UNDERSPEC
+                    TIKET/SALDO UNSPEC
                   </th>
                 </tr>
                 <tr className='border-b border-(--border) text-[9px]'>
@@ -1004,7 +1042,7 @@ export default function PriorityPage() {
 
         {/* Drill Down Modal */}
         {drillDown.open && (
-          <div className='fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm'>
+          <div className='fixed inset-0 z-100 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm'>
             <div className='bg-surface flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded border border-(--border) text-(--text-primary) shadow-2xl'>
               <div className='bg-bg flex items-center justify-between border-b border-(--border) p-4'>
                 <div>
@@ -1025,7 +1063,7 @@ export default function PriorityPage() {
               </div>
 
               <div className='bg-surface flex flex-wrap items-center gap-4 border-b border-(--border) p-4'>
-                <div className='relative min-w-[200px] flex-1'>
+                <div className='relative min-w-50 flex-1'>
                   <Search className='absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-(--text-muted)' />
                   <input
                     type='text'
@@ -1059,7 +1097,7 @@ export default function PriorityPage() {
                   </div>
                 ) : (
                   <div className='overflow-x-auto rounded border border-(--border)'>
-                    <table className='w-full min-w-[1500px] text-left text-xs'>
+                    <table className='w-full min-w-375 text-left text-xs'>
                       <thead className='bg-bg sticky top-0 border-b border-(--border) font-bold text-(--text-secondary)'>
                         <tr>
                           <th className='px-4 py-3'>Incident</th>
@@ -1068,8 +1106,17 @@ export default function PriorityPage() {
                           <th className='px-4 py-3'>Customer</th>
                           <th className='px-4 py-3'>Workzone</th>
                           <th className='px-4 py-3'>Jenis Pelanggan</th>
+                          {(drillDown.kind === 'sqm' ||
+                            drillDown.kind === 'underspec') &&
+                            drillDown.subKind === 'gaul' && (
+                              <>
+                                <th className='px-4 py-3'>Relasi</th>
+                                <th className='px-4 py-3'>Terkait Incident</th>
+                              </>
+                            )}
                           <th className='px-4 py-3'>Status</th>
                           <th className='px-4 py-3'>Reported At</th>
+                          <th className='px-4 py-3'>Resolve Date</th>
                           <th className='px-4 py-3'>Bucket</th>
                           <th className='px-4 py-3'>Max TTR</th>
                           <th className='px-4 py-3'>Booking Date</th>
@@ -1081,7 +1128,13 @@ export default function PriorityPage() {
                         {ticketsData?.data?.rows?.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={13}
+                              colSpan={
+                                (drillDown.kind === 'sqm' ||
+                                  drillDown.kind === 'underspec') &&
+                                drillDown.subKind === 'gaul'
+                                  ? 16
+                                  : 14
+                              }
                               className='px-4 py-8 text-center text-(--text-muted) italic'
                             >
                               Tidak ada tiket ditemukan.
@@ -1091,7 +1144,10 @@ export default function PriorityPage() {
                           ticketsData?.data?.rows?.map((row: any) => (
                             <tr
                               key={row.id_ticket}
-                              className='hover:bg-bg/50 transition-colors'
+                              className={cn(
+                                'hover:bg-bg/50 transition-colors',
+                                row.kind === 'gaul_history' && 'bg-amber-500/5',
+                              )}
                             >
                               <td className='px-4 py-3 font-bold text-(--text-primary)'>
                                 {row.incident}
@@ -1102,7 +1158,7 @@ export default function PriorityPage() {
                               <td className='px-4 py-3 text-xs font-medium text-(--text-primary)'>
                                 {row.jenis_tiket_2 || '-'}
                               </td>
-                              <td className='max-w-[150px] truncate px-4 py-3 text-(--text-secondary)'>
+                              <td className='max-w-37.5 truncate px-4 py-3 text-(--text-secondary)'>
                                 {row.customer_name}
                               </td>
                               <td className='px-4 py-3 text-(--text-secondary)'>
@@ -1111,6 +1167,27 @@ export default function PriorityPage() {
                               <td className='px-4 py-3 text-xs font-medium text-(--text-primary)'>
                                 {row.customer_type || '-'}
                               </td>
+                              {(drillDown.kind === 'sqm' ||
+                                drillDown.kind === 'underspec') &&
+                                drillDown.subKind === 'gaul' && (
+                                  <>
+                                    <td className='px-4 py-3 text-xs font-semibold uppercase'>
+                                      {row.evidence?.gaul_relation ===
+                                      'history' ? (
+                                        <span className='text-amber-600'>
+                                          RIWAYAT
+                                        </span>
+                                      ) : (
+                                        <span className='text-red-600'>
+                                          SAAT INI
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className='px-4 py-3 text-(--text-secondary)'>
+                                      {row.evidence?.related_to_incident || '-'}
+                                    </td>
+                                  </>
+                                )}
                               <td className='px-4 py-3'>
                                 <span className='bg-bg rounded-full border border-(--border) px-2 py-0.5 text-[10px] font-semibold text-(--text-secondary) uppercase'>
                                   {row.status || 'N/A'}
@@ -1121,6 +1198,13 @@ export default function PriorityPage() {
                                   ? new Date(
                                       row.reported_date_dt,
                                     ).toLocaleString('id-ID')
+                                  : '-'}
+                              </td>
+                              <td className='px-4 py-3 text-(--text-secondary)'>
+                                {row.resolve_date
+                                  ? new Date(row.resolve_date).toLocaleString(
+                                      'id-ID',
+                                    )
                                   : '-'}
                               </td>
                               <td className='px-4 py-3 font-medium text-(--text-primary)'>
