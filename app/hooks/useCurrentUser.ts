@@ -10,6 +10,8 @@ export interface CurrentUser {
   jabatan: string;
   role_name: string;
   role_key: string;
+  priority_access: boolean;
+  branch_ids: number[];
 }
 
 export function useCurrentUser() {

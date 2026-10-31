@@ -1,12 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx"
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "scripts/**/*.ts",
+    "scripts/**/*.tsx",
+    "types/**/*.d.ts",
+    "worker-runtime/**/*.ts",
+    "worker-runtime/**/*.tsx"
   ],
-  "exclude": [
-    "node_modules",
-    ".next"
-  ]
+  "exclude": ["node_modules", "dist-workers", "worker-runtime/runtime.ts"]
 }

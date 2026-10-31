@@ -45,6 +45,8 @@ export interface CurrentUser {
   jabatan: string;
   role_name: string;
   role_key: string;
+  priority_access: boolean;
+  branch_ids: number[];
 }
 
 export interface UserById {
@@ -301,6 +303,8 @@ export async function getUserById(id: number) {
   };
 }
 
+import { checkPriorityAccess } from '../priority/access';
+
 export async function getCurrentUser(
   id_user: number,
 ): Promise<CurrentUser | null> {
@@ -315,12 +319,18 @@ export async function getCurrentUser(
 
   if (!user) return null;
 
+  const roleKey = user.roles?.key || '';
+  const { hasAccess: priority_access, branchIds: branch_ids } =
+    await checkPriorityAccess(user.id_user, roleKey);
+
   return {
     id_user: user.id_user,
     nama: user.nama || '',
     jabatan: user.jabatan || '',
     role_name: user.roles?.name || '',
-    role_key: user.roles?.key || '',
+    role_key: roleKey,
+    priority_access,
+    branch_ids,
   };
 }
 

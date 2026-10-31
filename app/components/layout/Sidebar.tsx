@@ -44,8 +44,16 @@ const MENU_ITEMS: Array<{
   superadminOnly?: boolean;
   adminBranchVisible?: boolean;
   helpdeskVisible?: boolean;
+  priorityVisible?: boolean;
   hint: string;
 }> = [
+  {
+    label: 'Monitoring Priority',
+    path: '/admin/priority',
+    icon: Target,
+    hint: 'Live 5 Branch Overview',
+    priorityVisible: true,
+  },
   {
     label: 'Ticket Management',
     path: '/admin',
@@ -418,16 +426,19 @@ export default function Sidebar({
     roleName === 'super admin';
   const isAdminBranch = roleKey === 'admin_branch';
   const isHelpdesk = roleKey === 'helpdesk';
+  const isPriorityVisible = user?.priority_access === true;
+
   const handled = useMemo(() => {
     const items = MENU_ITEMS.filter((item) => {
       if (item.superadminOnly) {
         return isSuperAdmin || (item.adminBranchVisible && isAdminBranch);
       }
       if (item.helpdeskVisible) return true;
+      if (item.priorityVisible) return isPriorityVisible;
       return !isHelpdesk;
     });
     return items;
-  }, [isSuperAdmin, isAdminBranch, isHelpdesk]);
+  }, [isSuperAdmin, isAdminBranch, isHelpdesk, isPriorityVisible]);
   const selectedWorkzoneLabel = useMemo(() => {
     if (!selectedWorkzone) return 'All workzones';
     const workzones = workzoneOptions ?? [];
