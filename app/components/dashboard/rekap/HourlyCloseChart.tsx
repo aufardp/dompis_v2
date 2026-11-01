@@ -45,7 +45,7 @@ export default function HourlyCloseChart({
   isFetching: boolean;
 }) {
   return (
-    <div className='rounded-2xl border border-(--border) bg-(--surface)'>
+    <div className='rounded border border-(--border) bg-(--surface)'>
       <div className='h-[260px] w-full min-w-0 p-3 sm:h-80 sm:p-4'>
         <ResponsiveContainer width='100%' height='100%' minWidth={0} minHeight={200}>
           <BarChart
@@ -53,26 +53,6 @@ export default function HourlyCloseChart({
             margin={{ top: 12, right: 18, bottom: 8, left: 0 }}
             barCategoryGap={10}
           >
-            <defs>
-              <linearGradient
-                id='closeBarGradient'
-                x1='0'
-                y1='0'
-                x2='0'
-                y2='1'
-              >
-                <stop
-                  offset='0%'
-                  stopColor='#38bdf8'
-                  stopOpacity={0.95}
-                />
-                <stop
-                  offset='100%'
-                  stopColor='#3b82f6'
-                  stopOpacity={0.75}
-                />
-              </linearGradient>
-            </defs>
             <CartesianGrid
               stroke='rgba(148,163,184,0.12)'
               vertical={false}
@@ -101,7 +81,7 @@ export default function HourlyCloseChart({
                 />
               }
             />
-            <Bar dataKey='count' radius={[10, 10, 4, 4]}>
+            <Bar dataKey='count' radius={[4, 4, 4, 4]}>
               {data.map((entry) => (
                 <Cell
                   key={`close-${entry.hour}`}
@@ -121,23 +101,23 @@ export default function HourlyCloseChart({
       <div className='border-t border-(--border) px-4 py-3'>
         <div className='flex flex-wrap items-center gap-3 text-xs text-(--text-secondary)'>
           <span className='inline-flex items-center gap-1.5'>
-            <span className='h-2.5 w-2.5 rounded-full bg-emerald-500' />
+            <span className='h-2.5 w-2.5 bg-emerald-500' />
             Peak hour
           </span>
           <span className='inline-flex items-center gap-1.5'>
-            <span className='h-2.5 w-2.5 rounded-full bg-amber-500' />
+            <span className='h-2.5 w-2.5 bg-amber-500' />
             Jam berjalan
           </span>
           <span className='inline-flex items-center gap-1.5'>
-            <span className='h-2.5 w-2.5 rounded-full bg-sky-500' />
+            <span className='h-2.5 w-2.5 bg-sky-500' />
             Close aktif
           </span>
           <span className='inline-flex items-center gap-1.5'>
-            <span className='h-2.5 w-2.5 rounded-full bg-slate-400/50' />
+            <span className='h-2.5 w-2.5 bg-slate-400/50' />
             Jam kosong
           </span>
           {isFetching && (
-            <span className='ml-auto text-[11px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+            <span className='ml-auto text-[11px] font-semibold uppercase tracking-wider text-(--text-muted)'>
               Refreshing...
             </span>
           )}

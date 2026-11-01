@@ -1,10 +1,10 @@
-import { redirect } from 'next/navigation';
-import { verifyAccessToken } from '@/app/libs/auth';
-import { cookies } from 'next/headers';
+import AdminLayout from '@/app/components/layout/AdminLayout';
 import DashboardDurasiClient from '@/app/components/dashboard/durasi/DashboardDurasiClient';
 import DashboardPageActions from '@/app/components/dashboard/DashboardPageActions';
-import ThemeToggleButton from '@/app/components/ui/ThemeToggleButton';
 import { getInitialBranchScope } from '@/app/helpers/get-initial-branch-scope';
+import { verifyAccessToken } from '@/app/libs/auth';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 async function getUser() {
   try {
@@ -28,66 +28,51 @@ export default async function MonitoringPage() {
     redirect('/teknisi');
   }
 
-  const homeHref = '/admin';
   const initialBranch = await getInitialBranchScope();
 
   return (
-    <div className="min-h-screen bg-(--bg) p-4 md:p-6">
-      <div className="mx-auto mb-5 max-w-[1600px] overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm">
-        <div className="flex flex-col gap-5 border-b border-(--border) bg-(--surface-2) px-5 py-5 md:px-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-blue-500 uppercase">
-                Monitoring
-              </span>
-              <span className="rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase">
-                SLA / Duration Health
-              </span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold leading-tight tracking-[-0.3px] text-(--text-primary) md:text-4xl">
-                Durasi Tiket Open
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-(--text-secondary)">
-                Heat-map durasi per service area with a stable, glanceable panel for daily monitoring.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <ThemeToggleButton />
-            <DashboardPageActions homeHref={homeHref} />
-          </div>
+    <AdminLayout>
+      <div className='min-h-screen p-4 md:p-6'>
+        <div className='mb-6 border-b border-(--border) pb-6'>
+          <h1 className='text-xl font-bold uppercase tracking-wide text-(--text-primary)'>
+            DURASI TIKET OPEN
+          </h1>
+          <p className='mt-1 text-xs text-(--text-secondary)'>
+            Heat-map durasi per service area untuk monitoring harian.
+          </p>
         </div>
-        <div className="grid gap-3 px-5 py-4 md:px-6 sm:grid-cols-3">
-          <div className="rounded-2xl border border-(--border) bg-(--bg) px-4 py-3">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase">
-              Focus
+
+        <div className='grid grid-cols-1 gap-4 pb-6 sm:grid-cols-3'>
+          <div className='rounded border border-(--border) bg-(--surface) px-4 py-3 shadow-sm'>
+            <p className='text-[10px] font-bold uppercase tracking-wider text-(--text-muted)'>
+              Fokus
             </p>
-            <p className="mt-1 text-sm font-semibold text-(--text-primary)">
-              Open duration by service area
+            <p className='mt-1 text-xs font-semibold text-(--text-primary)'>
+              Durasi open per service area
             </p>
           </div>
-          <div className="rounded-2xl border border-(--border) bg-(--bg) px-4 py-3">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase">
+          <div className='rounded border border-(--border) bg-(--surface) px-4 py-3 shadow-sm'>
+            <p className='text-[10px] font-bold uppercase tracking-wider text-(--text-muted)'>
               Cadence
             </p>
-            <p className="mt-1 text-sm font-semibold text-(--text-primary)">
-              Auto-refresh every minute
+            <p className='mt-1 text-xs font-semibold text-(--text-primary)'>
+              Auto-refresh tiap menit
             </p>
           </div>
-          <div className="rounded-2xl border border-(--border) bg-(--bg) px-4 py-3">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase">
-              Scope
+          <div className='rounded border border-(--border) bg-(--surface) px-4 py-3 shadow-sm'>
+            <p className='text-[10px] font-bold uppercase tracking-wider text-(--text-muted)'>
+              Peran Pengguna
             </p>
-            <p className="mt-1 text-sm font-semibold text-(--text-primary)">
+            <p className='mt-1 text-xs font-semibold text-(--text-primary)'>
               {user.role}
             </p>
           </div>
         </div>
+
+        <div className='rounded border border-(--border) bg-(--surface) shadow-sm'>
+          <DashboardDurasiClient initialBranch={initialBranch} />
+        </div>
       </div>
-      <div className="mx-auto max-w-[1600px]">
-        <DashboardDurasiClient initialBranch={initialBranch} />
-      </div>
-    </div>
+    </AdminLayout>
   );
 }

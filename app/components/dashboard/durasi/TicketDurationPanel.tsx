@@ -94,19 +94,18 @@ export default function TicketDurationPanel({
   const dominantLabel = isAllBucket ? 'Dominan' : `Dominan di ${bucketLabel}`;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface) shadow-sm">
+    <div className="overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm">
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex w-full items-start gap-3 border-b border-(--border) bg-(--surface-2) px-3 py-2.5 text-left transition-colors hover:bg-(--surface-3)/50 sm:px-4 sm:py-3"
       >
-        <div className="mt-0.5 h-3.5 w-1 rounded-full shrink-0" style={{ background: accent }} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h2 className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-(--text-secondary) sm:text-xs sm:tracking-[0.18em]">
               Durasi Tiket {panel.label}
             </h2>
-            <span className="rounded-full border border-(--border) bg-(--surface) px-2 py-0.5 text-[10px] font-semibold text-(--text-primary) sm:text-[11px]">
+            <span className="border border-(--border) bg-(--surface) px-2 py-0.5 text-[10px] font-semibold text-(--text-primary) sm:text-[11px]">
               {formatNum(panel.grandTotal ?? grandTotal)}
             </span>
           </div>
@@ -120,7 +119,7 @@ export default function TicketDurationPanel({
 
       {grandTotal > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 sm:px-4">
-          <div className="flex h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-(--surface-3)">
+          <div className="flex h-1.5 w-full max-w-56 overflow-hidden bg-(--surface-3)">
             {panel.totals.map((total, idx) => {
               const pct = (total / grandTotal) * 100;
               return pct > 0 ? (

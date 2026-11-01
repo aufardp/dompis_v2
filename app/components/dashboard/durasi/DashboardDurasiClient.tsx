@@ -227,14 +227,14 @@ export default function DashboardDurasiClient({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm sm:p-5">
+      <section className="rounded border border-(--border) bg-(--surface) p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold tracking-[0.22em] text-(--text-muted) uppercase">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">
                 Monitoring Durasi
               </p>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight text-(--text-primary)">
+              <h1 className="mt-1 text-lg font-bold uppercase tracking-wide text-(--text-primary)">
                 Distribusi tiket per bucket durasi
               </h1>
             </div>
@@ -251,14 +251,14 @@ export default function DashboardDurasiClient({
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 sm:max-w-md">
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">
                 Bucket
               </span>
               <div className="relative">
                 <select
                   value={selectedBucket}
                   onChange={(e) => setSelectedBucket(e.target.value as DurasiBucketKey)}
-                  className="w-full cursor-pointer appearance-none rounded-2xl border border-(--border) bg-(--surface) px-4 py-2.5 pr-10 text-sm text-(--text-primary) shadow-sm transition-colors hover:bg-(--surface-2) focus:border-blue-500 focus:outline-none"
+                  className="w-full cursor-pointer appearance-none rounded border border-(--border) bg-(--surface) px-4 py-2 text-sm text-(--text-primary) shadow-sm transition-colors hover:bg-(--surface-2) focus:border-blue-500 focus:outline-none"
                 >
                   {BUCKET_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -266,11 +266,11 @@ export default function DashboardDurasiClient({
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute top-3 right-3 h-4 w-4 text-(--text-muted)" />
+                <ChevronDown className="pointer-events-none absolute top-2.5 right-3 h-4 w-4 text-(--text-muted)" />
               </div>
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-(--text-muted)">
                 Branch
               </span>
               <BranchFilterSelect className="block w-full" initialBranch={branch} />
@@ -290,21 +290,21 @@ export default function DashboardDurasiClient({
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase">
+        <p className="text-[10px] font-bold tracking-wider text-(--text-muted) uppercase">
           {view === 'table' ? `${visiblePanels.length} panel` : 'Heat-map durasi per service area'}
         </p>
-        <div className="inline-flex shrink-0 rounded-full border border-(--border) bg-(--surface-2) p-0.5 text-[11px] font-semibold">
+        <div className="inline-flex shrink-0 rounded border border-(--border) bg-(--surface-2) p-0.5 text-[11px] font-semibold">
           <button
             type="button"
             onClick={() => setView('table')}
-            className={`rounded-full px-3 py-1 transition-colors ${view === 'table' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
+            className={`rounded px-3 py-1 transition-colors ${view === 'table' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
           >
             Tabel
           </button>
           <button
             type="button"
             onClick={() => setView('heatmap')}
-            className={`rounded-full px-3 py-1 transition-colors ${view === 'heatmap' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
+            className={`rounded px-3 py-1 transition-colors ${view === 'heatmap' ? 'bg-(--surface) text-(--text-primary) shadow-sm' : 'text-(--text-muted)'}`}
           >
             Heat-map
           </button>
@@ -326,7 +326,7 @@ export default function DashboardDurasiClient({
           ))}
         </div>
       ) : (
-        <div className="rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm sm:p-4">
+        <div className="rounded border border-(--border) bg-(--surface) p-3 shadow-sm sm:p-4">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] text-(--text-muted)">
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500/80" />Segar</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-yellow-500/80" />Menengah</span>

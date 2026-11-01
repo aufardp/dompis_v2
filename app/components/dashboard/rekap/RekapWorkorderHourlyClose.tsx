@@ -70,9 +70,9 @@ function StatPill({
   icon: ReactNode;
 }) {
   return (
-    <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2'>
+    <div className='rounded border border-(--border) bg-(--surface-2) px-3 py-2'>
       <div className='flex items-center justify-between gap-2'>
-        <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+        <p className='text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)'>
           {label}
         </p>
         <div className='text-(--text-muted)'>{icon}</div>
@@ -106,7 +106,7 @@ function HourChip({
 
   return (
     <div
-      className='flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center'
+      className='flex min-w-0 flex-1 flex-col items-center gap-1 rounded border px-1.5 py-2 text-center'
       style={{
         borderColor: isPeak
           ? 'rgba(16, 185, 129, 0.35)'
@@ -124,7 +124,7 @@ function HourChip({
         {String(hour).padStart(2, '0')}
       </span>
       <div
-        className='w-full rounded-full'
+        className='w-full rounded-sm'
         style={{
           height: `${Math.max(6, Math.min(28, count * 3))}px`,
           background: active
@@ -277,9 +277,9 @@ export default function RekapWorkorderHourlyClose({
           </div>
         </div>
 
-        <div className='mt-4 flex flex-col gap-2 rounded-2xl border border-(--border) bg-(--surface-2) p-3 sm:flex-row sm:items-center sm:justify-between'>
+        <div className='mt-4 flex flex-col gap-2 rounded border border-(--border) bg-(--surface-2) p-3 sm:flex-row sm:items-center sm:justify-between'>
           <div>
-            <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+            <p className='text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)'>
               Filter workzone
             </p>
             <p className='mt-1 text-xs text-(--text-secondary)'>
@@ -291,7 +291,7 @@ export default function RekapWorkorderHourlyClose({
               value={selectedWorkzone}
               onChange={(e) => setSelectedWorkzone(e.target.value)}
               disabled={workzoneLoading}
-              className='w-full cursor-pointer appearance-none rounded-xl border border-(--border) bg-(--surface) px-3 py-2.5 pr-9 text-sm font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500/30'
+              className='w-full cursor-pointer appearance-none rounded border border-(--border) bg-(--surface) px-3 py-2 pr-9 text-xs font-medium text-(--text-primary) outline-none focus:ring-1 focus:ring-blue-500'
             >
               <option value=''>Semua Workzone</option>
               {workzoneOptions.map((option) => (
@@ -318,7 +318,7 @@ export default function RekapWorkorderHourlyClose({
               reveal={0.12}
               loading-label='Loading hourly close chart'
             >
-              <div className='h-70 rounded-2xl border border-(--border) bg-(--surface-2) sm:h-90'>
+              <div className='h-70 rounded border border-(--border) bg-(--surface-2) sm:h-90'>
                 <div className='flex h-full flex-col gap-4 p-4'>
                   <div className='flex items-center justify-between gap-3'>
                     <div className='h-4 w-48 rounded-full bg-slate-200 dark:bg-slate-800' />
@@ -337,7 +337,7 @@ export default function RekapWorkorderHourlyClose({
               </div>
             </phantom-ui>
           ) : summary.total === 0 ? (
-            <div className='flex h-70 items-center justify-center rounded-2xl border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-90'>
+            <div className='flex h-70 items-center justify-center rounded border border-dashed border-(--border) bg-(--surface-2) px-6 text-center sm:h-90'>
               <div className='max-w-sm'>
                 <MoonStar className='mx-auto h-8 w-8 text-(--text-muted)' />
                 <p className='mt-3 text-sm font-semibold text-(--text-primary)'>
@@ -374,12 +374,12 @@ export default function RekapWorkorderHourlyClose({
         </div>
 
         <div className='space-y-3 md:space-y-4'>
-          <div className='rounded-2xl border border-(--border) bg-(--surface-2) p-4 md:p-4'>
-            <p className='text-xs font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+          <div className='rounded border border-(--border) bg-(--surface-2) p-4'>
+            <p className='text-xs font-semibold uppercase tracking-wider text-(--text-muted)'>
               Insight cepat
             </p>
             <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1'>
-              <div className='rounded-xl bg-(--surface) p-3'>
+              <div className='rounded border border-(--border) bg-(--surface) p-3'>
                 <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
                   <Flame className='h-4 w-4 text-emerald-500' />
                   Jam paling padat
@@ -393,7 +393,7 @@ export default function RekapWorkorderHourlyClose({
                 </p>
               </div>
 
-              <div className='rounded-xl bg-(--surface) p-3'>
+              <div className='rounded border border-(--border) bg-(--surface) p-3'>
                 <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
                   <Clock3 className='h-4 w-4 text-amber-500' />
                   Jam berjalan
@@ -407,7 +407,7 @@ export default function RekapWorkorderHourlyClose({
                 </p>
               </div>
 
-              <div className='rounded-xl bg-(--surface) p-3 sm:col-span-2 lg:col-span-1'>
+              <div className='rounded border border-(--border) bg-(--surface) p-3 sm:col-span-2 lg:col-span-1'>
                 <div className='flex items-center gap-2 text-xs font-semibold tracking-wide text-(--text-muted) uppercase'>
                   <Activity className='h-4 w-4 text-sky-500' />
                   Rata-rata distribusi
@@ -424,8 +424,8 @@ export default function RekapWorkorderHourlyClose({
             </div>
           </div>
 
-          <div className='hidden rounded-2xl border border-(--border) bg-linear-to-br from-sky-500/10 via-transparent to-emerald-500/10 p-4 md:block'>
-            <p className='text-xs font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+          <div className='rounded border border-(--border) bg-(--surface-2) p-4'>
+            <p className='text-xs font-semibold uppercase tracking-wider text-(--text-muted)'>
               Cara baca
             </p>
             <ul className='mt-3 space-y-2 text-sm leading-6 text-(--text-secondary)'>

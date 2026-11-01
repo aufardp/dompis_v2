@@ -1,11 +1,10 @@
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
-import { verifyAccessToken } from '@/app/libs/auth';
+import AdminLayout from '@/app/components/layout/AdminLayout';
 import RekapWorkorderClient from '@/app/components/dashboard/rekap/RekapWorkorderClient';
-import DashboardPageActions from '@/app/components/dashboard/DashboardPageActions';
-import ThemeToggleButton from '@/app/components/ui/ThemeToggleButton';
-import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
 import { getInitialBranchScope } from '@/app/helpers/get-initial-branch-scope';
+import { getInitialWorkzoneScope } from '@/app/helpers/get-initial-workzone-scope';
+import { verifyAccessToken } from '@/app/libs/auth';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
 async function getUser() {
   try {
@@ -26,7 +25,7 @@ export default async function RekapWorkorderPage({
   const user = await getUser();
   if (!user) redirect('/auth/login');
   if (user.role === 'teknisi') redirect('/teknisi');
-  const homeHref = '/admin';
+  
   const sp = searchParams ? await searchParams : {};
   const [cookieWorkzone, cookieBranch] = await Promise.all([
     getInitialWorkzoneScope(),
@@ -36,28 +35,21 @@ export default async function RekapWorkorderPage({
   const initialBranch = typeof sp.branch === 'string' ? sp.branch : cookieBranch;
 
   return (
-    <div className='min-h-screen bg-(--bg) p-4 md:p-6'>
-      <div className='mb-5 flex items-start justify-between gap-4'>
-        <div>
-          <div className='mb-1 flex items-center gap-2'>
-            <div className='h-5 w-1 rounded-full bg-amber-500' />
-            <span className='text-xs font-semibold tracking-widest text-(--text-muted) uppercase'>
-              Workorder
-            </span>
-          </div>
-          <h1 className='text-xl leading-tight font-bold text-(--text-primary)'>
-            Rekap Workorder
+    <AdminLayout>
+      <div className='min-h-screen p-4 sm:p-6'>
+        <div className='mb-6 border-b border-(--border) pb-6'>
+          <h1 className='text-xl font-bold uppercase tracking-wide text-(--text-primary)'>
+            REKAP WORKORDER
           </h1>
-          <p className='mt-0.5 text-xs text-(--text-secondary)'>
-            Distribusi tiket per service area, segment, dan workzone
+          <p className='mt-1 text-xs text-(--text-secondary)'>
+            Ringkasan distribusi tiket berdasarkan service area, segmen pelanggan, dan workzone.
           </p>
         </div>
-        <div className='flex shrink-0 items-center gap-2'>
-          <ThemeToggleButton />
-          <DashboardPageActions homeHref={homeHref} />
+        
+        <div className='rounded border border-(--border) bg-(--surface) shadow-sm'>
+          <RekapWorkorderClient initialWorkzone={initialWorkzone} initialBranch={initialBranch} />
         </div>
       </div>
-      <RekapWorkorderClient initialWorkzone={initialWorkzone} initialBranch={initialBranch} />
-    </div>
+    </AdminLayout>
   );
 }

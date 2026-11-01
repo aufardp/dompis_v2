@@ -188,7 +188,7 @@ export default function PriorityPage() {
 
   return (
     <AdminLayout>
-      <div className='bg-bg min-h-screen space-y-8 p-4 text-(--text-primary) md:p-6'>
+      <div className='bg-bg min-h-screen space-y-8 p-4 text-(--text-primary) sm:p-6'>
         {/* 3.1 Header Halaman */}
         <div className='flex flex-col gap-4 border-b border-(--border) pb-4 md:flex-row md:items-center md:justify-between'>
           <div className='space-y-1'>
@@ -887,156 +887,154 @@ export default function PriorityPage() {
             </div>
           </div>
 
-          <div className='bg-surface overflow-x-auto rounded border border-(--border) shadow-sm'>
-            <table className='w-full border-collapse text-left text-xs'>
-              <thead className='bg-bg border-b border-(--border) text-center text-[10px] font-bold tracking-wider text-(--text-secondary)'>
-                <tr>
-                  <th
-                    rowSpan={2}
-                    className='w-36 border-r border-(--border) px-4 py-3 text-left align-middle'
-                  >
-                    BRANCH
-                  </th>
-                  <th
-                    colSpan={2}
-                    className='bg-bg/40 border-r border-(--border) px-2 py-2'
-                  >
-                    TIKET SQM
-                  </th>
-                  <th colSpan={2} className='bg-bg/40 px-2 py-2'>
-                    TIKET/SALDO UNSPEC
-                  </th>
-                </tr>
-                <tr className='border-b border-(--border) text-[9px]'>
-                  <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
-                    POTENSI GANGGUAN
-                  </th>
-                  <th className='border-r border-(--border) bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400'>
-                    POTENSI GAUL
-                  </th>
-                  <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
-                    POTENSI GANGGUAN
-                  </th>
-                  <th className='bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400'>
-                    POTENSI GAUL
-                  </th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-(--border)'>
-                {BRANCH_LIST.map((b) => {
-                  const br = branchDataMap[b.code as PriorityBranchCode];
-                  const sqmUnder = br?.sqm_underspec || {
-                    sqm_disruption: 0,
-                    sqm_gaul: 0,
-                    underspec_disruption: 0,
-                    underspec_gaul: 0,
-                  };
-
-                  return (
-                    <tr
-                      key={b.code}
-                      className='hover:bg-surface-2 text-center transition-colors'
+          <div className='bg-surface rounded border border-(--border) shadow-sm overflow-hidden'>
+            <div className='overflow-x-auto'>
+              <table className='w-full min-w-[550px] table-fixed border-collapse text-left text-xs'>
+                <thead className='bg-bg text-center text-[10px] font-bold tracking-wider text-(--text-secondary)'>
+                  <tr>
+                    <th
+                      rowSpan={2}
+                      className='w-28 border-r border-(--border) px-3 py-3 text-left align-middle sm:w-36'
                     >
-                      <td className='border-r border-(--border) px-4 py-3 text-left font-bold text-(--text-primary)'>
-                        {b.name}
-                      </td>
+                      BRANCH
+                    </th>
+                    <th colSpan={2} className='bg-bg/40 border-r border-(--border) px-2 py-2 w-1/2'>TIKET SQM</th>
+                    <th colSpan={2} className='bg-bg/40 px-2 py-2 w-1/2'>TIKET/SALDO UNSPEC</th>
+                  </tr>
+                  <tr className='border-b border-(--border) text-[9px]'>
+                    <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 w-1/4 text-center'>POTENSI GANGGUAN</th>
+                    <th className='border-r border-(--border) bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400 w-1/4 text-center'>POTENSI GAUL</th>
+                    <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 w-1/4 text-center'>POTENSI GANGGUAN</th>
+                    <th className='bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400 w-1/4 text-center'>POTENSI GAUL</th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-(--border)'>
+                  {BRANCH_LIST.map((b) => {
+                    const br = branchDataMap[b.code as PriorityBranchCode];
+                    const sqmUnder = br?.sqm_underspec || {
+                      sqm_disruption: 0,
+                      sqm_gaul: 0,
+                      underspec_disruption: 0,
+                      underspec_gaul: 0,
+                    };
 
-                      {/* SQM Disruption */}
-                      <td className='border-r border-(--border) bg-amber-50/20 px-2 py-3 font-bold text-amber-600 dark:bg-amber-950/10 dark:text-amber-400'>
-                        {sqmUnder.sqm_disruption > 0 ? (
-                          <button
-                            onClick={() =>
-                              handleOpenDrillDown(
-                                b.code as PriorityBranchCode,
-                                'sqm',
-                                `${b.name} - SQM Potensi Gangguan`,
-                                undefined,
-                                undefined,
-                                'disruption',
-                              )
-                            }
-                            className='text-amber-700 hover:underline dark:text-amber-300'
-                          >
-                            {sqmUnder.sqm_disruption}
-                          </button>
-                        ) : (
-                          '0'
-                        )}
-                      </td>
+                    return (
+                      <tr key={b.code} className='hover:bg-surface-2 transition-colors'>
+                        <td className='w-28 border-r border-(--border) px-3 py-3 text-left font-bold text-(--text-primary) truncate sm:w-36'>
+                          {b.name}
+                        </td>
 
-                      {/* SQM Gaul */}
-                      <td className='border-r border-(--border) bg-red-50/20 px-2 py-3 font-bold text-red-600 dark:bg-red-950/10 dark:text-red-400'>
-                        {sqmUnder.sqm_gaul > 0 ? (
-                          <button
-                            onClick={() =>
-                              handleOpenDrillDown(
-                                b.code as PriorityBranchCode,
-                                'sqm',
-                                `${b.name} - SQM Potensi Gaul`,
-                                undefined,
-                                undefined,
-                                'gaul',
-                              )
-                            }
-                            className='text-red-700 hover:underline dark:text-red-300'
-                          >
-                            {sqmUnder.sqm_gaul}
-                          </button>
-                        ) : (
-                          '0'
-                        )}
-                      </td>
+                        {/* SQM Disruption */}
+                        <td className='w-1/4 border-r border-(--border) bg-amber-50/20 px-2 py-3 text-center font-bold text-amber-600 dark:bg-amber-950/10 dark:text-amber-400'>
+                          {sqmUnder.sqm_disruption > 0 ? (
+                            <button
+                              onClick={() =>
+                                handleOpenDrillDown(
+                                  b.code as PriorityBranchCode,
+                                  'sqm',
+                                  `${b.name} - SQM Potensi Gangguan`,
+                                  undefined,
+                                  undefined,
+                                  'disruption',
+                                )
+                              }
+                              className='text-amber-700 hover:underline dark:text-amber-300'
+                            >
+                              {sqmUnder.sqm_disruption}
+                            </button>
+                          ) : (
+                            '0'
+                          )}
+                        </td>
 
-                      {/* Underspec Disruption */}
-                      <td className='border-r border-(--border) bg-amber-50/20 px-2 py-3 font-bold text-amber-600 dark:bg-amber-950/10 dark:text-amber-400'>
-                        {sqmUnder.underspec_disruption > 0 ? (
-                          <button
-                            onClick={() =>
-                              handleOpenDrillDown(
-                                b.code as PriorityBranchCode,
-                                'underspec',
-                                `${b.name} - Underspec Potensi Gangguan`,
-                                undefined,
-                                undefined,
-                                'disruption',
-                              )
-                            }
-                            className='text-amber-700 hover:underline dark:text-amber-300'
-                          >
-                            {sqmUnder.underspec_disruption}
-                          </button>
-                        ) : (
-                          '0'
-                        )}
-                      </td>
+                        {/* SQM Gaul */}
+                        <td className='w-1/4 border-r border-(--border) bg-red-50/20 px-2 py-3 text-center font-bold text-red-600 dark:bg-red-950/10 dark:text-red-400'>
+                          {sqmUnder.sqm_gaul > 0 ? (
+                            <button
+                              onClick={() =>
+                                handleOpenDrillDown(
+                                  b.code as PriorityBranchCode,
+                                  'sqm',
+                                  `${b.name} - SQM Potensi Gaul`,
+                                  undefined,
+                                  undefined,
+                                  'gaul',
+                                )
+                              }
+                              className='text-red-700 hover:underline dark:text-red-300'
+                            >
+                              {sqmUnder.sqm_gaul}
+                            </button>
+                          ) : (
+                            '0'
+                          )}
+                        </td>
 
-                      {/* Underspec Gaul */}
-                      <td className='bg-red-50/20 px-2 py-3 font-bold text-red-600 dark:bg-red-950/10 dark:text-red-400'>
-                        {sqmUnder.underspec_gaul > 0 ? (
-                          <button
-                            onClick={() =>
-                              handleOpenDrillDown(
-                                b.code as PriorityBranchCode,
-                                'underspec',
-                                `${b.name} - Underspec Potensi Gaul`,
-                                undefined,
-                                undefined,
-                                'gaul',
-                              )
-                            }
-                            className='text-red-700 hover:underline dark:text-red-300'
-                          >
-                            {sqmUnder.underspec_gaul}
-                          </button>
-                        ) : (
-                          '0'
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {/* Underspec Disruption */}
+                        <td className='w-1/4 border-r border-(--border) bg-amber-50/20 px-2 py-3 text-center font-bold text-amber-600 dark:bg-amber-950/10 dark:text-amber-400'>
+                          {sqmUnder.underspec_disruption > 0 ? (
+                            <button
+                              onClick={() =>
+                                handleOpenDrillDown(
+                                  b.code as PriorityBranchCode,
+                                  'underspec',
+                                  `${b.name} - Underspec Potensi Gangguan`,
+                                  undefined,
+                                  undefined,
+                                  'disruption',
+                                )
+                              }
+                              className='text-amber-700 hover:underline dark:text-amber-300'
+                            >
+                              {sqmUnder.underspec_disruption}
+                            </button>
+                          ) : (
+                            '0'
+                          )}
+                        </td>
+
+                        {/* Underspec Gaul */}
+                        <td className='w-1/4 bg-red-50/20 px-2 py-3 text-center font-bold text-red-600 dark:bg-red-950/10 dark:text-red-400'>
+                          {sqmUnder.underspec_gaul > 0 ? (
+                            <button
+                              onClick={() =>
+                                handleOpenDrillDown(
+                                  b.code as PriorityBranchCode,
+                                  'underspec',
+                                  `${b.name} - Underspec Potensi Gaul`,
+                                  undefined,
+                                  undefined,
+                                  'gaul',
+                                )
+                              }
+                              className='text-red-700 hover:underline dark:text-red-300'
+                            >
+                              {sqmUnder.underspec_gaul}
+                            </button>
+                          ) : (
+                            '0'
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className='pt-2 text-xs text-(--text-secondary) space-y-2'>
+            <p className='font-bold text-(--text-primary) font-mono uppercase tracking-wider'>PENJELASAN POTENSI GANGGUAN & GAUL:</p>
+            <ul className='list-disc pl-5 space-y-2 leading-relaxed'>
+              <li>
+                <span className='font-bold text-amber-600 dark:text-amber-400'>Potensi Gangguan (Disruption):</span>
+                Terjadi ketika sebuah <span className='italic underline underline-offset-2'>Service Number (pelanggan)</span> memiliki minimal 2 tiket jenis SQM/UNSPEC dalam 30 hari terakhir, <span className='font-bold text-(--text-primary)'>DAN TIDAK</span> memiliki tiket REG/HVC (keluhan reguler/HVC) dalam periode yang sama. Ini menandakan kemungkinan masalah berulang yang tidak teridentifikasi sebagai keluhan pelanggan langsung.
+              </li>
+              <li>
+                <span className='font-bold text-red-600 dark:text-red-400'>Potensi Gaul:</span>
+                Terjadi ketika sebuah tiket SQM/UNSPEC yang baru memiliki riwayat tiket REG/HVC dengan Service Number yang sama dalam 30 hari sebelumnya. Ini mengindikasikan bahwa tiket SQM/UNSPEC saat ini kemungkinan adalah <span className='font-bold text-(--text-primary)'>'lanjutan'</span> atau <span className='font-bold text-(--text-primary)'>'gaul'</span> dari keluhan reguler/HVC yang sudah ada.
+              </li>
+            </ul>
           </div>
         </div>
 

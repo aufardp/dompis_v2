@@ -55,6 +55,24 @@ const MENU_ITEMS: Array<{
     priorityVisible: true,
   },
   {
+    label: 'Rekap Workorder',
+    path: '/admin/rekap-workorder',
+    icon: BarChart3,
+    hint: 'Workboard report',
+  },
+  {
+    label: 'Monitoring Durasi',
+    path: '/admin/monitoring',
+    icon: Clock3,
+    hint: 'SLA health',
+  },
+  {
+    label: 'Detail WO HI',
+    path: '/admin/detail-wo-hi',
+    icon: SearchCheck,
+    hint: 'Case investigation',
+  },
+  {
     label: 'Ticket Management',
     path: '/admin',
     icon: LayoutDashboard,
@@ -77,24 +95,6 @@ const MENU_ITEMS: Array<{
     path: '/admin/clustering',
     icon: MapPinned,
     hint: 'Network groups',
-  },
-  {
-    label: 'Monitoring Durasi',
-    path: '/admin/monitoring',
-    icon: Clock3,
-    hint: 'SLA health',
-  },
-  {
-    label: 'Rekap Workorder',
-    path: '/admin/rekap-workorder',
-    icon: BarChart3,
-    hint: 'Workboard report',
-  },
-  {
-    label: 'Detail WO HI',
-    path: '/admin/detail-wo-hi',
-    icon: SearchCheck,
-    hint: 'Case investigation',
   },
   {
     label: 'Attendance Gate',

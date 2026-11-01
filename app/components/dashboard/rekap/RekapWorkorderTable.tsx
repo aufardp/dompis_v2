@@ -657,7 +657,7 @@ export default function RekapWorkorderTable({
   const bucketBoundaryClass = 'border-l border-(--border)/70';
   const totalValueClass = 'text-[13px] font-semibold text-(--text-primary)';
   const loadValueClass =
-    'inline-flex min-w-10 justify-center rounded-full border border-(--border) bg-(--bg) px-1 py-0.5 font-mono text-[11px] font-bold';
+    'inline-flex min-w-10 justify-center rounded border border-(--border) bg-(--bg) px-1 py-0.5 font-mono text-[11px] font-bold';
 
   function aggregateAreaDetail(areaRows: SARow[]): DetailGroup {
     const acc: DetailGroup = { b2c: {}, b2b: {} };
@@ -780,13 +780,13 @@ export default function RekapWorkorderTable({
             )}
           </div>
           <div className='flex flex-wrap items-center gap-2'>
-            <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
+            <span className='rounded border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
               Hierarchy
             </span>
-            <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
+            <span className='rounded border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
               Open vs Close
             </span>
-            <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
+            <span className='rounded border border-(--border) bg-(--bg) px-3 py-1 text-[11px] font-semibold text-(--text-secondary)'>
               {totals.grand.toLocaleString('id-ID')} WO
             </span>
             {onCapture && (
@@ -797,7 +797,7 @@ export default function RekapWorkorderTable({
                     type='button'
                     size='sm'
                     variant='outline'
-                    className='h-8 rounded-full border-(--border) bg-(--surface) px-3 text-[11px] font-semibold text-(--text-secondary) hover:bg-(--surface-2)'
+                    className='h-8 rounded border-(--border) bg-(--surface) px-3 text-[11px] font-semibold text-(--text-secondary) hover:bg-(--surface-2)'
                     disabled={isCapturing}
                   >
                     <Download className='h-3.5 w-3.5' />
@@ -1289,9 +1289,9 @@ export default function RekapWorkorderTable({
                                     <span className={workzoneLabelClass}>
                                       {wz.workzone}
                                     </span>
-                                    <div className='mt-1 h-1.5 w-12 overflow-hidden rounded-full bg-(--surface-3)'>
+                                    <div className='mt-1 h-1.5 w-12 overflow-hidden rounded bg-(--surface-3)'>
                                       <div
-                                        className='h-full rounded-full bg-blue-500'
+                                        className='h-full rounded bg-blue-500'
                                         style={{
                                           width: `${Math.min((getDisplayedOpen(wz.totalOpen, wz.totalClose, wz.totalAll) / Math.max(maxWorkzoneOpen, 1)) * 100, 100)}%`,
                                         }}

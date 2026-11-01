@@ -68,10 +68,10 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <div className="rounded-2xl border border-(--border) bg-(--surface) px-3.5 py-3 shadow-sm">
+    <div className="rounded border border-(--border) bg-(--surface) px-3.5 py-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+        <span className="h-2 w-2" style={{ backgroundColor: accent }} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)">
           {label}
         </span>
       </div>

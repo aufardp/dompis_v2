@@ -28,7 +28,7 @@ const RekapWorkorderHourlyClose = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className='h-60 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+      <div className='h-60 animate-pulse rounded border border-(--border) bg-(--surface-2)' />
     ),
   },
 ) as ComponentType<{ bucket?: string; branch?: string }>;
@@ -37,21 +37,21 @@ const RekapTrendMiniChart = dynamic(
   () => import('./RekapTrendMiniChart'),
   {
     ssr: false,
-    loading: () => <div className='h-24 animate-pulse rounded-2xl bg-(--surface-2)' />,
+    loading: () => <div className='h-24 animate-pulse rounded bg-(--surface-2)' />,
   },
 ) as ComponentType<{ bucket?: string; branch?: string }>;
 
 const RekapWorkorderTable = dynamic(() => import('./RekapWorkorderTable'), {
   ssr: false,
   loading: () => (
-    <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+    <div className='h-105 animate-pulse rounded border border-(--border) bg-(--surface-2)' />
   ),
 });
 
 const RekapWorkorderCards = dynamic(() => import('./RekapWorkorderCards'), {
   ssr: false,
   loading: () => (
-    <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+    <div className='h-105 animate-pulse rounded border border-(--border) bg-(--surface-2)' />
   ),
 });
 
@@ -198,14 +198,14 @@ function BucketFilterBar({
   onChange: (bucket: string) => void;
 }) {
   return (
-    <div className='inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-(--border) bg-(--surface) p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]'>
+    <div className='inline-flex max-w-full flex-wrap items-center gap-1.5 rounded border border-(--border) bg-(--surface) p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]'>
       {BUCKET_OPTIONS.map((opt) => {
         const active = opt.value === selectedBucket;
         return (
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`rounded-full px-2.75 py-1.5 text-[11px] font-semibold transition-all ${
+            className={`rounded px-2.75 py-1.5 text-[11px] font-semibold transition-all ${
               active
                 ? 'bg-blue-500 text-white shadow-sm'
                 : 'bg-surface-2 border border-transparent text-(--text-secondary) hover:border-(--border) hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -235,7 +235,7 @@ function MobileBucketFilterGrid({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`min-h-11 w-full rounded-2xl border px-3 py-2 text-center text-[11px] font-semibold leading-tight transition-all ${
+            className={`min-h-11 w-full rounded border px-3 py-2 text-center text-[11px] font-semibold leading-tight transition-all ${
               active
                 ? 'border-blue-500/20 bg-blue-500 text-white shadow-sm'
                 : 'border-(--border) bg-(--surface-2) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -414,9 +414,9 @@ function SummaryTile({
   const t = toneStyles[tone];
 
   return (
-    <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+    <div className='rounded border border-(--border) bg-(--surface-2) px-3 py-2.5'>
       <div className='flex items-center justify-between gap-2'>
-        <p className='text-[10px] font-semibold tracking-[0.18em] text-(--text-muted) uppercase'>
+        <p className='text-[10px] font-semibold uppercase tracking-wider text-(--text-muted)'>
           {label}
         </p>
         <div className={t.icon}>{icon}</div>
@@ -448,7 +448,7 @@ function StatusFlowBar({
 
   return (
     <div>
-      <div className='flex h-1.5 w-full overflow-hidden rounded-full bg-(--surface-3)'>
+      <div className='flex h-1.5 w-full bg-(--surface-3)'>
         {visible.map((seg) => (
           <div
             key={seg.label}
@@ -465,7 +465,7 @@ function StatusFlowBar({
               className='flex items-center gap-1.5 text-[10px] text-(--text-secondary)'
             >
               <span
-                className='h-1.5 w-1.5 rounded-full'
+                className='h-1.5 w-1.5'
                 style={{ background: seg.color }}
               />
               <span className='font-mono font-semibold tabular-nums text-(--text-primary)'>
@@ -493,7 +493,7 @@ function KpiHealthDot({
   const label = value >= 6 ? 'Overloaded' : value >= 3 ? moderate : good;
   return (
     <div className='mt-1 flex items-center gap-1'>
-      <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
+      <span className={`h-1.5 w-1.5 ${tone}`} />
       <span className='text-[9px] text-(--text-muted)'>{label}</span>
     </div>
   );
@@ -615,17 +615,17 @@ function AttentionList({
 
   return (
     <div>
-      <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'>
+      <p className='text-[9px] font-bold uppercase tracking-wider text-(--text-secondary)'>
         Perlu perhatian
       </p>
       <ul className='mt-2 space-y-1.5'>
         {items.slice(0, 4).map((item) => (
           <li
             key={item.key}
-            className='flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-(--surface-2)'
+            className='flex items-start gap-2 rounded px-2 py-1.5 transition-colors hover:bg-(--surface-2)'
           >
             <span
-              className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+              className={`mt-0.5 h-1.5 w-1.5 shrink-0 ${
                 item.tone === 'red'
                   ? 'bg-red-500'
                   : item.tone === 'amber'
@@ -690,12 +690,12 @@ function AgingBlock({ aging }: { aging?: AgingRow[] }) {
             </div>
             <div className='flex shrink-0 items-center gap-2'>
               {row.g72 > 0 && (
-                <span className='rounded-full bg-red-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-red-600 dark:text-red-300'>
+                <span className='rounded bg-red-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-red-600 dark:text-red-300'>
                   {formatNumber(row.g72)} &gt;72j
                 </span>
               )}
               {row.g48 > 0 && row.g72 === 0 && (
-                <span className='rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-amber-600 dark:text-amber-300'>
+                <span className='rounded bg-amber-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-amber-600 dark:text-amber-300'>
                   {formatNumber(row.g48)} &gt;48j
                 </span>
               )}
@@ -909,7 +909,7 @@ export default function RekapWorkorderClient({
 
   return (
     <div className='space-y-4'>
-      <section className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
+      <section className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
         <div className='border-b border-(--border) px-4 py-3 md:px-5 md:py-3'>
           <div className='flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between'>
             <div className='max-w-3xl'>
@@ -917,7 +917,7 @@ export default function RekapWorkorderClient({
                 <h2 className='text-[16px] font-semibold tracking-tight text-(--text-primary) md:text-[17px]'>
                   {displayTitle}
                 </h2>
-                <span className='bg-surface rounded-full border border-(--border) px-2 py-0.5 text-[9px] font-semibold text-(--text-muted)'>
+                <span className='bg-surface rounded border border-(--border) px-2 py-0.5 text-[9px] font-semibold text-(--text-muted)'>
                   {data.syncDate}
                 </span>
               </div>
@@ -927,7 +927,7 @@ export default function RekapWorkorderClient({
                 </p>
               )}
               <div className='mt-2 flex flex-wrap items-center gap-2'>
-                <span className='rounded-full border border-(--border) bg-(--surface) px-2.5 py-0.5 text-[10px] font-semibold text-(--text-secondary)'>
+                <span className='rounded border border-(--border) bg-(--surface) px-2.5 py-0.5 text-[10px] font-semibold text-(--text-secondary)'>
                   {data.rows.length.toLocaleString('id-ID')} service area
                 </span>
               </div>
@@ -941,7 +941,7 @@ export default function RekapWorkorderClient({
                   isRefreshing={isFetching}
                 />
               )}
-              <div className='flex items-center justify-between gap-3 rounded-2xl border border-(--border) bg-(--surface-2) px-3 py-2'>
+              <div className='flex items-center justify-between gap-3 rounded border border-(--border) bg-(--surface-2) px-3 py-2'>
                 <span className='text-[10px] font-semibold uppercase tracking-[0.18em] text-(--text-muted)'>
                   Branch
                 </span>
@@ -990,9 +990,9 @@ export default function RekapWorkorderClient({
                 {formatNumber(displaySummary.closeB2c)}
               </p>
               <div className='mt-2 flex items-center gap-2'>
-                <div className='h-1.5 flex-1 overflow-hidden rounded-full bg-(--surface-3)'>
+                <div className='h-1.5 flex-1 overflow-hidden rounded bg-(--surface-3)'>
                   <div
-                    className='h-full rounded-full transition-all'
+                    className='h-full rounded transition-all'
                     style={{
                       width: `${displaySummary.closeRate}%`,
                       background:
@@ -1054,7 +1054,7 @@ export default function RekapWorkorderClient({
           </div>
 
           {flow && (
-            <div className='mt-3 rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+            <div className='mt-3 rounded border border-(--border) bg-(--surface-2) px-3 py-2.5'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'>
                   Status workboard
@@ -1079,7 +1079,7 @@ export default function RekapWorkorderClient({
 
         <div className='grid gap-4 px-4 py-3 md:grid-cols-2 md:px-5'>
           {ks && data.bucketBreakdown && (
-            <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+            <div className='rounded border border-(--border) bg-(--surface-2) px-3 py-2.5'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <p className='text-[9px] font-bold tracking-[0.18em] text-(--text-secondary) uppercase'>
                   Priority overview
@@ -1166,30 +1166,30 @@ export default function RekapWorkorderClient({
           )}
 
           <div className='space-y-3'>
-            <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+            <div className='rounded border border-(--border) bg-(--surface-2) px-3 py-2.5'>
               <AttentionList rows={data.rows} aging={data.aging} />
             </div>
-            <div className='rounded-xl border border-(--border) bg-(--surface-2) px-3 py-2.5'>
+            <div className='rounded border border-(--border) bg-(--surface-2) px-3 py-2.5'>
               <AgingBlock aging={data.aging} />
             </div>
           </div>
         </div>
       </section>
       <div className='grid gap-4'>
-        <section className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
+        <section className='rounded border border-(--border) bg-(--surface) shadow-sm'>
           {heavySectionsReady.hourly ? (
             <RekapWorkorderHourlyClose
               bucket={selectedBucket}
               branch={branch || undefined}
             />
           ) : (
-            <div className='h-60 animate-pulse rounded-[28px] bg-(--surface-2)' />
+            <div className='h-60 animate-pulse rounded border bg-(--surface-2)' />
           )}
         </section>
       </div>
 
       <div className='hidden xl:block'>
-        <section className='overflow-hidden rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
+        <section className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
           <div className='border-b border-(--border) bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(255,255,255,0.75))] px-4 py-3.5 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.45),rgba(15,23,42,0.2))]'>
             <div className='flex flex-wrap items-end justify-between gap-3'>
               <div className='max-w-3xl pb-0.5'>
@@ -1230,7 +1230,7 @@ export default function RekapWorkorderClient({
       </div>
 
       <div className='xl:hidden'>
-        <div className='rounded-[28px] border border-(--border) bg-(--surface) shadow-sm'>
+        <div className='rounded border border-(--border) bg-(--surface) shadow-sm'>
           <div className='border-b border-(--border) px-4 py-4'>
             <div className='space-y-3'>
               <div>
@@ -1257,7 +1257,7 @@ export default function RekapWorkorderClient({
                 onCellClick={setCellSpec}
               />
             ) : (
-              <div className='h-105 animate-pulse rounded-[28px] border border-(--border) bg-(--surface-2)' />
+              <div className='h-105 animate-pulse rounded border border-(--border) bg-(--surface-2)' />
             )}
           </div>
         </div>
