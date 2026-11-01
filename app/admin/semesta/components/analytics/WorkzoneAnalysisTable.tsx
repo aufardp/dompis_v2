@@ -52,11 +52,11 @@ function CellBar({
   return (
     <div className="flex items-center gap-2" title={`${value} (${pct.toFixed(1)}%)`}>
       <span className="w-12 shrink-0 text-right font-semibold text-(--text-primary) tabular-nums">
-        {value.toLocaleString('en-US')}
+        {value.toLocaleString('id-ID')}
       </span>
-      <div className="h-1.5 w-full min-w-[40px] overflow-hidden rounded-full bg-(--surface-2)">
+      <div className="h-1.5 w-full min-w-[40px] overflow-hidden rounded bg-(--surface-2)">
         <div
-          className={cn('h-full rounded-full transition-all', bar)}
+          className={cn('h-full rounded transition-all', bar)}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -66,19 +66,19 @@ function CellBar({
 
 function WorkzoneAnalysisLoading() {
   return (
-    <phantom-ui suppressHydrationWarning fallback-radius={8}
+    <phantom-ui suppressHydrationWarning fallback-radius={4}
       loading
       animation='shimmer'
       reveal={0.12}
-      loading-label='Loading workzone analysis'
+      loading-label='Memuat analisis workzone'
     >
-      <div className='overflow-hidden rounded-xl border border-(--border) bg-(--surface)'>
+      <div className='overflow-hidden rounded border border-(--border) bg-(--surface)'>
         <div className='flex items-center justify-between px-4 pt-4 pb-3'>
           <div className='space-y-2'>
-            <div className='h-3.5 w-44 rounded-full bg-slate-200 dark:bg-slate-800' />
-            <div className='h-3 w-36 rounded-full bg-slate-100 dark:bg-slate-800/70' />
+            <div className='h-3.5 w-44 rounded bg-slate-200 dark:bg-slate-800' />
+            <div className='h-3 w-36 rounded bg-slate-100 dark:bg-slate-800/70' />
           </div>
-          <div className='h-8 w-20 rounded-lg bg-slate-100 dark:bg-slate-800/70' />
+          <div className='h-8 w-20 rounded bg-slate-100 dark:bg-slate-800/70' />
         </div>
 
         <div className='overflow-x-auto'>
@@ -87,7 +87,7 @@ function WorkzoneAnalysisLoading() {
               <tr className='border-b border-(--border)'>
                 {Array.from({ length: 9 }, (_, i) => (
                   <th key={i} className='px-3 py-3'>
-                    <div className='h-3 w-full rounded-full bg-slate-200 dark:bg-slate-800' />
+                    <div className='h-3 w-full rounded bg-slate-200 dark:bg-slate-800' />
                   </th>
                 ))}
               </tr>
@@ -98,7 +98,7 @@ function WorkzoneAnalysisLoading() {
                   {Array.from({ length: 9 }, (_, col) => (
                     <td key={col} className='px-3 py-4'>
                       <div
-                        className='h-5 rounded-full bg-slate-100 dark:bg-slate-800/70'
+                        className='h-5 rounded bg-slate-100 dark:bg-slate-800/70'
                         style={{
                           width: `${70 - ((row + col) % 4) * 10}%`,
                         }}
@@ -201,19 +201,19 @@ export default function WorkzoneAnalysisTable({
   }
 
   return (
-    <div className="bg-surface overflow-hidden rounded-xl border border-(--border)">
+    <div className="bg-surface overflow-hidden rounded border border-(--border)">
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div>
           <div className="font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
-            Workzone Analysis
+            Analisis Workzone
           </div>
           <div className="font-dm-sans mt-1 text-xs text-(--text-muted)">
-            Ticket distribution and special flags per workzone
+            Distribusi tiket dan flag khusus per workzone
           </div>
         </div>
         <button
           onClick={exportCsv}
-          className="flex items-center gap-1.5 rounded-lg border border-(--border) px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400"
+          className="flex items-center gap-1.5 rounded border border-(--border) px-3 py-1.5 text-[11px] font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400"
         >
           <Download size={13} />
           CSV

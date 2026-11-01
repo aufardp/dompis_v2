@@ -312,7 +312,7 @@ function Dropdown({
           onChange={handleChange}
           multiple={multiple}
           className={cn(
-            'bg-surface-2 appearance-none rounded-lg border border-(--border) px-4 py-2 pr-8 text-xs font-semibold text-(--text-primary)',
+            'bg-surface-2 appearance-none rounded border border-(--border) px-4 py-2 pr-8 text-xs font-semibold text-(--text-primary)',
             'cursor-pointer transition-all duration-150',
             'hover:border-blue-400/40 focus:border-blue-400/60 focus:ring-1 focus:ring-blue-400/20 focus:outline-none',
             multiple && 'h-32 p-2', // Style for multiple select
@@ -493,8 +493,17 @@ export default function SemestaPage() {
       ),
       to: endOfDay(new Date()),
     });
+    setStatusDateRange({
+      from: startOfDay(new Date()),
+      to: endOfDay(new Date()),
+    });
     setCurrentPage(1);
   };
+
+  const [statusDateRange, setStatusDateRange] = useState<DateRange | undefined>({
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  });
 
   const activeFilterCount =
     (jenisTicket1Filter.length > 0 && !jenisTicket1Filter.includes('all')
@@ -504,9 +513,8 @@ export default function SemestaPage() {
       ? 1
       : 0) +
     (workzoneFilter ? 1 : 0) +
-    // Branch comes from the topbar and is cleared globally, not from the
-    // Filter Workspace reset button — so don't count it here.
-    (dateFilterActive ? 1 : 0);
+    (dateFilterActive ? 1 : 0) +
+    (statusDateRange?.from ? 1 : 0);
 
   const ticketTableData = tickets.map((t) => ({
     idTicket: t.idTicket,
@@ -557,56 +565,55 @@ export default function SemestaPage() {
     >
       <div className='font-dm-sans flex flex-col gap-8 text-[13px] leading-5'>
         {/* Page Header */}
-        <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+        <div className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
           <div className='bg-(--surface-2) px-5 py-5 md:px-6'>
             <div className='flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between'>
               <div className='max-w-3xl space-y-3'>
                 <div className='flex flex-wrap items-center gap-2'>
-                  <span className='rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-blue-500 uppercase'>
+                  <span className='rounded border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[10px] font-bold tracking-[0.18em] text-blue-500 uppercase'>
                     Semesta
                   </span>
-                  <span className='rounded-full border border-(--border) bg-(--surface) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
+                  <span className='rounded border border-(--border) bg-(--surface) px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-(--text-muted) uppercase'>
                     Review Ops Board
                   </span>
                 </div>
                 <div>
-                  <h1 className='font-dm-sans text-2xl font-bold tracking-[-0.3px] text-(--text-primary) md:text-4xl'>
-                    Analytics
+                  <h1 className='font-dm-sans text-2xl font-bold tracking-[-0.3px] text-(--text-primary) md:text-3xl'>
+                    Analisis Semesta Tiket
                   </h1>
-                  <p className='mt-2 max-w-2xl text-sm leading-6 text-(--text-muted)'>
-                    Ticket health, repeat patterns, and workzone load in one
-                    operational lens.{' '}
+                  <p className='mt-2 max-w-2xl text-sm leading-6 text-(--text-secondary)'>
+                    Kesehatan tiket, pola repetisi, dan beban workzone dalam satu panel operasional.{' '}
                     {workzoneFilter
-                      ? `Focused on workzone ${workzoneFilter}.`
-                      : 'All workzones are visible in the current scope.'}
+                      ? `Fokus pada workzone ${workzoneFilter}.`
+                      : 'Semua workzone terlihat dalam cakupan saat ini.'}
                   </p>
                 </div>
               </div>
               <div className='grid gap-3 sm:grid-cols-3 lg:min-w-90'>
-                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                <div className='rounded border border-(--border) bg-(--surface) px-4 py-3'>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                    Scope
+                    Cakupan
                   </p>
                   <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
                     {workzoneFilter
                       ? `Workzone ${workzoneFilter}`
-                      : 'All Workzone'}
+                      : 'Semua Workzone'}
                   </p>
                 </div>
-                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                <div className='rounded border border-(--border) bg-(--surface) px-4 py-3'>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                    Range
+                    Rentang
                   </p>
                   <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
                     {trendSubtitle}
                   </p>
                 </div>
-                <div className='rounded-2xl border border-(--border) bg-(--surface) px-4 py-3'>
+                <div className='rounded border border-(--border) bg-(--surface) px-4 py-3'>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                     Status
                   </p>
                   <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
-                    {dateFilterActive ? 'Filtered view' : 'Default window'}
+                    {dateFilterActive ? 'Tampilan Terfilter' : 'Window Default'}
                   </p>
                 </div>
               </div>
@@ -615,8 +622,8 @@ export default function SemestaPage() {
         </div>
 
         {/* Filter Bar */}
-        <div className='relative rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='flex items-center justify-between rounded-t-3xl border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
+        <div className='relative rounded border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='flex items-center justify-between rounded-t border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
             <div>
               <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
                 Filter Workspace
@@ -625,11 +632,11 @@ export default function SemestaPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={resetAllFilters}
-                className='hidden items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/15 lg:inline-flex'
+                className='hidden items-center gap-1 rounded border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/15 lg:inline-flex'
               >
                 <X size={12} />
                 Reset
-                <span className='rounded-full bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold'>
+                <span className='rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold'>
                   {activeFilterCount}
                 </span>
               </button>
@@ -640,12 +647,12 @@ export default function SemestaPage() {
             <div className='flex items-center justify-between lg:hidden'>
               <button
                 onClick={() => setShowMobileFilters((v) => !v)}
-                className='bg-surface font-dm-sans flex items-center gap-2 rounded-xl border border-(--border) px-3 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
+                className='bg-surface font-dm-sans flex items-center gap-2 rounded border border-(--border) px-3 py-2 text-sm font-semibold text-(--text-secondary) transition hover:border-blue-400/40 hover:text-blue-400'
               >
                 <SlidersHorizontal size={14} />
-                Filters
+                Filter
                 {activeFilterCount > 0 && (
-                  <span className='rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white'>
+                  <span className='rounded bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white'>
                     {activeFilterCount}
                   </span>
                 )}
@@ -664,11 +671,10 @@ export default function SemestaPage() {
               className={cn(
                 'flex-col gap-3',
                 showMobileFilters ? 'flex' : 'hidden lg:flex',
-                'rounded-2xl border border-(--border) bg-(--bg) p-4',
+                'rounded border border-(--border) bg-(--bg) p-4',
               )}
             >
               <div className='flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center'>
-                {/* Date */}
                 <div className='flex flex-1 items-center gap-2'>
                   <span className='font-outfit shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
                     Tanggal
@@ -681,6 +687,24 @@ export default function SemestaPage() {
                     }}
                     onClear={() => {
                       setDateRange(undefined);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+
+                {/* Status Date */}
+                <div className='flex flex-1 items-center gap-2'>
+                  <span className='font-outfit shrink-0 text-[10px] font-bold tracking-[1.2px] text-(--text-secondary) uppercase'>
+                    Status Date
+                  </span>
+                  <DateRangePicker
+                    value={statusDateRange}
+                    onChange={(r) => {
+                      setStatusDateRange(r);
+                      setCurrentPage(1);
+                    }}
+                    onClear={() => {
+                      setStatusDateRange(undefined);
                       setCurrentPage(1);
                     }}
                   />
@@ -711,20 +735,19 @@ export default function SemestaPage() {
         {analyticsV2Loading ? (
           <AnalyticsSkeleton />
         ) : analyticsV2 ? (
-          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
             <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
               <div className='flex items-center justify-between gap-3'>
                 <div>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                    Operational Snapshot
+                    Snapshot Operasional
                   </p>
                   <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                    KPI mix, ticket trend, and workzone load from the current
-                    filter scope.
+                    Mix KPI, tren tiket, dan beban workzone dari scope filter saat ini.
                   </p>
                 </div>
-                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
-                  Analytics
+                <span className='rounded border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
+                  Analitik
                 </span>
               </div>
             </div>
@@ -751,20 +774,19 @@ export default function SemestaPage() {
 
         {/* Ticket Table — unchanged, separate hook */}
         <div ref={tableRef} className='scroll-mt-20'>
-          <div className='overflow-hidden rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
             <div className='border-b border-(--border) bg-(--surface-2) px-5 py-3 md:px-6'>
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div>
                   <p className='text-[10px] font-bold tracking-[0.18em] text-(--text-muted) uppercase'>
-                    Ticket Table
+                    Tabel Tiket
                   </p>
                   <p className='mt-0.5 text-xs text-(--text-secondary)'>
-                    The list below follows the same filter scope as the
-                    analytics above.
+                    Daftar di bawah mengikuti scope filter yang sama dengan analitik di atas.
                   </p>
                 </div>
-                <span className='rounded-full border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
-                  {pagination.total.toLocaleString()} tickets
+                <span className='rounded border border-(--border) bg-(--bg) px-3 py-1 text-[10px] font-semibold tracking-[0.14em] text-(--text-muted) uppercase'>
+                  {pagination.total.toLocaleString()} tiket
                 </span>
               </div>
             </div>

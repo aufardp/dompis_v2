@@ -48,19 +48,19 @@ export default function TrendByJenisChart({
   }, [data]);
 
   return (
-    <div className="bg-surface overflow-hidden rounded-xl border border-(--border)">
+    <div className="bg-surface overflow-hidden rounded border border-(--border)">
       <div className="px-4 pt-4 pb-2">
         <div className="font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
-          Trend by Jenis Tiket
+          Tren per Jenis Tiket
         </div>
         <div className="font-dm-sans mt-1 text-xs text-(--text-muted)">
-          Daily ticket composition by ticket type
+          Komposisi tiket harian per jenis tiket
         </div>
       </div>
 
       {loading ? (
-        <phantom-ui suppressHydrationWarning fallback-radius={8} loading animation='shimmer' reveal={0.12} loading-label='Loading trend chart'>
-          <div className="mx-4 mb-4 h-[240px] rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+        <phantom-ui suppressHydrationWarning fallback-radius={4} loading animation='shimmer' reveal={0.12} loading-label='Memuat tren chart'>
+          <div className="mx-4 mb-4 h-[240px] rounded border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
             <div className="flex h-full items-end gap-2">
               {Array.from({ length: 10 }).map((_, index) => (
                 <div key={index} className="flex-1 space-y-2">
@@ -104,7 +104,7 @@ export default function TrendByJenisChart({
                 contentStyle={{
                   background: 'rgba(15,23,42,0.95)',
                   border: '1px solid rgba(148,163,184,0.2)',
-                  borderRadius: '8px',
+                  borderRadius: '4px',
                   fontSize: '12px',
                 }}
               />

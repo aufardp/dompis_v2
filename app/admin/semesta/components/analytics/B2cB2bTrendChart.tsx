@@ -30,24 +30,24 @@ export default function B2cB2bTrendChart({
   loading?: boolean;
 }) {
   return (
-    <div className="bg-surface overflow-hidden rounded-xl border border-(--border)">
+    <div className="bg-surface overflow-hidden rounded border border-(--border)">
       <div className="px-4 pt-4 pb-2">
         <div className="font-outfit text-xs font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
-          B2C vs B2B Trend
+          Tren B2C vs B2B
         </div>
         <div className="font-dm-sans mt-1 text-xs text-(--text-muted)">
-          Volume comparison by customer segment
+          Perbandingan volume per segmen pelanggan
         </div>
       </div>
 
       {loading ? (
-        <phantom-ui suppressHydrationWarning fallback-radius={8}
+        <phantom-ui suppressHydrationWarning fallback-radius={4}
           loading
           animation='shimmer'
           reveal={0.12}
-          loading-label='Loading B2C B2B trend chart'
+          loading-label='Memuat tren chart B2C B2B'
         >
-          <div className="bg-surface-2 mx-4 mb-4 h-[240px] rounded-xl" />
+          <div className="bg-surface-2 mx-4 mb-4 h-[240px] rounded" />
         </phantom-ui>
       ) : (
         <div className="h-[280px] animate-[fadeIn_300ms_ease-in-out_forwards] opacity-0">
@@ -79,7 +79,7 @@ export default function B2cB2bTrendChart({
                 contentStyle={{
                   background: 'rgba(15,23,42,0.95)',
                   border: '1px solid rgba(148,163,184,0.2)',
-                  borderRadius: '8px',
+                  borderRadius: '4px',
                   fontSize: '12px',
                 }}
               />
