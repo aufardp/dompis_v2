@@ -31,7 +31,7 @@ function containsAny(field: keyof Prisma.ticketWhereInput, values: readonly stri
   if (CATEGORICAL_FIELDS.has(field)) {
     return { [field]: { in: uniqueStrings(values) } };
   }
-  // Genuine free-text (symptom): keep FULLTEXT MATCH, one term per value.
+  // Symptom uses substring matching; categorical fields above use exact values.
   return {
     OR: uniqueStrings(values).map((value) => ({
       [field]: { contains: value },

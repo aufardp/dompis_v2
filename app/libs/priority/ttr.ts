@@ -37,13 +37,15 @@ export function resolveTtrBucket(
 ): ResolvedTtr {
   const jenis = (ticket.jenis_tiket_2 || '').toUpperCase().trim();
   const custRaw = (ticket.customer_type || '').toUpperCase().trim();
-  const manjaFlag = (ticket.flagging_manja || '').toUpperCase().trim();
+  const manjaFlag = ['P1', 'P+', 'P-', 'EXPIRED', 'MANJA'].includes((ticket.flagging_manja || '').toUpperCase().trim());
   const custNorm = normalizeCustomerType(ticket.customer_type);
 
   let bucket: TtrBucket | null = null;
 
   // 1. Manja (REG + flagging_manja)
-  if ((jenis === 'REG' || jenis === 'REGULER') && manjaFlag) {
+  if (!['REG', 'REGULER', 'HVC'].includes(jenis)) {
+    bucket = null;
+  } else if (manjaFlag) {
     bucket = 'manja';
   }
   // 2. Diamond / VVIP
@@ -55,7 +57,7 @@ export function resolveTtrBucket(
     bucket = 'platinum';
   }
   // 4. Reguler (REG/REGULER, tanpa manja flag, bukan HVC tier)
-  else if ((jenis === 'REG' || jenis === 'REGULER') && !manjaFlag) {
+  else if (!manjaFlag) {
     bucket = 'reguler';
   }
 
@@ -99,7 +101,7 @@ export function resolveTtrBucket(
 
   if (baseDate) {
     const diffMs = baseDate.getTime() - now.getTime();
-    if (diffMs > 60 * 60 * 1000) {
+    if (deadlineSource !== 'booking' && diffMs > 60 * 60 * 1000) {
       isInvalidFutureDate = true;
       baseDate = null;
     }

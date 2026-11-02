@@ -96,22 +96,21 @@ export async function fetchByIncidentAnyStatus<T = QosmicRawRow>(
   return null;
 }
 
-// Status enum dikenal sistem (lihat lib/ingestion/normalizer.ts normalizeStatus).
-// Volume nossa REG-4/REG-5 saat ini (~18rb) sudah jauh melewati batas
-// offset 5000 utk scan tanpa filter, jadi kita langsung pecah per status
-// alih-alih coba scan tanpa filter dulu (yang akan overflow tiap kali dan
-// cuma buang request re-fetch data yang sama).
-const NOSSA_OPEN_FALLBACK_STATUSES = [
-  'OPEN', 'NEW', 'ANALYSIS', 'BACKEND', 'PENDING',
-  'FINALCHECK', 'MEDIACARE', 'SALAMSIM', 'DRAFT',
-];
-
 async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
-  status: string,
+  status: string | undefined,
   params: ListQueryParams,
+  seen: Set<string> = new Set(),
 ): AsyncGenerator<T[], void, void> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
   let offset = 0;
+  const buffer: T[][] = [];
+  const uniqueRows = (rows: T[]) => rows.filter(row => {
+    const raw = row as QosmicRawRow;
+    const key = String(raw.Incident ?? raw.incident ?? JSON.stringify(raw));
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   while (offset <= NOSSA_CLOSED_MAX_OFFSET) {
     const res = await listPage<T>(
@@ -119,53 +118,47 @@ async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
       { ...params, status, limit, offset },
       'nossa.list_by_status',
     );
-    if (res.data.length === 0) return;
-    yield res.data;
+    if (res.data.length === 0) break;
+    buffer.push(res.data);
 
-    if (res.data.length < limit) return; // halaman terakhir untuk status ini
+    if (res.data.length < limit) break;
 
     const nextOffset = offset + limit;
     if (nextOffset > NOSSA_CLOSED_MAX_OFFSET) {
-      logger.warn(
-        '[QosmicBridge] nossa (open) status tunggal masih > 5.000 baris — kemungkinan ADA tiket yang tidak terambil.',
-        { status, offset, limit },
-      );
+      if (params.dateFrom && params.dateTo) {
+        const halves = bisectWindow({ dateFrom: params.dateFrom, dateTo: params.dateTo });
+        if (!halves) throw new Error('Nossa open coverage incomplete: window overflow, data terpotong.');
+        for (const window of halves) {
+          yield* iterateNossaOpenByStatus<T>(status, { ...params, ...window }, seen);
+        }
+      } else {
+        for (const rows of buffer) {
+          const unique = uniqueRows(rows);
+          if (unique.length) yield unique;
+        }
+        const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 86400000));
+        for (const window of splitIntoInitialWindows(params.dateFrom ?? '2026-01-01', params.dateTo ?? tomorrow, 31)) {
+          yield* iterateNossaOpenByStatus<T>(status, { ...params, ...window }, seen);
+        }
+      }
       return;
     }
     offset = nextOffset;
   }
+  for (const rows of buffer) {
+    const unique = uniqueRows(rows);
+    if (unique.length) yield unique;
+  }
 }
 
 /**
- * Iterasi seluruh nossa (tiket berjalan) yang cocok filter. Kalau caller
- * sudah mempersempit lewat `params.status`, cukup satu scan langsung utk
- * status itu. Kalau tidak (kasus umum: full coverage scan):
- *   1. SATU halaman tanpa filter (limit 1000, offset 0) dulu — jaring
- *      pengaman murah (1 request) utk tiket dengan status yang TIDAK ada
- *      di `NOSSA_OPEN_FALLBACK_STATUSES`, yang kalau tidak akan lolos sama
- *      sekali dari langkah 2.
- *   2. Pecah per status yang dikenal, masing-masing paginasi penuh sendiri
- *      — ini yang memberi cakupan lengkap (volume real ~18rb sudah jauh di
- *      atas batas offset 5000 utk scan tanpa filter, jadi paginasi tanpa
- *      filter sampai habis tidak pernah benar-benar selesai).
- * Baris dari langkah 1 mungkin ke-yield ulang di langkah 2 — aman, upsert
- * di sisi penulis bersifat idempotent (ON DUPLICATE KEY UPDATE).
+ * Status tidak dibatasi whitelist. Scan yang melewati batas offset dipecah
+ * per tanggal; incident dideduplikasi, termasuk sampel lama dari scan awal.
  */
 export async function* iterateNossaOpen<T = QosmicRawRow>(
   params: ListQueryParams = {},
 ): AsyncGenerator<T[], void, void> {
-  if (params.status) {
-    yield* iterateNossaOpenByStatus<T>(params.status, params);
-    return;
-  }
-
-  const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
-  const safetyNet = await listPage<T>('nossa', { ...params, limit, offset: 0 }, 'nossa.list_safety_net');
-  if (safetyNet.data.length > 0) yield safetyNet.data;
-
-  for (const status of NOSSA_OPEN_FALLBACK_STATUSES) {
-    yield* iterateNossaOpenByStatus<T>(status, params);
-  }
+  yield* iterateNossaOpenByStatus<T>(params.status, params);
 }
 
 /**
@@ -225,14 +218,7 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
   // Overflow: buang buffer (JANGAN di-yield, mencegah duplikat), bisect, retry.
   const halves = bisectWindow(window);
   if (!halves) {
-    logger.warn(
-      '[QosmicBridge] Window 1 hari nossa_closed masih > 5.000 baris — data partial (offset 5000). Yield buffer yg ada, kemungkinan ada baris terlewat.',
-      { window, bufferedPages: buffer.length },
-    );
-    // Fallback terakhir: tetap yield buffer yang sudah terlanjur diambil,
-    // supaya minimal sebagian data masuk, sambil log keras di atas.
-    for (const page of buffer) yield page;
-    return;
+    throw new Error(`Nossa closed coverage incomplete: window overflow, data terpotong (${window.dateFrom} - ${window.dateTo}).`);
   }
 
   logger.info(
@@ -256,10 +242,12 @@ export async function* iterateNossaClosedIncremental<T = QosmicRawRow>(
   daysBack: number = 1,
   params: Omit<ListQueryParams, 'dateFrom' | 'dateTo'> = {},
 ): AsyncGenerator<T[], void, void> {
-  const today = new Date();
-  const dateTo = today.toISOString().slice(0, 10);
-  const from = new Date(today);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const from = new Date(`${today}T00:00:00Z`);
+  const to = new Date(from);
+  to.setUTCDate(to.getUTCDate() + 1);
   from.setUTCDate(from.getUTCDate() - daysBack);
+  const dateTo = to.toISOString().slice(0, 10);
   const dateFrom = from.toISOString().slice(0, 10);
 
   yield* iterateNossaClosedWindow<T>({ dateFrom, dateTo }, params);

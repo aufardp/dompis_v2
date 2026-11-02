@@ -1160,7 +1160,7 @@ export default function PriorityPage() {
                               </>
                             )}
                           <th className='px-4 py-3'>Status</th>
-                          <th className='px-4 py-3'>Reported At</th>
+                          <th className='px-4 py-3'>Reported Date</th>
                           <th className='px-4 py-3'>Resolve Date</th>
                           <th className='px-4 py-3'>Bucket</th>
                           <th className='px-4 py-3'>Max TTR</th>

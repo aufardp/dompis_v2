@@ -11,7 +11,7 @@
 //
 // API mendukung format `YYYY-MM-DD HH:mm:ss` untuk date_from/date_to (level
 // detik), sehingga window 1 hari yang masih overflow bisa dipecah lebih kecil
-// (12 jam → 6 jam → 3 jam → 1 jam).
+// hingga tingkat detik saat satu jam pun melebihi kapasitas pagination.
 //
 // Strategi: date-window splitting rekursif berbasis actual row count (probe
 // dengan limit kecil dulu), bukan asumsi distribusi tiket rata.
@@ -21,7 +21,7 @@ import { logger } from '@/lib/observability/logger';
 export const NOSSA_CLOSED_MAX_WINDOW_DAYS = 7; // default aman; hard cap API = 31 hari
 export const NOSSA_CLOSED_MAX_OFFSET = 5_000;
 export const NOSSA_CLOSED_PAGE_SIZE = 1_000; // limit maks per hit
-export const NOSSA_CLOSED_MIN_WINDOW_HOURS = 1; // window minimal 1 jam
+export const NOSSA_CLOSED_MIN_WINDOW_SECONDS = 1;
 
 export interface DateWindow {
   dateFrom: string; // 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
@@ -43,18 +43,6 @@ function parseDateTime(dateTimeStr: string): Date {
   return new Date(normalized + 'Z');
 }
 
-function addHours(dateTimeStr: string, hours: number): string {
-  const d = parseDateTime(dateTimeStr);
-  d.setUTCHours(d.getUTCHours() + hours);
-  return toDateTimeStr(d);
-}
-
-function diffHours(fromStr: string, toStr: string): number {
-  const from = parseDateTime(fromStr).getTime();
-  const to = parseDateTime(toStr).getTime();
-  return Math.round((to - from) / 3_600_000);
-}
-
 /**
  * Memecah [dateFrom, dateTo) menjadi window-window awal berukuran maks
  * `maxWindowDays` hari (default 7 — jauh di bawah cap 31 hari API supaya
@@ -67,15 +55,17 @@ export function splitIntoInitialWindows(
   dateTo: string,
   maxWindowDays: number = NOSSA_CLOSED_MAX_WINDOW_DAYS,
 ): DateWindow[] {
-  const from = normalizeToDateTime(dateFrom);
-  const to = normalizeToDateTime(dateTo);
+  const from = parseDateTime(dateFrom).getTime();
+  const to = parseDateTime(dateTo).getTime();
+  const spanSeconds = Math.floor(Math.min(maxWindowDays, 31) * 86_400);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(spanSeconds) || spanSeconds < 1) {
+    throw new RangeError('Invalid date window or window size.');
+  }
   const windows: DateWindow[] = [];
   let cursor = from;
-  while (diffHours(cursor, to) > 0) {
-    const totalHours = diffHours(cursor, to);
-    const windowHours = Math.min(maxWindowDays * 24, totalHours);
-    const end = addHours(cursor, windowHours);
-    windows.push({ dateFrom: cursor, dateTo: end });
+  while (cursor < to) {
+    const end = Math.min(cursor + spanSeconds * 1000, to);
+    windows.push({ dateFrom: toDateTimeStr(new Date(cursor)), dateTo: toDateTimeStr(new Date(end)) });
     cursor = end;
   }
   return windows;
@@ -83,24 +73,26 @@ export function splitIntoInitialWindows(
 
 /**
  * Membagi dua sebuah window (dipakai saat probe count menunjukkan window
- * masih > kapasitas offset). Window minimal 1 jam — di bawah itu, fallback
- * ke data partial dengan log peringatan.
+ * masih > kapasitas offset). Satu detik adalah batas presisi API;
+ * caller harus menolak overflow yang tidak dapat dipecah lagi.
  *
  * API mendukung format `YYYY-MM-DD HH:mm:ss` untuk date_from/date_to, sehingga
- * window 1 hari bisa dipecah menjadi 12 jam, 6 jam, 3 jam, dst.
+ * window dapat dipecah tanpa membuang sisa menit atau detik.
  */
 export function bisectWindow(
   window: DateWindow,
 ): [DateWindow, DateWindow] | null {
-  const totalHours = diffHours(window.dateFrom, window.dateTo);
-  if (totalHours <= NOSSA_CLOSED_MIN_WINDOW_HOURS) {
-    logger.warn('[QosmicBridge] Window sudah 1 jam, tidak bisa dipecah lagi', {
+  const from = parseDateTime(window.dateFrom).getTime();
+  const to = parseDateTime(window.dateTo).getTime();
+  const totalSeconds = Math.floor((to - from) / 1000);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) throw new RangeError('Invalid date window.');
+  if (totalSeconds <= NOSSA_CLOSED_MIN_WINDOW_SECONDS) {
+    logger.warn('[QosmicBridge] Window sudah 1 detik, tidak bisa dipecah lagi', {
       window,
     });
     return null;
   }
-  const midHours = Math.floor(totalHours / 2) || 1;
-  const mid = addHours(window.dateFrom, midHours);
+  const mid = toDateTimeStr(new Date(from + Math.floor(totalSeconds / 2) * 1000));
   return [
     { dateFrom: window.dateFrom, dateTo: mid },
     { dateFrom: mid, dateTo: window.dateTo },

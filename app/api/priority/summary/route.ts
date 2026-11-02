@@ -5,6 +5,7 @@ import { protectApi } from '@/app/libs/protectApi';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { queryAllPrioritySummary } from '@/app/libs/priority/queries';
 import { logger } from '@/lib/observability/logger';
+import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,8 +27,8 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     logger.error('Priority summary error:', error);
     return NextResponse.json(
-      { success: false, message: 'Gagal memuat data priority.' },
-      { status: 500 },
+      { success: false, message: getErrorMessage(error, 'Gagal memuat data priority.') },
+      { status: getErrorStatus(error, 500) },
     );
   }
 }

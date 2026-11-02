@@ -680,17 +680,17 @@ export class TicketService {
       if (statusDateStart && statusDateEnd) {
         andClauses.push({
           status_date: {
-            gte: new Date(`${statusDateStart}T00:00:00+07:00`),
-            lte: new Date(`${statusDateEnd}T23:59:59+07:00`),
+            gte: `${statusDateStart} 00:00:00`,
+            lte: `${statusDateEnd} 23:59:59`,
           },
         });
       } else if (statusDateStart) {
         andClauses.push({
-          status_date: { gte: new Date(`${statusDateStart}T00:00:00+07:00`) },
+          status_date: { gte: `${statusDateStart} 00:00:00` },
         });
       } else if (statusDateEnd) {
         andClauses.push({
-          status_date: { lte: new Date(`${statusDateEnd}T23:59:59+07:00`) },
+          status_date: { lte: `${statusDateEnd} 23:59:59` },
         });
       }
     }
