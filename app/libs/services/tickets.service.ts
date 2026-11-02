@@ -55,6 +55,8 @@ type TicketFilters = {
   ctype?: string;
   startDate?: string;
   endDate?: string;
+  statusDateStart?: string;
+  statusDateEnd?: string;
   page?: number;
   limit?: number;
   sort?: 'asc' | 'desc';
@@ -609,6 +611,8 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
       dateRange,
     } = filters ?? {};
 
@@ -667,6 +671,26 @@ export class TicketService {
       } else if (endDate) {
         andClauses.push({
           reported_date_dt: { lte: new Date(`${endDate}T23:59:59+07:00`) },
+        });
+      }
+    }
+
+    // statusDate filter (for status_date field)
+    if (statusDateStart || statusDateEnd) {
+      if (statusDateStart && statusDateEnd) {
+        andClauses.push({
+          status_date: {
+            gte: new Date(`${statusDateStart}T00:00:00+07:00`),
+            lte: new Date(`${statusDateEnd}T23:59:59+07:00`),
+          },
+        });
+      } else if (statusDateStart) {
+        andClauses.push({
+          status_date: { gte: new Date(`${statusDateStart}T00:00:00+07:00`) },
+        });
+      } else if (statusDateEnd) {
+        andClauses.push({
+          status_date: { lte: new Date(`${statusDateEnd}T23:59:59+07:00`) },
         });
       }
     }
@@ -756,6 +780,8 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
       page = 1,
       limit = 20,
       sort = 'desc',
@@ -776,6 +802,8 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
       searchType,
     });
 

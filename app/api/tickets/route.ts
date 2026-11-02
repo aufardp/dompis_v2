@@ -49,6 +49,8 @@ export async function GET(request: Request) {
       .filter((s) => s !== 'all');
     const searchType = parseSearchType(searchParams.get('searchType'));
     const dateRange = (searchParams.get('dateRange') as 'today' | 'thisMonth' | 'all' | undefined) || undefined;
+    const startDate = searchParams.get('startDate') || undefined;
+    const endDate = searchParams.get('endDate') || undefined;
 
     // Role-aware limit: teknisi gets 500 for dashboard pagination, others 100
     const maxLimit = user.role === 'teknisi' ? 500 : 100;
@@ -66,6 +68,8 @@ export async function GET(request: Request) {
       ctype: searchParams.get('ctype') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
+      statusDateStart: searchParams.get('statusDateStart') || undefined,
+      statusDateEnd: searchParams.get('statusDateEnd') || undefined,
       page: toPositiveInt(searchParams.get('page'), 1, 10_000),
       limit: toPositiveInt(searchParams.get('limit'), 50, maxLimit),
       sort: toSortOrder(searchParams.get('sort'), 'desc'),

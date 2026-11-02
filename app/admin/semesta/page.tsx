@@ -357,6 +357,10 @@ export default function SemestaPage() {
     ),
     to: endOfDay(new Date()),
   });
+  const [statusDateRange, setStatusDateRange] = useState<DateRange | undefined>({
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  });
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [searchToast, setSearchToast] = useState<{
     message: string;
@@ -384,23 +388,6 @@ export default function SemestaPage() {
     [startDate, endDate, workzoneFilter, branchFilter, jenisTicket1Filter],
   );
 
-  // --- Ticket table ---
-  const {
-    tickets,
-    loading: ticketsLoading,
-    isRefreshing: ticketsRefreshing,
-    pagination,
-  } = useSemestaTickets(
-    searchQuery,
-    currentPage,
-    workzoneFilter || undefined,
-    ticketStatusFilter.includes('all') ? undefined : ticketStatusFilter,
-    jenisTicket1Filter.includes('all') ? undefined : jenisTicket1Filter,
-    startDate,
-    endDate,
-    branchFilter || undefined,
-  );
-
   // --- V2 analytics hook ---
   const { data: analyticsV2, loading: analyticsV2Loading } =
     useSemestaAnalyticsV2(analyticsFilters);
@@ -417,17 +404,35 @@ export default function SemestaPage() {
     }, []),
   });
 
+  const {
+    tickets,
+    loading: ticketsLoading,
+    isRefreshing: ticketsRefreshing,
+    pagination,
+  } = useSemestaTickets(
+    searchQuery,
+    currentPage,
+    workzoneFilter || undefined,
+    ticketStatusFilter.includes('all') ? undefined : ticketStatusFilter,
+    jenisTicket1Filter.includes('all') ? undefined : jenisTicket1Filter,
+    startDate,
+    endDate,
+    branchFilter || undefined,
+    statusDateRange && statusDateRange.from ? toYmd(statusDateRange.from) : undefined,
+    statusDateRange && statusDateRange.to ? toYmd(statusDateRange.to) : undefined,
+  );
+
+  const totalTickets = pagination?.total || 0;
+
   // Auto-scroll to ticket table when search results load + show toast
   useEffect(() => {
-    if (!searchQuery.trim() || ticketsLoading || ticketsRefreshing) {
-      if (!searchQuery.trim()) {
-        setSearchToast(null);
-      }
+    if (!searchQuery.trim()) {
+      setSearchToast(null);
       return;
     }
-    if (pagination.total > 0) {
+    if (totalTickets > 0) {
       setSearchToast({
-        message: `${pagination.total} tiket`,
+        message: `${totalTickets} tiket`,
         type: 'success',
       });
       window.requestAnimationFrame(() => {
@@ -439,7 +444,7 @@ export default function SemestaPage() {
     } else {
       setSearchToast({ message: 'Tidak ditemukan', type: 'error' });
     }
-  }, [searchQuery, ticketsLoading, ticketsRefreshing, pagination.total]);
+  }, [searchQuery, totalTickets]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -499,11 +504,6 @@ export default function SemestaPage() {
     });
     setCurrentPage(1);
   };
-
-  const [statusDateRange, setStatusDateRange] = useState<DateRange | undefined>({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date()),
-  });
 
   const activeFilterCount =
     (jenisTicket1Filter.length > 0 && !jenisTicket1Filter.includes('all')

@@ -23,8 +23,8 @@ import {
 } from '@/app/config/ticket-management-nav';
 import AssignTechnicianModal from './assign/AssignTechnicianModal';
 import dynamic from 'next/dynamic';
-const HourlyChart = dynamic(() => import('./HourlyChart'), { ssr: false, loading: () => <div className='h-[260px] w-full animate-pulse rounded-xl bg-(--surface-2)' /> });
-const SymptomChart = dynamic(() => import('./SymptomChart'), { ssr: false, loading: () => <div className='h-[300px] w-full animate-pulse rounded-xl bg-(--surface-2)' /> });
+const HourlyChart = dynamic(() => import('./HourlyChart'), { ssr: false, loading: () => <div className='h-[260px] w-full animate-pulse rounded bg-(--surface-2)' /> });
+const SymptomChart = dynamic(() => import('./SymptomChart'), { ssr: false, loading: () => <div className='h-[300px] w-full animate-pulse rounded bg-(--surface-2)' /> });
 import TechnicianSummaryTable from '@/app/admin/components/technician/TechnicianSummaryTable';
 import TtrComplianceHeaderRow from './overview/TtrComplianceHeaderRow';
 import SqmDailyTrendTable from './overview/SqmDailyTrendTable';
@@ -116,7 +116,7 @@ function TechnicianSummaryCards({
 
   return (
     <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
-      <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/70'>
+      <div className='rounded border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/70'>
         <p className='text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase'>
           Total Teknisi
         </p>
@@ -129,7 +129,7 @@ function TechnicianSummaryCards({
         </p>
       </div>
 
-      <div className='rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10'>
+      <div className='rounded border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10'>
         <p className='text-[10px] font-bold tracking-[0.22em] text-blue-700 uppercase dark:text-blue-200'>
           Menunggu
         </p>
@@ -141,7 +141,7 @@ function TechnicianSummaryCards({
         </p>
       </div>
 
-      <div className='rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 shadow-sm dark:border-orange-500/20 dark:bg-orange-500/10'>
+      <div className='rounded border border-orange-200 bg-orange-50 px-4 py-3 shadow-sm dark:border-orange-500/20 dark:bg-orange-500/10'>
         <p className='text-[10px] font-bold tracking-[0.22em] text-orange-700 uppercase dark:text-orange-200'>
           Pending
         </p>
@@ -153,7 +153,7 @@ function TechnicianSummaryCards({
         </p>
       </div>
 
-      <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10'>
+      <div className='rounded border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10'>
         <p className='text-[10px] font-bold tracking-[0.22em] text-amber-700 uppercase dark:text-amber-200'>
           Dikerjakan
         </p>
@@ -165,7 +165,7 @@ function TechnicianSummaryCards({
         </p>
       </div>
 
-      <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10'>
+      <div className='rounded border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10'>
         <p className='text-[10px] font-bold tracking-[0.22em] text-emerald-700 uppercase dark:text-emerald-200'>
           Selesai Hari Ini
         </p>
@@ -193,7 +193,7 @@ function PriorityPills({ counts }: { counts?: FlaggingCounts }) {
       {items.map(([label, value]) => (
         <div
           key={label}
-          className='rounded-full border border-(--border) bg-(--surface-2) px-3 py-1.5 text-xs font-semibold text-(--text-secondary)'
+          className='rounded border border-(--border) bg-(--surface-2) px-3 py-1.5 text-xs font-semibold text-(--text-secondary)'
         >
           <span className='mr-1.5 text-[10px] font-bold tracking-[0.22em] uppercase'>
             {label}
@@ -226,7 +226,7 @@ function BucketSummaryRow({
 }) {
   return (
     <div
-      className={clsx('rounded-2xl border px-3.5 py-2.5 shadow-sm', toneClass)}
+      className={clsx('rounded border px-3.5 py-2.5 shadow-sm', toneClass)}
     >
       <div className='grid gap-3 md:grid-cols-[minmax(0,1.25fr)_auto_auto] md:items-center'>
         <div className='min-w-0'>
@@ -245,7 +245,7 @@ function BucketSummaryRow({
             {isLoading ? '...' : total.toLocaleString('id-ID')}
           </p>
         </div>
-        <div className='rounded-2xl bg-white/45 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
+        <div className='rounded bg-white/45 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
           <p className='text-[10px] font-bold tracking-[0.18em] uppercase opacity-70'>
             Open / Close
           </p>
@@ -307,7 +307,7 @@ function HeroMetricCard({
 
   return (
     <div
-      className={`rounded-2xl border px-3 py-1.5 shadow-sm ${toneStyles[tone]}`}
+      className={`rounded border px-3 py-1.5 shadow-sm ${toneStyles[tone]}`}
     >
       <div className='flex items-center justify-between gap-3'>
         <div className='min-w-0'>
@@ -324,7 +324,7 @@ function HeroMetricCard({
           </p>
           {showTrend && (
             <span
-              className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-bold ${trendTone}`}
+              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[9px] font-bold ${trendTone}`}
               title={h1Label}
             >
               {trendIcon} {Math.abs(trendPct).toFixed(0)}% {h1Label}
@@ -457,13 +457,13 @@ function PriorityTodayPanel({
   };
 
   return (
-    <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
+    <div className='rounded border border-(--border) bg-(--surface) p-4 shadow-sm'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div>
           <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
             {mode === 'all'
-              ? 'Priority Today'
-              : `Priority Today · ${bucketLabel ?? 'Bucket'}`}
+              ? 'Prioritas Hari Ini'
+              : `Prioritas Hari Ini · ${bucketLabel ?? 'Bucket'}`}
           </p>
           <p className='mt-1 text-[11px] font-semibold text-(--text-primary)'>
             {mode === 'all'
@@ -486,7 +486,7 @@ function PriorityTodayPanel({
             <div
               key={item.key}
               className={clsx(
-                'flex flex-col gap-2.5 rounded-2xl border p-3 transition-colors',
+                'flex flex-col gap-2.5 rounded border p-3 transition-colors',
                 overThreshold
                   ? 'border-red-300 bg-red-50/80 dark:border-red-500/30 dark:bg-red-500/10'
                   : 'border-(--border) bg-(--surface-2)',
@@ -497,7 +497,7 @@ function PriorityTodayPanel({
                 <div className='flex min-w-0 items-center gap-2'>
                   <span
                     className={clsx(
-                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded',
                       meta.chip,
                     )}
                   >
@@ -509,7 +509,7 @@ function PriorityTodayPanel({
                 </div>
                 <span
                   className={clsx(
-                    'inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
+                    'inline-flex min-w-6 items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums',
                     isZero
                       ? 'bg-(--surface) text-(--text-muted)'
                       : overThreshold
@@ -522,7 +522,7 @@ function PriorityTodayPanel({
               </div>
 
               <div className='flex min-w-0 items-center gap-1.5'>
-                <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', isZero ? 'bg-(--text-muted)' : meta.dot)} />
+                <span className={clsx('h-1.5 w-1.5 shrink-0 rounded', isZero ? 'bg-(--text-muted)' : meta.dot)} />
                 <p className='truncate text-[11px] font-medium text-(--text-secondary)'>
                   {overThreshold
                     ? `Melebihi ${threshold.toLocaleString('id-ID')} (kemarin)`
@@ -557,7 +557,7 @@ function TopWorkloadPanel({
   const max = top3[0]?.total || 1;
 
   return (
-    <div className='rounded-3xl border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
+    <div className='rounded border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div>
           <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
@@ -567,7 +567,7 @@ function TopWorkloadPanel({
             Top 3 Workzone Terpadat
           </p>
         </div>
-        <span className='bg-surface-2 rounded-full border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
+        <span className='bg-surface-2 rounded border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
           {areas.length} area
         </span>
       </div>
@@ -581,7 +581,7 @@ function TopWorkloadPanel({
               key={area.name}
               onClick={() => onSelect?.(area.name)}
               className={clsx(
-                'w-full rounded-2xl border px-3 py-2 text-left transition-all',
+                'w-full rounded border px-3 py-2 text-left transition-all',
                 isActive
                   ? 'border-blue-400 bg-blue-50/60 dark:border-blue-500/40 dark:bg-blue-500/10'
                   : 'border-(--border) bg-(--surface-2) hover:bg-(--surface-hover)',
@@ -599,10 +599,10 @@ function TopWorkloadPanel({
                   </span>
                 </p>
               </div>
-              <div className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-(--border)'>
+              <div className='mt-1.5 h-1.5 overflow-hidden rounded bg-(--border)'>
                 <div
                   className={clsx(
-                    'h-full rounded-full transition-all',
+                    'h-full rounded transition-all',
                     isActive
                       ? 'bg-blue-500'
                       : area.unassigned > 0 && area.unassigned / area.total > 0.5
@@ -864,16 +864,16 @@ export default function TicketManagementOverviewPage({
       selectedWorkzone={workzone}
     >
       <div className='space-y-6'>
-        <section className='overflow-hidden rounded-4xl border border-(--border) bg-(--surface) shadow-sm'>
-          <div className='bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.11),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)] p-6 md:p-7'>
+        <section className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
+          <div className='bg-(--surface-2) p-6 md:p-7'>
             <div className='flex flex-col gap-6'>
               <div className='flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between'>
                 <div className='max-w-4xl'>
                   <p className='text-[10px] font-bold tracking-[0.32em] text-(--text-secondary) uppercase'>
-                    Ticket Management
+                    Manajemen Tiket
                   </p>
                   <h1 className='mt-2 text-3xl font-semibold tracking-tight text-(--text-primary) md:text-4xl'>
-                    Operational Overview
+                    Overview Operasional
                   </h1>
                   <p className='mt-3 max-w-3xl text-sm leading-6 text-(--text-muted)'>
                     Ringkasan operasional utama untuk membaca total workboard,
@@ -882,7 +882,7 @@ export default function TicketManagementOverviewPage({
                   </p>
                 </div>
 
-                <div className='rounded-3xl border border-(--border) bg-linear-to-br from-(--surface) to-(--surface-2) p-4 shadow-sm'>
+                <div className='rounded border border-(--border) bg-(--surface) p-4 shadow-sm'>
                   <div className='flex items-start justify-between gap-4'>
                     <div>
                       <p className='text-[10px] font-bold tracking-[0.24em] text-(--text-muted) uppercase'>
@@ -913,7 +913,7 @@ export default function TicketManagementOverviewPage({
                     <button
                       onClick={triggerSync}
                       disabled={isInProgress}
-                      className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm transition hover:bg-(--surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-50'
+                      className='inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-(--border) bg-(--surface) text-(--text-secondary) shadow-sm transition hover:bg-(--surface-hover) hover:text-(--text-primary) disabled:cursor-not-allowed disabled:opacity-50'
                       title='Trigger sync'
                     >
                       <RefreshCw
@@ -924,7 +924,7 @@ export default function TicketManagementOverviewPage({
                   </div>
 
                   {isInProgress && (
-                    <div className='mt-4 flex items-center gap-3 rounded-2xl bg-(--bg)/60 px-3 py-2'>
+                    <div className='mt-4 flex items-center gap-3 rounded bg-(--bg)/60 px-3 py-2'>
                       <p className='truncate text-[11px] text-(--text-secondary)'>
                         Sinkronisasi berjalan...
                       </p>
@@ -980,18 +980,18 @@ export default function TicketManagementOverviewPage({
                 />
               </div>
 
-              <div className='grid gap-4 xl:grid-cols-[0.9fr_1.1fr_1fr]'>
-                <div className='rounded-3xl border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
+              <div className='grid gap-4'>
+                <div className='rounded border border-(--border) bg-(--surface) p-3.5 shadow-sm'>
                   <div className='flex flex-wrap items-center justify-between gap-2'>
                     <div>
                       <p className='text-[10px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
                         Filter
                       </p>
                       <p className='mt-1 text-[11px] font-semibold text-(--text-primary)'>
-                        Bucket mode
+                        Mode Bucket
                       </p>
                     </div>
-                    <span className='bg-surface-2 rounded-full border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
+                    <span className='bg-surface-2 rounded border border-(--border) px-2.5 py-1 text-[10px] font-semibold text-(--text-secondary)'>
                       {bucketSuffix}
                     </span>
                   </div>
@@ -1004,7 +1004,7 @@ export default function TicketManagementOverviewPage({
                           key={opt.value}
                           onClick={() => setSelectedBucket(opt.value)}
                           className={clsx(
-                            'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all',
+                            'shrink-0 rounded px-3 py-1.5 text-[11px] font-semibold transition-all',
                             active
                               ? 'bg-blue-500 text-white shadow-sm'
                               : 'bg-surface-2 border border-(--border) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)',
@@ -1016,29 +1016,13 @@ export default function TicketManagementOverviewPage({
                     })}
                   </div>
                 </div>
-
-                <PriorityTodayPanel
-                  items={focusItems}
-                  mode={selectedBucket === 'all' ? 'all' : 'bucket'}
-                  bucketLabel={selectedBucketCard?.label}
-                  bucketSummary={selectedBucketSummary}
-                  h1Flags={h1}
-                />
-
-                <TopWorkloadPanel
-                  areas={opsSummary?.serviceAreas ?? []}
-                  activeWorkzone={workzone || undefined}
-                  onSelect={(name) =>
-                    handleWorkzoneChange(workzone === name ? '' : name)
-                  }
-                />
               </div>
 
-              <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
+              <div className='rounded border border-(--border) bg-(--surface) p-4 shadow-sm'>
                 <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
                   <div>
                     <p className='text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
-                      Bucket Summary
+                      Ringkasan Bucket
                     </p>
                     <p className='mt-1 text-sm font-semibold text-(--text-primary)'>
                       Distribusi seluruh bucket operasional
@@ -1090,7 +1074,7 @@ export default function TicketManagementOverviewPage({
                     branch={branch || undefined}
                   />
 
-                  <div className='rounded-3xl border border-(--border) bg-(--surface) p-4 shadow-sm'>
+                  <div className='rounded border border-(--border) bg-(--surface) p-4 shadow-sm'>
                     <div className='mb-3 flex flex-wrap items-end justify-between gap-2'>
                       <div>
                         <p className='text-[11px] font-bold tracking-[0.22em] text-(--text-secondary) uppercase'>
@@ -1114,7 +1098,7 @@ export default function TicketManagementOverviewPage({
                             key={opt.value}
                             onClick={() => setTechnicianSegmentFilter(opt.value)}
                             className={clsx(
-                              'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all',
+                              'shrink-0 rounded px-3 py-1.5 text-[11px] font-semibold transition-all',
                               active
                                 ? 'bg-blue-500 text-white shadow-sm'
                                 : 'bg-surface-2 border border-(--border) text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)',
@@ -1163,14 +1147,14 @@ export default function TicketManagementOverviewPage({
                     bucket={selectedBucket}
                   />
 
-                  <div className='rounded-3xl border border-(--border) bg-(--surface) p-5 shadow-sm'>
+                  <div className='rounded border border-(--border) bg-(--surface) p-5 shadow-sm'>
                     <div className='flex flex-wrap items-center justify-between gap-3'>
                       <div>
                         <p className='text-xs font-bold tracking-[1.4px] text-(--text-secondary) uppercase'>
-                          Quick Access
+                          Akses Cepat
                         </p>
                         <h2 className='mt-1 text-lg font-semibold text-(--text-primary)'>
-                          Shortcut ke Area Kerja
+                          Pintasan ke Area Kerja
                         </h2>
                         <p className='mt-1 text-sm text-(--text-muted)'>
                           Masuk langsung ke bucket yang sedang dipantau.
@@ -1181,7 +1165,7 @@ export default function TicketManagementOverviewPage({
                           <Link
                             key={item.key}
                             href={item.path}
-                            className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
+                            className='rounded border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
                           >
                             {item.label}
                           </Link>
@@ -1189,7 +1173,7 @@ export default function TicketManagementOverviewPage({
                         <Link
                           key={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].key}
                           href={TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].path}
-                          className='rounded-full border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
+                          className='rounded border border-(--border) bg-(--surface) px-3 py-1.5 text-xs font-bold tracking-[1px] text-(--text-secondary) uppercase transition-colors hover:bg-(--surface-hover)'
                         >
                           {TICKET_MANAGEMENT_OVERVIEW_ITEMS[0].label}
                         </Link>
@@ -1199,16 +1183,16 @@ export default function TicketManagementOverviewPage({
                 </>
               ) : (
                 <div className='grid gap-4 xl:grid-cols-2'>
-                  <div className='h-85 rounded-3xl border border-(--border) bg-(--surface-2)' />
-                  <div className='h-85 rounded-3xl border border-(--border) bg-(--surface-2)' />
-                  <div className='h-80 rounded-3xl border border-(--border) bg-(--surface-2) xl:col-span-2' />
-                  <div className='rounded-3xl border border-(--border) bg-(--surface-2) px-5 py-4 xl:col-span-2'>
-                    <div className='h-6 w-48 rounded-full bg-(--border)' />
+                  <div className='h-85 rounded border border-(--border) bg-(--surface-2)' />
+                  <div className='h-85 rounded border border-(--border) bg-(--surface-2)' />
+                  <div className='h-80 rounded border border-(--border) bg-(--surface-2) xl:col-span-2' />
+                  <div className='rounded border border-(--border) bg-(--surface-2) px-5 py-4 xl:col-span-2'>
+                    <div className='h-6 w-48 rounded bg-(--border)' />
                     <div className='mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5'>
                       {Array.from({ length: 5 }, (_, i) => (
                         <div
                           key={i}
-                          className='h-16 rounded-2xl border border-(--border) bg-(--surface)'
+                          className='h-16 rounded border border-(--border) bg-(--surface)'
                         />
                       ))}
                     </div>

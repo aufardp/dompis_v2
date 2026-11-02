@@ -217,17 +217,6 @@ export default function PriorityPage() {
 
           <div className='flex items-center gap-2 pl-3 md:pl-0'>
             <Button
-              variant='default'
-              size='sm'
-              className='gap-2 border-none bg-blue-600 font-semibold text-white shadow-md hover:bg-blue-700'
-              onClick={() =>
-                window.open('/api/priority/export?scope=summary', '_blank')
-              }
-            >
-              <Download className='h-4 w-4' />
-              Export
-            </Button>
-            <Button
               variant='outline'
               size='sm'
               className='bg-surface hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)'
@@ -252,7 +241,7 @@ export default function PriorityPage() {
                 TOTAL SALDO TIKET OPEN: {formatNumber(totalOpenAll)}
               </span>
               <span className='rounded border border-red-100 bg-red-50 px-3 py-1 text-xs font-bold text-red-700 dark:border-red-800/60 dark:bg-red-900/30 dark:text-red-300'>
-                TOTAL OVER SLA (BRANCH): {formatNumber(totalOverSlaAll)}
+                TOTAL OUT SLA (BRANCH): {formatNumber(totalOverSlaAll)}
               </span>
             </div>
           </div>
@@ -494,7 +483,7 @@ export default function PriorityPage() {
                                 'reguler',
                                 `${b.name} - Tiket Close HI`,
                                 undefined,
-                                undefined,
+                                'closed',
                                 'close_hi',
                               )
                             }
@@ -637,6 +626,7 @@ export default function PriorityPage() {
                                 'reguler',
                                 `${b.name} - Diamond VVIP All`,
                                 'diamond_vvip',
+                                'all',
                               )
                             }
                             className='text-amber-600 hover:underline dark:text-amber-400'
@@ -698,6 +688,7 @@ export default function PriorityPage() {
                                 'reguler',
                                 `${b.name} - Platinum All`,
                                 'platinum',
+                                'all',
                               )
                             }
                             className='text-amber-600 hover:underline dark:text-amber-400'
@@ -759,6 +750,7 @@ export default function PriorityPage() {
                                 'reguler',
                                 `${b.name} - Manja All`,
                                 'manja',
+                                'all',
                               )
                             }
                             className='text-amber-600 hover:underline dark:text-amber-400'
@@ -820,6 +812,7 @@ export default function PriorityPage() {
                                 'reguler',
                                 `${b.name} - Reguler All`,
                                 'reguler',
+                                'all',
                               )
                             }
                             className='text-amber-600 hover:underline dark:text-amber-400'
@@ -887,9 +880,9 @@ export default function PriorityPage() {
             </div>
           </div>
 
-          <div className='bg-surface rounded border border-(--border) shadow-sm overflow-hidden'>
+          <div className='bg-surface overflow-hidden rounded border border-(--border) shadow-sm'>
             <div className='overflow-x-auto'>
-              <table className='w-full min-w-[550px] table-fixed border-collapse text-left text-xs'>
+              <table className='w-full min-w-137.5 table-fixed border-collapse text-left text-xs'>
                 <thead className='bg-bg text-center text-[10px] font-bold tracking-wider text-(--text-secondary)'>
                   <tr>
                     <th
@@ -898,14 +891,29 @@ export default function PriorityPage() {
                     >
                       BRANCH
                     </th>
-                    <th colSpan={2} className='bg-bg/40 border-r border-(--border) px-2 py-2 w-1/2'>TIKET SQM</th>
-                    <th colSpan={2} className='bg-bg/40 px-2 py-2 w-1/2'>TIKET/SALDO UNSPEC</th>
+                    <th
+                      colSpan={2}
+                      className='bg-bg/40 w-1/2 border-r border-(--border) px-2 py-2'
+                    >
+                      TIKET SQM
+                    </th>
+                    <th colSpan={2} className='bg-bg/40 w-1/2 px-2 py-2'>
+                      TIKET/SALDO UNSPEC
+                    </th>
                   </tr>
                   <tr className='border-b border-(--border) text-[9px]'>
-                    <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 w-1/4 text-center'>POTENSI GANGGUAN</th>
-                    <th className='border-r border-(--border) bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400 w-1/4 text-center'>POTENSI GAUL</th>
-                    <th className='border-r border-(--border) bg-amber-50/50 px-2 py-2 font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 w-1/4 text-center'>POTENSI GANGGUAN</th>
-                    <th className='bg-red-50/50 px-2 py-2 font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400 w-1/4 text-center'>POTENSI GAUL</th>
+                    <th className='w-1/4 border-r border-(--border) bg-amber-50/50 px-2 py-2 text-center font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
+                      POTENSI GANGGUAN
+                    </th>
+                    <th className='w-1/4 border-r border-(--border) bg-red-50/50 px-2 py-2 text-center font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400'>
+                      POTENSI GAUL
+                    </th>
+                    <th className='w-1/4 border-r border-(--border) bg-amber-50/50 px-2 py-2 text-center font-semibold text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'>
+                      POTENSI GANGGUAN
+                    </th>
+                    <th className='w-1/4 bg-red-50/50 px-2 py-2 text-center font-semibold text-red-700 dark:bg-red-950/20 dark:text-red-400'>
+                      POTENSI GAUL
+                    </th>
                   </tr>
                 </thead>
                 <tbody className='divide-y divide-(--border)'>
@@ -919,8 +927,11 @@ export default function PriorityPage() {
                     };
 
                     return (
-                      <tr key={b.code} className='hover:bg-surface-2 transition-colors'>
-                        <td className='w-28 border-r border-(--border) px-3 py-3 text-left font-bold text-(--text-primary) truncate sm:w-36'>
+                      <tr
+                        key={b.code}
+                        className='hover:bg-surface-2 transition-colors'
+                      >
+                        <td className='w-28 truncate border-r border-(--border) px-3 py-3 text-left font-bold text-(--text-primary) sm:w-36'>
                           {b.name}
                         </td>
 
@@ -1023,16 +1034,53 @@ export default function PriorityPage() {
             </div>
           </div>
 
-          <div className='pt-2 text-xs text-(--text-secondary) space-y-2'>
-            <p className='font-bold text-(--text-primary) font-mono uppercase tracking-wider'>PENJELASAN POTENSI GANGGUAN & GAUL:</p>
-            <ul className='list-disc pl-5 space-y-2 leading-relaxed'>
+          <div className='space-y-2 pt-2 text-xs text-(--text-secondary)'>
+            <p className='font-mono font-bold tracking-wider text-(--text-primary) uppercase'>
+              PENJELASAN POTENSI GANGGUAN, GAUL & OSLA:
+            </p>
+            <ul className='list-disc space-y-2 pl-5 leading-relaxed'>
               <li>
-                <span className='font-bold text-amber-600 dark:text-amber-400'>Potensi Gangguan (Disruption):</span>
-                Terjadi ketika sebuah <span className='italic underline underline-offset-2'>Service Number (pelanggan)</span> memiliki minimal 2 tiket jenis SQM/UNSPEC dalam 30 hari terakhir, <span className='font-bold text-(--text-primary)'>DAN TIDAK</span> memiliki tiket REG/HVC (keluhan reguler/HVC) dalam periode yang sama. Ini menandakan kemungkinan masalah berulang yang tidak teridentifikasi sebagai keluhan pelanggan langsung.
+                <span className='font-bold text-amber-600 dark:text-amber-400'>
+                  Potensi Gangguan:
+                </span>
+                Terjadi ketika sebuah{' '}
+                <span className='italic underline underline-offset-2'>
+                  Service Number (pelanggan)
+                </span>{' '}
+                memiliki minimal 2 tiket jenis SQM/UNSPEC dalam 30 hari
+                terakhir,{' '}
+                <span className='font-bold text-(--text-primary)'>
+                  DAN TIDAK
+                </span>{' '}
+                memiliki tiket REG/HVC (keluhan reguler/HVC) dalam periode yang
+                sama. Ini menandakan kemungkinan masalah berulang yang tidak
+                teridentifikasi sebagai keluhan pelanggan langsung.
               </li>
               <li>
-                <span className='font-bold text-red-600 dark:text-red-400'>Potensi Gaul:</span>
-                Terjadi ketika sebuah tiket SQM/UNSPEC yang baru memiliki riwayat tiket REG/HVC dengan Service Number yang sama dalam 30 hari sebelumnya. Ini mengindikasikan bahwa tiket SQM/UNSPEC saat ini kemungkinan adalah <span className='font-bold text-(--text-primary)'>'lanjutan'</span> atau <span className='font-bold text-(--text-primary)'>'gaul'</span> dari keluhan reguler/HVC yang sudah ada.
+                <span className='font-bold text-red-600 dark:text-red-400'>
+                  Potensi Gaul:
+                </span>
+                Terjadi ketika sebuah tiket SQM/UNSPEC yang baru memiliki
+                riwayat tiket REG/HVC dengan Service Number yang sama dalam 30
+                hari sebelumnya. Ini mengindikasikan bahwa tiket SQM/UNSPEC saat
+                ini kemungkinan adalah{' '}
+                <span className='font-bold text-(--text-primary)'>
+                  'lanjutan'
+                </span>{' '}
+                atau{' '}
+                <span className='font-bold text-(--text-primary)'>'gaul'</span>{' '}
+                dari keluhan reguler/HVC yang sudah ada.
+              </li>
+              <li>
+                <span className='font-bold text-blue-600 dark:text-blue-400'>
+                  Tiket Out SLA:
+                </span>
+                Seluruh tiket yang{' '}
+                <span className='font-bold text-(--text-primary)'>
+                  belum terselesaikan (masih open)
+                </span>{' '}
+                dari bulan lalu dan telah melewati batas toleransi penanganan
+                standar.{' '}
               </li>
             </ul>
           </div>
@@ -1077,11 +1125,10 @@ export default function PriorityPage() {
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={handleExportTickets}
-                  className='bg-bg hover:bg-surface-2 border-(--border) text-(--text-secondary) hover:text-(--text-primary)'
+                  onClick={() => setDrillDown({ ...drillDown, open: false })}
+                  className='bg-bg hover:bg-surface-2 border-(--border) text-(--text-secondary)'
                 >
-                  <Download className='mr-2 h-4 w-4' />
-                  Export CSV
+                  Tutup
                 </Button>
               </div>
 
