@@ -363,3 +363,7 @@ INGESTION_CURSOR_STALE_HOURS: '24',
     },
   ],
 };
+
+for (const app of module.exports.apps) {
+  app.env.TICKET_SYNC_REVISIONS_ENABLED = process.env.TICKET_SYNC_REVISIONS_ENABLED || 'false';
+}

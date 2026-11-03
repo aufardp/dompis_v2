@@ -8,6 +8,8 @@
  */
 
 import 'dotenv/config';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
+import { runFullScanProjection } from '@/lib/projection';
 import { prisma } from '@/app/libs/prisma';
 import {
   batchClassifyJenisFromVlookup,
@@ -193,6 +195,12 @@ function buildUpsertData(
 }
 
 async function main() {
+  if (isRevisionSyncEnabled()) {
+    const result = await runFullScanProjection();
+    console.log(result);
+    return;
+  }
+
   console.log('═══════════════════════════════════════════');
   console.log('  FULL PROJECTION - 100% DATA COMPLETENESS');
   console.log('═══════════════════════════════════════════\n');

@@ -18,6 +18,7 @@ import {
   getBridgeCircuitState,
 } from '@/lib/external-db/qosmic-bridge/bridge-queue';
 import { isQosmicBridgeDown, probeBridgeHealth } from '@/lib/external-db/qosmic-bridge/client';
+import { enqueueHistoricalSweep, enqueueScheduledBridgeScan } from '@/lib/external-db/qosmic-bridge/scheduler';
 
 const WORKER_NAME = 'bridge-worker';
 const DLQ_CHECK_INTERVAL = 15;
@@ -80,16 +81,19 @@ async function startWorker(): Promise<void> {
   await startBridgeWorkers();
 
   scheduledTasks.push(
+    scheduleEveryMinutes(1, () => enqueueScheduledBridgeScan('nossa'), 'bridge-open-scan'),
+    scheduleEveryMinutes(2, () => enqueueScheduledBridgeScan('nossa_closed'), 'bridge-closed-scan', 5),
+    scheduleEveryMinutes(60, () => enqueueHistoricalSweep(), 'bridge-historical-sweep', 30),
     scheduleEveryMinutes(
       DLQ_CHECK_INTERVAL,
-      () => runWithCorrelationContext(WORKER_NAME, () => void checkDLQ()),
+      () => runWithCorrelationContext(WORKER_NAME, () => checkDLQ()),
       'bridge-dlq-check',
       0,
       { maxIntervalMinutes: 30, idleThreshold: 10 },
     ),
     scheduleEveryMinutes(
       1,
-      () => runWithCorrelationContext(WORKER_NAME, () => void probeHealth()),
+      () => runWithCorrelationContext(WORKER_NAME, () => probeHealth()),
       'bridge-health-probe',
       0,
       { maxIntervalMinutes: 5, idleThreshold: 1 },

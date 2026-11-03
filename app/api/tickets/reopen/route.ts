@@ -9,6 +9,7 @@ import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { roleKeyToRoleId, normalizeRoleKey } from '@/app/libs/roles';
 import { ActivityType, logActivity, logStatusChange } from '@/app/helpers/ticket.helpers';
+import { isRevisionSyncEnabled, lockTicketSyncState, markProjectionPending } from '@/lib/ingestion/sync-state';
 import { isTicketClosed } from '@/app/libs/ticket-utils';
 
 const reopenSchema = z.object({
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
     const roleId = roleKeyToRoleId(roleKey);
 
     const result = await prisma.$transaction(async (tx) => {
-      const ticket = await tx.ticket.findUnique({
+      let ticket = await tx.ticket.findUnique({
         where: { id_ticket: ticketId },
         select: {
           id_ticket: true,
@@ -60,6 +61,16 @@ export async function POST(req: Request) {
 
       if (!ticket) {
         throw new Error('Ticket not found');
+      }
+
+      if (isRevisionSyncEnabled()) {
+        await lockTicketSyncState(tx, [ticket.incident]);
+        await tx.$queryRaw`SELECT id_ticket FROM ticket WHERE id_ticket = ${ticketId} FOR UPDATE`;
+        ticket = await tx.ticket.findUniqueOrThrow({
+          where: { id_ticket: ticketId },
+          select: { id_ticket: true, incident: true, status: true, status_update: true,
+            teknisi_user_id: true, workzone: true, needs_validation: true },
+        });
       }
 
       const currentStatus = String(ticket.status_update ?? ticket.status ?? '')
@@ -86,6 +97,12 @@ export async function POST(req: Request) {
           validation_flagged_at: null,
         },
       });
+
+      if (isRevisionSyncEnabled()) {
+        const raw = await tx.ticket_raw.findUnique({ where: { incident: ticket.incident }, select: { sourceHash: true } });
+        await tx.ticket_sync_state.update({ where: { incident: ticket.incident }, data: { manualReopenHash: raw?.sourceHash } });
+        await markProjectionPending(tx, [ticket.incident]);
+      }
 
       await tx.ticket_raw_finalized.deleteMany({
         where: { incident: ticket.incident },

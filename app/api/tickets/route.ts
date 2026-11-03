@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getCache, setCache, TICKETS_CACHE_TTL } from '@/lib/cache';
+import { getCache, setCache, TICKETS_CACHE_TTL, versionTicketCacheKey } from '@/lib/cache';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
 
@@ -76,7 +76,8 @@ export async function GET(request: Request) {
       dateRange,
     };
 
-    const cacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);
+    const baseCacheKey = buildTicketCacheKey(searchParams, user.role, user.id_user);
+    const cacheKey = baseCacheKey ? await versionTicketCacheKey(baseCacheKey) : null;
 
     // Skip cache if bypass param (_t) is present
     if (cacheKey) {

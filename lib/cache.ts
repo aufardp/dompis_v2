@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { logger } from '@/lib/observability/logger';
 import redis, { ensureRedisReady } from '@/lib/redis';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { withQueryGate } from '@/lib/sql/query-gate';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 
 export interface CacheOptions {
   ttl?: number;
@@ -217,6 +219,22 @@ export async function invalidateWarMapCache(): Promise<void> {
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
+export async function versionTicketCacheKey(key: string): Promise<string> {
+  if (!/^(tickets:|daily_tickets:|stats:|ticket:)/.test(key) || key.includes(':revision:')) return key;
+  if (!(await ensureRedisReady())) return key;
+  try {
+    let version = await redis.get('cache:tickets:version');
+    if (!version) {
+      const created = randomUUID();
+      const result = await redis.set('cache:tickets:version', created, 'NX');
+      version = result === 'OK' ? created : await redis.get('cache:tickets:version');
+    }
+    return `${key}:revision:${version ?? randomUUID()}`;
+  } catch {
+    return `${key}:revision:${randomUUID()}`;
+  }
+}
+
 /**
  * Cache-aside helper: ambil dari cache, jika miss jalankan fn() lalu simpan.
  *
@@ -231,6 +249,7 @@ export async function getOrSetCache<T>(
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
 ): Promise<T> {
+  key = await versionTicketCacheKey(key);
   // Try cache first
   const cached = await getCache<T>(key);
   if (cached !== null) return cached;
@@ -260,6 +279,7 @@ export async function getOrSetCache<T>(
  * sambil di-recompute di background.
  */
 const SWR_STALE_FACTOR = parsePositiveIntEnv('SWR_STALE_FACTOR', 3);
+const dashboardRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface SwrEnvelope<T> {
   __swr: true;
@@ -282,11 +302,12 @@ async function computeAndStoreSwr<T>(
   ttl: number,
   storeTtl: number,
 ): Promise<T> {
+  const startedAt = Date.now();
   try {
     const data = await withQueryGate(fn);
     await setCache(
       key,
-      { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
+      { __swr: true, storedAt: startedAt, data } satisfies SwrEnvelope<T>,
       storeTtl,
     );
     return data;
@@ -303,13 +324,17 @@ function revalidateInBackground<T>(
   if (inFlight.has(key)) return;
 
   const computation = (async () => {
+    const startedAt = Date.now();
     try {
       const data = await withQueryGate(fn);
       await setCache(
         key,
-        { __swr: true, storedAt: Date.now(), data } satisfies SwrEnvelope<T>,
+        { __swr: true, storedAt: startedAt, data } satisfies SwrEnvelope<T>,
         ttl * SWR_STALE_FACTOR,
       );
+      if (isRevisionSyncEnabled() && /^dashboard[:_]/.test(key)) {
+        await redis.publish('sse:tickets', JSON.stringify({ type: 'invalidate', reason: 'dashboard-refresh', ts: Date.now() }));
+      }
     } catch (error) {
       logger.warn('[Cache] SWR background recompute failed:', {
         key,
@@ -321,6 +346,20 @@ function revalidateInBackground<T>(
   })();
 
   inFlight.set(key, computation);
+}
+
+function scheduleDashboardRefresh<T>(key: string, fn: () => Promise<T>, ttl: number, delay: number): void {
+  if (inFlight.has(key) || dashboardRefreshTimers.has(key)) return;
+  if (delay <= 0 || dashboardRefreshTimers.size >= 256) {
+    revalidateInBackground(key, fn, ttl);
+    return;
+  }
+  const timer = setTimeout(() => {
+    dashboardRefreshTimers.delete(key);
+    revalidateInBackground(key, fn, ttl);
+  }, delay);
+  timer.unref();
+  dashboardRefreshTimers.set(key, timer);
 }
 
 /**
@@ -337,6 +376,7 @@ export async function getOrSetCacheSwr<T>(
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
 ): Promise<T> {
+  key = await versionTicketCacheKey(key);
   const staleTtl = ttl * SWR_STALE_FACTOR;
   const cached = await getCache<SwrEnvelope<T> | T>(key);
 
@@ -348,6 +388,13 @@ export async function getOrSetCacheSwr<T>(
       return cached;
     }
 
+    if (isRevisionSyncEnabled() && /^dashboard[:_]/.test(key)) {
+      const dirtyAt = Number(await redis.get('cache:dashboard:dirtyAt').catch(() => null));
+      if (dirtyAt >= cached.storedAt) {
+        const interval = parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30) * 1000;
+        scheduleDashboardRefresh(key, fn, ttl, Math.max(0, interval - (Date.now() - cached.storedAt)));
+      }
+    }
     revalidateInBackgroundIfNeeded(cached.storedAt, key, fn, ttl);
     return cached.data;
   }

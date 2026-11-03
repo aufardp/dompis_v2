@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // ==========================================
 // QOSMIC Bridge — fungsi level tinggi utk nossa & nossa_closed
 // ==========================================
@@ -33,7 +34,7 @@ async function listPage<T = QosmicRawRow>(
   rateLimitKey?: string,
 ): Promise<QosmicQueryResponse<T>> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
-  return qosmicBridgeGet<QosmicQueryResponse<T>>(resourcePath(resource), {
+  const response = await qosmicBridgeGet<QosmicQueryResponse<T>>(resourcePath(resource), {
     label,
     query: {
       status: params.status,
@@ -44,6 +45,15 @@ async function listPage<T = QosmicRawRow>(
     },
     rateLimitKey,
   });
+  validateResponse(response);
+  return response;
+}
+
+function validateResponse(response: QosmicQueryResponse<unknown>): void {
+  if (!response || response.ok !== true || !Array.isArray(response.data)
+    || response.data.some(row => !row || typeof row !== 'object' || Array.isArray(row))) {
+    throw new Error('Invalid QOSMIC response; scan coverage is incomplete');
+  }
 }
 
 /**
@@ -65,6 +75,7 @@ export async function fetchByIncident<T = QosmicRawRow>(
         query: { incident },
       },
     );
+    validateResponse(res);
     return res.data[0] ?? null;
   } catch (error) {
     if (error instanceof QosmicBridgeError && error.status === 422) {
@@ -103,10 +114,9 @@ async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
 ): AsyncGenerator<T[], void, void> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
   let offset = 0;
-  const buffer: T[][] = [];
   const uniqueRows = (rows: T[]) => rows.filter(row => {
     const raw = row as QosmicRawRow;
-    const key = String(raw.Incident ?? raw.incident ?? JSON.stringify(raw));
+    const key = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -119,7 +129,8 @@ async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
       'nossa.list_by_status',
     );
     if (res.data.length === 0) break;
-    buffer.push(res.data);
+    const unique = uniqueRows(res.data);
+    if (unique.length) yield unique;
 
     if (res.data.length < limit) break;
 
@@ -132,10 +143,6 @@ async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
           yield* iterateNossaOpenByStatus<T>(status, { ...params, ...window }, seen);
         }
       } else {
-        for (const rows of buffer) {
-          const unique = uniqueRows(rows);
-          if (unique.length) yield unique;
-        }
         const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 86400000));
         for (const window of splitIntoInitialWindows(params.dateFrom ?? '2026-01-01', params.dateTo ?? tomorrow, 31)) {
           yield* iterateNossaOpenByStatus<T>(status, { ...params, ...window }, seen);
@@ -145,10 +152,7 @@ async function* iterateNossaOpenByStatus<T = QosmicRawRow>(
     }
     offset = nextOffset;
   }
-  for (const rows of buffer) {
-    const unique = uniqueRows(rows);
-    if (unique.length) yield unique;
-  }
+
 }
 
 /**
@@ -161,24 +165,13 @@ export async function* iterateNossaOpen<T = QosmicRawRow>(
   yield* iterateNossaOpenByStatus<T>(params.status, params);
 }
 
-/**
- * Iterasi nossa_closed dalam SATU window tanggal. Meng-handle overflow
- * (window ternyata > 5.000 baris) dengan cara: buffer semua halaman window
- * ini dulu, dan HANYA di-yield kalau window ini tidak overflow. Kalau
- * overflow terdeteksi, buffer dibuang (tidak di-yield sama sekali) dan
- * window di-bisect lalu di-retry secara rekursif — supaya tidak ada baris
- * yang ke-yield dua kali.
- *
- * Ini query LIVE ke Metabase (menurut docs) — setiap panggilan memakan
- * budget rate-limit 20/menit yang dipakai bersama semua konsumen lain.
- */
 export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
   window: DateWindow,
   params: Omit<ListQueryParams, 'dateFrom' | 'dateTo'> = {},
   rateLimitKey?: string,
+  seen: Set<string> = new Set(),
 ): AsyncGenerator<T[], void, void> {
   const limit = Math.min(params.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE);
-  const buffer: T[][] = [];
   let offset = 0;
   let overflowed = false;
 
@@ -197,7 +190,13 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
     );
 
     if (res.data.length === 0) break;
-    buffer.push(res.data);
+    const unique = res.data.filter(row => {
+      const key = createHash('sha256').update(JSON.stringify(row)).digest('hex');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (unique.length) yield unique;
 
     const nextOffset = offset + limit;
 
@@ -211,11 +210,9 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
   }
 
   if (!overflowed) {
-    for (const page of buffer) yield page;
     return;
   }
 
-  // Overflow: buang buffer (JANGAN di-yield, mencegah duplikat), bisect, retry.
   const halves = bisectWindow(window);
   if (!halves) {
     throw new Error(`Nossa closed coverage incomplete: window overflow, data terpotong (${window.dateFrom} - ${window.dateTo}).`);
@@ -229,7 +226,7 @@ export async function* iterateNossaClosedWindow<T = QosmicRawRow>(
     },
   );
   for (const half of halves) {
-    yield* iterateNossaClosedWindow<T>(half, params, rateLimitKey);
+    yield* iterateNossaClosedWindow<T>(half, params, rateLimitKey, seen);
   }
 }
 

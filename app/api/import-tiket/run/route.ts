@@ -21,6 +21,8 @@ import {
   validateDate,
 } from '@/app/libs/ticket-raw-columns';
 import { parseWIBDateInput } from '@/app/utils/datetime';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
+import { processRawRows, type ChunkResult } from '@/lib/ingestion';
 import { logger } from '@/lib/observability/logger';
 
 const BATCH_SIZE = 100;
@@ -288,6 +290,17 @@ export async function POST(req: Request) {
       }
 
       if (parsedRows.length === 0) continue;
+
+      if (isRevisionSyncEnabled()) {
+        const result: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+        await processRawRows(parsedRows.map(row => Object.fromEntries(Object.entries(row.data).filter(([key]) => !['source_system', 'import_batch', 'synced_at'].includes(key)))), SOURCE_TABLE_NAME, batchName, {
+          idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+        }, result);
+        inserted += result.inserted;
+        updated += result.updated;
+        if (result.quarantined || result.failed) throw new Error(`Import requires review: ${result.quarantined} quarantined, ${result.failed} failed`);
+        continue;
+      }
 
       const existingIncidents = await prisma.ticket_raw.findMany({
         where: { incident: { in: parsedRows.map((r) => r.incident) } },

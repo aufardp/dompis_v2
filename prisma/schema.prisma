@@ -553,6 +553,40 @@ model ticket_raw {
   @@index([incident, isActive, sourceTable, status, sourceUpdatedAt, sourceHash], map: "idx_ticket_raw_refresh_join")
 }
 
+model ticket_sync_state {
+  incident             String    @id @db.VarChar(50)
+  rawRevision          BigInt    @default(0)
+  appliedRevision      BigInt    @default(0)
+  projectionVersion    Int       @default(0)
+  pending              Boolean   @default(false)
+  pendingSince         DateTime? @db.DateTime(3)
+  nextAttemptAt        DateTime? @db.DateTime(3)
+  attempts             Int       @default(0)
+  lastError            String?   @db.Text
+  manualReopenHash     String?   @db.VarChar(64)
+  effectsRevision      BigInt    @default(0)
+  effectsApplied       BigInt    @default(0)
+  effectsPending       Boolean   @default(false)
+  observedAt           DateTime? @db.DateTime(3)
+  projectedAt          DateTime? @db.DateTime(3)
+
+  @@index([pending, nextAttemptAt, incident], map: "idx_sync_pending")
+  @@index([pending, pendingSince, incident], map: "idx_sync_pending_age")
+  @@index([effectsPending, incident], map: "idx_sync_effects")
+}
+
+model ticket_source_snapshot {
+  incident        String    @db.VarChar(50)
+  sourceFamily    String    @db.VarChar(50)
+  resource        String    @db.VarChar(50)
+  sourceHash      String    @db.VarChar(64)
+  sourceUpdatedAt DateTime? @db.DateTime(3)
+  payload         Json
+  observedAt      DateTime  @db.DateTime(3)
+
+  @@id([incident, sourceFamily])
+}
+
 model ticket_raw_finalized {
   incident    String   @id @db.VarChar(50)
   finalizedAt DateTime @default(now()) @map("finalized_at") @db.Timestamp(0)

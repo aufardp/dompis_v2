@@ -9,12 +9,9 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { isRedisReady, redis } from '@/lib/redis';
 import { fetchByIncidentAnyStatus } from '@/lib/external-db/qosmic-bridge/nossa';
 import { enqueueBridgeCall } from '@/lib/external-db/qosmic-bridge/queue';
-import { normalizeExternalRow, computeSourceHash } from '@/lib/ingestion/normalizer';
-import { buildRawData } from '@/lib/ingestion/index';
-import { broadcastTicketUpdated } from '@/app/libs/sseBroadcast';
-import { nowWib } from '@/lib/timezone';
-import type { ExternalRow } from '@/lib/external-db/types';
-import type { QosmicResource } from '@/lib/external-db/qosmic-bridge/types';
+import { processRawRows, type ChunkResult } from '@/lib/ingestion';
+import { projectSingleTicket } from '@/lib/projection/single';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 
 const COOLDOWN_SECONDS = 10;
 const RATE_LIMIT = 6;
@@ -95,39 +92,19 @@ export async function POST(
       });
     }
 
-    const row = found.row as unknown as ExternalRow;
-    const resource: QosmicResource = found.resource;
-    const normalized = normalizeExternalRow(row, resource);
-    const sourceHash = computeSourceHash(normalized);
-    const now = nowWib();
-
-    // Check if already up-to-date
-    let refreshed = false;
-    const existing = await prisma.ticket_raw.findUnique({
-      where: { incident },
-      select: { sourceHash: true },
-    });
-
-    if (existing?.sourceHash !== sourceHash) {
-      const batchId = `live-refresh-${ticketId}-${Date.now()}`;
-      const data = buildRawData(normalized, sourceHash, now, batchId, 1, resource, incident);
-
-      await prisma.ticket_raw.upsert({
-        where: { incident },
-        create: data,
-        update: data,
-      });
-
-      broadcastTicketUpdated({
-        ticketId: incident,
-        incident,
-        changedFields: ['*'],
-        source: 'manual',
-        updatedAt: now.toISOString(),
-      });
-
-      refreshed = true;
+    const resource = found.resource;
+    const result: ChunkResult = {
+      processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0,
+      quarantined: 0, retried: 0, errors: [],
+    };
+    await processRawRows([found.row], resource, `live-refresh-${ticketId}-${Date.now()}`, {
+      idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+    }, result);
+    if (result.quarantined) {
+      return NextResponse.json({ ok: false, refreshed: false, incident, message: 'Source update requires review' }, { status: 409 });
     }
+    const refreshed = result.inserted + result.updated > 0;
+    if (isRevisionSyncEnabled()) await projectSingleTicket(incident);
 
     // Set cooldown after successful refresh attempt
     if (isRedisReady()) {

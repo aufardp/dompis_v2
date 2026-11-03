@@ -41,6 +41,7 @@ function harness(rows, { ignoreDateFilters = false, resourcePath = '/nossa', now
       fileName: filename,
     });
     function dependency(id) {
+      if (id === 'node:crypto') return require(id);
       if (id === './client') return client;
       if (id === '@/lib/observability/logger') return { logger };
       if (id === './window-planner') return load('lib/external-db/qosmic-bridge/window-planner.ts');
@@ -89,6 +90,17 @@ test('open status below capacity preserves its date bounds and all rows', async 
   assert.equal(actual.length, expected.length);
   assert.ok(app.calls.every((call) => call.date_from.startsWith('2026-11-02')
     && call.date_to.startsWith('2026-11-03')));
+});
+
+test('open and closed yield the first page before fetching later pages', async () => {
+  for (const resourcePath of ['/nossa', '/nossa-closed']) {
+    const app = harness(fixtureRows(1201, () => '2026-11-02 10:00:00'), { resourcePath });
+    const iterator = resourcePath === '/nossa'
+      ? app.iterateNossaOpen()
+      : app.iterateNossaClosedWindow({ dateFrom: '2026-11-02', dateTo: '2026-11-03' });
+    assert.equal((await iterator.next()).value.length, 1000);
+    assert.equal(app.calls.length, 1);
+  }
 });
 
 test('an irreducibly overflowing open window fails instead of reporting partial success', async () => {

@@ -1,5 +1,6 @@
 import { Queue, Worker, QueueEvents } from 'bullmq';
-import { redis, isRedisReady } from '@/lib/redis';
+import { prisma } from '@/app/libs/prisma';
+import { redis } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 import { WorkerTaskState, shouldRunWithCircuitBreaker, nowWIB, runWithCorrelationContext } from '@/lib/workers/task-runner';
 import { iterateNossaOpen, iterateNossaClosedIncremental, iterateNossaClosedWindow, fetchByIncident } from './nossa';
@@ -7,6 +8,7 @@ import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY, isQosmicBridgeDown, probeBridg
 import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
+import { nowWib } from '@/lib/timezone';
 
 // ── Constants ───────────────────────────────────────────────────────
 const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS ?? 10000);
@@ -26,7 +28,6 @@ const CONNECTION = {
   keepAlive: 10000,
 };
 
-const CONCURRENCY = Number(process.env.BULLMQ_CONCURRENCY ?? 3);
 const MAX_CONSECUTIVE_ERRORS = Number(process.env.BRIDGE_MAX_CONSECUTIVE_ERRORS ?? 5);
 const CIRCUIT_RESET_MS = Number(process.env.BRIDGE_CIRCUIT_RESET_MINUTES ?? 10) * 60_000;
 
@@ -34,36 +35,6 @@ const BRIDGE_JOB_SEARCH_ENABLED = process.env.BRIDGE_JOB_SEARCH_ENABLED === 'tru
 const BRIDGE_JOB_REFRESH_ENABLED = process.env.BRIDGE_JOB_REFRESH_ENABLED === 'true';
 const BRIDGE_JOB_INGESTION_ENABLED = process.env.BRIDGE_JOB_INGESTION_ENABLED === 'true';
 const BRIDGE_JOB_BACKFILL_ENABLED = process.env.BRIDGE_JOB_BACKFILL_ENABLED === 'true';
-
-// ── Per-Incident Lock ────────────────────────────────────────────────
-function lockKey(incident: string): string {
-  return `ticket_raw:lock:${incident}`;
-}
-
-async function acquireWriteLock(incident: string, ttlMs = 5000): Promise<string | null> {
-  const ownerId = `${process.pid}:${Date.now()}`;
-  try {
-    const ok = await redis.set(lockKey(incident), ownerId, 'PX', ttlMs, 'NX');
-    return ok ? ownerId : null;
-  } catch {
-    return null;
-  }
-}
-
-async function releaseWriteLock(incident: string, ownerId: string): Promise<void> {
-  // Lua script: only delete if we still own it
-  const script = `
-    if redis.call("GET", KEYS[1]) == ARGV[1] then
-      return redis.call("DEL", KEYS[1])
-    end
-    return 0
-  `;
-  try {
-    await redis.eval(script, 1, lockKey(incident), ownerId);
-  } catch {
-    // Best-effort; TTL will auto-release
-  }
-}
 
 // ── Circuit Breaker State ────────────────────────────────────────────
 // Pisah circuit interactive vs ingestion agar 5 fail ingestion tidak trip search (800ms probe) — Opsi P1 2026-09-11
@@ -164,79 +135,51 @@ function computeBatchId(): string {
 
 // ── Handlers ──────────────────────────────────────────────────────────
 
-async function handleIngestNossa(job: any): Promise<{ processed: number }> {
+async function handleIngestNossa(job: any): Promise<{ processed: number; status: string }> {
   const tableName = job.data.table as string;
-  const correlationId = job.data.correlationId;
   const batchId = computeBatchId();
-  let processed = 0;
-
-  await runWithCorrelationContext(correlationId, async () => {
-    // Auto-pause saat QOSMIC down — jangan isi DLQ dengan fail berulang.
-    // Probe dulu: jika health check sukses, lanjut; jika masih down, skip job sebagai 'paused' bukan 'failed'.
-    if (await isQosmicBridgeDown()) {
-      const probed = await probeBridgeHealth();
-      if (!probed) {
-        logger.warn('[Bridge] Ingest di-pause — QOSMIC masih down (auto-detect)', { tableName, batchId, jobId: job.id });
-        // Reset ingestion circuit agar tidak trip karena pause
-        circuitStateIngestion.consecutiveErrors = 0;
-        circuitState.consecutiveErrors = 0;
+  const totals: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+  const started = Date.now();
+  const scanStartedAt = new Date(started);
+  const legacyScanStartedAt = nowWib();
+  let status = 'success';
+  let errorMessage: string | null = null;
+  const run = await prisma.ingestion_run_log.create({ data: {
+    batchId, tableName, mode: 'bridge', status: 'running', startedAt: new Date(),
+  } });
+  try {
+    await runWithCorrelationContext(job.data.correlationId, async () => {
+      if (await isQosmicBridgeDown() && !await probeBridgeHealth()) {
+        status = 'paused';
         return;
       }
-    }
-
-    logger.info('[Bridge] Ingest starting', { tableName, batchId, jobId: job.id });
-
-    const nossaClosedIncrementalDays = Math.max(
-      1,
-      Number.parseInt(process.env.NOSSA_CLOSED_INCREMENTAL_DAYS || '', 10) || 2,
-    );
-    const iterator = tableName === 'nossa'
-      ? iterateNossaOpen()
-      : iterateNossaClosedIncremental(nossaClosedIncrementalDays);
-
-    const cursor: ExternalCursorDefinition = {
-      idColumn: null,
-      modifiedColumn: null,
-      createdAtColumn: null,
-      strategy: 'snapshot',
-      columns: [],
-    };
-
-    try {
+      const days = Math.max(1, Number.parseInt(process.env.NOSSA_CLOSED_INCREMENTAL_DAYS || '', 10) || 2);
+      const iterator = tableName === 'nossa' ? iterateNossaOpen() : iterateNossaClosedIncremental(days);
       for await (const rows of iterator) {
-        const rawRows = rows as QosmicRawRow[];
-        if (rawRows.length === 0) continue;
-
-        const result: ChunkResult = {
-          processed: 0, inserted: 0, updated: 0,
-          skipped: 0, failed: 0, quarantined: 0,
-          retried: 0, errors: [],
-        };
-
-        await processRawRows(rawRows as Record<string, unknown>[], tableName, batchId, cursor, result);
-
-        processed += result.processed;
-
-        await job.updateProgress({ processed });
+        const page: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+        await processRawRows(rows, tableName, batchId, {
+          idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+        }, page);
+        for (const key of ['processed', 'inserted', 'updated', 'skipped', 'failed', 'quarantined', 'retried'] as const) totals[key] += page[key];
+        await job.updateProgress({ ...totals, errors: undefined });
       }
-    } catch (err) {
-      // Jika QOSMIC down di tengah iterasi, jangan throw sebagai failed — pause dan biarkan di-retry cycle berikut
-      const isDown = await isQosmicBridgeDown().catch(() => false);
-      if (isDown) {
-        logger.warn('[Bridge] Ingest ter-interrupt karena QOSMIC down di tengah jalan — di-pause', {
-          tableName, batchId, jobId: job.id, error: err instanceof Error ? err.message : String(err),
-        });
-        circuitStateIngestion.consecutiveErrors = 0;
-        circuitState.consecutiveErrors = 0;
-        return;
+      if (totals.quarantined || totals.failed) status = 'partial';
+      if (tableName === 'nossa' && status === 'success') {
+        await (await import('./missing-open')).confirmMissingOpenTickets(scanStartedAt, legacyScanStartedAt);
       }
-      throw err;
-    }
-
-    logger.info('[Bridge] Ingest complete', { tableName, batchId, processed });
-  });
-
-  return { processed };
+    });
+  } catch (error) {
+    errorMessage = String(error);
+    status = 'failed';
+    throw error;
+  } finally {
+    await prisma.ingestion_run_log.update({ where: { id: run.id }, data: {
+      status, processed: totals.processed, inserted: totals.inserted, updated: totals.updated,
+      skipped: totals.skipped, failed: totals.failed, quarantined: totals.quarantined,
+      retried: totals.retried, durationMs: Date.now() - started, errorMessage, finishedAt: new Date(),
+    } }).catch(error => logger.warn('Bridge run log update failed', { batchId, error: String(error) }));
+  }
+  return { processed: totals.processed, status };
 }
 
 async function handleRefreshTicket(job: any): Promise<{ found: boolean }> {
@@ -244,19 +187,21 @@ async function handleRefreshTicket(job: any): Promise<{ found: boolean }> {
   const correlationId = job.data.correlationId;
 
   return runWithCorrelationContext(correlationId, async () => {
-    const resource = sourceTable === 'nossa_closed' ? 'nossa_closed' : 'nossa';
-    const row = await fetchByIncident(resource, String(incident));
-    if (!row) return { found: false };
-
-    const ownerId = await acquireWriteLock(String(incident));
-    if (!ownerId) return { found: false }; // another handler is writing
-
-    try {
-      await upsertTicketRaw(row, resource, 'refresh-' + computeBatchId());
-      return { found: true };
-    } finally {
-      await releaseWriteLock(String(incident), ownerId);
+    let resource: QosmicResource = sourceTable === 'nossa_closed' ? 'nossa_closed' : 'nossa';
+    let row = await fetchByIncident(resource, String(incident));
+    if (!row) {
+      resource = resource === 'nossa' ? 'nossa_closed' : 'nossa';
+      row = await fetchByIncident(resource, String(incident));
     }
+    if (row) await upsertTicketRaw(row, resource, 'refresh-' + computeBatchId());
+    if (job.name === 'confirm-missing-open') {
+      await prisma.status_refresh_ticket_state.upsert({
+        where: { incident: String(incident) },
+        create: { incident: String(incident), sourceTable: resource, lastCheckedAt: nowWib(), missingCount: row ? 0 : 1 },
+        update: { lastCheckedAt: nowWib(), missingCount: row ? 0 : { increment: 1 } },
+      });
+    }
+    return { found: Boolean(row) };
   });
 }
 
@@ -274,15 +219,8 @@ async function handleSearchIncident(job: any): Promise<{ found: boolean }> {
     }
     if (!row) return { found: false };
 
-    const ownerId = await acquireWriteLock(String(incident));
-    if (!ownerId) return { found: false };
-
-    try {
-      await upsertTicketRaw(row, resource, 'search-' + computeBatchId());
-      return { found: true };
-    } finally {
-      await releaseWriteLock(String(incident), ownerId);
-    }
+    await upsertTicketRaw(row, resource, 'search-' + computeBatchId());
+    return { found: true };
   });
 }
 
@@ -297,25 +235,23 @@ async function handleBackfillWindow(job: any): Promise<{ processed: number }> {
 
     const dateWindow = { dateFrom: from, dateTo: to };
 
+    const checkpointKey = job.data.checkpointKey as string | undefined;
+    let quarantined = 0;
+    if (checkpointKey) await prisma.ingestion_checkpoint.upsert({
+      where: { tableName: checkpointKey }, create: { tableName: checkpointKey, status: 'running' }, update: { status: 'running' },
+    });
     for await (const rows of iterateNossaClosedWindow(dateWindow, {}, RATE_LIMIT_KEY_BACKFILL)) {
-      const rawRows = rows as QosmicRawRow[];
-      for (const raw of rawRows) {
-        const incident = raw.Incident ?? raw.incident;
-        if (!incident) continue;
-
-        const ownerId = await acquireWriteLock(String(incident));
-        if (!ownerId) continue;
-
-        try {
-          await upsertTicketRaw(raw, 'nossa_closed', batchId);
-          processed++;
-        } finally {
-          await releaseWriteLock(String(incident), ownerId);
-        }
-      }
-
-      await job.updateProgress({ processed });
+      const result: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+      await processRawRows(rows, 'nossa_closed', batchId, {
+        idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+      }, result);
+      processed += result.processed;
+      quarantined += result.quarantined;
+      await job.updateProgress({ processed, quarantined });
     }
+    if (checkpointKey) await prisma.ingestion_checkpoint.update({
+      where: { tableName: checkpointKey }, data: { status: quarantined ? 'partial' : 'success', processedCount: processed, quarantinedCount: quarantined, lastFinishedAt: new Date() },
+    });
 
     logger.info('[Bridge] Backfill window complete', { from, to, processed });
   });
@@ -357,6 +293,7 @@ async function upsertTicketRaw(
     cursor,
     result,
   );
+  if (result.quarantined || result.failed) throw new Error('Bridge snapshot requires review before it can be applied');
 }
 
 // ── Worker refs (null until startBridgeWorkers) ─────────────────────────
@@ -419,6 +356,9 @@ export async function startBridgeWorkers(): Promise<void> {
       }
 
       switch (job.name) {
+        case 'confirm-missing-open':
+          if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
+          return handleRefreshTicket(job);
         case 'search-incident':
           if (!BRIDGE_JOB_SEARCH_ENABLED) return { skipped: true, reason: 'disabled' };
           return handleSearchIncident(job);
@@ -565,18 +505,21 @@ export async function getBridgeQueueStatus(): Promise<BridgeQueueSnapshot[]> {
 
 export async function getBridgeRateUsage(): Promise<{
   global: { used: number; limit: number };
+  foreground: { used: number; limit: number };
   backfill: { used: number; limit: number };
 } | null> {
   try {
     const keyFor = (key: string) => `ratelimit:${key}`;
-    const [globalUsed, backfillUsed] = await Promise.all([
+    const [globalUsed, foregroundUsed, backfillUsed] = await Promise.all([
+      redis.zcard(keyFor('qosmic-bridge:all')).catch(() => 0),
       redis.zcard(keyFor(RATE_LIMIT_KEY)).catch(() => 0),
       redis.zcard(keyFor(RATE_LIMIT_KEY_BACKFILL)).catch(() => 0),
     ]);
     const totalLimit = Number(process.env.QOSMIC_BRIDGE_RATE_LIMIT_PER_MIN ?? 20);
     const backfillLimit = Number(process.env.QOSMIC_BRIDGE_BACKFILL_RATE_LIMIT_PER_MIN ?? 6);
     return {
-      global: { used: Number(globalUsed), limit: Math.max(0, totalLimit - backfillLimit) },
+      global: { used: Number(globalUsed), limit: totalLimit },
+      foreground: { used: Number(foregroundUsed), limit: Math.max(0, totalLimit - backfillLimit) },
       backfill: { used: Number(backfillUsed), limit: backfillLimit },
     };
   } catch {

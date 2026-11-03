@@ -2,6 +2,8 @@ import { fetchByIncidentAnyStatus } from '@/lib/external-db/qosmic-bridge/nossa'
 import { processRawRows, type ChunkResult } from './index';
 import { logger } from '@/lib/observability/logger';
 import { runProjection } from '@/lib/projection';
+import { isRevisionSyncEnabled } from './sync-state';
+import { projectSingleTicket } from '@/lib/projection/single';
 
 export async function ingestSingleIncident(incidentId: string): Promise<{ success: boolean; message: string; result?: ChunkResult }> {
   const cleanId = incidentId.trim();
@@ -40,10 +42,13 @@ export async function ingestSingleIncident(incidentId: string): Promise<{ succes
 
     // Jalankan pipeline ingestion baku (normalisasi + validasi + cek duplikasi hash/identity)
     await processRawRows([row], resource, batchId, cursorDef, chunkResult);
+    if (chunkResult.quarantined || chunkResult.failed) {
+      return { success: false, message: 'Data sumber memerlukan pemeriksaan sebelum dapat diterapkan', result: chunkResult };
+    }
 
     // Jalankan projection langsung untuk batch ini
     logger.info('[SingleIngestion] Triggering direct projection', { incident: cleanId, batchId });
-    const projectionResult = await runProjection(undefined, {
+    const projectionResult = isRevisionSyncEnabled() ? await projectSingleTicket(cleanId) : await runProjection(undefined, {
       mode: 'batch',
       syncBatchId: batchId,
       preserveCheckpointCursor: true,
@@ -52,7 +57,7 @@ export async function ingestSingleIncident(incidentId: string): Promise<{ succes
 
     return {
       success: true,
-      message: `Berhasil memproses insiden ${cleanId} dari tabel ${resource}. (Inserted: ${chunkResult.inserted}, Updated: ${chunkResult.updated}, Skipped: ${chunkResult.skipped}, Projected: ${projectionResult.inserted} ins, ${projectionResult.updated} upd)`,
+      message: `Berhasil memproses insiden ${cleanId} dari tabel ${resource}. (Inserted: ${chunkResult.inserted}, Updated: ${chunkResult.updated}, Skipped: ${chunkResult.skipped})`,
       result: chunkResult,
     };
   } catch (error) {

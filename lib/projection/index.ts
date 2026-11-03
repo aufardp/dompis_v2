@@ -21,6 +21,7 @@ import { broadcastTicketInvalidate } from '@/app/libs/sseBroadcast';
 import { logger } from '@/lib/observability/logger';
 import { quarantine } from '@/lib/dlq';
 import { parseWIBDateInput } from '@/app/utils/datetime';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 
 const TIMEZONE = 'Asia/Jakarta';
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
@@ -63,6 +64,8 @@ const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
   50,
 );
 let reconciliationCounter = 0;
+let lastRevisionReconcileAt = 0;
+let lastValidationCleanupAt = 0;
 let cachedCountData: {
   activeRaw: number;
   projectedRaw: number;
@@ -154,6 +157,10 @@ export function resolveProjectionStatusUpdate(
 
   const isExternalOpenLike = isOpenExternalStatus(external);
 
+  if (isExternalOpenLike && isTicketClosed(current)) {
+    return { statusUpdate: teknisiUserId ? 'assigned' : 'open', closedAt: null, protected: false };
+  }
+
   if (current && PROTECTED_STATES.has(current)) {
     return { protected: true };
   }
@@ -169,7 +176,7 @@ export function resolveProjectionStatusUpdate(
   return null;
 }
 
-interface ProjectionResult {
+export interface ProjectionResult {
   processed: number;
   inserted: number;
   updated: number;
@@ -185,10 +192,13 @@ interface ProjectionResult {
     syncBatchId: string | null;
   };
   duration?: number;
+  pending?: number;
+  oldestPendingSince?: Date | null;
   errors: Array<{ incident: string; error: string }>;
 }
 
-interface ProjectionOptions {
+export interface ProjectionOptions {
+  incident?: string;
   batchSize?: number;
   concurrency?: number;
   retryMax?: number;
@@ -507,6 +517,9 @@ export function buildProjectionUpsert(
   now: Date,
   syncDate: Date,
 ): Omit<ProjectionItem, 'raw' | 'action'> {
+  if (raw.manualReopenHash && raw.manualReopenHash === raw.sourceHash) {
+    raw = { ...raw, status: 'OPEN', resolve_date: null };
+  }
   const base: Record<string, unknown> = {
     sync_date: syncDate,
     import_batch: raw.syncBatchId,
@@ -554,7 +567,7 @@ export function buildProjectionUpsert(
   for (const [rawField, ticketField] of Object.entries(PROJECTED_FIELDS)) {
     if (PROTECTED_FIELDS.has(ticketField)) continue;
     const value = raw[rawField];
-    if (value !== null && value !== undefined) {
+    if (value !== undefined) {
       base[ticketField] = value;
     }
   }
@@ -567,9 +580,10 @@ export function buildProjectionUpsert(
       base.resolve_date = resolvedDate;
     }
   }
+  base.resolve_date = resolvedDate;
 
   const updateData = { ...base };
-  if (existing?.teknisi_user_id) delete updateData.alamat;
+  if (existing?.teknisi_user_id) updateData.alamat = existing.alamat;
 
   const statusResolution = resolveProjectionStatusUpdate(
     existing?.status_update ?? null,
@@ -588,7 +602,9 @@ export function buildProjectionUpsert(
     }
     if (statusResolution.closedAt !== undefined) {
       // write-once: jangan timpa closed_at yang sudah terisi dari resolve_date
-      updateData.closed_at = (existing?.closed_at as Date) ?? statusResolution.closedAt;
+      updateData.closed_at = statusResolution.closedAt === null
+        ? null
+        : (existing?.closed_at as Date) ?? statusResolution.closedAt;
     }
   } else if (existing) {
     const rawNorm = normalizeStatus(raw.status);
@@ -838,13 +854,21 @@ async function fetchBatch(
   `;
 }
 
-async function prepareProjectionItems(
+export async function prepareProjectionItems(
   rawRecords: RawSelectResult[],
+  options: {
+    tx?: Prisma.TransactionClient;
+    force?: boolean;
+    classifications?: Map<string, { jenis_tiket_1: string | null; jenis_tiket_2: string | null }>;
+  } = {},
 ): Promise<ProjectionItem[]> {
-  const validRawRecords = rawRecords.filter((r) => r.incident && r.importedAt);
+  const client = options.tx ?? prisma;
+  const validRawRecords = rawRecords.filter((r) => r.incident && (r.importedAt || options.force));
   if (validRawRecords.length === 0) return [];
 
-  const jenisResults = await batchClassifyJenisFromVlookup(
+  const jenisResults = options.classifications
+    ? validRawRecords.map(row => options.classifications!.get(row.incident!))
+    : await batchClassifyJenisFromVlookup(
     validRawRecords.map((r) => ({
       channel: r.channel as string | null,
       classification_flag: r.classification_flag as string | null,
@@ -862,7 +886,7 @@ async function prepareProjectionItems(
   );
 
   const incidents = validRawRecords.map((r) => r.incident!) as string[];
-  const existingTickets = await prisma.ticket.findMany({
+  const existingTickets = await client.ticket.findMany({
     where: { incident: { in: incidents } },
     select: {
       id_ticket: true,
@@ -901,7 +925,7 @@ async function prepareProjectionItems(
   });
 
   const projectionLogs = projectionLogCandidates.length > 0
-    ? await prisma.ticket_projection_log.findMany({
+    ? await client.ticket_projection_log.findMany({
         where: {
           ticketRawId: { in: projectionLogCandidates.map((r) => r.id_ticket) },
         },
@@ -948,7 +972,7 @@ async function prepareProjectionItems(
       ...projection,
       action: !existing
         ? 'inserted'
-        : shouldSkipProjection(raw, existing, projectionLogMap.get(raw.id_ticket))
+        : !options.force && shouldSkipProjection(raw, existing, projectionLogMap.get(raw.id_ticket))
           ? 'skipped'
           : 'updated',
     });
@@ -1036,7 +1060,7 @@ async function advanceCheckpoint(
   };
 }
 
-async function withTransactionRetry<T>(
+export async function withTransactionRetry<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   maxRetries = 3,
 ): Promise<T> {
@@ -1049,7 +1073,7 @@ async function withTransactionRetry<T>(
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      const isRetryable = /1205|lock wait timeout|deadlock|1213/i.test(msg);
+      const isRetryable = /1205|lock wait timeout|deadlock|1213|1062|P2002|duplicate entry/i.test(msg);
       if (!isRetryable || attempt >= maxRetries) throw err;
       const delay = 500 * Math.pow(2, attempt);
       logger.warn('[Projection] Transaction retry:', { attempt: attempt + 1, maxRetries, delayMs: delay, error: msg.slice(0, 80) });
@@ -1061,7 +1085,7 @@ async function withTransactionRetry<T>(
 
 const TICKET_UPSERT_CHUNK_SIZE = 500;
 
-async function bulkUpsertTicket(
+export async function bulkUpsertTicket(
   tx: Prisma.TransactionClient,
   items: ProjectionItem[],
 ): Promise<void> {
@@ -1084,7 +1108,7 @@ async function bulkUpsertTicket(
   }
 }
 
-async function bulkInsertTicket(
+export async function bulkInsertTicket(
   tx: Prisma.TransactionClient,
   items: ProjectionItem[],
 ): Promise<void> {
@@ -1093,7 +1117,7 @@ async function bulkInsertTicket(
   const chunks = chunkArray(rows, TICKET_UPSERT_CHUNK_SIZE);
   for (const chunk of chunks) {
     await tx.$executeRaw`
-      INSERT IGNORE INTO ${sqlIdentifier('ticket')}
+      INSERT INTO ${sqlIdentifier('ticket')}
         (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
       VALUES ${Prisma.join(
         chunk.map(row =>
@@ -1104,7 +1128,7 @@ async function bulkInsertTicket(
   }
 }
 
-async function bulkUpsertProjectionLog(
+export async function bulkUpsertProjectionLog(
   tx: Prisma.TransactionClient,
   items: ProjectionItem[],
   attempts: number,
@@ -1461,7 +1485,7 @@ async function retryFailedProjectionItems(retryMax: number): Promise<void> {
   });
 }
 
-function emptyProjectionResult(): ProjectionResult {
+export function emptyProjectionResult(): ProjectionResult {
   return {
     processed: 0,
     inserted: 0,
@@ -1496,7 +1520,36 @@ export async function runProjection(
 
   try {
     assertNotAborted(signal);
-    const result = await projectRecords(signal, options);
+    if (isRevisionSyncEnabled() && !options.incident && !options.syncBatchId
+      && (options.mode === 'full' || Date.now() - lastRevisionReconcileAt > 60000)) {
+      const { reconcileProjectionState } = await import('./reconcile-state');
+      if (options.mode === 'full') {
+        let scan = await reconcileProjectionState(500, true);
+        while (scan.scanned > 0) {
+          assertNotAborted(signal);
+          scan = await reconcileProjectionState();
+        }
+      } else {
+        await reconcileProjectionState();
+      }
+      lastRevisionReconcileAt = Date.now();
+    }
+    const result = isRevisionSyncEnabled()
+      ? await (await import('./pending')).runPendingProjection(signal, options)
+      : await projectRecords(signal, options);
+    if (isRevisionSyncEnabled()) {
+      const checkpointData = {
+        status: result.failed ? 'failed' : 'success', processed: result.processed,
+        inserted: result.inserted, updated: result.updated, skipped: result.skipped,
+        failed: result.failed, protected: result.protected, completedAt: nowWib(),
+        lastError: result.errors.at(-1)?.error ?? null,
+      };
+      await prisma.ticket_projection_checkpoint.upsert({
+        where: { name: CHECKPOINT_NAME },
+        create: { name: CHECKPOINT_NAME, ...checkpointData },
+        update: checkpointData,
+      });
+    }
     result.duration = Date.now() - start;
     const endToEndLagMs = result.checkpoint.lastProjectedImportedAt
       ? nowWib().getTime() - result.checkpoint.lastProjectedImportedAt.getTime()
@@ -1517,7 +1570,7 @@ export async function runProjection(
     let finalReconciliation: Awaited<ReturnType<typeof getProjectionReconciliationReport>> | null = null;
     let autoRepairError: unknown = null;
 
-    if (reconciliationCounter >= RECONCILIATION_INTERVAL) {
+    if (!isRevisionSyncEnabled() && reconciliationCounter >= RECONCILIATION_INTERVAL) {
       reconciliationCounter = 0;
       reconciliation = await Promise.race([
         getProjectionReconciliationReport(),
@@ -1566,26 +1619,29 @@ export async function runProjection(
     }
 
     let validationCleanup = 0;
-    try {
-      const cleaned = await prisma.ticket.updateMany({
-        where: {
-          needs_validation: true,
-          status: { in: CLOSE_STATUS_VALUES },
-        },
-        data: {
-          needs_validation: false,
-          validation_reason: null,
-          validation_flagged_at: null,
-        },
-      });
-      validationCleanup = cleaned.count;
-      if (cleaned.count > 0) {
-        logger.info('[Projection] Cleaned stuck validation flags', {
-          count: cleaned.count,
+    if (!isRevisionSyncEnabled() || Date.now() - lastValidationCleanupAt > 60000) {
+      lastValidationCleanupAt = Date.now();
+      try {
+        const cleaned = await prisma.ticket.updateMany({
+          where: {
+            needs_validation: true,
+            status: { in: CLOSE_STATUS_VALUES },
+          },
+          data: {
+            needs_validation: false,
+            validation_reason: null,
+            validation_flagged_at: null,
+          },
         });
+        validationCleanup = cleaned.count;
+        if (cleaned.count > 0) {
+          logger.info('[Projection] Cleaned stuck validation flags', {
+            count: cleaned.count,
+          });
+        }
+      } catch (error) {
+        logger.warn('[Projection] Validation cleanup failed', { error: String(error) });
       }
-    } catch (error) {
-      logger.warn('[Projection] Validation cleanup failed', { error: String(error) });
     }
 
     const projectionHealthy = reconciliation
@@ -1596,7 +1652,7 @@ export async function runProjection(
           finalReconciliation.neverProjectedRaw === 0
       : autoRepairError === null;
 
-    await setProjectionStatus(projectionHealthy ? 'success' : 'failed', {
+    await setProjectionStatus(projectionHealthy && result.failed === 0 ? 'success' : 'failed', {
       duration: result.duration,
       lagMs: endToEndLagMs ?? undefined,
       rowsPerSecond,
@@ -1609,6 +1665,7 @@ export async function runProjection(
       protected: result.protected,
       checkpoint:
         `${result.checkpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${result.checkpoint.lastProjectedTicketRawId ?? '-'}` +
+        (isRevisionSyncEnabled() ? `|neverProjected=${result.pending ?? 0}|oldestPending=${result.oldestPendingSince?.toISOString() ?? '-'}` : '') +
         (finalReconciliation
           ? `|neverProjected=${finalReconciliation.neverProjectedRaw}|oldestPending=${finalReconciliation.oldestUnprojectedImportedAt?.toISOString() ?? '-'}`
           : ''),
@@ -1702,7 +1759,9 @@ export async function getProjectionReconciliationReport(): Promise<{
     },
   });
 
-  const neverProjectedRaw = checkpoint?.neverProjectedCount ?? 0;
+  const neverProjectedRaw = isRevisionSyncEnabled()
+    ? await prisma.ticket_sync_state.count({ where: { pending: true } })
+    : checkpoint?.neverProjectedCount ?? 0;
 
   const now = Date.now();
   const useCache = cachedCountData && (now - cachedCountData.timestamp) < COUNT_CACHE_TTL_MS;
@@ -1721,7 +1780,9 @@ export async function getProjectionReconciliationReport(): Promise<{
     const [ar, pr, fr, t] = await Promise.all([
       prisma.ticket_raw.count({ where: { isActive: true } }),
       prisma.ticket_projection_log.count({ where: { status: 'success' } }),
-      prisma.ticket_projection_log.count({ where: { status: 'failed' } }),
+      isRevisionSyncEnabled()
+        ? prisma.ticket_sync_state.count({ where: { pending: true, attempts: { gt: 0 } } })
+        : prisma.ticket_projection_log.count({ where: { status: 'failed' } }),
       prisma.ticket.count(),
     ]);
     activeRaw = ar;
@@ -1731,7 +1792,12 @@ export async function getProjectionReconciliationReport(): Promise<{
     cachedCountData = { activeRaw: ar, projectedRaw: pr, failedRaw: fr, tickets: t, timestamp: now };
   }
 
-  const oldestGapRows = neverProjectedRaw > 0
+  const oldestGapRows = isRevisionSyncEnabled() && neverProjectedRaw > 0
+    ? await prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
+        SELECT tr.importedAt FROM ticket_sync_state s JOIN ticket_raw tr ON tr.incident = s.incident
+        WHERE s.pending = TRUE ORDER BY s.pendingSince, s.incident LIMIT 1
+      `
+    : neverProjectedRaw > 0
     ? await prisma.$queryRaw<Array<{ importedAt: Date | null }>>`
         SELECT tr.importedAt AS importedAt
         FROM ticket_raw tr

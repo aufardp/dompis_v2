@@ -284,10 +284,10 @@ export function validateExternalRow(
     });
   }
 
-  if (incident && String(incident).length > 191) {
+  if (incident && String(incident).length > 50) {
     errors.push({
       field: 'incident',
-      message: `incident too long (${String(incident).length} chars, max 191)`,
+      message: `incident too long (${String(incident).length} chars, max 50)`,
       severity: 'error',
     });
   }

@@ -78,15 +78,17 @@ function testDoNotSkipWhenProjectionLogIsDifferent() {
   assert.equal(skipped, false);
 }
 
-function testProtectedStatusRemainsProtected() {
+function testExternalClosureOverridesAssignedStatus() {
   const resolved = resolveProjectionStatusUpdate('assigned', 'closed', 99);
-  assert.deepEqual(resolved, { protected: true });
+  assert.equal(resolved?.protected, false);
+  assert.equal(resolved?.statusUpdate, 'close');
+  assert.ok(resolved?.closedAt instanceof Date);
 }
 
 function main() {
   testSkipForExactSuccessfulProjectionLog();
   testDoNotSkipWhenProjectionLogIsDifferent();
-  testProtectedStatusRemainsProtected();
+  testExternalClosureOverridesAssignedStatus();
   console.log('[test:phase4] projection guards passed');
 }
 

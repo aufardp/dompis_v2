@@ -1,5 +1,6 @@
 import { prisma } from '@/app/libs/prisma';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
+import { isRevisionSyncEnabled, lockTicketSyncState, markProjectionPending } from '@/lib/ingestion/sync-state';
 import { batchClassifyJenisFromVlookup } from '@/lib/classify-jenis-vlookup';
 import {
   buildProjectionUpsert,
@@ -96,6 +97,19 @@ export async function projectSingleTicket(
   }
   if (!raw.incident) {
     throw new Error(`Record ticket_raw ${raw.id_ticket} tidak memiliki incident`);
+  }
+  if (isRevisionSyncEnabled()) {
+    await prisma.$transaction(async tx => {
+      await lockTicketSyncState(tx, [raw.incident!]);
+      const state = await tx.ticket_sync_state.findUniqueOrThrow({ where: { incident: raw.incident! } });
+      if (state.rawRevision === 0n) await markProjectionPending(tx, [raw.incident!]);
+    });
+    const result = await (await import('./pending')).runPendingProjection(undefined, { incident: raw.incident, batchSize: 1 });
+    if (result.failed) throw new Error(result.errors[0]?.error ?? 'Ticket projection failed');
+    const remaining = await prisma.ticket_sync_state.findUnique({ where: { incident: raw.incident } });
+    if (remaining?.pending) throw new Error('Ticket projection remains pending; retry is scheduled');
+    const ticket = await prisma.ticket.findUnique({ where: { incident: raw.incident }, select: { id_ticket: true } });
+    return { action: result.inserted ? 'inserted' : result.updated ? 'updated' : 'skipped', incident: raw.incident, ticketId: ticket?.id_ticket };
   }
 
   const existing = await findExistingTicket(raw.incident);

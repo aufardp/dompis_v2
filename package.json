@@ -62,7 +62,10 @@
     "bridge:ingest": "tsx scripts/qosmic-bridge-ingest.ts",
     "bridge:sync-local": "tsx scripts/bridge-sync-local.ts",
     "backup:db": "tsx scripts/backup-db.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:sync": "node --test scripts/test-ingestion-projection-reliability.cjs scripts/test-nossa-open-coverage.cjs",
+    "test:sync:integration": "node --test scripts/test-ingestion-projection-integration.cjs scripts/test-bridge-rate-limit-integration.cjs",
+    "benchmark:sync": "node scripts/benchmark-ticket-sync.cjs"
   },
   "dependencies": {
     "@aejkatappaja/phantom-ui": "^1.3.0",

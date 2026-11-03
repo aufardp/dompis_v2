@@ -9,11 +9,8 @@
 //   - offset maks 5000 (paging dalam SATU query/window)
 //   - nossa_closed WAJIB date_from/date_to (maks 31 hari) kecuali filter `incident`
 //
-// Rate limit: two-tier — Redis (cross-process) primary, in-memory per-process
-// fallback kalau Redis down. Fallback lokal bisa overshoot kalau >1 proses
-// aktif bersamaan, tapi saat ini cuma data-worker yang panggil bridge.
 
-import { checkRateLimit } from '@/lib/ratelimit';
+import { takeBridgeRateSlot } from './rate-limit';
 import { redis, isRedisReady } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 
@@ -51,7 +48,7 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
 }
 
 export function isQosmicBridgeConfigured(): boolean {
-  return Boolean(BASE_URL && TOKEN);
+  return process.env.QOSMIC_BRIDGE_ENABLED !== 'false' && Boolean(BASE_URL && TOKEN);
 }
 
 // ── Heartbeat / failover detection ───────────────────────────────────
@@ -157,126 +154,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Per-key local timestamps for in-memory rate limit fallback.
-const localTimestampsByKey = new Map<string, number[]>();
-let localFallbackActive = false;
-let lastRedisRecoverCheck = 0;
-const REDIS_RECOVER_INTERVAL_MS = 30_000;
-
-function getLimitForKey(key: string): number {
-  return key === RATE_LIMIT_KEY_BACKFILL
-    ? RATE_LIMIT_BACKFILL_PER_MIN
-    : RATE_LIMIT_NON_BACKFILL_PER_MIN;
-}
-
-function checkLocalRateLimit(key: string, limit: number): boolean {
-  const now = Date.now();
-  const windowStart = now - 60_000;
-
-  let timestamps = localTimestampsByKey.get(key);
-  if (!timestamps) {
-    timestamps = [];
-    localTimestampsByKey.set(key, timestamps);
+async function waitForRateLimitSlot(label: string, key: string = RATE_LIMIT_KEY): Promise<void> {
+  const started = Date.now();
+  const limit = key === RATE_LIMIT_KEY_BACKFILL ? RATE_LIMIT_BACKFILL_PER_MIN : RATE_LIMIT_NON_BACKFILL_PER_MIN;
+  if (limit < 1 || RATE_LIMIT_BACKFILL_PER_MIN >= RATE_LIMIT_PER_MIN) {
+    throw new QosmicBridgeError('Invalid Bridge rate limit budgets', null, 'INVALID_RATE_BUDGET', false);
   }
-
-  while (timestamps.length > 0 && timestamps[0] < windowStart) {
-    timestamps.shift();
-  }
-
-  if (timestamps.length >= limit) return false;
-
-  timestamps.push(now);
-  return true;
-}
-
-function clearLocalTimestamps(key?: string): void {
-  if (key) {
-    localTimestampsByKey.set(key, []);
-  } else {
-    localTimestampsByKey.clear();
-  }
-}
-
-/**
- * Menunggu slot rate-limit yang tersedia. Two-tier:
- *   1. Redis sliding window (cross-process, akurat) — primary
- *   2. In-memory per-process counter — fallback kalau Redis down
- *
- * `rateLimitKey` menentukan budget mana yang dipakai:
- *   - 'qosmic-bridge:backfill'   → 6 req/min
- *   - 'qosmic-bridge:global'     → 14 req/min (default, untuk ingestion + refresh)
- */
-async function waitForRateLimitSlot(
-  label: string,
-  key: string = RATE_LIMIT_KEY,
-): Promise<void> {
-  const maxWaitMs = 90_000;
-  const waitStart = Date.now();
-  const limit = getLimitForKey(key);
-
-  for (;;) {
-    if (Date.now() - waitStart > maxWaitMs) {
-      throw new QosmicBridgeRateLimitedError(Math.ceil(Date.now() / 1000) + 60);
+  while (Date.now() - started < 90_000) {
+    let waitMs: number;
+    try {
+      waitMs = await takeBridgeRateSlot(key, RATE_LIMIT_PER_MIN, limit);
+    } catch {
+      throw new QosmicBridgeError('Bridge paused: shared rate limiter unavailable', null, 'RATE_LIMITER_UNAVAILABLE', true);
     }
-
-    const useRedis = isRedisReady() ||
-      !localFallbackActive ||
-      Date.now() - lastRedisRecoverCheck >= REDIS_RECOVER_INTERVAL_MS;
-
-    if (useRedis) {
-      try {
-        const result = await checkRateLimit(
-          key,
-          limit,
-          60,
-          { failOpen: false },
-        );
-        if (result.allowed) {
-          if (localFallbackActive) {
-            logger.info('[QosmicBridge] Redis pulih, kembali ke mode normal');
-            localFallbackActive = false;
-            clearLocalTimestamps();
-          }
-          return;
-        }
-
-        const waitMs = Math.max(250, result.resetAt * 1000 - Date.now());
-        logger.info('[QosmicBridge] Menunggu slot rate-limit', {
-          label,
-          key,
-          waitMs,
-          limitPerMin: limit,
-        });
-        await sleep(Math.min(waitMs, 5_000));
-        continue;
-      } catch (error) {
-        if (!localFallbackActive) {
-          logger.warn('[QosmicBridge] Redis gagal, fallback ke rate limit lokal', {
-            label,
-            key,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          localFallbackActive = true;
-          lastRedisRecoverCheck = Date.now();
-          clearLocalTimestamps();
-        }
-        lastRedisRecoverCheck = Date.now();
-      }
-    }
-
-    if (!checkLocalRateLimit(key, limit)) {
-      logger.info('[QosmicBridge] Rate limit lokal penuh, menunggu...', {
-        label,
-        key,
-        used: localTimestampsByKey.get(key)?.length ?? 0,
-        limit,
-      });
-      await sleep(5_000);
-      continue;
-    }
-
-    return;
+    if (waitMs === 0) return;
+    logger.info('[QosmicBridge] Waiting for shared rate limit', { label, key, waitMs });
+    await sleep(Math.min(5000, Math.max(50, waitMs)));
   }
+  throw new QosmicBridgeRateLimitedError(Math.ceil(Date.now() / 1000) + 60);
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -333,7 +228,6 @@ export async function qosmicBridgeGet<T = unknown>(
         },
         signal: controller.signal,
       });
-      clearTimeout(timeout);
       const durationMs = Date.now() - startedAt;
 
       if (!res.ok) {
@@ -403,6 +297,8 @@ export async function qosmicBridgeGet<T = unknown>(
         isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
         true,
       );
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

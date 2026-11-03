@@ -1,3 +1,5 @@
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
+import { processRawRows, type ChunkResult } from '@/lib/ingestion';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isRedisReady, redis } from '@/lib/redis';
@@ -658,6 +660,24 @@ async function updateChangedRows(
   nossaDown: boolean,
 ): Promise<number> {
   if (changedRows.length === 0) return 0;
+  if (isRevisionSyncEnabled()) {
+    const bySource = new Map<string, ExternalStatusRow[]>();
+    for (const row of changedRows) bySource.set(row.sourceTable, [...(bySource.get(row.sourceTable) ?? []), row]);
+    let changed = 0;
+    for (const [source, rows] of bySource) {
+      const result: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+      await processRawRows(rows.map(row => ({
+        incident: row.incident, status: row.normalizedStatus,
+        status_date: row.statusDate, date_modified: row.dateModified,
+        worklog_summary: row.worklogSummary, last_update_worklog: row.lastUpdateWorklog,
+      })), source, batchId, {
+        idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+      }, result);
+      changed += result.inserted + result.updated;
+    }
+    return changed;
+  }
+
   let updated = 0;
   const sortedRows = [...changedRows].sort((a, b) =>
     a.incident.localeCompare(b.incident),
@@ -1172,7 +1192,7 @@ export async function runStatusRefresh(
     const closedRows = changedRows.filter((row) =>
       CLOSE_STATUS_VALUES.includes(row.normalizedStatus),
     );
-    if (closedRows.length > 0) {
+    if (!isRevisionSyncEnabled() && closedRows.length > 0) {
       await batchCloseTickets(closedRows, batchId);
     }
 

@@ -1,4 +1,4 @@
-import { prisma, prismaBulk } from '@/app/libs/prisma';
+import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import {
   getTableNames,
@@ -22,6 +22,9 @@ import {
   validateExternalRow,
 } from './normalizer';
 import { resolveConflict } from './conflict-resolver';
+import { isRevisionSyncEnabled, lockTicketSyncState, markProjectionPending } from './sync-state';
+import { prepareSourceSnapshots } from './source-snapshots';
+import { isRowDataError, quarantineRejectedRow } from './row-errors';
 import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
@@ -202,6 +205,12 @@ const TICKET_RAW_BULK_COLUMNS = [
 ] as const;
 
 const COLUMN_MAX_LENGTH: Record<string, number> = {
+  incident: 50,
+  summary: 1000,
+  pending_reason: 1000,
+  symptom: 1000,
+  guarantee_status: 50,
+  resolve_date: 50,
   onu_rx: 10,
   lapul: 10,
   gaul: 10,
@@ -583,6 +592,7 @@ export function buildRawData(
 
   for (const field of FIELDS_TO_MAP) {
     const value = row[field];
+    if (value === null && Object.hasOwn(row, field)) data[field] = null;
     if (value !== null && value !== undefined) {
       const str = value instanceof Date ? value.toISOString() : String(value);
       const maxLen = COLUMN_MAX_LENGTH[field];
@@ -600,6 +610,7 @@ function buildExtData(
   const data: Record<string, unknown> = { incident: incidentIdentity, sourceTable };
   for (const field of EXT_COLUMNS) {
     const value = (row as unknown as Record<string, unknown>)[field];
+    if (value === null && Object.hasOwn(row, field)) data[field] = null;
     if (value !== null && value !== undefined) {
       data[field] = value instanceof Date ? value.toISOString() : String(value);
     }
@@ -653,6 +664,7 @@ function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow
 }
 
 async function bulkUpsertTicketRaw(
+  tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
   updateColumns: readonly TicketRawBulkColumn[],
   nossaDown: boolean,
@@ -686,6 +698,9 @@ async function bulkUpsertTicketRaw(
   const assignments = updateColumns
     .filter((column) => column !== 'incident')
     .map((column) => {
+      if (isRevisionSyncEnabled()) {
+        return Prisma.sql`${sqlIdentifier(column)} = VALUES(${sqlIdentifier(column)})`;
+      }
       if (dataOnly.has(column)) {
         // Nossa is the source of truth, but piloting_tickets may supplement
         // fields Nossa leaves empty. A non-null Nossa value always wins; a
@@ -727,7 +742,7 @@ async function bulkUpsertTicketRaw(
   }
 
   for (const chunk of chunkArray(rows, sqlBatchSize)) {
-    await prismaBulk.$executeRaw`
+    await tx.$executeRaw`
       INSERT INTO ${sqlIdentifier('ticket_raw')}
         (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
       VALUES ${Prisma.join(
@@ -742,7 +757,7 @@ async function bulkUpsertTicketRaw(
   }
 }
 
-async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Promise<void> {
+async function bulkUpsertTicketRawExt(tx: Prisma.TransactionClient, rows: Array<Record<string, unknown>>): Promise<void> {
   if (rows.length === 0) return;
 
   const insertColumns = ['incident', 'sourceTable', ...EXT_COLUMNS];
@@ -765,7 +780,7 @@ async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Pro
   );
 
   for (const chunk of chunkArray(rows, sqlBatchSize)) {
-    await prismaBulk.$executeRaw`
+    await tx.$executeRaw`
       INSERT INTO ${sqlIdentifier('ticket_raw_bridge_ext')}
         (${Prisma.join(insertColumns.map((column) => sqlIdentifier(column)))})
       VALUES ${Prisma.join(
@@ -783,26 +798,28 @@ async function bulkUpsertTicketRawExt(rows: Array<Record<string, unknown>>): Pro
 }
 
 async function fetchExistingIdentities(
+  tx: Prisma.TransactionClient,
   identities: string[],
-): Promise<Map<string, { sourceHash: string | null; status: string | null; syncVersion: number; sourceUpdatedAt: Date | null }>> {
+): Promise<Map<string, { sourceHash: string | null; status: string | null; syncVersion: number; sourceUpdatedAt: Date | null; sourceTable: string | null; [field: string]: unknown }>> {
   if (identities.length === 0) return new Map();
-  const CHUNK_SIZE = 20;
+  const CHUNK_SIZE = 500;
   return new Map(
     (
       await Promise.all(
         chunkArray(identities, CHUNK_SIZE).map(chunk =>
-          prisma.$queryRawUnsafe<
+          tx.$queryRawUnsafe<
             Array<{
               incident: string | null;
               sourceHash: string | null;
               status: string | null;
               syncVersion: number;
               sourceUpdatedAt: Date | null;
+              sourceTable: string | null;
             }>
           >(
-            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt
+            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt, sourceTable
              FROM ticket_raw
-             WHERE incident IN (${chunk.map(() => '?').join(',')})`,
+             WHERE incident IN (${chunk.map(() => '?').join(',')}) FOR UPDATE`,
             ...chunk,
           ),
         ),
@@ -921,8 +938,7 @@ async function processBatch(
   const identities = processable.map((item) => item.identity);
   const nossaDown = await isQosmicBridgeDown();
 
-  const existingMap = await fetchExistingIdentities(identities);
-
+  let newlyQuarantined = 0;
   const {
     changedRows,
     heartbeatRows,
@@ -930,15 +946,38 @@ async function processBatch(
     updated,
     skipped,
   } = await prisma.$transaction(async (tx) => {
+    const syncStates = await lockTicketSyncState(tx, identities);
+    const existingMap = await fetchExistingIdentities(tx, identities);
+    const existingExt = isRevisionSyncEnabled() && identities.length
+      ? new Map((await tx.ticket_raw_bridge_ext.findMany({ where: { incident: { in: identities } }, select: { incident: true } })).map(row => [row.incident, row]))
+      : new Map<string, Record<string, unknown>>();
+    let batchRows = processable;
+    let sourceSkipped = 0;
+    if (isRevisionSyncEnabled()) {
+      const resolved = await prepareSourceSnapshots(tx, processable.map(item => item.row), sourceTable, existingMap);
+      sourceSkipped = resolved.skipped;
+      for (const conflict of resolved.conflicts) {
+        quarantined.push({
+          sourceTable, batchId, reason: conflict.reason,
+          rawPayload: sanitizeForJson(conflict.row._rawPayload) as Prisma.InputJsonValue,
+          sourceHash: computeSourceHash(conflict.row),
+        });
+        result.quarantined++;
+      }
+      batchRows = [...new Map(resolved.rows.map(row => [String(row.incident), row])).values()].map(row => ({
+        row, identity: String(row.incident), sourceHash: computeSourceHash(row),
+        normalizedStatus: normalizeStatus(row.status), sourceUpdatedAt: parseExternalDate(row.date_modified),
+      }));
+    }
     const changedRows: TicketRawBulkRow[] = [];
     const heartbeatRows: TicketRawBulkRow[] = [];
     const extRows: Array<Record<string, unknown>> = [];
-    const isBridgeSource = sourceTable === 'nossa' || sourceTable === 'nossa_closed';
+    const resourceMoves: Array<{ incident: string; resource: string }> = [];
     let inserted = 0;
     let updated = 0;
-    let skipped = 0;
+    let skipped = sourceSkipped;
 
-    for (const item of processable) {
+    for (const item of batchRows) {
       const existing = existingMap.get(item.identity);
       const conflict = resolveConflict(
             existing
@@ -946,7 +985,7 @@ async function processBatch(
               sourceHash: existing.sourceHash,
               status: existing.status,
               syncVersion: existing.syncVersion,
-              sourceUpdatedAt: existing.sourceUpdatedAt,
+              sourceUpdatedAt: isRevisionSyncEnabled() ? null : existing.sourceUpdatedAt,
             }
           : null,
         item.sourceHash,
@@ -959,38 +998,86 @@ async function processBatch(
         now,
         batchId,
         conflict.newVersion,
-        sourceTable,
+        item.row._sourceTable,
         item.identity,
       );
+      const isBridgeSource = item.row._sourceTable === 'nossa' || item.row._sourceTable === 'nossa_closed';
+      const ext = buildExtData(item.row, item.row._sourceTable, item.identity);
+      const repairExtension = isRevisionSyncEnabled() && isBridgeSource && !existingExt.has(item.identity);
+      if (repairExtension && existing && !conflict.shouldUpdate) data.syncVersion = existing.syncVersion + 1;
 
       if (!existing) {
         changedRows.push(data as TicketRawBulkRow);
-        if (isBridgeSource) extRows.push(buildExtData(item.row, sourceTable, item.identity));
+        if (isBridgeSource) extRows.push(ext);
         inserted++;
-      } else if (conflict.shouldUpdate) {
+      } else if (conflict.shouldUpdate || repairExtension) {
         changedRows.push(data as TicketRawBulkRow);
-        if (isBridgeSource) extRows.push(buildExtData(item.row, sourceTable, item.identity));
+        if (isBridgeSource) extRows.push(ext);
         updated++;
       } else {
         heartbeatRows.push(data as TicketRawBulkRow);
+        if (isRevisionSyncEnabled() && existing.sourceTable !== item.row._sourceTable) {
+          resourceMoves.push({ incident: item.identity, resource: item.row._sourceTable });
+        }
         skipped++;
       }
       result.processed++;
+    }
+
+    if (isRevisionSyncEnabled() && changedRows.length) {
+      const changedIncidents = changedRows.map(row => String(row.incident));
+      const oldRaw = new Map((await tx.ticket_raw.findMany({ where: { incident: { in: changedIncidents } } })).map(row => [row.incident, row]));
+      const oldExt = new Map((await tx.ticket_raw_bridge_ext.findMany({ where: { incident: { in: changedIncidents } } })).map(row => [row.incident, row]));
+      for (const row of changedRows) {
+        const previous = oldRaw.get(String(row.incident));
+        if (!previous) continue;
+        for (const field of FIELDS_TO_MAP) {
+          if (!Object.hasOwn(row, field)) row[field as TicketRawBulkColumn] = previous[field as keyof typeof previous];
+        }
+      }
+      for (const row of extRows) {
+        const previous = oldExt.get(String(row.incident));
+        if (!previous) continue;
+        for (const field of EXT_COLUMNS) {
+          if (!Object.hasOwn(row, field)) row[field] = previous[field];
+        }
+      }
     }
 
     const sortedChangedRows = sortTicketRawRowsByIncident(changedRows);
     const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
     assertNotAborted(signal);
-    await bulkUpsertTicketRaw(sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
-    await bulkUpsertTicketRawExt(extRows);
+    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
+    await bulkUpsertTicketRawExt(tx, extRows);
+    await markProjectionPending(tx, sortedChangedRows.map(row => String(row.incident)));
+    await markProjectionPending(tx, sortedHeartbeatRows
+      .map(row => String(row.incident)).filter(incident => syncStates.get(incident) === 0n));
+    if (resourceMoves.length) {
+      await tx.$executeRaw`UPDATE ticket_raw SET sourceTable = CASE incident
+        ${Prisma.join(resourceMoves.map(row => Prisma.sql`WHEN ${row.incident} THEN ${row.resource}`), ' ')}
+        ELSE sourceTable END WHERE incident IN (${Prisma.join(resourceMoves.map(row => row.incident))})`;
+    }
     // A matching hash is not a business change, but it proves the incident is
     // still present in the latest scan. Keep that freshness separately from
     // importedAt/syncVersion so projection is not needlessly re-run.
-    await bulkUpsertTicketRaw(sortedHeartbeatRows, ['incident', 'lastSeenAt'], nossaDown);
+    if (isRevisionSyncEnabled() && sortedHeartbeatRows.length) {
+      await tx.$executeRaw`UPDATE ticket_raw SET lastSeenAt = ${now}
+        WHERE incident IN (${Prisma.join(sortedHeartbeatRows.map(row => String(row.incident)))})
+          AND (lastSeenAt IS NULL OR lastSeenAt < ${new Date(now.getTime() - 60000)})`;
+    } else {
+      await bulkUpsertTicketRaw(tx, sortedHeartbeatRows, ['incident', 'lastSeenAt'], nossaDown);
+    }
     if (quarantined.length > 0) {
-      await tx.ingestion_quarantine.createMany({ data: quarantined });
-      await incrIngestionQuarantine(quarantined.length);
+      const hashes = quarantined.map(row => row.sourceHash).filter((hash): hash is string => Boolean(hash));
+      const known = isRevisionSyncEnabled() && hashes.length
+        ? new Set((await tx.ingestion_quarantine.findMany({
+            where: { sourceTable, sourceHash: { in: hashes } }, select: { sourceHash: true },
+          })).map(row => row.sourceHash))
+        : new Set<string>();
+      const fresh = quarantined.filter(row => !row.sourceHash || !known.has(row.sourceHash));
+      if (fresh.length) await tx.ingestion_quarantine.createMany({ data: fresh });
+      newlyQuarantined = fresh.length;
     }
 
     const checkpointData = {
@@ -1022,6 +1109,8 @@ async function processBatch(
     maxWait: Math.min(DEFAULT_TRANSACTION_TIMEOUT_MS, 30_000),
     timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
   });
+
+  if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 
   result.inserted += inserted;
   result.updated += updated;
@@ -1091,7 +1180,7 @@ export async function processRawRows(
   const normalizedRows = rawRows.map((row) =>
     normalizeExternalRow(row as unknown as ExternalRow, tableName),
   );
-  for (let offset = 0; offset < rawRows.length; offset += adaptiveWriteChunkSize) {
+  for (let offset = 0; offset < rawRows.length;) {
     const rawWindow = rawRows.slice(
       offset,
       Math.min(offset + adaptiveWriteChunkSize, rawRows.length),
@@ -1102,39 +1191,55 @@ export async function processRawRows(
     );
     const lastRaw = rawWindow[rawWindow.length - 1] as Record<string, unknown>;
     const nextCursor = getRowCursor(lastRaw, cursor);
-    const chunkResult = await withRetry(
-      () =>
-        processBatch(
-          normalizedWindow,
-          rawWindow,
-          tableName,
-          batchId,
-          offset,
-          nextCursor,
-          cursor,
-          result,
+    let chunkResult: ChunkResult;
+    try {
+      chunkResult = await withRetry(
+        () =>
+          processBatch(
+            normalizedWindow,
+            rawWindow,
+            tableName,
+            batchId,
+            offset,
+            nextCursor,
+            cursor,
+            result,
+            signal,
+          ),
+        {
+          retryMax: DEFAULT_RETRY_MAX,
           signal,
-        ),
-      {
-        retryMax: DEFAULT_RETRY_MAX,
-        signal,
-        label: 'process_batch',
-        context: {
-          component: 'ingestion',
-          tableName,
-          batchId,
-          chunkStartOffset: offset,
-          chunkSize: normalizedWindow.length,
+          label: 'process_batch',
+          context: {
+            component: 'ingestion',
+            tableName,
+            batchId,
+            chunkStartOffset: offset,
+            chunkSize: normalizedWindow.length,
+          },
+          onRetry: () => {
+            adaptiveWriteChunkSize = Math.max(
+              MIN_WRITE_CHUNK_SIZE,
+              Math.floor(adaptiveWriteChunkSize / 2),
+            );
+            result.retried++;
+          },
         },
-        onRetry: () => {
-          adaptiveWriteChunkSize = Math.max(
-            MIN_WRITE_CHUNK_SIZE,
-            Math.floor(adaptiveWriteChunkSize / 2),
-          );
-          result.retried++;
-        },
-      },
-    );
+      );
+    } catch (error) {
+      if (!isRevisionSyncEnabled() || !isRowDataError(error)) throw error;
+      if (rawWindow.length > 1) {
+        const middle = Math.floor(rawWindow.length / 2);
+        await processRawRows(rawWindow.slice(0, middle), tableName, batchId, cursor, result, signal);
+        await processRawRows(rawWindow.slice(middle), tableName, batchId, cursor, result, signal);
+      } else {
+        await quarantineRejectedRow(rawWindow[0]!, tableName, batchId, error);
+        result.quarantined++;
+        result.processed++;
+      }
+      offset += rawWindow.length;
+      continue;
+    }
     result.processed = (result.processed ?? 0) + chunkResult.processed;
     result.inserted += chunkResult.inserted;
     result.updated += chunkResult.updated;
@@ -1144,6 +1249,7 @@ export async function processRawRows(
     result.retried = (result.retried ?? 0) + chunkResult.retried;
     result.errors.push(...chunkResult.errors);
     if (result.errors.length > 100) result.errors.length = 100;
+    offset += rawWindow.length;
   }
 }
 
@@ -1806,6 +1912,18 @@ export async function retryQuarantinedItems(options?: {
 
     try {
       const rawPayload = item.rawPayload as Record<string, unknown>;
+      if (isRevisionSyncEnabled()) {
+        const retried: ChunkResult = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
+        await processRawRows([rawPayload], item.sourceTable, batchId, {
+          idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [],
+        }, retried);
+        if (retried.quarantined || retried.failed) throw new Error('Quarantine conflict is unresolved');
+        await prisma.ingestion_quarantine.delete({ where: { id: item.id } });
+        await decrIngestionQuarantine(1);
+        await redis.del(retryKey).catch(() => {});
+        result.recovered++;
+        continue;
+      }
       const externalRow = rawPayload as unknown as ExternalRow;
       const normalizedRow = normalizeExternalRow(externalRow, item.sourceTable);
 

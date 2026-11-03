@@ -479,7 +479,7 @@ async function startWorker(): Promise<void> {
   startWorkerHeartbeat(WORKER_NAME, state);
 
   scheduledTasks.push(
-    scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => void runDataWorkerTask()), 'data-worker', SCHEDULE_OFFSET, { maxIntervalMinutes: 10, idleThreshold: 5 }),
+    scheduleEveryMinutes(INTERVAL_MINUTES, () => runWithCorrelationContext(WORKER_NAME, () => runDataWorkerTask()), 'data-worker', SCHEDULE_OFFSET),
   );
 
   // Backfill: run once after startup delay, not on recurring schedule.
@@ -496,7 +496,7 @@ async function startWorker(): Promise<void> {
   });
 
   if (RUN_ON_START) {
-    runWithCorrelationContext(WORKER_NAME, () => void runDataWorkerTask());
+    runWithCorrelationContext(WORKER_NAME, () => runDataWorkerTask());
   }
 }
 

@@ -2,7 +2,9 @@ import cron from 'node-cron';
 import 'dotenv/config';
 import { connectDB, prisma } from '@/app/libs/prisma';
 import { runFullScanProjection, runProjection } from '@/lib/projection';
-import { redis } from '@/lib/redis';
+import { redis, isRedisReady } from '@/lib/redis';
+import { flushProjectionEffects } from '@/lib/projection/effects';
+import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 import { PROJECTION_REQUEST_CHANNEL } from '@/lib/worker-signals';
 import { setProjectionStatus } from '@/lib/sync-metrics/metrics';
 import { testExternalConnection } from '@/lib/external-db/connection';
@@ -111,6 +113,31 @@ async function drainProjectionQueue(source: string): Promise<void> {
   }
 }
 
+async function withProjectionLock(fn: Parameters<typeof withTaskLock>[2], controller: AbortController) {
+  if (isRevisionSyncEnabled()) {
+    await fn({ ownerId: 'mysql', fencingToken: 0, correlationId: WORKER_NAME });
+    return 'acquired' as const;
+  }
+  return withTaskLock('projection', LOCK_TTL_SECONDS, fn, { abortController: controller });
+}
+
+let pendingPollActive = false;
+async function pollPendingProjection(): Promise<void> {
+  if (pendingPollActive || state.running || projectionPumpActive) return;
+  pendingPollActive = true;
+  try {
+    const pending = await prisma.ticket_sync_state.findFirst({
+      where: { pending: true, nextAttemptAt: { lte: new Date() } }, select: { incident: true },
+    });
+    if (pending) queueIncrementalProjectionRun('pending-poll');
+    else if (isRedisReady()) await flushProjectionEffects();
+  } catch (error) {
+    logger.warn('Pending projection poll failed', { error: String(error) });
+  } finally {
+    pendingPollActive = false;
+  }
+}
+
 async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   if (process.env.PROJECTION_ENABLED !== 'true') {
     logger.info('Projection disabled');
@@ -144,9 +171,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   const pendingProjectionRequestIds = await collectPendingProjectionRequestIds();
 
   try {
-    const lockResult = await withTaskLock(
-      'projection',
-      LOCK_TTL_SECONDS,
+    const lockResult = await withProjectionLock(
       async ({ fencingToken }) => {
         if (signal.aborted) return;
 
@@ -176,7 +201,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           time: nowWIB(),
         });
         await acknowledgeProjectionRequests(pendingProjectionRequestIds);
-        await recordRun(WORKER_NAME, duration, true, {
+        await recordRun(WORKER_NAME, duration, result.failed === 0, {
           processed: result.processed,
         });
 
@@ -184,7 +209,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
         state.circuitOpenedAt = null;
         state.lastError = null;
       },
-      { abortController: controller },
+      controller,
     );
 
     if (lockResult === 'skipped') {
@@ -253,19 +278,27 @@ async function startWorker(): Promise<void> {
   logConfigWarnings(WORKER_NAME);
 
   await connectDB();
-  await waitForRedisReady();
+  if (!isRevisionSyncEnabled()) await waitForRedisReady();
   await forceCleanupLock('projection');
   await cleanupWorkerLock('projection', TIMEOUT_MINUTES * 60_000);
-  await testExternalConnection();
+  if (!isRevisionSyncEnabled()) await testExternalConnection();
   // Opsi B: bersihkan backlog active-refresh yang stale (79981) karena worker sudah disabled
   try {
-    await redis.del('active-refresh:backlog');
-    await redis.del('active-refresh:metrics');
+    if (isRedisReady()) {
+      await redis.del('active-refresh:backlog');
+      await redis.del('active-refresh:metrics');
+    }
   } catch {}
   startWorkerHeartbeat(WORKER_NAME, state);
-  await subscribeProjectionRequests().catch((error) => {
+  const subscribe = subscribeProjectionRequests().catch((error) => {
     logger.error('Projection request subscriber disabled; interval fallback remains active', error, {});
   });
+  if (!isRevisionSyncEnabled()) await subscribe;
+
+  if (isRevisionSyncEnabled()) {
+    const poll = setInterval(() => void pollPendingProjection(), 1000);
+    scheduledTasks.push({ stop: () => clearInterval(poll) });
+  }
 
   scheduledTasks.push(
     scheduleEveryMinutes(
