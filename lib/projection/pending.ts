@@ -35,37 +35,52 @@ async function applyPendingBatch(rows: PendingRaw[]): Promise<Awaited<ReturnType
   }]));
   const ordered = [...rows].sort((a, b) => a.incident!.localeCompare(b.incident!));
   return withTransactionRetry(async tx => {
-    const states = await tx.$queryRaw<Array<{ incident: string; rawRevision: bigint; pending: boolean }>>`
-      SELECT incident, rawRevision, pending FROM ticket_sync_state
-      WHERE incident IN (${Prisma.join(ordered.map(row => row.incident!))}) ORDER BY incident FOR UPDATE
-    `;
-    const stateMap = new Map(states.map(state => [state.incident, state]));
+    const CHUNK = 50;
+    const allStates: Array<{ incident: string; rawRevision: bigint; pending: boolean }> = [];
+    for (let i = 0; i < ordered.length; i += CHUNK) {
+      const chunk = ordered.slice(i, i + CHUNK);
+      const states = await tx.$queryRaw<Array<{ incident: string; rawRevision: bigint; pending: boolean }>>`
+        SELECT incident, rawRevision, pending FROM ticket_sync_state
+        WHERE incident IN (${Prisma.join(chunk.map(row => row.incident!))}) ORDER BY incident FOR UPDATE
+      `;
+      allStates.push(...states);
+    }
+    const stateMap = new Map(allStates.map(state => [state.incident, state]));
     const current = ordered.filter(row => {
       const state = stateMap.get(row.incident!);
       return state?.pending && state.rawRevision === row.rawRevision;
     });
     if (!current.length) return [];
-    await tx.$queryRaw`
-      SELECT id_ticket FROM ticket WHERE incident IN (${Prisma.join(current.map(row => row.incident!))})
-      ORDER BY incident FOR UPDATE
-    `;
+    for (let i = 0; i < current.length; i += CHUNK) {
+      const chunk = current.slice(i, i + CHUNK);
+      await tx.$queryRaw`
+        SELECT id_ticket FROM ticket WHERE incident IN (${Prisma.join(chunk.map(row => row.incident!))})
+        ORDER BY incident FOR UPDATE
+      `;
+    }
     const items = await prepareProjectionItems(current, { tx, force: true, classifications });
     await bulkInsertTicket(tx, items.filter(item => item.action === 'inserted'));
     await bulkUpsertTicket(tx, items.filter(item => item.action === 'updated'));
     await bulkUpsertProjectionLog(tx, items, 1);
     const now = new Date();
-    await tx.$executeRaw`
-      UPDATE ticket_sync_state SET appliedRevision = rawRevision, pending = FALSE,
-        projectionVersion = ${PROJECTION_CONTRACT_VERSION}, projectedAt = ${now},
-        nextAttemptAt = NULL, attempts = 0, lastError = NULL
-      WHERE incident IN (${Prisma.join(current.map(row => row.incident!))})
-    `;
+    for (let i = 0; i < current.length; i += CHUNK) {
+      const chunk = current.slice(i, i + CHUNK);
+      await tx.$executeRaw`
+        UPDATE ticket_sync_state SET appliedRevision = rawRevision, pending = FALSE,
+          projectionVersion = ${PROJECTION_CONTRACT_VERSION}, projectedAt = ${now},
+          nextAttemptAt = NULL, attempts = 0, lastError = NULL
+        WHERE incident IN (${Prisma.join(chunk.map(row => row.incident!))})
+      `;
+    }
     const changed = items.filter(item => item.action !== 'skipped');
     if (changed.length) {
-      await tx.$executeRaw`
-        UPDATE ticket_sync_state SET effectsRevision = effectsRevision + 1, effectsPending = TRUE
-        WHERE incident IN (${Prisma.join(changed.map(item => item.raw.incident!))})
-      `;
+      for (let i = 0; i < changed.length; i += CHUNK) {
+        const chunk = changed.slice(i, i + CHUNK);
+        await tx.$executeRaw`
+          UPDATE ticket_sync_state SET effectsRevision = effectsRevision + 1, effectsPending = TRUE
+          WHERE incident IN (${Prisma.join(chunk.map(item => item.raw.incident!))})
+        `;
+      }
     }
     return items;
   });

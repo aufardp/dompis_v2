@@ -110,16 +110,40 @@ export async function prepareSourceSnapshots(
   }
 
   if (writes.length > 0) {
-    await tx.$executeRaw`
-      INSERT INTO ticket_source_snapshot
-        (incident, sourceFamily, resource, sourceHash, sourceUpdatedAt, payload, observedAt)
-      VALUES ${Prisma.join(writes.map(row => Prisma.sql`(
-        ${row.incident}, ${row.sourceFamily}, ${row.resource}, ${row.sourceHash},
-        ${row.sourceUpdatedAt}, ${JSON.stringify(row.payload)}, ${row.observedAt}
-      )`))}
-      ON DUPLICATE KEY UPDATE resource = VALUES(resource), sourceHash = VALUES(sourceHash),
-        sourceUpdatedAt = VALUES(sourceUpdatedAt), payload = VALUES(payload), observedAt = VALUES(observedAt)
-    `;
+    await tx.ticket_source_snapshot.createMany({
+      data: writes,
+      skipDuplicates: true,
+    });
+    // For ON DUPLICATE KEY UPDATE with specific update logic, a simple createMany(skipDuplicates:true)
+    // might not be enough. If more complex update logic is needed, a batch upsert with
+    // a loop or a direct raw SQL update for duplicates might be required.
+    // For now, assuming skipDuplicates is acceptable as it prevents panics.
+    // Additional logic to handle updates on conflict might be needed if primary keys match and data differs.
+    // For this specific case (source-snapshots), it is expected that if a key exists,
+    // the existing entry is updated, or if 'skipDuplicates:true' means that if it exists, nothing is updated.
+    // Given the previous raw query, it was an upsert, so let's use separate update if skipDuplicates doesn't update.
+    // A better solution would be to fetch existing, compare, then create/update,
+    // or use a different upsert strategy if createMany + skipDuplicates doesn't fit the original logic.
+    // For now, prioritize fixing the panic.
+    for (const row of writes) {
+        await tx.ticket_source_snapshot.upsert({
+            where: {
+                incident_sourceFamily: {
+                    incident: row.incident,
+                    sourceFamily: row.sourceFamily,
+                },
+            },
+            update: {
+                resource: row.resource,
+                sourceHash: row.sourceHash,
+                sourceUpdatedAt: row.sourceUpdatedAt,
+                payload: row.payload,
+                observedAt: row.observedAt,
+            },
+            create: row,
+        });
+    }
+
   }
   if (observed.length > 0) {
     await tx.$executeRaw`UPDATE ticket_source_snapshot SET observedAt = UTC_TIMESTAMP(3)
