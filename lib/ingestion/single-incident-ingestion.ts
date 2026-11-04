@@ -1,8 +1,6 @@
 import { fetchByIncidentAnyStatus } from '@/lib/external-db/qosmic-bridge/nossa';
 import { processRawRows, type ChunkResult } from './index';
 import { logger } from '@/lib/observability/logger';
-import { runProjection } from '@/lib/projection';
-import { isRevisionSyncEnabled } from './sync-state';
 import { projectSingleTicket } from '@/lib/projection/single';
 
 export async function ingestSingleIncident(incidentId: string): Promise<{ success: boolean; message: string; result?: ChunkResult }> {
@@ -48,11 +46,7 @@ export async function ingestSingleIncident(incidentId: string): Promise<{ succes
 
     // Jalankan projection langsung untuk batch ini
     logger.info('[SingleIngestion] Triggering direct projection', { incident: cleanId, batchId });
-    const projectionResult = isRevisionSyncEnabled() ? await projectSingleTicket(cleanId) : await runProjection(undefined, {
-      mode: 'batch',
-      syncBatchId: batchId,
-      preserveCheckpointCursor: true,
-    });
+    const projectionResult = await projectSingleTicket(cleanId);
     logger.info('[SingleIngestion] Direct projection complete', { incident: cleanId, batchId, result: projectionResult });
 
     return {
