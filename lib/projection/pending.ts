@@ -103,7 +103,11 @@ function addResults(result: ProjectionResult, items: Awaited<ReturnType<typeof p
 
 export async function runPendingProjection(signal?: AbortSignal, options: ProjectionOptions = {}): Promise<ProjectionResult> {
   const result = emptyProjectionResult();
-  const batchSize = Math.max(1, Math.min(options.batchSize ?? 50, 250));
+  const configuredBatchSize = Number.parseInt(
+    process.env.PROJECTION_PENDING_BATCH_SIZE || process.env.PROJECTION_BATCH_SIZE || '50',
+    10,
+  );
+  const batchSize = Math.max(1, Math.min(options.batchSize ?? configuredBatchSize, 100));
   const started = Date.now();
   const budget = Math.max(1000, Number(process.env.PROJECTION_RUN_BUDGET_MS) || 30000);
   let lastEffectsAt = 0;
