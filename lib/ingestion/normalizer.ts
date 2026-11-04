@@ -316,7 +316,7 @@ export function validateExternalRow(
   if (!workzone || String(workzone).trim() === '') {
     errors.push({
       field: 'workzone',
-      message: 'Missing workzone',
+      message: `Missing workzone${row.incident ? ' (incident: ' + row.incident + ')' : ''}`,
       severity: 'warn',
     });
   }

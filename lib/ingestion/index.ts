@@ -1106,7 +1106,7 @@ async function processBatch(
     return { changedRows, heartbeatRows, inserted, updated, skipped };
   }, {
     isolationLevel: 'ReadCommitted',
-    maxWait: Math.min(DEFAULT_TRANSACTION_TIMEOUT_MS, 30_000),
+    maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
     timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
   });
 
@@ -1963,6 +1963,8 @@ export async function retryQuarantinedItems(options?: {
           });
         }
         await tx.ingestion_quarantine.delete({ where: { id: item.id } });
+      }, {
+        timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
       });
       await decrIngestionQuarantine(1);
       await redis.del(retryKey).catch(() => {});
