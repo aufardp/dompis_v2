@@ -42,24 +42,26 @@ export async function getRecurringDisruptionTickets(
   const windowStartStr = windowStart.toISOString().slice(0, 19).replace('T', ' ');
 
   return prisma.$queryRawUnsafe<RecurringDisruptionRow[]>(
-    withMaxExecutionTime(`SELECT t.customer_type, t.source_ticket, COUNT(*) AS cnt
-     FROM ticket t
-     JOIN (
-       SELECT service_no
+    withMaxExecutionTime(`WITH scoped AS (
+       SELECT customer_type, source_ticket, service_no
        FROM ticket
        WHERE service_no IS NOT NULL
          AND service_no != ''
          AND ${SERVICE_NO_PLACEHOLDER_SQL}
          AND reported_date >= ?
          AND (${whereClause})
-       GROUP BY service_no
-       HAVING COUNT(*) >= 2
-     ) rep ON t.service_no = rep.service_no
-     WHERE t.reported_date >= ?
-       AND (${whereClause})
-     GROUP BY t.customer_type, t.source_ticket`),
-    windowStartStr,
-    ...params,
+     ), recurring AS (
+       SELECT customer_type, source_ticket
+       FROM (
+         SELECT customer_type, source_ticket,
+           COUNT(*) OVER (PARTITION BY service_no) AS service_count
+         FROM scoped
+       ) counted
+       WHERE service_count >= 2
+     )
+     SELECT /*+ MAX_EXECUTION_TIME(30000) */ customer_type, source_ticket, COUNT(*) AS cnt
+     FROM recurring
+     GROUP BY customer_type, source_ticket`),
     windowStartStr,
     ...params,
   );

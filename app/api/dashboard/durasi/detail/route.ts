@@ -67,6 +67,8 @@ async function fetchAllTickets(
   userId: number,
   bucket: KpiBucketKey,
   visibleWorkzones: Set<string> | null,
+  areaFilter: string,
+  saFilter: string,
   branchParam?: string | null,
 ): Promise<DurasiDetailTicket[]> {
   const filtersList = BUCKET_FILTERS[bucket];
@@ -95,6 +97,27 @@ async function fetchAllTickets(
   }
 
   for (const [whereClause, params] of wherePairs) {
+    const scopedConditions = [whereClause];
+    const scopedParams = [...params];
+
+    if (areaFilter) {
+      scopedConditions.push(`LOWER(TRIM(COALESCE(a.nama_area, 'UNKNOWN'))) = ?`);
+      scopedParams.push(normalizeText(areaFilter));
+    }
+    if (saFilter) {
+      scopedConditions.push(`LOWER(TRIM(COALESCE(t.workzone, ''))) = ?`);
+      scopedParams.push(normalizeText(saFilter));
+    }
+    if (visibleWorkzones) {
+      const allowed = [...visibleWorkzones];
+      if (allowed.length > 0) {
+        scopedConditions.push(`(t.workzone IS NULL OR t.workzone = '' OR t.workzone IN (${allowed.map(() => '?').join(',')}))`);
+        scopedParams.push(...allowed);
+      } else {
+        scopedConditions.push(`(t.workzone IS NULL OR t.workzone = '')`);
+      }
+    }
+
     const sql = `
       SELECT
         t.id_ticket,
@@ -122,12 +145,11 @@ async function fetchAllTickets(
       LEFT JOIN area a ON a.id_area = sa.area_id
       LEFT JOIN branch b ON b.id_branch = a.branch_id
       LEFT JOIN region r ON r.id_region = b.region_id
-      WHERE ${whereClause}
+      WHERE ${scopedConditions.map((condition) => `(${condition})`).join(' AND ')}
       ORDER BY t.reported_date DESC, t.id_ticket DESC
     `;
-    const result = await prisma.$queryRawUnsafe<DurasiDetailTicket[]>(withMaxExecutionTime(sql), ...params);
+    const result = await prisma.$queryRawUnsafe<DurasiDetailTicket[]>(withMaxExecutionTime(sql), ...scopedParams);
     for (const row of result) {
-      if (visibleWorkzones && row.workzone && !visibleWorkzones.has(row.workzone)) continue;
       if (ids.has(row.id_ticket)) continue;
       ids.add(row.id_ticket);
       rows.push(row);
@@ -175,19 +197,20 @@ export async function GET(request: NextRequest) {
 
     const scope = await getDashboardScopePart(decoded.role, decoded.id_user);
     const cacheKey = `dashboard:durasi:detail:${scope}:${bucket}:${panelType}:${area || 'all'}:${sa || 'all'}:${bucketIndex}:${page}:${limit}:${branchParam ?? ''}`;
+    const rowsCacheKey = `dashboard:durasi:detail:rows:${scope}:${bucket}:${area || 'all'}:${sa || 'all'}:${branchParam ?? ''}`;
 
     const data = await getOrSetCacheSwr(cacheKey, async () => {
-      const allTickets = await fetchAllTickets(
+      const allTickets = await getOrSetCacheSwr(rowsCacheKey, () => fetchAllTickets(
         decoded.role,
         decoded.id_user,
         bucket,
         visibleWorkzones,
+        area,
+        sa,
         branchParam,
-      );
+      ), 20);
 
       const filtered = allTickets.filter((ticket) => {
-        if (area && normalizeText(ticket.area) !== normalizeText(area)) return false;
-        if (sa && normalizeText(ticket.workzone) !== normalizeText(sa)) return false;
         if (!matchesDurasiPanel(ticket, panelType)) return false;
         return bucketIndexForPanel(ticket, panelType) === bucketIndex;
       });

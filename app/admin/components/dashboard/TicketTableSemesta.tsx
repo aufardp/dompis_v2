@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import Pagination from '../../../components/tables/Pagination';
 import TicketRowSemesta from './TicketRowSemesta';
 import TableEmptyState from '../../../components/tables/TableEmptyState';
@@ -72,6 +72,8 @@ export interface AdminTicketTableSemestaProps {
     ticketStatus?: string[];
     ticketType?: string[];
     branchId?: string;
+    statusDateStart?: string;
+    statusDateEnd?: string;
   };
 }
 
@@ -347,6 +349,10 @@ export default function TicketTableSemesta({
   const [downloadFormat, setDownloadFormat] = useState<'csv' | 'xlsx'>('xlsx');
   const [downloading, setDownloading] = useState(false);
 
+  useEffect(() => {
+    if ((pagination?.total ?? 0) > 50_000) setDownloadFormat('csv');
+  }, [pagination?.total]);
+
   const handleSort = useCallback((field: SortField) => {
     setSortConfig((prev) => ({
       field,
@@ -414,6 +420,10 @@ export default function TicketTableSemesta({
         params.set('startDate', downloadFilters.startDate);
       if (downloadFilters.endDate)
         params.set('endDate', downloadFilters.endDate);
+      if (downloadFilters.statusDateStart)
+        params.set('statusDateStart', downloadFilters.statusDateStart);
+      if (downloadFilters.statusDateEnd)
+        params.set('statusDateEnd', downloadFilters.statusDateEnd);
 
       if (downloadFilters.ticketStatus && downloadFilters.ticketStatus.length > 0) {
         downloadFilters.ticketStatus.forEach((s) => params.append('ticketStatus', s));
@@ -422,14 +432,55 @@ export default function TicketTableSemesta({
         downloadFilters.ticketType.forEach((t) => params.append('ticketType', t));
       }
 
+      const filename = `Tiket_SEMESTA.${downloadFormat}`;
+      const url = `/api/tickets/export?${params.toString()}`;
+      const showSaveFilePicker = (
+        window as unknown as {
+          showSaveFilePicker?: (options: {
+            suggestedName: string;
+            types: Array<{ description: string; accept: Record<string, string[]> }>;
+          }) => Promise<{ createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+        }
+      ).showSaveFilePicker;
+
+      if (downloadFormat === 'csv' && showSaveFilePicker) {
+        // Write the response stream straight to disk. A large CSV should not
+        // require holding the whole export in browser memory as a Blob.
+        const file = await showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
+        });
+        const res = await fetchWithAuth(url, { timeoutMs: 600_000 });
+        if (!res) {
+          alert('Export gagal: session expired');
+          return;
+        }
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.message ?? 'Export gagal');
+        }
+        if (!res.body) throw new Error('Browser tidak dapat membaca file export');
+        await res.body.pipeTo(await file.createWritable());
+        return;
+      }
+
+      if (downloadFormat === 'csv') {
+        // Native navigation lets browsers without the File System Access API
+        // stream the response to their download manager instead of buffering
+        // the complete CSV in JavaScript memory.
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.click();
+        return;
+      }
+
       const res = await fetchWithAuth(
-        `/api/tickets/export?${params.toString()}`,
+        url,
         {
-          // The server streams CSV now, but the browser still assembles the
-          // whole file via res.blob() before saving it. A 500k-row CSV can
-          // take well over two minutes to build, so give CSV a much longer
-          // leash than the buffered XLSX path.
-          timeoutMs: downloadFormat === 'csv' ? 600_000 : 120_000,
+          timeoutMs: 120_000,
         },
       );
       if (!res) {
@@ -442,13 +493,14 @@ export default function TicketTableSemesta({
       }
 
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `Tiket_SEMESTA_${downloadFormat}`;
+      a.href = blobUrl;
+      a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
     } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       alert(err.message ?? 'Export gagal');
     } finally {
       setDownloading(false);
@@ -687,7 +739,9 @@ export default function TicketTableSemesta({
                     className='h-9 rounded-2xl border border-(--border) bg-(--surface) px-3 text-xs font-semibold text-(--text-primary) outline-none'
                   >
                     <option value='csv'>CSV — untuk data besar</option>
-                    <option value='xlsx'>XLSX — maks 50.000 baris</option>
+                    <option value='xlsx' disabled={(pagination?.total ?? 0) > 50_000}>
+                      XLSX — maks 50.000 baris
+                    </option>
                   </select>
                   <button
                     type='button'

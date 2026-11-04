@@ -968,6 +968,8 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
     } = filters ?? {};
 
     return this.buildTicketWhere(role, userId, {
@@ -981,6 +983,8 @@ export class TicketService {
       ctype,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
       searchType,
     });
   }
@@ -1095,9 +1099,19 @@ export class TicketService {
     const granularity: 'day' | 'month' = spanDays > 60 ? 'month' : 'day';
 
     // --- QUERY 1: Main groupBy ---
+    // ticket_id_gamas itself is high-cardinality, while the analytics only need
+    // a yes/no flag. Grouping by the full identifier creates many redundant
+    // groups, so aggregate that metric separately by workzone.
     const groups = await prisma.ticket.groupBy({
       where,
-      by: ['workzone', 'jenis_tiket_2', 'customer_segment', 'ticket_id_gamas', 'reported_date', 'status_update'],
+      by: ['workzone', 'jenis_tiket_2', 'customer_segment', 'reported_date', 'status_update'],
+      _count: { _all: true },
+    });
+    const gamasGroups = await prisma.ticket.groupBy({
+      where: {
+        AND: [where, { ticket_id_gamas: { not: '' } }],
+      },
+      by: ['workzone'],
       _count: { _all: true },
     });
 
@@ -1108,10 +1122,9 @@ export class TicketService {
     // nothing.
     const workzoneFilter = await (async (): Promise<{
       gaul: Prisma.Sql;
-      lapul: Prisma.Sql;
       skip: boolean;
     }> => {
-      const noAccess = { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: true };
+      const noAccess = { gaul: Prisma.sql``, skip: true };
 
       const selectedWorkzone = filters?.workzone
         ? await this.resolveSelectedWorkzone(filters.workzone)
@@ -1119,7 +1132,7 @@ export class TicketService {
 
       // Mirror buildTicketWhere: role workzone scope, then the explicitly selected
       // workzone, then branch (which intersects whatever is left). Keeping the
-      // same order here keeps these raw SQL queries consistent with the Prisma
+      // same order here keeps this raw SQL query consistent with the Prisma
       // groupBy above.
       const roleWorkzones =
         role === 'superadmin' || role === 'super_admin'
@@ -1152,7 +1165,6 @@ export class TicketService {
         const eq = Prisma.sql`= ${scoped[0]}`;
         return {
           gaul: Prisma.sql`AND t1.workzone ${eq}`,
-          lapul: Prisma.sql`AND t.workzone ${eq}`,
           skip: false,
         };
       }
@@ -1161,12 +1173,11 @@ export class TicketService {
         const inClause = Prisma.sql`IN (${Prisma.join(scoped)})`;
         return {
           gaul: Prisma.sql`AND t1.workzone ${inClause}`,
-          lapul: Prisma.sql`AND t.workzone ${inClause}`,
           skip: false,
         };
       }
 
-      return { gaul: Prisma.sql``, lapul: Prisma.sql``, skip: false };
+      return { gaul: Prisma.sql``, skip: false };
     })();
 
     // --- QUERY 2: GAUL detection ---
@@ -1199,7 +1210,8 @@ export class TicketService {
               SELECT 1 FROM ticket t2
               WHERE t2.service_no = t1.service_no
                 AND t2.incident != t1.incident
-                AND ABS(DATEDIFF(t2.reported_date_dt, t1.reported_date_dt)) <= 60
+                AND t2.reported_date_dt >= DATE_SUB(DATE(t1.reported_date_dt), INTERVAL 60 DAY)
+                AND t2.reported_date_dt < DATE_ADD(DATE(t1.reported_date_dt), INTERVAL 61 DAY)
                 AND t2.reported_date_dt >= ${rangeFrom}
                 AND t2.reported_date_dt <= ${rangeTo}
             )
@@ -1214,45 +1226,16 @@ export class TicketService {
     }
 
     // --- QUERY 3: LAPUL detection ---
-    let lapulRows: Array<{
+    const lapulRows: Array<{
       incident: string;
       occurrences: bigint;
       workzone: string | null;
       first_date: string | Date;
     }> = [];
-    let lapulError = false;
-
-    if (!workzoneFilter.skip) {
-      // Deteksi LAPUL (incident berulang) hanya bermakna pada window pendek dan
-      // query ini berat (full-scan ticket_raw + join). Batasi maksimal 30 hari
-      // agar tidak menahan koneksi pool puluhan detik untuk range lebar.
-      const LAPUL_MAX_DAYS = 30;
-      const lapulRangeFrom =
-        differenceInCalendarDays(rangeTo, rangeFrom) > LAPUL_MAX_DAYS
-          ? startOfDay(subDays(rangeTo, LAPUL_MAX_DAYS))
-          : rangeFrom;
-      try {
-        lapulRows = await prisma.$queryRaw`
-          SELECT /*+ MAX_EXECUTION_TIME(30000) */
-            tr.incident,
-            COUNT(*) AS occurrences,
-            t.workzone,
-            MIN(tr.importedAt) AS first_date
-          FROM ticket_raw tr
-          INNER JOIN ticket t ON t.incident = tr.incident
-          WHERE tr.importedAt >= ${lapulRangeFrom}
-            AND tr.importedAt <= ${rangeTo}
-            ${workzoneFilter.lapul}
-          GROUP BY tr.incident, t.workzone
-          HAVING COUNT(*) > 1
-            AND DATEDIFF(MAX(tr.importedAt), MIN(tr.importedAt)) <= 60
-          ORDER BY occurrences DESC
-          LIMIT 100
-        `;
-      } catch {
-        lapulError = true;
-      }
-    }
+    // ticket_raw.incident has a UNIQUE constraint and projection upserts one
+    // current row per incident. Therefore GROUP BY incident HAVING COUNT(*) > 1
+    // can never return a LAPUL row; the old range scan only consumed DB capacity.
+    const lapulError = false;
 
     // --- APPLICATION LAYER PROCESSING ---
     const kpi = { total: 0, open: 0, onProgress: 0, closed: 0, gaul: 0, lapul: 0, gamas: 0, unspec: 0, unspecB2b: 0, sqm: 0, sqmCcan: 0 };
@@ -1278,7 +1261,6 @@ export class TicketService {
       const jenisLabel = JENIS_LABEL[jenisLower] || rawJenis || 'Unknown';
       const segment = g.customer_segment ?? null;
       const workzone = g.workzone ?? 'Unknown';
-      const hasGamas = Boolean(g.ticket_id_gamas && g.ticket_id_gamas !== '');
       const status = (g.status_update ?? '').toLowerCase().trim();
       const reportedDate = g.reported_date ? String(g.reported_date).slice(0, 10) : null;
 
@@ -1286,7 +1268,6 @@ export class TicketService {
       if (status === 'close' || status === 'closed') kpi.closed += count;
       else if (!status || status === 'open') kpi.open += count;
       else kpi.onProgress += count;
-      if (hasGamas) kpi.gamas += count;
 
       const isUnspec = jenisLower === 'unspec';
       const isSqm = jenisLower === 'sqm';
@@ -1306,7 +1287,6 @@ export class TicketService {
         }
         const wz = workzoneMap.get(workzone)!;
         wz.total += count;
-        if (hasGamas) wz.gamas += count;
         if (isSqm) wz.sqm += count;
         if (isSqmCcan) wz.sqmCcan += count;
         if (isUnspec && b2cTicket) wz.unspec += count;
@@ -1337,11 +1317,26 @@ export class TicketService {
       }
       const wz = workzoneMap.get(workzone)!;
       wz.total += count;
-      if (hasGamas) wz.gamas += count;
       if (isSqm) wz.sqm += count;
       if (isSqmCcan) wz.sqmCcan += count;
       if (isUnspec && b2cTicket) wz.unspec += count;
       if (isUnspec && !b2cTicket) wz.unspecB2b += count;
+    }
+
+    for (const group of gamasGroups) {
+      const count = group._count._all;
+      const workzone = group.workzone ?? 'Unknown';
+      kpi.gamas += count;
+      const existing = workzoneMap.get(workzone);
+      if (existing) existing.gamas = count;
+      else workzoneMap.set(workzone, {
+        total: 0,
+        gamas: count,
+        sqm: 0,
+        sqmCcan: 0,
+        unspec: 0,
+        unspecB2b: 0,
+      });
     }
 
     // Merge rare jenis types into Others (keep top 6 by volume)

@@ -17,19 +17,29 @@ import { ApiError } from '@/app/libs/apiError';
 import { logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-const SEMESTA_EXPORT_MAX_ROWS = Number.parseInt(
-  process.env.SEMESTA_EXPORT_MAX_ROWS || '500000',
-  10,
+function configuredRowLimit(name: string, fallback: number, hardMaximum: number) {
+  const configured = Number.parseInt(process.env[name] ?? '', 10);
+  if (!Number.isFinite(configured) || configured < 1) return fallback;
+  return Math.min(configured, hardMaximum);
+}
+
+const SEMESTA_EXPORT_MAX_ROWS = configuredRowLimit(
+  'SEMESTA_EXPORT_MAX_ROWS',
+  500_000,
+  500_000,
 );
 
 // XLSX is built entirely in memory (aoa_to_sheet + XLSX.write), so its ceiling
 // is deliberately far below the CSV one even though the row cap is shared.
 // CSV streams chunk-by-chunk and only ever holds one chunk in memory.
-const SEMESTA_XLSX_MAX_ROWS = Number.parseInt(
-  process.env.SEMESTA_XLSX_MAX_ROWS || '50000',
-  10,
+const SEMESTA_XLSX_MAX_ROWS = configuredRowLimit(
+  'SEMESTA_XLSX_MAX_ROWS',
+  50_000,
+  50_000,
 );
+const SEMESTA_CSV_CHUNK_SIZE = 5_000;
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -47,7 +57,12 @@ function rowsToCsv(rows: Array<Array<string | number>>): string {
       row
         .map((cell) => {
           const str = String(cell ?? '');
-          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          if (
+            str.includes(',') ||
+            str.includes('"') ||
+            str.includes('\n') ||
+            str.includes('\r')
+          ) {
             return `"${str.replace(/"/g, '""')}"`;
           }
           return str;
@@ -99,6 +114,8 @@ export async function GET(request: Request) {
     const ticketType = searchParams.getAll('ticketType');
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
+    const statusDateStart = searchParams.get('statusDateStart') || undefined;
+    const statusDateEnd = searchParams.get('statusDateEnd') || undefined;
 
     const filters = {
       search,
@@ -112,6 +129,8 @@ export async function GET(request: Request) {
       ticketType,
       startDate,
       endDate,
+      statusDateStart,
+      statusDateEnd,
     };
     const isCsv = format === 'csv';
     const columns = TICKET_EXPORT_COLUMNS;
@@ -152,23 +171,39 @@ export async function GET(request: Request) {
       });
 
       const encoder = new TextEncoder();
+      const iterator = TicketService.iterateExportTickets(
+        user.role,
+        user.id_user,
+        filters,
+        SEMESTA_EXPORT_MAX_ROWS,
+        SEMESTA_CSV_CHUNK_SIZE,
+      )[Symbol.asyncIterator]();
+      let headerSent = false;
       const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          controller.enqueue(encoder.encode('\ufeff' + rowsToCsv([columns]) + '\n'));
+        async pull(controller) {
+          if (!headerSent) {
+            headerSent = true;
+            controller.enqueue(encoder.encode('\ufeff' + rowsToCsv([columns]) + '\n'));
+            return;
+          }
+
           try {
-            for await (const chunk of TicketService.iterateExportTickets(
-              user.role,
-              user.id_user,
-              filters,
-              SEMESTA_EXPORT_MAX_ROWS,
-            )) {
-              controller.enqueue(encoder.encode(rowsToCsv(buildRows(chunk as never))));
+            const next = await iterator.next();
+            if (next.done) {
+              controller.close();
+              return;
             }
+            // Keep the newline at each batch boundary; without it the final
+            // row in one chunk and the first row in the next become one row.
+            const csvChunk = rowsToCsv(buildRows(next.value as never));
+            controller.enqueue(encoder.encode(`${csvChunk}\n`));
           } catch (error) {
             logger.error('[SemestaExport] CSV stream failed', error, { rows: total });
-          } finally {
-            controller.close();
+            controller.error(error);
           }
+        },
+        async cancel() {
+          await iterator.return?.();
         },
       });
 
@@ -211,7 +246,9 @@ export async function GET(request: Request) {
       ...extractClientMeta(request),
     });
 
-    const rows = buildRows(tickets);
+    // getExportTickets already maps Prisma rows into the ticket view model.
+    // Mapping those rows a second time drops snake_case source fields.
+    const rows = tickets.map(buildTicketExportRow);
 
     const XLSX = await import('xlsx');
     const ws = XLSX.utils.aoa_to_sheet([columns, ...rows]);

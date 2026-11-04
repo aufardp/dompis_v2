@@ -802,6 +802,12 @@ export default function SemestaPage() {
                   ticketStatus: ticketStatusFilter,
                   ticketType: jenisTicket1Filter,
                   branchId: branchFilter || undefined,
+                  statusDateStart: statusDateRange?.from
+                    ? toYmd(statusDateRange.from)
+                    : undefined,
+                  statusDateEnd: statusDateRange?.to
+                    ? toYmd(statusDateRange.to)
+                    : undefined,
                 }}
                 pagination={{
                   currentPage: pagination.currentPage,
