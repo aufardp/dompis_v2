@@ -59,6 +59,7 @@ const HEALTH_KEY = 'qosmic-bridge:healthy';
 const HEALTH_TTL_MS = parsePositiveIntEnv('QOSMIC_BRIDGE_HEALTH_TTL_MS', 900_000);
 
 let lastKnownDown = false;
+let healthProbeInFlight: Promise<boolean> | null = null;
 
 function markBridgeHealthy(): void {
   if (!isRedisReady()) return;
@@ -103,7 +104,15 @@ export async function isQosmicBridgeDown(): Promise<boolean> {
  * `qosmicBridgeGet` sehingga `isQosmicBridgeDown()` kembali false tanpa nunggu
  * job ingestion gagal dulu. Tidak throw bila masih down.
  */
-export async function probeBridgeHealth(): Promise<boolean> {
+export function probeBridgeHealth(): Promise<boolean> {
+  if (healthProbeInFlight) return healthProbeInFlight;
+  healthProbeInFlight = runBridgeHealthProbe().finally(() => {
+    healthProbeInFlight = null;
+  });
+  return healthProbeInFlight;
+}
+
+async function runBridgeHealthProbe(): Promise<boolean> {
   if (!isQosmicBridgeConfigured()) return false;
   // Jika sudah healthy, tidak perlu probe
   if (!await isQosmicBridgeDown()) return true;

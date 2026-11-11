@@ -26,7 +26,9 @@ import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 const TIMEZONE = 'Asia/Jakarta';
 const CHECKPOINT_NAME = 'ticket_raw_to_ticket';
 let consecutiveZeroProcessed = 0;
-let lastCleanupAt = 0;
+// Avoid running a large retention cleanup at worker startup alongside the
+// first projection batch. Cleanup begins after the first hourly interval.
+let lastCleanupAt = Date.now();
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 let lastHeartbeatAt = 0;
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
@@ -91,6 +93,9 @@ const TRANSIENT_ERROR_PATTERNS = [
   'p1017',
   'p2024',
   'p2034',
+  'underlying connector',
+  'maximum statement execution time exceeded',
+  'timed out during query execution',
 ];
 
 /**
@@ -1403,6 +1408,12 @@ async function projectRecords(
         result.checkpoint = nextResult.checkpoint;
       }
     } catch (error) {
+      if (isTransientProjectionError(error)) {
+        // Keep the cursor at the last committed sub-batch and leave these raw
+        // rows eligible for the next run. A database outage is not a bad row.
+        throw error;
+      }
+
       const failedItems = items.filter((item) => {
         const checkpointImportedAt = result.checkpoint.lastProjectedImportedAt;
         const checkpointId = result.checkpoint.lastProjectedTicketRawId;
@@ -1469,20 +1480,60 @@ async function projectRecords(
 
 async function retryFailedProjectionItems(retryMax: number): Promise<void> {
   const failedLogs = await prisma.ticket_projection_log.findMany({
-    where: { status: 'failed', attempts: { lt: retryMax } },
+    where: {
+      status: 'failed',
+      updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
     orderBy: { updatedAt: 'asc' },
-    take: 50,
+    take: 100,
+    select: { id: true, ticketRawId: true, importedAt: true, attempts: true, error: true },
   });
   if (failedLogs.length === 0) return;
 
-  const ids = failedLogs.map((l) => l.id);
-  await prisma.ticket_projection_log.updateMany({
-    where: { id: { in: ids } },
-    data: { attempts: { increment: 1 } },
-  });
-  logger.info('[Projection] DLQ retry: incremented retryCount; will be picked up by reconciliation guard', {
-    count: failedLogs.length,
-  });
+  const normalRetries = failedLogs.filter((row) => row.attempts < retryMax);
+  const exhaustedTransient = failedLogs.filter((row) =>
+    row.attempts >= retryMax && row.importedAt && isTransientProjectionError(row.error),
+  );
+
+  if (normalRetries.length) {
+    await prisma.ticket_projection_log.updateMany({
+      where: { id: { in: normalRetries.map((row) => row.id) } },
+      data: { attempts: { increment: 1 } },
+    });
+  }
+
+  if (exhaustedTransient.length) {
+    const earliestImportedAt = exhaustedTransient.reduce((earliest, row) =>
+      row.importedAt! < earliest ? row.importedAt! : earliest,
+      exhaustedTransient[0]!.importedAt!,
+    );
+    const ids = exhaustedTransient.map((row) => row.id);
+    await prisma.$transaction(async (tx) => {
+      const checkpoint = await tx.ticket_projection_checkpoint.findUnique({
+        where: { name: CHECKPOINT_NAME },
+        select: { lastProjectedImportedAt: true },
+      });
+      if (checkpoint?.lastProjectedImportedAt && checkpoint.lastProjectedImportedAt >= earliestImportedAt) {
+        await tx.ticket_projection_checkpoint.update({
+          where: { name: CHECKPOINT_NAME },
+          data: {
+            lastProjectedImportedAt: earliestImportedAt,
+            lastProjectedTicketRawId: '',
+            status: 'idle',
+            lastError: null,
+          },
+        });
+      }
+      await tx.ticket_projection_log.updateMany({
+        where: { id: { in: ids }, status: 'failed' },
+        data: { status: 'pending', attempts: 0, error: null },
+      });
+    }, { isolationLevel: 'ReadCommitted', timeout: 15_000 });
+    logger.warn('[Projection] Re-queued recent transient database failures', {
+      count: exhaustedTransient.length,
+      checkpointRewoundTo: earliestImportedAt.toISOString(),
+    });
+  }
 }
 
 export function emptyProjectionResult(): ProjectionResult {
@@ -1847,14 +1898,15 @@ export async function cleanupProjectionLogs(): Promise<{ deleted: number }> {
   cutoffDate.setDate(cutoffDate.getDate() - CLEANUP_RETENTION_DAYS);
 
   let totalDeleted = 0;
-  const BATCH_SIZE = 5000;
+  const BATCH_SIZE = 500;
+  const MAX_DELETE_PER_RUN = 5000;
 
   logger.info('[Projection] Starting projection_log cleanup:', {
     retentionDays: CLEANUP_RETENTION_DAYS,
     cutoffDate: cutoffDate.toISOString(),
   });
 
-  while (true) {
+  while (totalDeleted < MAX_DELETE_PER_RUN) {
     const result = await prisma.$executeRaw`
       DELETE FROM ticket_projection_log
       WHERE projectedAt < ${cutoffDate}
@@ -1865,7 +1917,7 @@ export async function cleanupProjectionLogs(): Promise<{ deleted: number }> {
 
     if (Number(result) < BATCH_SIZE) break;
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
   }
 
   if (totalDeleted > 0) {

@@ -814,6 +814,7 @@ model ticket_projection_log {
 
   @@index([incident])
   @@index([status])
+  @@index([status, updatedAt, attempts], map: "idx_projection_log_retry")
   @@index([syncBatchId])
   @@index([importedAt, ticketRawId])
   @@index([ticketRawId, status], map: "idx_projection_log_raw_status")

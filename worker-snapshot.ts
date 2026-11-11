@@ -42,6 +42,11 @@ async function runSnapshotTask(): Promise<void> {
 }
 
 async function startWorker(): Promise<void> {
+  if (process.env.SNAPSHOT_ENABLED !== 'true') {
+    logger.info('Snapshot worker disabled', { component: 'worker' });
+    return;
+  }
+
   logger.info('Snapshot worker starting', { interval: `${INTERVAL_SECONDS}s` });
 
   await waitStartupDelay();

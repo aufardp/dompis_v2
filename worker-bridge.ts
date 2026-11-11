@@ -5,6 +5,7 @@ import { logConfigWarnings } from '@/lib/observability/config-validator';
 import {
   createTaskState,
   installShutdownHandlers,
+  parsePositiveInt,
   runWithCorrelationContext,
   scheduleEveryMinutes,
   startWorkerHeartbeat,
@@ -23,6 +24,9 @@ import { enqueueHistoricalSweep, enqueueScheduledBridgeScan } from '@/lib/extern
 const WORKER_NAME = 'bridge-worker';
 const DLQ_CHECK_INTERVAL = 15;
 const DLQ_THRESHOLD = 10;
+const BRIDGE_JOB_BACKFILL_ENABLED = process.env.BRIDGE_JOB_BACKFILL_ENABLED === 'true';
+const OPEN_SCAN_INTERVAL_MINUTES = parsePositiveInt(process.env.BRIDGE_OPEN_SCAN_INTERVAL_MINUTES, 5);
+const CLOSED_SCAN_INTERVAL_MINUTES = parsePositiveInt(process.env.BRIDGE_CLOSED_SCAN_INTERVAL_MINUTES, 15);
 
 const scheduledTasks: ReturnType<typeof scheduleEveryMinutes>[] = [];
 const state = createTaskState();
@@ -30,15 +34,22 @@ const state = createTaskState();
 async function checkDLQ(): Promise<void> {
   try {
     const counts = await getDLQCounts();
-    if (counts.total > DLQ_THRESHOLD) {
+    const activeTotal = counts.interactive + counts.ingestion +
+      (BRIDGE_JOB_BACKFILL_ENABLED ? counts.backfill : 0);
+    if (activeTotal > DLQ_THRESHOLD) {
       logger.error('[Bridge] DLQ threshold exceeded', undefined, {
-        total: counts.total,
+        total: activeTotal,
         interactive: counts.interactive,
         ingestion: counts.ingestion,
-        backfill: counts.backfill,
+        backfill: BRIDGE_JOB_BACKFILL_ENABLED ? counts.backfill : 0,
+        disabledBackfill: BRIDGE_JOB_BACKFILL_ENABLED ? 0 : counts.backfill,
       });
-    } else if (counts.total > 0) {
-      logger.warn('[Bridge] DLQ non-empty', counts);
+    } else if (activeTotal > 0) {
+      logger.warn('[Bridge] DLQ non-empty', {
+        ...counts,
+        activeTotal,
+        disabledBackfill: BRIDGE_JOB_BACKFILL_ENABLED ? 0 : counts.backfill,
+      });
     }
   } catch (err) {
     logger.warn('[Bridge] DLQ check failed', { error: String(err) });
@@ -81,8 +92,8 @@ async function startWorker(): Promise<void> {
   await startBridgeWorkers();
 
   scheduledTasks.push(
-    scheduleEveryMinutes(1, () => enqueueScheduledBridgeScan('nossa'), 'bridge-open-scan'),
-    scheduleEveryMinutes(2, () => enqueueScheduledBridgeScan('nossa_closed'), 'bridge-closed-scan', 5),
+    scheduleEveryMinutes(OPEN_SCAN_INTERVAL_MINUTES, () => enqueueScheduledBridgeScan('nossa'), 'bridge-open-scan'),
+    scheduleEveryMinutes(CLOSED_SCAN_INTERVAL_MINUTES, () => enqueueScheduledBridgeScan('nossa_closed'), 'bridge-closed-scan', 5),
     scheduleEveryMinutes(60, () => enqueueHistoricalSweep(), 'bridge-historical-sweep', 30),
     scheduleEveryMinutes(
       DLQ_CHECK_INTERVAL,

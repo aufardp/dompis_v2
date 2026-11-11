@@ -1,16 +1,16 @@
 import { prisma } from '@/app/libs/prisma';
 import { buildStatusCategorySql } from '@/app/libs/services/daily-ticket.service';
 import { nowWib } from '@/lib/timezone';
+import { fromZonedTime } from 'date-fns-tz';
 
 const statusCat = buildStatusCategorySql();
+const WIB_TIMEZONE = 'Asia/Jakarta';
 
 function dateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-const AGG_SELECT = `
-  DATE(reported_date) AS agg_date,
-  COALESCE(workzone, '') AS workzone,
+const AGG_METRICS = `
   COUNT(*) AS total,
   SUM(CASE WHEN ${statusCat} = 'open' THEN 1 ELSE 0 END) AS open,
   SUM(CASE WHEN ${statusCat} = 'assigned' THEN 1 ELSE 0 END) AS assigned,
@@ -26,6 +26,30 @@ const AGG_SELECT = `
   SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('hvc_gold', 'hvc gold', 'gold') THEN 1 ELSE 0 END) AS hvc_gold,
   SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('reguler', 'regular') THEN 1 ELSE 0 END) AS reguler
 `;
+
+function buildSnapshotQuery(hasEndDate: boolean): string {
+  const typedRange = hasEndDate
+    ? 'reported_date_dt >= ? AND reported_date_dt < ?'
+    : 'reported_date_dt >= ?';
+  const legacyRange = hasEndDate
+    ? 'reported_date >= ? AND reported_date < ?'
+    : 'reported_date >= ?';
+
+  return `WITH scoped AS (
+    SELECT DATE(reported_date) AS agg_date, workzone, status, status_update,
+      guarantee_status, ticket_id_gamas, flagging_manja, customer_type
+    FROM ticket
+    WHERE reported_date IS NOT NULL AND reported_date_dt IS NOT NULL AND ${typedRange}
+    UNION ALL
+    SELECT DATE(reported_date) AS agg_date, workzone, status, status_update,
+      guarantee_status, ticket_id_gamas, flagging_manja, customer_type
+    FROM ticket
+    WHERE reported_date IS NOT NULL AND reported_date_dt IS NULL AND ${legacyRange}
+  )
+  SELECT agg_date, COALESCE(workzone, '') AS workzone, ${AGG_METRICS}
+  FROM scoped
+  GROUP BY agg_date, COALESCE(workzone, '')`;
+}
 
 type SnapshotRow = {
   agg_date: string;
@@ -111,7 +135,8 @@ export async function recomputeTodaySnapshot(): Promise<number> {
   const yesterday = dateStr(new Date(now.getTime() - 86400000));
 
   const rows = await prisma.$queryRawUnsafe<RowForInsert[]>(
-    `SELECT ${AGG_SELECT} FROM ticket WHERE reported_date IS NOT NULL AND reported_date >= ? GROUP BY agg_date, workzone`,
+    buildSnapshotQuery(false),
+    fromZonedTime(`${yesterday} 00:00:00`, WIB_TIMEZONE),
     yesterday,
   );
 
@@ -142,7 +167,9 @@ export async function recomputeSnapshotForDateRange(from: string, to: string): P
 
   for (const chunk of weeklyChunks(from, to)) {
     const rows = await prisma.$queryRawUnsafe<RowForInsert[]>(
-      `SELECT ${AGG_SELECT} FROM ticket WHERE reported_date IS NOT NULL AND reported_date >= ? AND reported_date < ? GROUP BY agg_date, workzone`,
+      buildSnapshotQuery(true),
+      fromZonedTime(`${chunk.start} 00:00:00`, WIB_TIMEZONE),
+      fromZonedTime(`${chunk.end} 00:00:00`, WIB_TIMEZONE),
       chunk.start,
       chunk.end,
     );
