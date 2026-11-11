@@ -9,6 +9,8 @@ import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
 import { nowWib } from '@/lib/timezone';
+import { ingestSingleIncident } from '@/lib/ingestion/single-incident-ingestion';
+import { SINGLE_INCIDENT_QUEUE_NAME } from '@/lib/ingestion/single-incident-queue';
 
 // ── Constants ───────────────────────────────────────────────────────
 const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS ?? 10000);
@@ -300,6 +302,7 @@ async function upsertTicketRaw(
 let workerInteractive: Worker | null = null;
 let workerIngestion: Worker | null = null;
 let workerBackfill: Worker | null = null;
+let workerSingleIncident: Worker | null = null;
 
 // ── Error / Completion Hooks ─────────────────────────────────────────
 
@@ -345,6 +348,7 @@ export async function startBridgeWorkers(): Promise<void> {
     interactive: { concurrency: 2, enabled: { search: BRIDGE_JOB_SEARCH_ENABLED, refresh: BRIDGE_JOB_REFRESH_ENABLED } },
     ingestion: { concurrency: 1, enabled: BRIDGE_JOB_INGESTION_ENABLED },
     backfill: { concurrency: 1, enabled: BRIDGE_JOB_BACKFILL_ENABLED },
+    singleIncident: { concurrency: 1, enabled: true },
   });
 
   workerInteractive = createWorker(
@@ -411,10 +415,25 @@ export async function startBridgeWorkers(): Promise<void> {
     1,
   );
 
+  workerSingleIncident = createWorker(
+    SINGLE_INCIDENT_QUEUE_NAME,
+    async (job) => {
+      const result = await ingestSingleIncident(String(job.data.incident));
+      if (!result.success) {
+        const error = new Error(result.message);
+        (error as Error & { retryable?: boolean }).retryable = result.retryable;
+        if (result.retryable) throw error;
+      }
+      return result;
+    },
+    1,
+  );
+
   await Promise.all([
     workerInteractive.waitUntilReady(),
     workerIngestion.waitUntilReady(),
     workerBackfill.waitUntilReady(),
+    workerSingleIncident.waitUntilReady(),
   ]);
 
   logger.info('[Bridge] All workers ready');
@@ -426,6 +445,7 @@ export async function stopBridgeWorkers(): Promise<void> {
     workerInteractive?.close(),
     workerIngestion?.close(),
     workerBackfill?.close(),
+    workerSingleIncident?.close(),
     queueEvents.close(),
   ]);
   logger.info('[Bridge] All workers stopped');

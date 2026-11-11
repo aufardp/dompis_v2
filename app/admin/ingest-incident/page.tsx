@@ -15,19 +15,47 @@ export default function IngestIncidentPage() {
     message: string;
   } | null>(null);
 
+  const readJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Server mengembalikan respons non-JSON (HTTP ${res.status}). Permintaan mungkin masih berjalan; cek lagi statusnya sebelum mencoba ulang.`);
+    }
+  };
+
   const handleIngest = useCallback(async () => {
     if (!incident.trim()) return;
     setLoading(true);
     setResult(null);
 
     try {
+      const normalizedIncident = incident.trim().toUpperCase();
       const res = await fetch('/api/admin/ingest-incident', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ incident }),
       });
-      const json = await res.json();
-      setResult({ success: json.success, message: json.message });
+      const json = await readJson(res);
+      if (!res.ok || !json.success) throw new Error(json.message ?? `Gagal mengantrekan permintaan (HTTP ${res.status})`);
+
+      setResult({ success: true, message: json.message });
+      for (let attempt = 0; attempt < 300; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const statusResponse = await fetch(
+          `/api/admin/ingest-incident/status?incident=${encodeURIComponent(normalizedIncident)}`,
+          { cache: 'no-store' },
+        );
+        const status = await readJson(statusResponse);
+        if (statusResponse.status === 404) continue;
+        if (!statusResponse.ok) throw new Error(status.message ?? `Gagal membaca status (HTTP ${statusResponse.status})`);
+        if (status.terminal) {
+          setResult({ success: status.success, message: status.message });
+          return;
+        }
+        setResult({ success: true, message: status.message });
+      }
+      setResult({ success: true, message: 'Permintaan masih diproses. Anda bisa meninggalkan halaman; status tersimpan di antrean. Klik ulang setelah selesai untuk memeriksa hasil.' });
     } catch (error) {
       setResult({
         success: false,
