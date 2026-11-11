@@ -21,6 +21,13 @@ interface TrendTicketRow {
   reported_date: string | null;
 }
 
+interface TrendAggregateRow {
+  report_day: string;
+  open: bigint;
+  work_hour: bigint;
+  non_work_hour: bigint;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const rateLimited = await enforceApiRateLimit(request, {
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = [
       'dashboard:sqm-daily-trend',
-      'v2',
+      'v3',
       buildScopeKeyWithWorkzones(
         isSuperAdmin,
         decoded.role,
@@ -92,18 +99,27 @@ export async function GET(request: NextRequest) {
         const startWib = startOfDay(subDays(wibNow, TREND_DAYS - 1));
         const startWibStr = format(startWib, 'yyyy-MM-dd 00:00:00');
 
-        // `reported_date_dt` sudah di-backfill (hanya segelintir baris NULL),
-        // jadi bandingkan langsung supaya index reported_date_dt terpakai.
-        // Baris NULL tetap ikut (range IS NULL di index) lalu disaring lagi
-        // oleh dayMap di bawah berdasarkan reported_date aslinya.
-        const tickets = await prisma.$queryRawUnsafe<TrendTicketRow[]>(
+        const dailyAggregates = await prisma.$queryRawUnsafe<TrendAggregateRow[]>(
+          withMaxExecutionTime(`SELECT DATE_FORMAT(t.reported_date_dt, '%Y-%m-%d') AS report_day,
+             COUNT(*) AS open,
+             SUM(CASE WHEN TIME(t.reported_date_dt) >= '08:00:00' AND TIME(t.reported_date_dt) < '17:00:00' THEN 1 ELSE 0 END) AS work_hour,
+             SUM(CASE WHEN TIME(t.reported_date_dt) < '08:00:00' OR TIME(t.reported_date_dt) >= '17:00:00' THEN 1 ELSE 0 END) AS non_work_hour
+           FROM ticket t
+           WHERE (${baseWhere})
+             AND (${bucketWhere})
+             AND t.reported_date_dt >= ?
+           GROUP BY DATE(t.reported_date_dt)`),
+          ...baseParams,
+          startWibStr,
+        );
+
+        const legacyTickets = await prisma.$queryRawUnsafe<TrendTicketRow[]>(
           withMaxExecutionTime(`SELECT t.reported_date
            FROM ticket t
            WHERE (${baseWhere})
              AND (${bucketWhere})
-             AND (t.reported_date_dt >= ? OR t.reported_date_dt IS NULL)`),
+             AND t.reported_date_dt IS NULL`),
           ...baseParams,
-          startWibStr,
         );
 
         const dayMap = new Map<
@@ -116,7 +132,15 @@ export async function GET(request: NextRequest) {
           dayMap.set(key, { date: key, open: 0, workHour: 0, nonWorkHour: 0 });
         }
 
-        for (const t of tickets) {
+        for (const row of dailyAggregates) {
+          const entry = dayMap.get(String(row.report_day).slice(0, 10));
+          if (!entry) continue;
+          entry.open += Number(row.open);
+          entry.workHour += Number(row.work_hour);
+          entry.nonWorkHour += Number(row.non_work_hour);
+        }
+
+        for (const t of legacyTickets) {
           const reported = parseWIBDateInput(t.reported_date);
           if (!reported) continue;
           const dayKey = format(toZonedTime(reported, TIMEZONE), 'yyyy-MM-dd');

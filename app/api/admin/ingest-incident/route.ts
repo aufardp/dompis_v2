@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const response = await ingestSingleIncident(incident);
 
     return NextResponse.json(response, {
-      status: response.success ? 200 : 400,
+      status: response.success ? 200 : response.retryable ? 503 : 400,
     });
   } catch (error: unknown) {
     return NextResponse.json(

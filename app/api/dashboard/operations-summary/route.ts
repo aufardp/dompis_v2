@@ -28,14 +28,15 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_SECONDS = Math.max(DASHBOARD_CACHE_TTL, 90);
 
-// Batched Promise — jalankan maksimal 3 query bersamaan agar tidak exhaust 35 koneksi Prisma
-// (sebelumnya 7 paralel → herd + 3024). Tetap realtime (+200ms).
+// Keep aggregation concurrency bounded under database load.
 async function runInBatches(tasks: Array<() => Promise<any>>, batchSize = 3): Promise<any[]> {
   const results: any[] = [];
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map((fn) => fn()));
-    results.push(...batchResults);
+    const settled = await Promise.allSettled(batch.map((fn) => fn()));
+    const failed = settled.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+    results.push(...settled.map((result) => (result as PromiseFulfilledResult<any>).value));
   }
   return results;
 }
@@ -266,17 +267,6 @@ const carryOverWhere = {
   AND: [
     { pending_dompis: { not: null } },
     { pending_dompis: { not: '' } },
-  ],
-};
-
-const regulerJenis1Where: Prisma.ticketWhereInput = {
-  OR: [
-    { jenis_tiket_1: 'reguler' },
-    { jenis_tiket_1: 'REGULER' },
-    { jenis_tiket_1: 'regular' },
-    { jenis_tiket_1: 'REGULAR' },
-    { jenis_tiket_1: 'reg' },
-    { jenis_tiket_1: 'REG' },
   ],
 };
 
@@ -702,16 +692,11 @@ async function buildOperationsSummaryResult(
   const b2cWhere = withWhere(where, (buildDeptJenisWhere('b2c') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
   const b2bWhere = withWhere(where, (buildDeptJenisWhere('b2b') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
   const netralWhere = withWhere(where, (buildDeptJenisWhere('netral') as Prisma.ticketWhereInput) ?? ({} as Prisma.ticketWhereInput));
-  const b2cRegulerWhere = withWhere(b2cWhere, regulerJenis1Where);
-  const b2bRegulerWhere = withWhere(b2bWhere, regulerJenis1Where);
-
-  const [b2cStats, b2cRegulerStats, b2bGroups, b2bRegulerGroups, netralGroups, serviceAreas, focusRaw] =
+  const [b2cStats, b2bGroups, netralGroups, serviceAreas, focusRaw] =
     (await runInBatches(
       [
         () => buildB2CSummary(b2cWhere),
-        () => buildB2CSummary(b2cRegulerWhere),
         () => buildB2BGroupsOptimized(b2bWhere),
-        () => buildB2BGroupsOptimized(b2bRegulerWhere),
         () => buildB2BGroupsOptimized(netralWhere),
         () => buildServiceAreas(where),
         () => {
@@ -731,11 +716,9 @@ async function buildOperationsSummaryResult(
           >(sql, params);
         },
       ],
-      3,
+      2,
     )) as [
       Awaited<ReturnType<typeof buildB2CSummary>>,
-      Awaited<ReturnType<typeof buildB2CSummary>>,
-      Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
       Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
       Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,
       Awaited<ReturnType<typeof buildServiceAreas>>,

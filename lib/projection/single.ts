@@ -136,7 +136,37 @@ export async function projectSingleTicket(
     syncDate,
   );
 
-  const ticket = await prisma.ticket.upsert(upsert);
+  let projectionUpsert = upsert;
+  let latestExisting = existing;
+  let ticket: Awaited<ReturnType<typeof prisma.ticket.upsert>> | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      ticket = await prisma.ticket.upsert(projectionUpsert);
+      break;
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : '';
+      if (code !== 'P2002' || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      latestExisting = await findExistingTicket(raw.incident);
+      if (latestExisting?.is_manual) return { action: 'skipped', incident: raw.incident };
+      if (latestExisting && shouldSkipProjection(raw, latestExisting, undefined)) {
+        return { action: 'skipped', incident: raw.incident };
+      }
+      if (latestExisting) {
+        projectionUpsert = buildProjectionUpsert(
+          raw,
+          latestExisting,
+          jenisResult.jenis_tiket_1,
+          jenisResult.jenis_tiket_2,
+          now,
+          syncDate,
+        ).upsert;
+      }
+    }
+  }
+  if (!ticket) throw new Error(`Ticket projection did not complete for ${raw.incident}`);
 
   await prisma.ticket_projection_log.upsert({
     where: { ticketRawId: raw.id_ticket },
@@ -145,7 +175,7 @@ export async function projectSingleTicket(
       incident: raw.incident,
       syncBatchId: raw.syncBatchId,
       importedAt: raw.importedAt,
-      action: existing ? 'updated' : 'inserted',
+      action: latestExisting ? 'updated' : 'inserted',
       status: 'success',
       attempts: 1,
       sourceHash: raw.sourceHash,
@@ -153,7 +183,7 @@ export async function projectSingleTicket(
       projectedAt: now,
     },
     update: {
-      action: existing ? 'updated' : 'inserted',
+      action: latestExisting ? 'updated' : 'inserted',
       status: 'success',
       attempts: { increment: 1 },
       sourceHash: raw.sourceHash,
@@ -163,7 +193,7 @@ export async function projectSingleTicket(
   });
 
   return {
-    action: existing ? 'updated' : 'inserted',
+    action: latestExisting ? 'updated' : 'inserted',
     ticketId: ticket.id_ticket,
     incident: raw.incident,
   };
