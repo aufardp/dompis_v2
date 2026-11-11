@@ -1,5 +1,6 @@
 import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 import { processRawRows, type ChunkResult } from '@/lib/ingestion';
+import { withTicketRawWriterLock } from '@/lib/ingestion/raw-writer-lock';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { isRedisReady, redis } from '@/lib/redis';
@@ -658,6 +659,7 @@ async function updateChangedRows(
   changedRows: ExternalStatusRow[],
   batchId: string,
   nossaDown: boolean,
+  signal?: AbortSignal,
 ): Promise<number> {
   if (changedRows.length === 0) return 0;
   if (isRevisionSyncEnabled()) {
@@ -715,7 +717,7 @@ async function updateChangedRows(
         const guardActive = nossaDown ? Prisma.sql`FALSE` : Prisma.sql`TRUE`;
         const ownershipGuard = Prisma.sql`sourceTable IN ('nossa','nossa_closed') AND VALUES(sourceTable) NOT IN ('nossa','nossa_closed') AND ${guardActive}`;
 
-        const updatedCount = await withStatusRefreshRetry(
+        const updatedCount = await withTicketRawWriterLock(() => withStatusRefreshRetry(
           () => prisma.$executeRaw`
           INSERT INTO ticket_raw
             (
@@ -753,7 +755,7 @@ async function updateChangedRows(
             import_batch = VALUES(import_batch)
         `,
           { label: 'updateChangedRows', retries: 2, baseDelayMs: 150, failOpen: false },
-        );
+        ), signal);
         if (updatedCount === null) throw new Error('Status refresh update skipped after retries');
         updated += chunk.length;
         break;
@@ -1171,7 +1173,7 @@ export async function runStatusRefresh(
       }
     }
 
-    result.changed = await updateChangedRows(changedRows, batchId, nossaDown);
+    result.changed = await updateChangedRows(changedRows, batchId, nossaDown, signal);
 
     // Broadcast per-ticket updates (batch limit to avoid flood)
     if (changedRows.length <= 50) {

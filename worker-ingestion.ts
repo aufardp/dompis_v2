@@ -47,7 +47,6 @@ const LOCK_TTL_SECONDS = parsePositiveInt(
   Math.max(300, TIMEOUT_MINUTES * 60),
 );
 const RUN_ON_START = process.env.INGESTION_RUN_ON_START !== 'false';
-const TICKET_RAW_WRITER_LOCK_KEY = 'ticket_raw_writer';
 const SCHEDULE_OFFSET = 0;
 
 const state = createTaskState();
@@ -131,10 +130,7 @@ async function runIngestionTask(): Promise<void> {
       LOCK_TTL_SECONDS,
       async ({ fencingToken }) => {
         if (signal.aborted) return;
-        const writerLockResult = await withTaskLock(
-          TICKET_RAW_WRITER_LOCK_KEY,
-          LOCK_TTL_SECONDS,
-          async () => {
+        {
             const result = await runIngestion(signal);
             const duration = Date.now() - startTime;
 
@@ -165,16 +161,6 @@ async function runIngestionTask(): Promise<void> {
             state.consecutiveErrors = 0;
             state.circuitOpenedAt = null;
             state.lastError = null;
-          },
-          { abortController: controller },
-        );
-        const duration = Date.now() - startTime;
-
-        if (writerLockResult === 'skipped') {
-          logger.info('Ingestion skipped because ticket_raw writer lock is held', {
-            durationMs: duration,
-          });
-          return;
         }
       },
       { abortController: controller },
@@ -217,9 +203,7 @@ async function startWorker(): Promise<void> {
   await connectDB();
   await waitForRedisReady();
   await forceCleanupLock('ingestion');
-  await forceCleanupLock(TICKET_RAW_WRITER_LOCK_KEY);
   await cleanupWorkerLock('ingestion', TIMEOUT_MINUTES * 60_000);
-  await cleanupWorkerLock(TICKET_RAW_WRITER_LOCK_KEY, TIMEOUT_MINUTES * 60_000);
   await testExternalConnection();
   startWorkerHeartbeat(WORKER_NAME, state);
 

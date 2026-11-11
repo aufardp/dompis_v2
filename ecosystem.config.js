@@ -24,9 +24,10 @@ module.exports = {
         // Batas berapa banyak komputasi cache-miss (query dashboard berat)
         // boleh jalan bersamaan lintas-request — sisanya antre, bukan
         // langsung menembak MySQL bareng-bareng (lihat lib/sql/query-gate.ts).
-        // 6 dari 35 slot pool Prisma disisakan untuk query berat; sisanya
-        // tetap bebas untuk trafik ringan (auth, ticket list, dst).
-        CACHE_COMPUTE_CONCURRENCY: '6',
+        // operations-summary menjalankan hingga 3 query sekaligus per
+        // komputasi. Batasi dua komputasi cache-miss agar query dashboard
+        // berat memakai maksimal sekitar 6 koneksi pada satu waktu.
+        CACHE_COMPUTE_CONCURRENCY: '2',
         TICKETS_CACHE_TTL: '10',
         // Sebelumnya '90' — dikombinasikan dengan SWR_STALE_FACTOR default
         // (3x), cache widget dashboard benar-benar hangus setelah cuma 4.5
@@ -82,7 +83,8 @@ module.exports = {
       node_args: '--max-old-space-size=768',
       env: {
         NODE_ENV: 'production',
-        CRON_ENABLED: 'true',
+        OPS_WORKER_ENABLED: 'false',
+        CRON_ENABLED: 'false',
         WORKER_STARTUP_DELAY_MS: '40000',
         NEXT_TELEMETRY_DISABLED: '1',
         REDIS_PORT: '6379',
@@ -98,7 +100,7 @@ module.exports = {
         FINALIZED_RETENTION_DAYS: '90',
         ACTIVE_VIEWER_STALE_MINUTES: '120',
       },
-      autorestart: true,
+      autorestart: false,
       watch: false,
       kill_timeout: 30000,
       error_file: '/var/log/dompis/ops-worker-error.log',
@@ -144,7 +146,7 @@ module.exports = {
         INGESTION_TIMEOUT_MINUTES: '30',
         INGESTION_CHUNK_SIZE: '100',
         INGESTION_BATCH_SIZE: '100',
-        INGESTION_WRITE_CHUNK_SIZE: '100',
+        INGESTION_WRITE_CHUNK_SIZE: '25',
         // 1 = tanpa paralelisme antar-tabel pada jalur tulis `ticket_raw`
         // (paralel = self-deadlock InnoDB pada 8 secondary index).
         INGESTION_CONCURRENCY: '1',
@@ -232,7 +234,7 @@ INGESTION_CURSOR_STALE_HOURS: '24',
         PRISMA_POOL_TIMEOUT: '30',
         INGESTION_CHUNK_SIZE: '100',
         INGESTION_BATCH_SIZE: '100',
-        INGESTION_WRITE_CHUNK_SIZE: '100',
+        INGESTION_WRITE_CHUNK_SIZE: '25',
         INGESTION_CONCURRENCY: '1',
         QOSMIC_BRIDGE_ENABLED: 'true',
         QOSMIC_BRIDGE_BASE_URL: 'https://qosmic.solusee.id/api/metabase-bridge',
@@ -243,7 +245,7 @@ INGESTION_CURSOR_STALE_HOURS: '24',
         BRIDGE_JOB_SEARCH_ENABLED: 'true',
         BRIDGE_JOB_REFRESH_ENABLED: 'false',
         BRIDGE_JOB_INGESTION_ENABLED: 'true',
-        BRIDGE_JOB_BACKFILL_ENABLED: 'true',
+        BRIDGE_JOB_BACKFILL_ENABLED: 'false',
         BRIDGE_WEEKLY_BACKFILL_WINDOW_DAYS: '30',
         NOSSA_CLOSED_INCREMENTAL_DAYS: '2',
         QOSMIC_BRIDGE_HEALTH_TTL_MS: '900000',

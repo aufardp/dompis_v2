@@ -23,9 +23,10 @@ import {
 import { parseWIBDateInput } from '@/app/utils/datetime';
 import { isRevisionSyncEnabled } from '@/lib/ingestion/sync-state';
 import { processRawRows, type ChunkResult } from '@/lib/ingestion';
+import { withTicketRawWriterLock } from '@/lib/ingestion/raw-writer-lock';
 import { logger } from '@/lib/observability/logger';
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 25;
 const MAX_ROWS = 10000;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const SOURCE_TABLE_NAME = 'import_tiket';
@@ -302,6 +303,7 @@ export async function POST(req: Request) {
         continue;
       }
 
+      await withTicketRawWriterLock(async () => {
       const existingIncidents = await prisma.ticket_raw.findMany({
         where: { incident: { in: parsedRows.map((r) => r.incident) } },
         take: 10000,
@@ -389,6 +391,7 @@ export async function POST(req: Request) {
         );
         updated += updateOps.length;
       }
+      });
     }
 
     try {

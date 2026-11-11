@@ -646,6 +646,11 @@ async function runReconciliation(): Promise<void> {
 }
 
 async function startWorker() {
+  if (process.env.OPS_WORKER_ENABLED !== 'true') {
+    logger.info('Ops worker disabled', { component: 'worker' });
+    return;
+  }
+
   const startupDelay = parseInt(process.env.WORKER_STARTUP_DELAY_MS ?? '60000', 10);
   if (startupDelay > 0) {
     logger.info(`Worker startup delay ${startupDelay}ms`, { component: 'worker' });

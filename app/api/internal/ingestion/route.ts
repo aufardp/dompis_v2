@@ -20,21 +20,7 @@ async function runLockedIngestionWithProjection() {
   }
 
   try {
-    const writerLock = await acquireLock('ticket_raw_writer', 300);
-    if (!writerLock.acquired) {
-      return {
-        locked: true,
-        result: null,
-        projection: null,
-      };
-    }
-
-    let result;
-    try {
-      result = await runIngestion();
-    } finally {
-      await releaseLock('ticket_raw_writer', writerLock.ownerId);
-    }
+    const result = await runIngestion();
 
     const projectionLock = await acquireLock('projection', 300);
     if (!projectionLock.acquired) {

@@ -45,11 +45,6 @@ const LOCK_TTL_SECONDS = parsePositiveInt(
   Math.max(180, TIMEOUT_MINUTES * 60),
 );
 const RUN_ON_START = process.env.STATUS_REFRESH_RUN_ON_START !== 'false';
-const TICKET_RAW_WRITER_LOCK_KEY = 'ticket_raw_writer';
-const TICKET_RAW_WRITER_LOCK_TTL = parsePositiveInt(
-  process.env.STATUS_REFRESH_TICKET_RAW_WRITER_LOCK_TTL,
-  30,
-);
 const SCHEDULE_OFFSET = 15;
 
 const state = createTaskState();
@@ -104,10 +99,7 @@ async function runStatusRefreshTask(): Promise<void> {
       async ({ fencingToken }) => {
         if (signal.aborted) return;
 
-        const writerLockResult = await withTaskLock(
-          TICKET_RAW_WRITER_LOCK_KEY,
-          TICKET_RAW_WRITER_LOCK_TTL,
-          async () => {
+        {
             const result = await runStatusRefresh(signal);
             const duration = Date.now() - startTime;
 
@@ -127,12 +119,6 @@ async function runStatusRefreshTask(): Promise<void> {
             state.consecutiveErrors = 0;
             state.circuitOpenedAt = null;
             state.lastError = null;
-          },
-          { abortController: controller },
-        );
-
-        if (writerLockResult === 'skipped') {
-          logger.info('Status refresh skipped because ticket_raw writer lock is held');
         }
       },
       { abortController: controller },
@@ -174,9 +160,7 @@ async function startWorker(): Promise<void> {
   await connectDB();
   await waitForRedisReady();
   await forceCleanupLock('status_refresh');
-  await forceCleanupLock(TICKET_RAW_WRITER_LOCK_KEY);
   await cleanupWorkerLock('status_refresh', TIMEOUT_MINUTES * 60_000);
-  await cleanupWorkerLock(TICKET_RAW_WRITER_LOCK_KEY, TICKET_RAW_WRITER_LOCK_TTL * 1000);
   await testExternalConnection();
   startWorkerHeartbeat(WORKER_NAME, state);
 

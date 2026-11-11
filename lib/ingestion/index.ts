@@ -28,6 +28,7 @@ import { isRowDataError, quarantineRejectedRow } from './row-errors';
 import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
+import { withTicketRawWriterLock } from '@/lib/ingestion/raw-writer-lock';
 import { isRedisReady, redis } from '@/lib/redis';
 import {
   incrIngestionQuarantine,
@@ -945,7 +946,7 @@ async function processBatch(
     inserted,
     updated,
     skipped,
-  } = await prisma.$transaction(async (tx) => {
+  } = await withTicketRawWriterLock((writerSignal) => prisma.$transaction(async (tx) => {
     const syncStates = await lockTicketSyncState(tx, identities);
     const existingMap = await fetchExistingIdentities(tx, identities);
     const existingExt = isRevisionSyncEnabled() && identities.length
@@ -1047,7 +1048,7 @@ async function processBatch(
     const sortedChangedRows = sortTicketRawRowsByIncident(changedRows);
     const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
-    assertNotAborted(signal);
+    assertNotAborted(writerSignal);
     await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
     await bulkUpsertTicketRawExt(tx, extRows);
     await markProjectionPending(tx, sortedChangedRows.map(row => String(row.incident)));
@@ -1108,7 +1109,7 @@ async function processBatch(
     isolationLevel: 'ReadCommitted',
     maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
     timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
-  });
+  }), signal);
 
   if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 
@@ -1945,7 +1946,7 @@ export async function retryQuarantinedItems(options?: {
         identity.primaryIdentity,
       );
 
-      await prisma.$transaction(async (tx) => {
+      await withTicketRawWriterLock(() => prisma.$transaction(async (tx) => {
         await tx.ticket_raw.upsert({
           where: { incident: identity.primaryIdentity ?? undefined },
           create: data as Prisma.ticket_rawUncheckedCreateInput,
@@ -1965,7 +1966,7 @@ export async function retryQuarantinedItems(options?: {
         await tx.ingestion_quarantine.delete({ where: { id: item.id } });
       }, {
         timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
-      });
+      }));
       await decrIngestionQuarantine(1);
       await redis.del(retryKey).catch(() => {});
       result.recovered++;
