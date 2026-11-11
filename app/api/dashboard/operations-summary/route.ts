@@ -28,8 +28,9 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_SECONDS = Math.max(DASHBOARD_CACHE_TTL, 90);
 
-// Keep aggregation concurrency bounded under database load.
-async function runInBatches(tasks: Array<() => Promise<any>>, batchSize = 3): Promise<any[]> {
+// Dashboard aggregates compete with worker writes on the same MySQL instance.
+// Run them serially so one cache miss cannot launch several full-table scans at once.
+async function runInBatches(tasks: Array<() => Promise<any>>, batchSize = 1): Promise<any[]> {
   const results: any[] = [];
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize);
@@ -716,7 +717,7 @@ async function buildOperationsSummaryResult(
           >(sql, params);
         },
       ],
-      2,
+      1,
     )) as [
       Awaited<ReturnType<typeof buildB2CSummary>>,
       Awaited<ReturnType<typeof buildB2BGroupsOptimized>>,

@@ -118,8 +118,20 @@ export async function GET(request: NextRequest) {
            FROM ticket t
            WHERE (${baseWhere})
              AND (${bucketWhere})
-             AND t.reported_date_dt IS NULL`),
+             AND t.reported_date_dt IS NULL
+             AND (
+               (t.reported_date REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}' AND t.reported_date >= ?)
+               OR STR_TO_DATE(SUBSTRING_INDEX(t.reported_date, ' ', 1), '%d/%m/%Y') >= ?
+               OR STR_TO_DATE(SUBSTRING_INDEX(t.reported_date, ' ', 1), '%d/%m/%y') >= ?
+               OR STR_TO_DATE(SUBSTRING_INDEX(t.reported_date, ' ', 1), '%m/%d/%Y') >= ?
+               OR STR_TO_DATE(SUBSTRING_INDEX(t.reported_date, ' ', 1), '%m/%d/%y') >= ?
+             )`),
           ...baseParams,
+          startWibStr,
+          startWibStr,
+          startWibStr,
+          startWibStr,
+          startWibStr,
         );
 
         const dayMap = new Map<

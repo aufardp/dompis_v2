@@ -425,6 +425,11 @@ function isTransientProjectionError(error: unknown): boolean {
   return TRANSIENT_ERROR_PATTERNS.some((pattern) => text.includes(pattern));
 }
 
+function isStatementExecutionTimeout(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /timed out during query execution|maximum statement execution time exceeded/i.test(text);
+}
+
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -445,7 +450,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 
 async function withRetry<T>(
   fn: () => Promise<T>,
-  options: { retryMax: number; signal?: AbortSignal; onRetry: () => void },
+  options: { retryMax: number; signal?: AbortSignal; onRetry: () => void; skipRetryOn?: (error: unknown) => boolean },
 ): Promise<{ value: T; attempts: number }> {
   let attempts = 0;
   let lastError: unknown;
@@ -455,7 +460,7 @@ async function withRetry<T>(
       return { value: await fn(), attempts: attempts + 1 };
     } catch (error) {
       lastError = error;
-      if (attempts >= options.retryMax || !isTransientProjectionError(error)) {
+      if (attempts >= options.retryMax || !isTransientProjectionError(error) || options.skipRetryOn?.(error)) {
         throw error;
       }
       attempts++;
@@ -1202,6 +1207,55 @@ async function projectSubBatchAtomically(
   });
 }
 
+async function commitProjectionChunk(
+  items: ProjectionItem[],
+  result: ProjectionResult,
+  options: {
+    attempts: number;
+    syncBatchId: string | null;
+    preserveCheckpointCursor: boolean;
+    preservedCheckpoint: ProjectionCheckpoint;
+    retryMax: number;
+    onCommitted?: (checkpoint: ProjectionResult['checkpoint']) => void;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  if (items.length === 0) return;
+  const lastRecord = items[items.length - 1]!.raw;
+  let attempts = 0;
+  try {
+    await withRetry(
+      () => projectSubBatchAtomically(items, lastRecord, result, {
+        attempts: options.attempts + attempts,
+        syncBatchId: options.syncBatchId,
+        preserveCheckpointCursor: options.preserveCheckpointCursor,
+        preservedCheckpoint: options.preservedCheckpoint,
+        signal: options.signal,
+      }),
+      {
+        retryMax: options.retryMax,
+        signal: options.signal,
+        skipRetryOn: (error) => items.length > 1 && isStatementExecutionTimeout(error),
+        onRetry: () => {
+          attempts++;
+          result.retried += items.length;
+        },
+      },
+    );
+    options.onCommitted?.(result.checkpoint);
+  } catch (error) {
+    if (!isStatementExecutionTimeout(error) || items.length === 1) throw error;
+    const middle = Math.floor(items.length / 2);
+    logger.warn('[Projection] Splitting write chunk after database statement timeout', {
+      failedChunkSize: items.length,
+      nextChunkSize: middle,
+      checkpoint: `${lastRecord.importedAt?.toISOString() ?? '-'}:${lastRecord.id_ticket}`,
+    });
+    await commitProjectionChunk(items.slice(0, middle), result, options);
+    await commitProjectionChunk(items.slice(middle), result, options);
+  }
+}
+
 async function projectRecords(
   signal?: AbortSignal,
   options: ProjectionOptions = {},
@@ -1313,7 +1367,6 @@ async function projectRecords(
     for (const itemChunk of itemChunks) {
       const chunkLastRecord = itemChunk[itemChunk.length - 1]!.raw;
       const chunkStartMs = Date.now();
-      let batchRetries = 0;
       const nextResult: ProjectionResult = {
           ...result,
           processed: result.processed + itemChunk.length,
@@ -1338,25 +1391,17 @@ async function projectRecords(
               .length,
         };
 
-        await withRetry(
-          () =>
-            projectSubBatchAtomically(itemChunk, chunkLastRecord, nextResult, {
-              attempts: batchRetries + 1,
-              syncBatchId: options.syncBatchId ?? chunkLastRecord.syncBatchId,
-              preserveCheckpointCursor:
-                options.preserveCheckpointCursor === true,
-              preservedCheckpoint: checkpoint,
-              signal,
-            }),
-          {
-            retryMax,
-            signal,
-            onRetry: () => {
-              batchRetries++;
-              nextResult.retried += itemChunk.length;
-            },
+        await commitProjectionChunk(itemChunk, nextResult, {
+          attempts: 1,
+          syncBatchId: options.syncBatchId ?? chunkLastRecord.syncBatchId,
+          preserveCheckpointCursor: options.preserveCheckpointCursor === true,
+          preservedCheckpoint: checkpoint,
+          retryMax,
+          onCommitted: (committedCheckpoint) => {
+            result.checkpoint = committedCheckpoint;
           },
-        );
+          signal,
+        });
 
         const nowMs = Date.now();
         if (nowMs - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {

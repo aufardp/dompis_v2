@@ -353,6 +353,11 @@ function isTransientError(error: unknown): boolean {
   return TRANSIENT_ERROR_PATTERNS.some((pattern) => text.includes(pattern));
 }
 
+function isStatementExecutionTimeout(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /timed out during query execution|maximum statement execution time exceeded/i.test(text);
+}
+
 function classifyTransientError(error: unknown): string {
   const text = [
     error instanceof Error ? error.message : String(error),
@@ -404,6 +409,7 @@ async function withRetry<T>(
       error: unknown;
       errorType: string;
     }) => void;
+    skipRetryOn?: (error: unknown) => boolean;
   },
 ): Promise<T> {
   let attempt = 0;
@@ -412,7 +418,7 @@ async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      if (attempt >= options.retryMax || !isTransientError(error)) throw error;
+      if (attempt >= options.retryMax || !isTransientError(error) || options.skipRetryOn?.(error)) throw error;
       attempt++;
       const errorType = classifyTransientError(error);
       const isDeadlock = errorType === 'deadlock' || String(error).includes('1213');
@@ -1221,6 +1227,9 @@ export async function processRawRows(
             chunkStartOffset: offset,
             chunkSize: normalizedWindow.length,
           },
+          // A timed-out multi-row statement is retried below as smaller,
+          // idempotent upsert chunks instead of repeating the same expensive SQL.
+          skipRetryOn: (error) => normalizedWindow.length > 1 && isStatementExecutionTimeout(error),
           onRetry: () => {
             adaptiveWriteChunkSize = Math.max(
               MIN_WRITE_CHUNK_SIZE,
@@ -1231,11 +1240,18 @@ export async function processRawRows(
         },
       );
     } catch (error) {
-      if (!isRevisionSyncEnabled() || !isRowDataError(error)) throw error;
-      if (rawWindow.length > 1) {
+      if (rawWindow.length > 1 && (isStatementExecutionTimeout(error) || (isRevisionSyncEnabled() && isRowDataError(error)))) {
         const middle = Math.floor(rawWindow.length / 2);
+        adaptiveWriteChunkSize = Math.max(1, Math.min(adaptiveWriteChunkSize, middle));
+        logger.warn('Splitting ingestion write chunk after a recoverable batch failure', {
+          component: 'ingestion', tableName, batchId,
+          chunkStartOffset: offset, failedChunkSize: rawWindow.length,
+          nextChunkSize: middle,
+        });
         await processRawRows(rawWindow.slice(0, middle), tableName, batchId, cursor, result, signal);
         await processRawRows(rawWindow.slice(middle), tableName, batchId, cursor, result, signal);
+      } else if (!isRevisionSyncEnabled() || !isRowDataError(error)) {
+        throw error;
       } else {
         await quarantineRejectedRow(rawWindow[0]!, tableName, batchId, error);
         result.quarantined++;
