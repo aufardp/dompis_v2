@@ -203,7 +203,7 @@ export async function GET(request: Request) {
           }
         },
         async cancel() {
-          await iterator.return?.();
+          await iterator.return?.(undefined);
         },
       });
 

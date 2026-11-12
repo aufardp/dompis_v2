@@ -3,7 +3,10 @@ const { test, beforeEach, after } = require('node:test');
 const Redis = require('ioredis');
 const { createHarness } = require('./helpers/sync-test-harness.cjs');
 
-const redis = new Redis({ host: '127.0.0.1', port: 13379, maxRetriesPerRequest: 1, retryStrategy: null });
+const redisUrl = process.env.SYNC_TEST_REDIS_URL || process.env.WRITER_TEST_REDIS_URL || 'redis://127.0.0.1:13379';
+const parsed = new URL(redisUrl);
+assert.ok(['127.0.0.1', 'localhost'].includes(parsed.hostname) && ['13379', '16379'].includes(parsed.port), 'Rate-limit tests require an isolated local Redis');
+const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1, retryStrategy: null });
 const keys = ['ratelimit:qosmic-bridge:all', 'ratelimit:qosmic-bridge:global', 'ratelimit:qosmic-bridge:backfill'];
 const { takeBridgeRateSlot } = createHarness({
   '@/lib/redis': { redis, isRedisReady: () => true },

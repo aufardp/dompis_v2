@@ -368,6 +368,9 @@ function classifyTransientError(error: unknown): string {
     .join(' ')
     .toLowerCase();
 
+  if (text.includes('ticket_raw_writer_lock_timeout')) return 'writer_lock_timeout';
+  if (isStatementExecutionTimeout(error)) return 'query_timeout';
+  if (text.includes('p2028') || text.includes('transaction already closed')) return 'transaction_timeout';
   if (text.includes('deadlock') || text.includes('1213')) return 'deadlock';
   if (text.includes('lock wait timeout')) return 'lock_wait_timeout';
   if (text.includes('p2024') || text.includes('pool timeout')) return 'pool_timeout';
@@ -415,6 +418,7 @@ async function withRetry<T>(
   let attempt = 0;
   while (attempt <= options.retryMax) {
     assertNotAborted(options.signal);
+    const operationStarted = Date.now();
     try {
       return await fn();
     } catch (error) {
@@ -432,6 +436,14 @@ async function withRetry<T>(
         retryMax: options.retryMax,
         delayMs,
         errorType,
+        errorCode: typeof error === 'object' && error && 'code' in error ? String(error.code) : undefined,
+        errorMessage: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
+        operationDurationMs: Date.now() - operationStarted,
+        ...(typeof error === 'object' && error && 'waitMs' in error ? {
+          waitMs: error.waitMs,
+          blockingOwner: 'blockingOwner' in error ? error.blockingOwner : undefined,
+          queuePosition: 'queuePosition' in error ? error.queuePosition : undefined,
+        } : {}),
         ...(options.context ?? {}),
       });
       options.onRetry?.({ attempt, delayMs, error, errorType });
@@ -1025,7 +1037,7 @@ async function processBatch(
         if (isBridgeSource) extRows.push(ext);
         updated++;
       } else {
-        heartbeatRows.push(data as TicketRawBulkRow);
+        heartbeatRows.push({ incident: item.identity, lastSeenAt: now });
         if (isRevisionSyncEnabled() && existing.sourceTable !== item.row._sourceTable) {
           resourceMoves.push({ incident: item.identity, resource: item.row._sourceTable });
         }
@@ -1071,12 +1083,10 @@ async function processBatch(
     // A matching hash is not a business change, but it proves the incident is
     // still present in the latest scan. Keep that freshness separately from
     // importedAt/syncVersion so projection is not needlessly re-run.
-    if (isRevisionSyncEnabled() && sortedHeartbeatRows.length) {
+    if (sortedHeartbeatRows.length) {
       await tx.$executeRaw`UPDATE ticket_raw SET lastSeenAt = ${now}
         WHERE incident IN (${Prisma.join(sortedHeartbeatRows.map(row => String(row.incident)))})
           AND (lastSeenAt IS NULL OR lastSeenAt < ${new Date(now.getTime() - 60000)})`;
-    } else {
-      await bulkUpsertTicketRaw(tx, sortedHeartbeatRows, ['incident', 'lastSeenAt'], nossaDown);
     }
     if (quarantined.length > 0) {
       const hashes = quarantined.map(row => row.sourceHash).filter((hash): hash is string => Boolean(hash));

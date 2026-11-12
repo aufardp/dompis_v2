@@ -57,14 +57,15 @@
     "dlq:diagnose": "tsx scripts/diagnose-dlq.ts",
     "bridge:dlq-retry": "tsx scripts/bridge-dlq-retry.ts",
     "logs:diagnose": "tsx scripts/diagnose-log-tables.ts",
+    "diagnose:sync-performance": "tsx scripts/diagnose-sync-performance.ts",
     "projection:reset-failed": "tsx scripts/projection-reset-failed.ts",
     "agg:rebuild": "tsx scripts/rebuild-aggregation.ts",
     "bridge:ingest": "tsx scripts/qosmic-bridge-ingest.ts",
     "bridge:sync-local": "tsx scripts/bridge-sync-local.ts",
     "backup:db": "tsx scripts/backup-db.ts",
     "lint": "eslint .",
-    "test:sync": "node --test scripts/test-ingestion-projection-reliability.cjs scripts/test-nossa-open-coverage.cjs",
-    "test:sync:integration": "node --test scripts/test-ingestion-projection-integration.cjs scripts/test-bridge-rate-limit-integration.cjs",
+    "test:sync": "node --test scripts/test-ingestion-projection-reliability.cjs scripts/test-nossa-open-coverage.cjs scripts/test-worker-contention.cjs",
+    "test:sync:integration": "node --test scripts/test-ingestion-projection-integration.cjs scripts/test-bridge-rate-limit-integration.cjs scripts/test-worker-contention-redis.cjs",
     "benchmark:sync": "node scripts/benchmark-ticket-sync.cjs"
   },
   "dependencies": {

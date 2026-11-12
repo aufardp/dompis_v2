@@ -54,22 +54,25 @@ const FULL_SCAN_CRON = process.env.PROJECTION_FULL_SCAN_CRON || '0 2 * * *';
 const FULL_SCAN_ENABLED = process.env.PROJECTION_FULL_SCAN_ENABLED !== 'false';
 const RUN_ON_START = process.env.PROJECTION_RUN_ON_START !== 'false';
 const SCHEDULE_OFFSET = 30;
+const RUN_BUDGET_MS = parsePositiveInt(process.env.PROJECTION_RUN_BUDGET_MS, 30_000);
 
 const state = createTaskState();
 const scheduledTasks: ScheduledTaskHandle[] = [];
 let projectionRequestSubscriber: ReturnType<typeof redis.duplicate> | null = null;
 let pendingProjectionRun = false;
 let projectionPumpActive = false;
+const freshBatches = new Map<string, { importedAt: Date; ticketRawId: string } | undefined>();
 
-async function collectPendingProjectionRequestIds(): Promise<bigint[]> {
+async function collectPendingProjectionRequests(): Promise<Array<{ id: bigint; syncBatchId: string | null }>> {
   try {
     const pending = await prisma.projection_request.findMany({
       where: { processedAt: null },
       orderBy: { id: 'asc' },
       take: 100,
+      select: { id: true, syncBatchId: true },
     });
     if (pending.length === 0) return [];
-    return pending.map((r) => r.id);
+    return pending;
   } catch (error) {
     logger.warn('Failed to inspect projection requests:', { error: String(error) });
     return [];
@@ -107,6 +110,7 @@ async function drainProjectionQueue(source: string): Promise<void> {
         source,
       });
       await runProjectionTask('incremental');
+      if (pendingProjectionRun) await new Promise(resolve => setTimeout(resolve, 250));
     }
   } finally {
     projectionPumpActive = false;
@@ -168,17 +172,49 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
   const startTime = Date.now();
   const { controller, signal, cancel } = withCancellableTimeout(TIMEOUT_MINUTES * 60_000);
   state.abortController = controller;
-  const pendingProjectionRequestIds = await collectPendingProjectionRequestIds();
+  const requests = await collectPendingProjectionRequests();
 
   try {
     const lockResult = await withProjectionLock(
       async ({ fencingToken }) => {
         if (signal.aborted) return;
 
+        if (!isRevisionSyncEnabled() && mode === 'incremental') {
+          for (const request of requests) {
+            if (request.syncBatchId && !freshBatches.has(request.syncBatchId) && freshBatches.size < 100) {
+              freshBatches.set(request.syncBatchId, undefined);
+            }
+          }
+          const batchId = freshBatches.keys().next().value;
+          if (batchId) {
+            try {
+              const freshResult = await runProjection(signal, {
+                mode: 'batch', syncBatchId: batchId, preserveCheckpointCursor: true,
+                skipAutoRepair: true, maxDurationMs: RUN_BUDGET_MS, after: freshBatches.get(batchId),
+              });
+              freshBatches.delete(batchId);
+              if (freshResult.continuation) freshBatches.set(batchId, freshResult.continuation);
+              else if (freshResult.failed === 0) {
+                await acknowledgeProjectionRequests(requests.filter(request => request.syncBatchId === batchId).map(request => request.id));
+              }
+              logger.info('Projection fresh batch slice complete', {
+                batchId, processed: freshResult.processed, failed: freshResult.failed,
+                hasMore: Boolean(freshResult.continuation),
+              });
+            } catch (error) {
+              if (signal.aborted) throw error;
+              freshBatches.delete(batchId);
+              logger.warn('Projection fresh batch deferred to a later run', {
+                batchId, error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+
         const result =
           mode === 'full'
             ? await runFullScanProjection(signal)
-            : await runProjection(signal, { mode: 'incremental' });
+            : await runProjection(signal, { mode: 'incremental', maxDurationMs: RUN_BUDGET_MS });
         const duration = Date.now() - startTime;
 
         if (signal.aborted) {
@@ -198,9 +234,16 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           protected: result.protected,
           durationMs: duration,
           checkpoint: result.checkpoint,
+          hasMore: Boolean(result.continuation),
           time: nowWIB(),
         });
-        await acknowledgeProjectionRequests(pendingProjectionRequestIds);
+        if (!result.continuation && result.failed === 0) {
+          await acknowledgeProjectionRequests(requests
+            .filter(request => isRevisionSyncEnabled() || !request.syncBatchId)
+            .map(request => request.id));
+          if (isRevisionSyncEnabled()) freshBatches.clear();
+        }
+        if (result.continuation || freshBatches.size > 0) pendingProjectionRun = true;
         await recordRun(WORKER_NAME, duration, result.failed === 0, {
           processed: result.processed,
         });
@@ -252,7 +295,15 @@ async function subscribeProjectionRequests(): Promise<void> {
 
   subscriber.on('message', (channel, message) => {
     if (channel !== PROJECTION_REQUEST_CHANNEL) return;
-    logger.info('Projection requested by ingestion signal', { message });
+    let syncBatchId: string | undefined;
+    try {
+      const payload = JSON.parse(message);
+      if (typeof payload?.syncBatchId === 'string' && payload.syncBatchId.length <= 100) {
+        syncBatchId = payload.syncBatchId;
+        if (syncBatchId && !freshBatches.has(syncBatchId) && freshBatches.size < 100) freshBatches.set(syncBatchId, undefined);
+      }
+    } catch {}
+    logger.info('Projection requested by ingestion signal', { syncBatchId });
     runWithCorrelationContext(WORKER_NAME, () =>
       queueIncrementalProjectionRun('pubsub'),
     );
@@ -269,6 +320,7 @@ async function startWorker(): Promise<void> {
   logger.info('Projection worker starting', {
     interval: `${INTERVAL_MINUTES}m`,
     timeout: `${TIMEOUT_MINUTES}m`,
+    runBudgetMs: RUN_BUDGET_MS,
     lockTtl: `${LOCK_TTL_SECONDS}s`,
     fullScan: FULL_SCAN_ENABLED ? FULL_SCAN_CRON : 'disabled',
     offset: `${SCHEDULE_OFFSET}s`,

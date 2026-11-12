@@ -11,6 +11,7 @@
 !.yarn/versions
 *.md
 !README.md
+!docs/sync-worker-contention.md
 
 # testing
 /coverage

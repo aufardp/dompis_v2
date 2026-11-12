@@ -14,6 +14,7 @@ function createHarness(overrides = {}, expose = {}, sources = {}) {
     '@/lib/sync-metrics/metrics': new Proxy({}, { get: () => async () => {} }),
     '@/lib/observability/gauge-counters': new Proxy({}, { get: () => async () => {} }),
     '@/lib/workers/task-runner': { setMySQLSessionTimeout: async () => {} },
+    '@/lib/ingestion/raw-writer-lock': { withTicketRawWriterLock: fn => fn(new AbortController().signal) },
     '@/lib/external-db/qosmic-bridge/client': {
       isQosmicBridgeConfigured: () => true,
       isQosmicBridgeDown: async () => false,

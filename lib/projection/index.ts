@@ -68,6 +68,7 @@ const RECONCILIATION_INTERVAL = parsePositiveIntEnv(
 let reconciliationCounter = 0;
 let lastRevisionReconcileAt = 0;
 let lastValidationCleanupAt = 0;
+let lastFailedRetryAt = 0;
 let cachedCountData: {
   activeRaw: number;
   projectedRaw: number;
@@ -199,6 +200,7 @@ export interface ProjectionResult {
   duration?: number;
   pending?: number;
   oldestPendingSince?: Date | null;
+  continuation?: { importedAt: Date; ticketRawId: string };
   errors: Array<{ incident: string; error: string }>;
 }
 
@@ -212,6 +214,8 @@ export interface ProjectionOptions {
   mode?: 'incremental' | 'full' | 'batch';
   preserveCheckpointCursor?: boolean;
   skipAutoRepair?: boolean;
+  maxDurationMs?: number;
+  after?: { importedAt: Date; ticketRawId: string };
 }
 
 interface ProjectionCheckpoint {
@@ -1260,6 +1264,7 @@ async function projectRecords(
   signal?: AbortSignal,
   options: ProjectionOptions = {},
 ): Promise<ProjectionResult> {
+  const started = Date.now();
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const writeChunkSize = Math.max(
     1,
@@ -1268,6 +1273,10 @@ async function projectRecords(
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const retryMax = options.retryMax ?? DEFAULT_RETRY_MAX;
   let metadataRetries = 0;
+  if (!options.preserveCheckpointCursor && Date.now() - lastFailedRetryAt >= 60_000) {
+    await retryFailedProjectionItems(retryMax);
+    lastFailedRetryAt = Date.now();
+  }
   const checkpoint = (
     await withRetry(() => getOrCreateCheckpoint(), {
       retryMax,
@@ -1300,8 +1309,6 @@ async function projectRecords(
     data: { status: 'running', startedAt: nowWib(), lastError: null },
   });
 
-  await retryFailedProjectionItems(retryMax);
-
   await setMySQLSessionTimeout(30_000);
 
   try {
@@ -1323,8 +1330,14 @@ async function projectRecords(
   }
 
   let hasMore = true;
-  let activeCheckpoint: ProjectionCheckpoint =
-    options.syncBatchId && checkpoint.lastSyncBatchId !== options.syncBatchId
+  let activeCheckpoint: ProjectionCheckpoint = options.after
+    ? {
+        lastProjectedImportedAt: options.after.importedAt,
+        lastProjectedTicketRawId: options.after.ticketRawId,
+        lastSyncBatchId: checkpoint.lastSyncBatchId,
+        neverProjectedCount: 0,
+      }
+    : options.syncBatchId && checkpoint.lastSyncBatchId !== options.syncBatchId
       ? {
           lastProjectedImportedAt: null,
           lastProjectedTicketRawId: null,
@@ -1340,7 +1353,7 @@ async function projectRecords(
           }
         : checkpoint;
 
-  logger.info('[Projection] Starting:', { mode: options.mode ?? 'incremental', batchSize, writeChunkSize, cursor: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}` });
+  logger.info('[Projection] Starting:', { mode: options.mode ?? 'incremental', batchSize, writeChunkSize, syncBatchId: options.syncBatchId, preserveCheckpointCursor: options.preserveCheckpointCursor === true, cursor: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}` });
 
   while (hasMore) {
     assertNotAborted(signal);
@@ -1511,11 +1524,20 @@ async function projectRecords(
     hasMore = rawRecords.length === batchSize;
     logger.info('[Projection] Batch result:', { checkpoint: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}`, processed: result.processed, inserted: result.inserted, updated: result.updated, skipped: result.skipped, failed: result.failed });
     assertNotAborted(signal);
+    if (hasMore && options.maxDurationMs && Date.now() - started >= options.maxDurationMs) {
+      result.continuation = {
+        importedAt: lastRecord.importedAt!,
+        ticketRawId: lastRecord.id_ticket,
+      };
+      break;
+    }
   }
 
   await prisma.ticket_projection_checkpoint.update({
     where: { name: CHECKPOINT_NAME },
-    data: { status: 'success', neverProjectedCount: 0, completedAt: nowWib() },
+    data: result.continuation
+      ? { status: 'running', heartbeatAt: nowWib() }
+      : { status: 'success', neverProjectedCount: 0, completedAt: nowWib() },
   });
 
   broadcastTicketInvalidate('projection');
@@ -1660,6 +1682,13 @@ export async function runProjection(
         ? recordProjectionMetric('pipelineLagMs', endToEndLagMs)
         : Promise.resolve(),
     ]);
+    if (result.continuation) {
+      await setProjectionStatus('running', {
+        duration: result.duration, processed: result.processed, failed: result.failed,
+        rowsPerSecond, lagMs: endToEndLagMs ?? undefined,
+      });
+      return result;
+    }
     const RECONCILIATION_TIMEOUT_MS = 10_000;
     reconciliationCounter++;
     let reconciliation = null;
@@ -1715,7 +1744,7 @@ export async function runProjection(
     }
 
     let validationCleanup = 0;
-    if (!isRevisionSyncEnabled() || Date.now() - lastValidationCleanupAt > 60000) {
+    if (Date.now() - lastValidationCleanupAt > 60000) {
       lastValidationCleanupAt = Date.now();
       try {
         const cleaned = await prisma.ticket.updateMany({

@@ -60,6 +60,58 @@ test('replay keeps one raw revision and one extension snapshot', async () => {
   assert.equal(state.pending, true);
 });
 
+test('legacy replay preserves business data and does not rewrite a recent heartbeat', async t => {
+  process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
+  t.after(() => { process.env.TICKET_SYNC_REVISIONS_ENABLED = 'true'; });
+  const harness = app();
+  await ingest(harness, fixture());
+  const before = await prisma.ticket_raw.findUnique({ where: { incident } });
+  assert.equal((await ingest(harness, fixture())).skipped, 1);
+  const after = await prisma.ticket_raw.findUnique({ where: { incident } });
+  assert.equal(after.syncVersion, before.syncVersion);
+  assert.equal(after.sourceHash, before.sourceHash);
+  assert.equal(after.importedAt.getTime(), before.importedAt.getTime());
+  assert.equal(after.lastSeenAt.getTime(), before.lastSeenAt.getTime());
+  assert.equal(await prisma.ticket_raw.count(), 1);
+});
+
+test('legacy projection yields after commit and fresh batch slices preserve the backlog cursor', async t => {
+  const previousEnabled = process.env.PROJECTION_ENABLED;
+  process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
+  process.env.PROJECTION_ENABLED = 'true';
+  t.after(() => {
+    process.env.TICKET_SYNC_REVISIONS_ENABLED = 'true';
+    if (previousEnabled === undefined) delete process.env.PROJECTION_ENABLED;
+    else process.env.PROJECTION_ENABLED = previousEnabled;
+  });
+  const rows = [1, 2, 3, 4].map(i => ({
+    incident: `INC9000000${i}`, sourceTable: 'piloting_tickets', status: 'OPEN',
+    sourceHash: `hash-${i}`, syncVersion: 1, summary: `Row ${i}`,
+    syncBatchId: i <= 2 ? 'backlog' : 'fresh', importedAt: new Date(`2026-11-0${i}T01:00:00Z`),
+  }));
+  await prisma.ticket_raw.createMany({ data: rows });
+  const harness = app();
+  const { runProjection } = harness.load('lib/projection/index.ts');
+  const first = await runProjection(undefined, { batchSize: 1, maxDurationMs: 1, skipAutoRepair: true });
+  assert.ok(first.continuation);
+  const checkpoint = await prisma.ticket_projection_checkpoint.findFirst();
+  let after;
+  do {
+    const fresh = await runProjection(undefined, {
+      syncBatchId: 'fresh', preserveCheckpointCursor: true,
+      batchSize: 1, maxDurationMs: 1, skipAutoRepair: true, after,
+    });
+    after = fresh.continuation;
+    const preserved = await prisma.ticket_projection_checkpoint.findFirst();
+    assert.equal(preserved.lastProjectedTicketRawId, checkpoint.lastProjectedTicketRawId);
+    assert.equal(preserved.lastProjectedImportedAt.getTime(), checkpoint.lastProjectedImportedAt.getTime());
+  } while (after);
+  assert.equal(await prisma.ticket.count(), 3);
+  await runProjection(undefined, { batchSize: 2, skipAutoRepair: true });
+  assert.equal(await prisma.ticket.count(), 4);
+  assert.equal(await prisma.ticket_projection_log.count(), 4);
+});
+
 test('an unchanged legacy raw row is seeded for projection on its first revision scan', async () => {
   const harness = app();
   await ingest(harness, fixture());
@@ -323,7 +375,10 @@ test('an expired Piloting supplement does not remain as current QOSMIC data', as
   assert.equal((await prisma.ticket_raw.findUnique({ where: { incident } })).contact_phone, null);
 });
 
-test('notifications publish after the first committed sub-batch instead of waiting for the full run', async () => {
+test('notifications publish after the first committed sub-batch instead of waiting for the full run', async t => {
+  const previous = process.env.PROJECTION_PENDING_BATCH_SIZE;
+  process.env.PROJECTION_PENDING_BATCH_SIZE = '50';
+  t.after(() => previous === undefined ? delete process.env.PROJECTION_PENDING_BATCH_SIZE : process.env.PROJECTION_PENDING_BATCH_SIZE = previous);
   const batch = Array.from({ length: 100 }, (_, i) => fixture({ Incident: `INC${92000000 + i}` }));
   const result = { processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] };
   await app().load('lib/ingestion/index.ts').processRawRows(batch, 'nossa', 'batch-notifications', cursor, result);
