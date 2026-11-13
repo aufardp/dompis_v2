@@ -1,157 +1,221 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useMemo, useRef } from 'react';
+import Link from 'next/link';
 import AdminLayout from '@/app/components/layout/AdminLayout';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, PlayCircle, AlertCircle } from 'lucide-react';
-import { cn } from '@/app/libs/utils';
+import { useCurrentUser } from '@/app/hooks/useCurrentUser';
+import {
+  MAX_BULK_INCIDENTS,
+  MAX_INCIDENT_INPUT_LENGTH,
+  parseIncidentInput,
+} from '@/lib/ingestion/incident-input';
+import { useIncidentIngestion } from './use-incident-ingestion';
+import { focusStyle, IncidentResults, secondaryButton } from './results';
 
 export default function IngestIncidentPage() {
-  const router = useRouter();
-  const [incident, setIncident] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-
-  const readJson = async (res: Response) => {
-    const text = await res.text();
+  const { user } = useCurrentUser();
+  const ingestion = useIncidentIngestion(user?.id_user);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const parsed = useMemo(() => {
     try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(`Server mengembalikan respons non-JSON (HTTP ${res.status}). Permintaan mungkin masih berjalan; cek lagi statusnya sebelum mencoba ulang.`);
-    }
-  };
-
-  const handleIngest = useCallback(async () => {
-    if (!incident.trim()) return;
-    setLoading(true);
-    setResult(null);
-
-    try {
-      const normalizedIncident = incident.trim().toUpperCase();
-      const res = await fetch('/api/admin/ingest-incident', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ incident }),
-      });
-      const json = await readJson(res);
-      if (!res.ok || !json.success) throw new Error(json.message ?? `Gagal mengantrekan permintaan (HTTP ${res.status})`);
-
-      setResult({ success: true, message: json.message });
-      for (let attempt = 0; attempt < 300; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const statusResponse = await fetch(
-          `/api/admin/ingest-incident/status?incident=${encodeURIComponent(normalizedIncident)}`,
-          { cache: 'no-store' },
-        );
-        const status = await readJson(statusResponse);
-        if (statusResponse.status === 404) continue;
-        if (!statusResponse.ok) throw new Error(status.message ?? `Gagal membaca status (HTTP ${statusResponse.status})`);
-        if (status.terminal) {
-          setResult({ success: status.success, message: status.message });
-          return;
-        }
-        setResult({ success: true, message: status.message });
-      }
-      setResult({ success: true, message: 'Permintaan masih diproses. Anda bisa meninggalkan halaman; status tersimpan di antrean. Klik ulang setelah selesai untuk memeriksa hasil.' });
+      return { ...parseIncidentInput(ingestion.input), error: '' };
     } catch (error) {
-      setResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'Terjadi kesalahan',
-      });
-    } finally {
-      setLoading(false);
+      return {
+        incidents: [],
+        invalid: [],
+        duplicates: 0,
+        error: (error as Error).message,
+      };
     }
-  }, [incident]);
+  }, [ingestion.input]);
+  const invalid = !!parsed.error || parsed.invalid.length > 0;
+  const reset = () => {
+    ingestion.reset();
+    requestAnimationFrame(() => textarea.current?.focus());
+  };
 
   return (
     <AdminLayout>
-      <div className='max-w-2xl space-y-6'>
-        <button
-          onClick={() => router.back()}
-          className='flex items-center gap-2 text-sm text-(--text-muted) hover:text-(--text-primary) transition'
+      <div
+        data-incident-ingestion
+        className='mx-auto w-full max-w-5xl min-w-0 space-y-8 pb-8'
+      >
+        <header>
+          <Link
+            href='/admin/tools'
+            className={`inline-flex min-h-11 items-center text-sm font-medium text-(--text-secondary) underline underline-offset-4 ${focusStyle}`}
+          >
+            Alat admin
+          </Link>
+          <h1 className='font-outfit mt-3 text-2xl font-bold text-(--text-primary) md:text-3xl'>
+            Tarik incident Nossa
+          </h1>
+          <p className='mt-3 max-w-2xl text-base leading-relaxed text-(--text-secondary)'>
+            Masukkan satu atau banyak ID incident untuk memperbarui data di
+            Dompis. Hasil tersedia untuk setiap incident.
+          </p>
+        </header>
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!invalid && parsed.incidents.length && ingestion.canStart)
+              void ingestion.send(parsed.incidents);
+          }}
+          className='max-w-3xl space-y-4'
         >
-          <ArrowLeft className='h-4 w-4' />
-          Kembali
-        </button>
-
-        <div className='rounded-2xl border border-(--border) bg-(--surface) p-6'>
-          <div className='flex items-center gap-3 mb-1'>
-            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500'>
-              <PlayCircle className='h-5 w-5' />
-            </div>
-            <div>
-              <h1 className='font-outfit text-lg font-bold text-(--text-primary)'>
-                Tarik Insiden Tunggal
-              </h1>
-              <p className='text-xs text-(--text-muted)'>
-                Fetch dari Nossa → ingestion → projection
-              </p>
-            </div>
-          </div>
-
-          <div className='mt-5 space-y-4'>
-            <div>
-              <label className='mb-1.5 block text-xs font-semibold text-(--text-secondary) uppercase tracking-wider'>
-                Incident ID
-              </label>
-              <input
-                type='text'
-                value={incident}
-                onChange={(e) => setIncident(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !loading && handleIngest()}
-                placeholder='Contoh: INC51123643'
-                className={cn(
-                  'w-full rounded-xl border border-(--border) bg-(--surface-2) px-4 py-2.5 text-sm text-(--text-primary)',
-                  'placeholder:text-(--text-muted) focus:border-blue-400/60 focus:outline-none focus:ring-1 focus:ring-blue-400/20',
-                )}
-              />
-              <p className='mt-1.5 text-[11px] text-(--text-muted)'>
-                Data akan melalui validasi duplikasi terhadap <code>ticket_raw</code> dan{' '}
-                <code>ticket</code> sebelum diproyeksikan.
-              </p>
-            </div>
-
-            <button
-              onClick={handleIngest}
-              disabled={loading || !incident.trim()}
-              className={cn(
-                'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-                loading || !incident.trim()
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-white/5 dark:text-(--text-muted)'
-                  : 'bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/20',
-              )}
+          <div>
+            <label
+              htmlFor='incident-ids'
+              className='mb-2 block text-base font-semibold text-(--text-primary)'
             >
-              {loading ? (
-                <>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  Memproses...
-                </>
-              ) : (
-                <>
-                  <PlayCircle className='h-4 w-4' />
-                  Tarik & Proyeksikan
-                </>
-              )}
-            </button>
-
-            {result && (
-              <div
-                className={cn(
-                  'flex items-start gap-2 rounded-xl border px-4 py-3 text-sm',
-                  result.success
-                    ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400'
-                    : 'border-red-500/20 bg-red-500/5 text-red-400',
-                )}
+              Daftar ID incident
+            </label>
+            <p
+              id='incident-help'
+              className='mb-3 text-sm leading-relaxed text-(--text-secondary)'
+            >
+              Pisahkan dengan baris baru, koma, atau spasi. Maksimal{' '}
+              {MAX_BULK_INCIDENTS} incident per permintaan. ID duplikat dihitung
+              sekali.
+            </p>
+            <textarea
+              ref={textarea}
+              id='incident-ids'
+              rows={6}
+              spellCheck={false}
+              autoCapitalize='characters'
+              maxLength={MAX_INCIDENT_INPUT_LENGTH}
+              value={ingestion.input}
+              readOnly={!!ingestion.requestId || ingestion.submitting}
+              onChange={(event) => ingestion.setInput(event.target.value)}
+              aria-invalid={invalid}
+              aria-describedby={`incident-help incident-count${invalid ? ' incident-error' : ''}`}
+              placeholder={'INC52661271\nINC51123643'}
+              className={`block w-full resize-y rounded-lg border border-slate-500 bg-(--surface) px-4 py-3 text-base leading-relaxed text-(--text-primary) placeholder:text-slate-500 dark:border-slate-400 dark:placeholder:text-slate-400 ${focusStyle}`}
+            />
+            <p
+              id='incident-count'
+              className='mt-2 text-sm text-(--text-secondary)'
+            >
+              {parsed.incidents.length} ID unik
+              {parsed.duplicates
+                ? `, ${parsed.duplicates} duplikat diabaikan`
+                : ''}
+              .
+            </p>
+            {invalid && (
+              <p
+                id='incident-error'
+                role='alert'
+                className='mt-2 text-sm wrap-anywhere text-red-800 dark:text-red-300'
               >
-                <AlertCircle className='mt-0.5 h-4 w-4 shrink-0' />
-                <p>{result.message}</p>
-              </div>
+                {parsed.error ||
+                  `ID tidak valid: ${parsed.invalid
+                    .slice(0, 5)
+                    .map((value) => value.slice(0, 80))
+                    .join(
+                      ', ',
+                    )}${parsed.invalid.length > 5 ? ', dan lainnya' : ''}. Gunakan INC diikuti 6 sampai 20 digit.`}
+              </p>
             )}
           </div>
-        </div>
+          {!ingestion.requestId && (
+            <button
+              type='submit'
+              disabled={
+                !ingestion.ready ||
+                ingestion.submitting ||
+                invalid ||
+                !parsed.incidents.length
+              }
+              className={`min-h-11 w-full rounded-lg bg-blue-700 px-5 py-3 text-base font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-700 sm:w-auto dark:bg-blue-300 dark:text-slate-950 dark:hover:bg-blue-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-300 ${focusStyle}`}
+            >
+              Tarik {parsed.incidents.length || ''} incident
+            </button>
+          )}
+        </form>
+
+        {ingestion.requestId ? (
+          <div className='space-y-3 text-sm text-(--text-secondary)'>
+            <p className='wrap-anywhere'>
+              ID permintaan:{' '}
+              <span className='select-all'>{ingestion.requestId}</span>
+            </p>
+            <p>
+              Status tersimpan selama 24 jam. Anda dapat meninggalkan halaman
+              lalu membuka kembali alamat ini.
+            </p>
+            {ingestion.submitting && (
+              <p role='status'>Mengirim daftar incident...</p>
+            )}
+            {!ingestion.report && !ingestion.error && !ingestion.submitting && (
+              <p role='status'>Memeriksa status permintaan...</p>
+            )}
+            {ingestion.error && (
+              <p
+                role='alert'
+                className='wrap-anywhere text-red-800 dark:text-red-300'
+              >
+                {ingestion.error.message}{' '}
+                {ingestion.report
+                  ? 'Status terakhir yang berhasil dibaca tetap ditampilkan.'
+                  : 'Periksa status atau lanjutkan pengiriman dengan daftar yang sama.'}
+              </p>
+            )}
+            {!!ingestion.report?.pendingEnqueue && (
+              <p role='status'>
+                {ingestion.report.pendingEnqueue} incident belum masuk antrean.
+                Lanjutkan pengiriman untuk melengkapi daftar ini.
+              </p>
+            )}
+            <div className='flex flex-wrap gap-3'>
+              <button
+                type='button'
+                onClick={ingestion.refresh}
+                disabled={ingestion.submitting || ingestion.fetching}
+                className={secondaryButton}
+              >
+                {ingestion.fetching ? 'Memeriksa status...' : 'Periksa status'}
+              </button>
+              {ingestion.canResume &&
+                (!!ingestion.error || !!ingestion.report?.pendingEnqueue) && (
+                  <button
+                    type='button'
+                    onClick={() => void ingestion.resume()}
+                    disabled={ingestion.submitting}
+                    className={secondaryButton}
+                  >
+                    Lanjutkan pengiriman
+                  </button>
+                )}
+              {!ingestion.report && ingestion.canStart && (
+                <button
+                  type='button'
+                  onClick={reset}
+                  className={secondaryButton}
+                >
+                  Daftar baru
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className='max-w-2xl text-sm leading-relaxed text-(--text-secondary)'>
+            Belum ada permintaan. Setelah daftar dikirim, Anda bisa melihat
+            progres dan mencoba ulang incident yang gagal.
+          </p>
+        )}
+
+        {ingestion.report && (
+          <IncidentResults
+            key={ingestion.report.requestId}
+            report={ingestion.report}
+            busy={ingestion.submitting}
+            onRetry={() => void ingestion.retryFailed()}
+            onReset={reset}
+          />
+        )}
       </div>
     </AdminLayout>
   );

@@ -143,7 +143,7 @@ const MENU_ITEMS: Array<{
     label: 'Ingest Insiden',
     path: '/admin/ingest-incident',
     icon: RefreshCcw,
-    hint: 'Tarik insiden Nossa tunggal',
+        hint: 'Tarik satu atau banyak insiden Nossa',
     superadminOnly: true,
   },
 ];

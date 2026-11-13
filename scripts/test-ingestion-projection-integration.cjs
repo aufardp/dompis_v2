@@ -131,6 +131,29 @@ test('an unchanged legacy raw row is seeded for projection on its first revision
   assert.equal(checkpoint.status, 'success');
 });
 
+test('priority scans exclude applied rows while retaining changed and missing tickets', async t => {
+  const previous = process.env.TICKET_SYNC_REVISIONS_ENABLED;
+  process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
+  t.after(() => { process.env.TICKET_SYNC_REVISIONS_ENABLED = previous; });
+  await prisma.ticket_raw.create({ data: {
+    incident, sourceTable: 'nossa', status: 'OPEN', sourceHash: 'v1', syncVersion: 1,
+    syncBatchId: 'live-batch', importedAt: new Date('2026-11-13T01:00:00Z'),
+  } });
+  const { runProjection } = app().load('lib/projection/index.ts');
+  const options = { syncBatchId: 'live-batch', preserveCheckpointCursor: true, onlyUnprojected: true, skipAutoRepair: true };
+  assert.equal((await runProjection(undefined, options)).inserted, 1);
+  const applied = await prisma.ticket_projection_log.findFirst();
+  assert.equal((await runProjection(undefined, options)).processed, 0);
+  assert.equal((await prisma.ticket_projection_log.findFirst()).projectedAt.getTime(), applied.projectedAt.getTime());
+  await prisma.ticket_raw.update({ where: { incident }, data: { sourceHash: 'v2', syncVersion: 2, summary: 'Changed' } });
+  assert.equal((await runProjection(undefined, options)).updated, 1);
+  assert.equal((await prisma.ticket.findUnique({ where: { incident } })).summary, 'Changed');
+  await prisma.ticket.deleteMany();
+  assert.equal((await runProjection(undefined, options)).inserted, 1);
+  await prisma.ticket_raw.update({ where: { incident }, data: { sourceTable: 'import_tiket' } });
+  assert.equal((await runProjection(undefined, options)).updated, 1);
+});
+
 test('a companion write failure rolls back raw, snapshot, state and checkpoint', async () => {
   const client = new Proxy(prisma, { get(target, key) {
     if (key === '$transaction') return (fn, options) => target.$transaction(tx => fn(new Proxy(tx, { get(inner, field) {

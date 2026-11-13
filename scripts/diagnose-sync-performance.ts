@@ -12,7 +12,14 @@ async function main(): Promise<void> {
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } }, log: [] });
   const inspect = async (sql: string) => {
     try { return await db.$queryRawUnsafe(sql); }
-    catch (error) { return { unavailable: true, error: error instanceof Error ? error.name : 'UnknownError' }; }
+    catch (error) {
+      const known = error && typeof error === 'object' ? error as { code?: string; meta?: { code?: string; message?: string } } : undefined;
+      return {
+        unavailable: true, error: error instanceof Error ? error.name : 'UnknownError',
+        code: known?.code, databaseCode: known?.meta?.code,
+        message: known?.meta?.message?.replace(/mysql:\/\/[^\s]+/gi, '[REDACTED_DATABASE_URL]').slice(0, 1000),
+      };
+    }
   };
   const host = async () => ({
     parallelism: availableParallelism(), freeMemoryBytes: freemem(), totalMemoryBytes: totalmem(), loadAverage: loadavg(),
@@ -32,6 +39,7 @@ async function main(): Promise<void> {
     const report = {
       startedAt, finishedAt: new Date().toISOString(), node: process.version,
       revisionSyncEnabledInThisProcess: process.env.TICKET_SYNC_REVISIONS_ENABLED === 'true',
+      databaseTarget: { host: url.hostname, port: url.port || '3306', database: url.pathname.slice(1) },
       first, second,
       version: await inspect('SELECT VERSION() AS version'),
       activeProcesses: await inspect("SELECT ID, COMMAND, TIME, STATE FROM information_schema.PROCESSLIST WHERE DB = DATABASE() AND COMMAND <> 'Sleep' ORDER BY TIME DESC LIMIT 20"),

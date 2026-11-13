@@ -23,7 +23,7 @@ function loadWriter(redis, waitMs = 3000) {
   const harness = createHarness({
     '@/lib/redis': { redis, isRedisReady: () => redis.status === 'ready' },
     '@/lib/workers/task-runner': runner,
-    '@/lib/observability/logger': { createCorrelationId: () => 'test', logger: { info() {}, warn() {}, error() {} } },
+    '@/lib/observability/logger': { createCorrelationId: () => 'test', logger: { debug() {}, info() {}, warn() {}, error() {} } },
   });
   try {
     Object.assign(runner, harness.load('lib/workers/task-runner.ts'));

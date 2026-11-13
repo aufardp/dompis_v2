@@ -4,6 +4,7 @@ import { logger } from '@/lib/observability/logger';
 import { projectSingleTicket } from '@/lib/projection/single';
 import { acquireLock, extendLock, getLockStatus, releaseLock } from '@/lib/distributed-lock';
 import { isRedisReady } from '@/lib/redis';
+import { QosmicBridgeError } from '@/lib/external-db/qosmic-bridge/client';
 
 const SINGLE_INGESTION_LOCK_TTL_SECONDS = 300;
 const SINGLE_INGESTION_MAX_WAIT_MS = 120_000;
@@ -57,6 +58,7 @@ export async function ingestSingleIncident(incidentId: string): Promise<{
   message: string;
   result?: ChunkResult;
   retryable?: boolean;
+  errorCode?: string;
 }> {
   const cleanId = incidentId.trim().toUpperCase();
   if (!cleanId) {
@@ -69,7 +71,7 @@ export async function ingestSingleIncident(incidentId: string): Promise<{
   try {
     return await withIncidentLock(cleanId, async () => {
     logger.info('[SingleIngestion] Fetching incident from Bridge:', { incident: cleanId });
-    const fetched = await fetchByIncidentAnyStatus(cleanId);
+    const fetched = await fetchByIncidentAnyStatus(cleanId, { retryMax: 0 });
 
     if (!fetched || !fetched.row) {
       return { success: false, message: `Insiden ${cleanId} tidak ditemukan di sistem eksternal (Nossa)` };
@@ -114,11 +116,14 @@ export async function ingestSingleIncident(incidentId: string): Promise<{
     };
     });
   } catch (error) {
-    logger.error('[SingleIngestion] Gagal menarik insiden:', { incident: cleanId, error: String(error) });
+    const errorCode = error instanceof QosmicBridgeError ? error.code ?? 'BRIDGE_ERROR' : 'INGESTION_ERROR';
+    logger.error('[SingleIngestion] Gagal menarik insiden:', error, { incident: cleanId, errorCode });
     return {
       success: false,
-      retryable: true,
-      message: `Gagal menarik insiden: ${error instanceof Error ? error.message : String(error)}`,
+      retryable: error instanceof QosmicBridgeError ? error.retryable : true,
+      errorCode,
+      message: error instanceof QosmicBridgeError ? `Gagal menarik insiden: ${error.message}`
+        : 'Gagal menerapkan data insiden. Periksa log server untuk penyebabnya.',
     };
   }
 }

@@ -4,6 +4,7 @@ const { Prisma } = require('@prisma/client');
 const { createHarness } = require('./helpers/sync-test-harness.cjs');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
+const { EventEmitter } = require('node:events');
 
 const cursor = { idColumn: null, modifiedColumn: null, createdAtColumn: null, strategy: 'snapshot', columns: [] };
 const emptyResult = () => ({ processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0, quarantined: 0, retried: 0, errors: [] });
@@ -37,6 +38,97 @@ test('unchanged legacy ingestion updates freshness without resending the raw pay
   assert.match(writes[0].sql, /UPDATE ticket_raw SET lastSeenAt/);
   assert.match(writes[0].sql, /lastSeenAt IS NULL OR lastSeenAt </);
   assert.ok(!writes[0].values.includes(payload.Summary));
+});
+
+test('recent unchanged rows do not issue a heartbeat UPDATE', async t => {
+  const previous = process.env.TICKET_SYNC_REVISIONS_ENABLED;
+  process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
+  t.after(() => previous === undefined ? delete process.env.TICKET_SYNC_REVISIONS_ENABLED : process.env.TICKET_SYNC_REVISIONS_ENABLED = previous);
+  const writes = [];
+  let existing;
+  const tx = {
+    $queryRawUnsafe: async () => [existing],
+    $executeRaw: async (parts, ...values) => { writes.push(Prisma.sql(parts, ...values)); return 1; },
+    ingestion_checkpoint: { upsert: async () => {} },
+  };
+  const harness = createHarness({ '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx) } } });
+  const payload = { Incident: 'INC90000001', Status: 'OPEN', Summary: 'Unchanged' };
+  const { normalizeExternalRow, computeSourceHash } = harness.load('lib/ingestion/normalizer.ts');
+  existing = { incident: payload.Incident, sourceHash: computeSourceHash(normalizeExternalRow(payload, 'piloting_tickets')), status: 'OPEN', syncVersion: 1, lastSeenAt: harness.load('lib/timezone.ts').nowWib() };
+  const result = emptyResult();
+  await harness.load('lib/ingestion/index.ts').processRawRows([payload], 'piloting_tickets', 'recent', cursor, result);
+  assert.equal(result.skipped, 1);
+  assert.equal(writes.length, 0);
+});
+
+test('a skipped priority row with a current projection log issues no write transaction', async () => {
+  let transactions = 0;
+  const { __test } = createHarness({ '@/app/libs/prisma': { prisma: { $transaction: async () => { transactions++; } } } }, {
+    'lib/projection/index.ts': ['projectSubBatchAtomically'],
+  }).load('lib/projection/index.ts');
+  await __test.projectSubBatchAtomically([
+    { action: 'skipped', projectionLogCurrent: true, raw: { id_ticket: 'raw-1' } },
+  ], { id_ticket: 'raw-1' }, {}, { preserveCheckpointCursor: true });
+  assert.equal(transactions, 0);
+});
+
+test('skipped backlog rows still advance the checkpoint without rewriting current logs', async () => {
+  let logWrites = 0;
+  let checkpoint;
+  const tx = {
+    $executeRaw: async () => { logWrites++; },
+    ticket_projection_checkpoint: { update: async ({ data }) => { checkpoint = data; } },
+  };
+  const { __test } = createHarness({ '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx) } } }, {
+    'lib/projection/index.ts': ['projectSubBatchAtomically'],
+  }).load('lib/projection/index.ts');
+  const raw = { id_ticket: 'raw-1', importedAt: new Date('2026-11-13T01:00:00Z') };
+  await __test.projectSubBatchAtomically([{ action: 'skipped', projectionLogCurrent: true, raw }], raw, emptyResult(), {
+    preserveCheckpointCursor: false, attempts: 0, syncBatchId: 'batch', preservedCheckpoint: {},
+  });
+  assert.equal(logWrites, 0);
+  assert.equal(checkpoint.lastProjectedTicketRawId, raw.id_ticket);
+});
+
+test('structured logs preserve checkpoint dates and omit debug output by default', t => {
+  const output = [];
+  const previousLog = console.log;
+  const previousLevel = process.env.LOG_LEVEL;
+  console.log = line => output.push(JSON.parse(line));
+  delete process.env.LOG_LEVEL;
+  t.after(() => { console.log = previousLog; if (previousLevel === undefined) delete process.env.LOG_LEVEL; else process.env.LOG_LEVEL = previousLevel; });
+  const { logger } = createHarness().load('lib/observability/logger.ts');
+  logger.info('checkpoint', { cursor: { date: new Date('2026-11-13T01:00:00Z') }, token: 'sensitive' });
+  logger.debug('writer lock');
+  assert.equal(output[0].cursor.date, '2026-11-13T01:00:00.000Z');
+  assert.equal(output[0].token, '[REDACTED]');
+  assert.equal(output.length, 1);
+  process.env.LOG_LEVEL = 'debug';
+  logger.debug('writer lock');
+  assert.equal(output.length, 2);
+});
+
+test('Redis becoming ready during connect does not leave a timeout listener behind', async () => {
+  const redis = Object.assign(new EventEmitter(), { status: 'wait' });
+  const { waitForRedisReady } = createHarness({ '@/lib/redis': {
+    redis, connectRedis: async () => { redis.status = 'ready'; redis.emit('ready'); },
+  } }).load('lib/workers/task-runner.ts');
+  await waitForRedisReady(5);
+  assert.equal(redis.listenerCount('ready'), 0);
+});
+
+test('validation cleanup writes only the selected closed ticket IDs', async () => {
+  let selector;
+  let update;
+  const { __test } = createHarness({ '@/app/libs/prisma': { prisma: { ticket: {
+    findMany: async options => { selector = options; return [{ id_ticket: 12 }, { id_ticket: 18 }]; },
+    updateMany: async options => { update = options; return { count: 2 }; },
+  } } } }, { 'lib/projection/index.ts': ['cleanupClosedValidationFlags'] }).load('lib/projection/index.ts');
+  assert.equal(await __test.cleanupClosedValidationFlags(), 2);
+  assert.equal(selector.take, 100);
+  assert.deepEqual(update.where.id_ticket.in, [12, 18]);
+  assert.equal(update.where.needs_validation, true);
+  assert.deepEqual(update.where.status, selector.where.status);
 });
 
 test('retry logs preserve the timeout cause and distinguish the writer queue from SQL', async () => {

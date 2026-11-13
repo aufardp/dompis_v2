@@ -213,6 +213,7 @@ export interface ProjectionOptions {
   syncBatchId?: string;
   mode?: 'incremental' | 'full' | 'batch';
   preserveCheckpointCursor?: boolean;
+  onlyUnprojected?: boolean;
   skipAutoRepair?: boolean;
   maxDurationMs?: number;
   after?: { importedAt: Date; ticketRawId: string };
@@ -271,6 +272,7 @@ interface ProjectionItem {
   raw: RawSelectResult;
   upsert: Prisma.ticketUpsertArgs;
   action: 'inserted' | 'updated' | 'skipped';
+  projectionLogCurrent?: boolean;
   protected: boolean;
   statusResolution: StatusUpdateResolution | null;
 }
@@ -786,6 +788,15 @@ async function fetchBatch(
     ? Prisma.sql`AND tr.syncBatchId = ${options.syncBatchId}`
     : Prisma.empty;
 
+  const unprojectedSql = options.onlyUnprojected
+    ? Prisma.sql`AND (tr.sourceTable = 'import_tiket' OR NOT EXISTS (
+        SELECT 1 FROM ticket_projection_log applied
+        JOIN ticket projected ON projected.incident = tr.incident
+        WHERE applied.ticketRawId = tr.id_ticket AND applied.status = 'success'
+          AND applied.sourceHash <=> tr.sourceHash AND applied.syncVersion = tr.syncVersion
+      ))`
+    : Prisma.empty;
+
   const sinceSql = options.since
     ? Prisma.sql`AND tr.importedAt >= ${options.since}`
     : Prisma.empty;
@@ -862,6 +873,7 @@ async function fetchBatch(
       ${cursorSql}
       ${cooldownSql}
       ${syncBatchSql}
+      ${unprojectedSql}
       ${sinceSql}
     ORDER BY tr.importedAt ASC, tr.id_ticket ASC
     LIMIT ${options.batchSize}
@@ -926,31 +938,10 @@ export async function prepareProjectionItems(
     },
   });
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
-  const projectionLogCandidates = validRawRecords.filter((raw) => {
-    const existing = existingMap.get(raw.incident!);
-    if (!existing?.synced_at || !raw.importedAt) {
-      return true;
-    }
-
-    return !(
-      existing.import_batch === raw.syncBatchId &&
-      existing.synced_at >= raw.importedAt
-    );
+  const projectionLogs = await client.ticket_projection_log.findMany({
+    where: { ticketRawId: { in: validRawRecords.map((r) => r.id_ticket) } },
+    select: { ticketRawId: true, sourceHash: true, syncVersion: true, status: true },
   });
-
-  const projectionLogs = projectionLogCandidates.length > 0
-    ? await client.ticket_projection_log.findMany({
-        where: {
-          ticketRawId: { in: projectionLogCandidates.map((r) => r.id_ticket) },
-        },
-        select: {
-          ticketRawId: true,
-          sourceHash: true,
-          syncVersion: true,
-          status: true,
-        },
-      })
-    : [];
   const projectionLogMap = new Map(
     projectionLogs.map((log) => [log.ticketRawId, log as ExistingProjectionLog]),
   );
@@ -964,6 +955,9 @@ export async function prepareProjectionItems(
     }
     const raw = validRawRecords[i]!;
     const existing = existingMap.get(raw.incident!);
+    const previousLog = projectionLogMap.get(raw.id_ticket);
+    const projectionLogCurrent = previousLog?.status === 'success'
+      && previousLog.sourceHash === raw.sourceHash && previousLog.syncVersion === raw.syncVersion;
     const projection = buildProjectionUpsert(
       raw,
       existing,
@@ -978,12 +972,14 @@ export async function prepareProjectionItems(
         raw,
         ...projection,
         action: 'skipped',
+        projectionLogCurrent,
       });
       continue;
     }
     items.push({
       raw,
       ...projection,
+      projectionLogCurrent,
       action: !existing
         ? 'inserted'
         : !options.force && shouldSkipProjection(raw, existing, projectionLogMap.get(raw.id_ticket))
@@ -1037,18 +1033,12 @@ async function advanceCheckpoint(
   if (!lastRecord.importedAt) {
     throw new Error('Projection cursor requires importedAt on ticket_raw');
   }
-  await tx.ticket_projection_checkpoint.update({
+  if (!options.preserveCursor) await tx.ticket_projection_checkpoint.update({
     where: { name: CHECKPOINT_NAME },
     data: {
-      lastProjectedImportedAt: options.preserveCursor
-        ? options.preservedCheckpoint.lastProjectedImportedAt
-        : lastRecord.importedAt,
-      lastProjectedTicketRawId: options.preserveCursor
-        ? options.preservedCheckpoint.lastProjectedTicketRawId
-        : lastRecord.id_ticket,
-      lastSyncBatchId: options.preserveCursor
-        ? options.preservedCheckpoint.lastSyncBatchId
-        : syncBatchId,
+      lastProjectedImportedAt: lastRecord.importedAt,
+      lastProjectedTicketRawId: lastRecord.id_ticket,
+      lastSyncBatchId: syncBatchId,
       status: 'success',
       processed: result.processed,
       inserted: result.inserted,
@@ -1175,6 +1165,8 @@ async function projectSubBatchAtomically(
     signal?: AbortSignal;
   },
 ): Promise<void> {
+  const logItems = items.filter(item => item.action !== 'skipped' || !item.projectionLogCurrent);
+  if (options.preserveCheckpointCursor && logItems.length === 0) return;
   await withTransactionRetry(async (tx) => {
     assertNotAborted(options.signal);
 
@@ -1187,7 +1179,7 @@ async function projectSubBatchAtomically(
     if (updatedItems.length > 0) {
       await bulkUpsertTicket(tx, updatedItems);
     }
-    await bulkUpsertProjectionLog(tx, items, options.attempts);
+    await bulkUpsertProjectionLog(tx, logItems, options.attempts);
 
     const closedItems = items.filter(i => {
       if (i.action === 'skipped') return false;
@@ -1623,6 +1615,25 @@ export function emptyProjectionResult(): ProjectionResult {
   };
 }
 
+async function cleanupClosedValidationFlags(): Promise<number> {
+  if (Date.now() - lastValidationCleanupAt <= 60000) return 0;
+  lastValidationCleanupAt = Date.now();
+  try {
+    const where = { needs_validation: true, status: { in: CLOSE_STATUS_VALUES } };
+    const tickets = await prisma.ticket.findMany({ where, select: { id_ticket: true }, take: 100 });
+    if (tickets.length === 0) return 0;
+    const cleaned = await prisma.ticket.updateMany({
+      where: { ...where, id_ticket: { in: tickets.map(ticket => ticket.id_ticket) } },
+      data: { needs_validation: false, validation_reason: null, validation_flagged_at: null },
+    });
+    if (cleaned.count) logger.info('[Projection] Cleaned stuck validation flags', { count: cleaned.count });
+    return cleaned.count;
+  } catch (error) {
+    logger.warn('[Projection] Validation cleanup failed', { error: String(error) });
+    return 0;
+  }
+}
+
 export async function runProjection(
   signal?: AbortSignal,
   options: ProjectionOptions = {},
@@ -1682,6 +1693,7 @@ export async function runProjection(
         ? recordProjectionMetric('pipelineLagMs', endToEndLagMs)
         : Promise.resolve(),
     ]);
+    const validationCleanup = options.preserveCheckpointCursor ? 0 : await cleanupClosedValidationFlags();
     if (result.continuation) {
       await setProjectionStatus('running', {
         duration: result.duration, processed: result.processed, failed: result.failed,
@@ -1740,32 +1752,6 @@ export async function runProjection(
             setTimeout(() => resolve(null), RECONCILIATION_TIMEOUT_MS),
           ),
         ]).catch(() => finalReconciliation);
-      }
-    }
-
-    let validationCleanup = 0;
-    if (Date.now() - lastValidationCleanupAt > 60000) {
-      lastValidationCleanupAt = Date.now();
-      try {
-        const cleaned = await prisma.ticket.updateMany({
-          where: {
-            needs_validation: true,
-            status: { in: CLOSE_STATUS_VALUES },
-          },
-          data: {
-            needs_validation: false,
-            validation_reason: null,
-            validation_flagged_at: null,
-          },
-        });
-        validationCleanup = cleaned.count;
-        if (cleaned.count > 0) {
-          logger.info('[Projection] Cleaned stuck validation flags', {
-            count: cleaned.count,
-          });
-        }
-      } catch (error) {
-        logger.warn('[Projection] Validation cleanup failed', { error: String(error) });
       }
     }
 

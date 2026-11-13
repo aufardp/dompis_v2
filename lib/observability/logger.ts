@@ -45,6 +45,7 @@ function sanitizeValue(value: string): string {
 
 function redactSensitive(input: unknown): unknown {
   if (input === null || input === undefined) return input;
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input.toISOString();
 
   if (typeof input === 'string') {
     return sanitizeValue(input);
@@ -125,6 +126,7 @@ export function createCorrelationId(prefix: string): string {
 }
 
 export function log(level: LogLevel, message: string, context: LogContext = {}): void {
+  if (level === 'debug' && _process?.env.LOG_LEVEL !== 'debug') return;
   const store = getStorage().getStore();
   if (store && !context.correlationId) {
     context.correlationId = store.correlationId;

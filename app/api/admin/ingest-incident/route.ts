@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { singleIncidentJobId, singleIncidentQueue } from '@/lib/ingestion/single-incident-queue';
+import { enqueueSingleIncident } from '@/lib/ingestion/single-incident-queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,18 +20,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'Incident ID tidak valid' }, { status: 400 });
     }
 
-    const jobId = singleIncidentJobId(incident);
-    let job = await singleIncidentQueue.getJob(jobId);
-    if (job && await job.getState() === 'failed') {
-      await job.retry();
-    } else if (!job) {
-      job = await singleIncidentQueue.add('ingest-incident', { incident }, { jobId });
-    }
+    const jobId = await enqueueSingleIncident(incident);
     return NextResponse.json({
       success: true,
       accepted: true,
       incident,
-      jobId: String(job.id),
+      jobId,
       message: 'Permintaan diterima. Proses berjalan di antrean dan bisa dipantau di halaman ini.',
     }, { status: 202 });
   } catch (error: unknown) {

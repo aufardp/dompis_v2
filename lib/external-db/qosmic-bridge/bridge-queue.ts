@@ -324,6 +324,7 @@ function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
       jobId: job?.id,
       name: job?.name,
       attempts: job?.attemptsMade,
+      incident: job?.data?.incident,
     });
 
     if (isTransientBridgeError(err)) {
@@ -417,15 +418,16 @@ export async function startBridgeWorkers(): Promise<void> {
 
   workerSingleIncident = createWorker(
     SINGLE_INCIDENT_QUEUE_NAME,
-    async (job) => {
+    async (job) => runWithCorrelationContext(`single-incident-${job.id}`, async () => {
       const result = await ingestSingleIncident(String(job.data.incident));
       if (!result.success) {
+        await job.updateProgress({ errorCode: result.errorCode, message: result.message });
         const error = new Error(result.message);
         (error as Error & { retryable?: boolean }).retryable = result.retryable;
         if (result.retryable) throw error;
       }
       return result;
-    },
+    }),
     1,
   );
 

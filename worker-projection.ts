@@ -178,6 +178,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
     const lockResult = await withProjectionLock(
       async ({ fencingToken }) => {
         if (signal.aborted) return;
+        let freshSummary: { processed: number; inserted: number; updated: number; skipped: number; failed: number } | undefined;
 
         if (!isRevisionSyncEnabled() && mode === 'incremental') {
           for (const request of requests) {
@@ -190,8 +191,10 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
             try {
               const freshResult = await runProjection(signal, {
                 mode: 'batch', syncBatchId: batchId, preserveCheckpointCursor: true,
+                onlyUnprojected: true,
                 skipAutoRepair: true, maxDurationMs: RUN_BUDGET_MS, after: freshBatches.get(batchId),
               });
+              freshSummary = { processed: freshResult.processed, inserted: freshResult.inserted, updated: freshResult.updated, skipped: freshResult.skipped, failed: freshResult.failed };
               freshBatches.delete(batchId);
               if (freshResult.continuation) freshBatches.set(batchId, freshResult.continuation);
               else if (freshResult.failed === 0) {
@@ -233,6 +236,8 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           retried: result.retried,
           protected: result.protected,
           durationMs: duration,
+          fresh: freshSummary,
+          totalProcessed: result.processed + (freshSummary?.processed ?? 0),
           checkpoint: result.checkpoint,
           hasMore: Boolean(result.continuation),
           time: nowWIB(),
@@ -245,7 +250,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
         }
         if (result.continuation || freshBatches.size > 0) pendingProjectionRun = true;
         await recordRun(WORKER_NAME, duration, result.failed === 0, {
-          processed: result.processed,
+          processed: result.processed + (freshSummary?.processed ?? 0),
         });
 
         state.consecutiveErrors = 0;
@@ -321,6 +326,7 @@ async function startWorker(): Promise<void> {
     interval: `${INTERVAL_MINUTES}m`,
     timeout: `${TIMEOUT_MINUTES}m`,
     runBudgetMs: RUN_BUDGET_MS,
+    revisionSyncEnabled: isRevisionSyncEnabled(),
     lockTtl: `${LOCK_TTL_SECONDS}s`,
     fullScan: FULL_SCAN_ENABLED ? FULL_SCAN_CRON : 'disabled',
     offset: `${SCHEDULE_OFFSET}s`,

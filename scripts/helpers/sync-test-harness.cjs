@@ -9,7 +9,7 @@ function createHarness(overrides = {}, expose = {}, sources = {}) {
   const noop = () => {};
   const stubs = {
     '@/app/libs/prisma': { prisma: {}, prismaBulk: {} },
-    '@/lib/observability/logger': { logger: { info: noop, warn: noop, error: noop } },
+    '@/lib/observability/logger': { logger: { debug: noop, info: noop, warn: noop, error: noop } },
     '@/lib/redis': { isRedisReady: () => false, redis: {} },
     '@/lib/sync-metrics/metrics': new Proxy({}, { get: () => async () => {} }),
     '@/lib/observability/gauge-counters': new Proxy({}, { get: () => async () => {} }),

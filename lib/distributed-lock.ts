@@ -68,7 +68,7 @@ export async function acquireLock(
         expiresAt: Date.now() + ttlMs,
       };
       activeLocks.set(key, handle);
-      logger.info('Lock acquired', { component: 'distributed-lock', lockKey: key, ownerId: owner, fencingToken: result, ttlSeconds });
+      logger[key === 'ticket_raw_writer' ? 'debug' : 'info']('Lock acquired', { component: 'distributed-lock', lockKey: key, ownerId: owner, fencingToken: result, ttlSeconds });
       return { acquired: true, ownerId: owner, fencingToken: result, handle };
     }
 
@@ -108,7 +108,7 @@ export async function releaseLock(key: string, ownerId: string): Promise<boolean
 
     if (released) {
       activeLocks.delete(key);
-      logger.info('Lock released', { component: 'distributed-lock', lockKey: key, ownerId });
+      logger[key === 'ticket_raw_writer' ? 'debug' : 'info']('Lock released', { component: 'distributed-lock', lockKey: key, ownerId });
     } else {
       logger.warn('Lock release denied', { component: 'distributed-lock', lockKey: key, ownerId });
     }

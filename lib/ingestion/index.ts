@@ -837,9 +837,10 @@ async function fetchExistingIdentities(
               syncVersion: number;
               sourceUpdatedAt: Date | null;
               sourceTable: string | null;
+              lastSeenAt: Date | null;
             }>
           >(
-            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt, sourceTable
+            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt, sourceTable, lastSeenAt
              FROM ticket_raw
              WHERE incident IN (${chunk.map(() => '?').join(',')}) FOR UPDATE`,
             ...chunk,
@@ -995,6 +996,7 @@ async function processBatch(
     const heartbeatRows: TicketRawBulkRow[] = [];
     const extRows: Array<Record<string, unknown>> = [];
     const resourceMoves: Array<{ incident: string; resource: string }> = [];
+    const unchangedIncidents: string[] = [];
     let inserted = 0;
     let updated = 0;
     let skipped = sourceSkipped;
@@ -1014,6 +1016,20 @@ async function processBatch(
         item.normalizedStatus,
         item.sourceUpdatedAt,
       );
+      const isBridgeSource = item.row._sourceTable === 'nossa' || item.row._sourceTable === 'nossa_closed';
+      const repairExtension = isRevisionSyncEnabled() && isBridgeSource && !existingExt.has(item.identity);
+      if (existing && !conflict.shouldUpdate && !repairExtension) {
+        unchangedIncidents.push(item.identity);
+        if (!(existing.lastSeenAt instanceof Date) || existing.lastSeenAt.getTime() < now.getTime() - 60000) {
+          heartbeatRows.push({ incident: item.identity, lastSeenAt: now });
+        }
+        if (isRevisionSyncEnabled() && existing.sourceTable !== item.row._sourceTable) {
+          resourceMoves.push({ incident: item.identity, resource: item.row._sourceTable });
+        }
+        skipped++;
+        result.processed++;
+        continue;
+      }
       const data = buildRawData(
         item.row,
         item.sourceHash,
@@ -1023,9 +1039,7 @@ async function processBatch(
         item.row._sourceTable,
         item.identity,
       );
-      const isBridgeSource = item.row._sourceTable === 'nossa' || item.row._sourceTable === 'nossa_closed';
       const ext = buildExtData(item.row, item.row._sourceTable, item.identity);
-      const repairExtension = isRevisionSyncEnabled() && isBridgeSource && !existingExt.has(item.identity);
       if (repairExtension && existing && !conflict.shouldUpdate) data.syncVersion = existing.syncVersion + 1;
 
       if (!existing) {
@@ -1036,12 +1050,6 @@ async function processBatch(
         changedRows.push(data as TicketRawBulkRow);
         if (isBridgeSource) extRows.push(ext);
         updated++;
-      } else {
-        heartbeatRows.push({ incident: item.identity, lastSeenAt: now });
-        if (isRevisionSyncEnabled() && existing.sourceTable !== item.row._sourceTable) {
-          resourceMoves.push({ incident: item.identity, resource: item.row._sourceTable });
-        }
-        skipped++;
       }
       result.processed++;
     }
@@ -1073,8 +1081,7 @@ async function processBatch(
     await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
     await bulkUpsertTicketRawExt(tx, extRows);
     await markProjectionPending(tx, sortedChangedRows.map(row => String(row.incident)));
-    await markProjectionPending(tx, sortedHeartbeatRows
-      .map(row => String(row.incident)).filter(incident => syncStates.get(incident) === 0n));
+    await markProjectionPending(tx, unchangedIncidents.filter(incident => syncStates.get(incident) === 0n));
     if (resourceMoves.length) {
       await tx.$executeRaw`UPDATE ticket_raw SET sourceTable = CASE incident
         ${Prisma.join(resourceMoves.map(row => Prisma.sql`WHEN ${row.incident} THEN ${row.resource}`), ' ')}

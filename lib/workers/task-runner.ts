@@ -135,13 +135,15 @@ export async function waitForRedisReady(
   if (redis.status === 'ready') return;
 
   logger.info('Waiting for Redis ready', { component: 'worker', redisStatus: redis.status });
-  await connectRedis().catch(() => undefined);
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, timeoutMs);
-    redis.once('ready', () => {
+    const done = () => {
       clearTimeout(timeout);
+      redis.off('ready', done);
       resolve();
-    });
+    };
+    const timeout = setTimeout(done, timeoutMs);
+    redis.once('ready', done);
+    void connectRedis().then(() => { if (redis.status === 'ready') done(); }).catch(() => undefined);
   });
 }
 

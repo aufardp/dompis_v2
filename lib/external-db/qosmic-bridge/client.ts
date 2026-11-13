@@ -184,7 +184,7 @@ async function waitForRateLimitSlot(label: string, key: string = RATE_LIMIT_KEY)
 }
 
 function isRetryableStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504;
+  return status === 429 || status === 502 || status === 503 || status === 504 || status === 524;
 }
 
 export interface QosmicBridgeRequestOptions {
@@ -193,6 +193,7 @@ export interface QosmicBridgeRequestOptions {
   /** Rate limit key. Default 'qosmic-bridge:global' (14 req/min).
    *  Backfill should pass 'qosmic-bridge:backfill' (6 req/min). */
   rateLimitKey?: string;
+  retryMax?: number;
 }
 
 /**
@@ -220,6 +221,8 @@ export async function qosmicBridgeGet<T = unknown>(
     }
   }
 
+  const retryMax = options.retryMax ?? MAX_RETRIES;
+  const context = { label: options.label, path, incident: options.query?.incident };
   let attempt = 0;
   while (true) {
     await waitForRateLimitSlot(options.label, options.rateLimitKey);
@@ -227,6 +230,8 @@ export async function qosmicBridgeGet<T = unknown>(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const startedAt = Date.now();
+    let failure: QosmicBridgeError;
+    let retryAfterMs: number | undefined;
 
     try {
       const res = await fetch(url.toString(), {
@@ -237,8 +242,6 @@ export async function qosmicBridgeGet<T = unknown>(
         },
         signal: controller.signal,
       });
-      const durationMs = Date.now() - startedAt;
-
       if (!res.ok) {
         const bodyText = await res.text().catch(() => '');
         let parsedBody: unknown = bodyText;
@@ -249,25 +252,11 @@ export async function qosmicBridgeGet<T = unknown>(
         }
 
         const retryable = isRetryableStatus(res.status);
-        logger.warn('[QosmicBridge] Request gagal', {
-          label: options.label,
-          path,
-          status: res.status,
-          durationMs,
-          attempt,
-          retryable,
-        });
-
-        if (retryable && attempt < MAX_RETRIES) {
-          attempt++;
-          const retryAfterHeader = res.headers.get('retry-after');
-          const retryAfterMs = retryAfterHeader
-            ? Number.parseInt(retryAfterHeader, 10) * 1000
-            : RETRY_BASE_MS * 2 ** (attempt - 1);
-          await sleep(
-            Math.min(retryAfterMs, 30_000) + Math.floor(Math.random() * 250),
-          );
-          continue;
+        const retryAfter = res.headers.get('retry-after');
+        if (retryAfter) {
+          const seconds = Number(retryAfter);
+          const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+          if (Number.isFinite(delay)) retryAfterMs = Math.max(0, delay);
         }
 
         throw new QosmicBridgeError(
@@ -279,35 +268,36 @@ export async function qosmicBridgeGet<T = unknown>(
         );
       }
 
+      const body = await res.text();
+      let parsed: T;
+      try {
+        parsed = JSON.parse(body) as T;
+      } catch {
+        throw new QosmicBridgeError(`Respons QOSMIC Bridge pada ${path} bukan JSON yang valid`, res.status, 'INVALID_RESPONSE', true);
+      }
       logger.info('[QosmicBridge] Request sukses', {
-        label: options.label,
-        path,
-        durationMs,
+        ...context,
+        durationMs: Date.now() - startedAt,
       });
       markBridgeHealthy();
-      return (await res.json()) as T;
+      return parsed;
     } catch (error) {
-      clearTimeout(timeout);
-      const isAbort = error instanceof Error && error.name === 'AbortError';
-      if (isAbort && attempt < MAX_RETRIES) {
-        attempt++;
-        logger.warn('[QosmicBridge] Timeout, retry', {
-          label: options.label,
-          path,
-          attempt,
-        });
-        await sleep(RETRY_BASE_MS * 2 ** (attempt - 1));
-        continue;
-      }
-      if (error instanceof QosmicBridgeError) throw error;
-      throw new QosmicBridgeError(
-        error instanceof Error ? error.message : String(error),
-        null,
-        isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
-        true,
+      const isTimeout = controller.signal.aborted;
+      failure = error instanceof QosmicBridgeError ? error : new QosmicBridgeError(
+        isTimeout ? `Permintaan QOSMIC Bridge pada ${path} melewati batas ${REQUEST_TIMEOUT_MS} ms`
+          : error instanceof Error ? error.message : String(error),
+        null, isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR', true,
       );
     } finally {
       clearTimeout(timeout);
     }
+    const willRetry = failure.retryable && attempt < retryMax;
+    logger.warn('[QosmicBridge] Request gagal', {
+      ...context, status: failure.status, errorCode: failure.code,
+      durationMs: Date.now() - startedAt, attempt: attempt + 1, willRetry,
+    });
+    if (!willRetry) throw failure;
+    attempt++;
+    await sleep(Math.min(retryAfterMs ?? RETRY_BASE_MS * 2 ** (attempt - 1), 30_000) + Math.floor(Math.random() * 250));
   }
 }

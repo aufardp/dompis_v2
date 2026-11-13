@@ -66,6 +66,7 @@ function validateResponse(response: QosmicQueryResponse<unknown>): void {
 export async function fetchByIncident<T = QosmicRawRow>(
   resource: QosmicResource,
   incident: string,
+  options: { retryMax?: number } = {},
 ): Promise<T | null> {
   try {
     const res = await qosmicBridgeGet<QosmicQueryResponse<T>>(
@@ -73,6 +74,7 @@ export async function fetchByIncident<T = QosmicRawRow>(
       {
         label: `${resource}.by_incident`,
         query: { incident },
+        retryMax: options.retryMax,
       },
     );
     validateResponse(res);
@@ -97,11 +99,12 @@ export async function fetchByIncident<T = QosmicRawRow>(
  */
 export async function fetchByIncidentAnyStatus<T = QosmicRawRow>(
   incident: string,
+  options: { retryMax?: number } = {},
 ): Promise<{ row: T; resource: QosmicResource } | null> {
-  const openRow = await fetchByIncident<T>('nossa', incident);
+  const openRow = await fetchByIncident<T>('nossa', incident, options);
   if (openRow) return { row: openRow, resource: 'nossa' };
 
-  const closedRow = await fetchByIncident<T>('nossa_closed', incident);
+  const closedRow = await fetchByIncident<T>('nossa_closed', incident, options);
   if (closedRow) return { row: closedRow, resource: 'nossa_closed' };
 
   return null;
