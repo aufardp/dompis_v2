@@ -19,6 +19,8 @@ export interface RekapTicketRow {
   is_sqm_update: boolean;
   jenis_tiket_1: string | null;
   jenis_tiket_2: string | null;
+  operational_bucket?: string | null;
+  kpi_seg?: string | null;
 }
 
 export interface CustomerSqmOverlayRow extends RekapTicketRow {

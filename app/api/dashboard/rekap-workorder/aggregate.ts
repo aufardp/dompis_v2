@@ -168,6 +168,43 @@ export function buildCustomerLegacySummaryFromRows(
   return map;
 }
 
+export function buildLegacyCustomerRowsFromRekapRows(
+  rows: RekapTicketRow[],
+): LegacyCustomerBucketRow[] {
+  const grouped = new Map<string, LegacyCustomerBucketRow>();
+
+  for (const row of rows) {
+    if (
+      row.operational_bucket !== 'kpi_customer' ||
+      (row.kpi_seg !== 'b2c' && row.kpi_seg !== 'b2b')
+    ) continue;
+    const status = String(row.status ?? '');
+    const statusUpdate = String(row.status_update ?? 'open');
+    const key = JSON.stringify([
+      row.area,
+      row.sa_name,
+      row.workzone ?? '',
+      status,
+      statusUpdate,
+    ]);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.cnt += BigInt(row.cnt ?? 0);
+      continue;
+    }
+    grouped.set(key, {
+      area: row.area,
+      sa_name: row.sa_name,
+      workzone: row.workzone ?? '',
+      status,
+      status_update: statusUpdate,
+      cnt: BigInt(row.cnt ?? 0),
+    });
+  }
+
+  return Array.from(grouped.values());
+}
+
 export function buildCustomerSqmSummaryFromRows(
   rows: RekapTicketRow[],
   kind: 'proactive' | 'sqm_update',

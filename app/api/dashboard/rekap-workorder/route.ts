@@ -15,6 +15,7 @@ import {
   filterRekapRowsByBucket,
   buildSelectedBucketSummary,
   buildRekapResponse,
+  buildLegacyCustomerRowsFromRekapRows,
 } from './aggregate';
 import {
   REKAP_WORKORDER_CACHE_VERSION,
@@ -22,7 +23,6 @@ import {
   getFilteredRekapTickets,
   getRekapTeknisiRows,
   getRekapTeknisiRegistered,
-  getRekapAging,
   getLegacyCustomerBucketRows,
   getCustomerSqmOverlayTickets,
   getCustomerGamasOverlayTickets,
@@ -243,7 +243,6 @@ export async function GET(request: NextRequest) {
           ticketRowsAll,
           teknisiRows,
           teknisiRegisteredRows,
-          agingRows,
           customerLegacyRows,
           customerSqmOverlayRows,
           customerGamasOverlayRows,
@@ -266,14 +265,7 @@ export async function GET(request: NextRequest) {
               ),
           getRekapTeknisiRows(today, decoded.id_user, teknisiWorkzones),
           getRekapTeknisiRegistered(decoded.id_user, teknisiWorkzones),
-          getRekapAging(
-            decoded.role,
-            decoded.id_user,
-            bucket,
-            selectedWorkzone,
-            branchParam ? Number(branchParam) : undefined,
-          ),
-          bucket === 'all' || bucket === 'kpi_customer'
+          bucket === 'kpi_customer'
             ? Promise.all([
                 getLegacyCustomerBucketRows(
                   decoded.role,
@@ -333,6 +325,10 @@ export async function GET(request: NextRequest) {
             : Promise.resolve([] as RekapTicketRow[]),
           ]);
         const fetchedAt = Date.now();
+        const effectiveCustomerLegacyRows =
+          bucket === 'all'
+            ? buildLegacyCustomerRowsFromRekapRows(ticketRowsAll)
+            : customerLegacyRows;
         const bucketBreakdown = buildBucketBreakdownFromRekapRows(ticketRowsAll);
         const workboardSummary = buildBucketSummaryFromRows(ticketRowsAll);
         const kpiSummary = {
@@ -385,7 +381,7 @@ export async function GET(request: NextRequest) {
           normalizedWorkboardSummary,
           bucketSummary,
           bucketBreakdown,
-          customerLegacyRows,
+          effectiveCustomerLegacyRows,
           bucket === 'kpi_customer'
             ? {
                 proactive: customerSqmOverlayRows.proactive,

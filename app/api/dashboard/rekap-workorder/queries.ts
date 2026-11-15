@@ -29,7 +29,7 @@ import type {
 import { buildTicketManagementBucketSummary } from './aggregate';
 
 // Bump this whenever bucket classification or detail aggregation changes.
-export const REKAP_WORKORDER_CACHE_VERSION = 'v28';
+export const REKAP_WORKORDER_CACHE_VERSION = 'v29';
 export const REKAP_TEKNISI_CACHE_VERSION = 'v2';
 
 export function buildRekapTicketsCacheKey(
@@ -122,6 +122,8 @@ export async function getFilteredRekapTickets(
       ${isSqmUpdateReasonSql('t')} AS is_sqm_update,
       t.jenis_tiket_1,
       t.jenis_tiket_2,
+      t.operational_bucket,
+      t.kpi_seg,
       COUNT(*) AS cnt
     FROM ticket t
     JOIN service_area sa ON sa.nama_sa = t.workzone
@@ -131,7 +133,8 @@ export async function getFilteredRekapTickets(
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
              jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path,
-             is_sqm_update, jenis_tiket_1, jenis_tiket_2
+             is_sqm_update, jenis_tiket_1, jenis_tiket_2, operational_bucket,
+             kpi_seg
     ORDER BY area, sa_name, workzone
   `;
       return prisma.$queryRawUnsafe<RekapTicketRow[]>(
