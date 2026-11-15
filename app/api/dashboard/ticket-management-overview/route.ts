@@ -3,14 +3,14 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { getOrSetCacheSwr } from '@/lib/cache';
+import { getOrSetCache } from '@/lib/cache';
 import { logger } from '@/lib/observability/logger';
 import { normalizeRoleKey } from '@/app/libs/roles';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_TTL_SECONDS = 30;
+const CACHE_TTL_SECONDS = 15;
 
 export async function GET(request: Request) {
   try {
@@ -33,27 +33,24 @@ export async function GET(request: Request) {
 
     const r = normalizeRoleKey(user.role);
     const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${user.id_user}` : `wz:${user.id_user}`;
-    const cacheKey = `ticket_mgmt_overview:v7:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
+    const cacheKey = `daily_tickets:overview:v8:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
-    const data = await getOrSetCacheSwr(cacheKey, async () => {
+    const data = await getOrSetCache(cacheKey, async () => {
       const summary = await DailyTicketService.getTicketManagementOverviewSummary(
         user.role,
         user.id_user,
         workzone,
         branchId,
       );
-      return { ...summary };
+      return { ...summary, generatedAt: new Date().toISOString() };
     }, CACHE_TTL_SECONDS);
 
     return NextResponse.json({
       success: true,
-      data: {
-        generatedAt: new Date().toISOString(),
-        ...data,
-      },
-    });
+      data,
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: unknown) {
-    if (isQueryOverloadError(error)) {
+    if (isQueryOverloadError(error) || getErrorStatus(error, 500) === 503) {
       logger.warn('ticket-management-overview overloaded', { error: String((error as Error)?.message ?? error) });
       return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
     }

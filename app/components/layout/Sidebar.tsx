@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useSyncExternalStore, type ComponentType } from 'react';
+import { useEffect, useMemo, type ComponentType } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { subscribe, getSnapshot } from '@/app/libs/bucket-sync-store';
 import clsx from 'clsx';
 import {
   Activity,
@@ -29,7 +28,7 @@ import {
 import ConnectionStatusIndicator from '@/app/components/ui/ConnectionStatusIndicator';
 import { TICKET_MANAGEMENT_BUCKET_ITEMS } from '@/app/config/ticket-management-nav';
 import ExpandableMenuGroup from '@/app/components/layout/ExpandableMenuGroup';
-import { useDailyTicketPage } from '@/app/hooks/useDailyTicketPage';
+import { useTicketManagementOverview } from '@/app/hooks/useTicketManagementOverview';
 import { useWorkzoneOptions } from '@/app/hooks/useDropdownOptions';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { usePersistentBranchScope } from '@/app/hooks/usePersistentBranchScope';
@@ -315,104 +314,17 @@ export default function Sidebar({
   const roleName = String(user?.role_name ?? '').toLowerCase();
   const roleKey = String(user?.role_key ?? '').toLowerCase();
 
-  const kpiCustomerQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_customer'],
-    page: 1,
-    limit: 1,
+  const overview = useTicketManagementOverview({
     workzone: selectedWorkzone || undefined,
     branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
+    enabled: Boolean(user) && roleKey !== 'helpdesk',
   });
-
-  const kpiProactiveQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['kpi_proactive'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
-  });
-
-  const nonKpiUnspecQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_kpi_unspec'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
-  });
-
-  const nonTechnicalQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['non_technical'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
-  });
-
-  const sqmUpdateQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['sqm_update'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
-  });
-
-  const obsoleteQuery = useDailyTicketPage({
-    dept: 'all',
-    operationalBucket: ['obsolete'],
-    page: 1,
-    limit: 1,
-    workzone: selectedWorkzone || undefined,
-    branch: branch || undefined,
-    includeValidasiTickets: false,
-    includeOptions: false,
-    countOnly: true,
-  });
-
-  const syncedCounts = useSyncExternalStore(subscribe, getSnapshot);
-
-  const kpiCustomerTotal =
-    kpiCustomerQuery.loading
-      ? (syncedCounts['kpi-customer'] ?? kpiCustomerQuery.summary.total)
-      : kpiCustomerQuery.summary.total;
-  const kpiProactiveTotal =
-    kpiProactiveQuery.loading
-      ? (syncedCounts['kpi-proactive'] ?? kpiProactiveQuery.summary.total)
-      : kpiProactiveQuery.summary.total;
-  const nonKpiUnspecTotal =
-    nonKpiUnspecQuery.loading
-      ? (syncedCounts['non-kpi-unspec'] ?? nonKpiUnspecQuery.summary.total)
-      : nonKpiUnspecQuery.summary.total;
-  const nonTechnicalTotal =
-    nonTechnicalQuery.loading
-      ? (syncedCounts['non-technical'] ?? nonTechnicalQuery.summary.total)
-      : nonTechnicalQuery.summary.total;
-  const sqmUpdateTotal =
-    sqmUpdateQuery.loading
-      ? (syncedCounts['sqm-update'] ?? sqmUpdateQuery.summary.total)
-      : sqmUpdateQuery.summary.total;
-  const obsoleteTotal =
-    obsoleteQuery.loading
-      ? (syncedCounts['obsolete'] ?? obsoleteQuery.summary.total)
-      : obsoleteQuery.summary.total;
+  const kpiCustomerTotal = overview.data?.cards.kpiCustomer.total;
+  const kpiProactiveTotal = overview.data?.cards.kpiProactive.total;
+  const nonKpiUnspecTotal = overview.data?.cards.nonKpiUnspec.total;
+  const nonTechnicalTotal = overview.data?.cards.nonTechnical.total;
+  const sqmUpdateTotal = overview.data?.cards.sqmUpdate.total;
+  const obsoleteTotal = overview.data?.cards.obsolete.total;
 
   const handleNavigate = (path: string) => {
     router.push(path);

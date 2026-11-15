@@ -864,6 +864,12 @@ export default function TicketManagementOverviewPage({
       selectedWorkzone={workzone}
     >
       <div className='space-y-6'>
+        {overview.isError && (
+          <div role='alert' className='rounded border border-(--border) bg-(--surface) p-3 text-sm text-(--text-primary)'>
+            <p>Ringkasan tiket belum berhasil diperbarui.</p>
+            <button type='button' onClick={() => overview.refetch()} className='mt-2 underline focus-visible:outline-2 focus-visible:outline-offset-2'>Coba lagi</button>
+          </div>
+        )}
         <section className='overflow-hidden rounded border border-(--border) bg-(--surface) shadow-sm'>
           <div className='bg-(--surface-2) p-6 md:p-7'>
             <div className='flex flex-col gap-6'>

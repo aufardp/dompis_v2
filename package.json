@@ -64,6 +64,8 @@
     "bridge:sync-local": "tsx scripts/bridge-sync-local.ts",
     "backup:db": "tsx scripts/backup-db.ts",
     "lint": "eslint .",
+    "test:tickets": "node --test scripts/test-daily-ticket-timeouts.cjs scripts/test-ticket-management-queries.cjs scripts/test-ticket-management-requests.cjs",
+    "test:tickets:integration": "node --test scripts/test-ticket-management-mysql.cjs",
     "test:sync": "node --test scripts/test-ingestion-projection-reliability.cjs scripts/test-nossa-open-coverage.cjs scripts/test-worker-contention.cjs scripts/test-incident-ingestion.cjs",
     "test:sync:integration": "node --test scripts/test-ingestion-projection-integration.cjs scripts/test-bridge-rate-limit-integration.cjs scripts/test-worker-contention-redis.cjs scripts/test-bulk-incident-redis.cjs",
     "benchmark:sync": "node scripts/benchmark-ticket-sync.cjs"

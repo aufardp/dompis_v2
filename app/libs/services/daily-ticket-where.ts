@@ -188,11 +188,11 @@ export async function applyBranchScopeWhere(
 export async function resolveSelectedWorkzone(
   saId?: number | string,
 ): Promise<string | null> {
-  const id = Number(saId);
-
-  if (!Number.isFinite(id) || id <= 0) return null;
-
-  return resolveWorkzoneName(id);
+  const value = String(saId ?? '').trim();
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return value;
+  const name = Number(value) > 0 ? await resolveWorkzoneName(Number(value)) : null;
+  return name || '__unknown_workzone__';
 }
 
 export async function buildDailyTicketWhere(
@@ -237,15 +237,12 @@ export async function buildDailyTicketWhere(
 
   await applyBranchScopeWhere(where, branchId);
 
-  const isLegacyKpi = Array.isArray(operationalBucket)
-    ? operationalBucket.includes('kpi_customer')
-    : operationalBucket === 'kpi_customer';
   // Query yang sudah punya batas waktu eksplisit (trend, hourly-close, aging)
   // tidak perlu filter harian: filter itu berbentuk OR
   // (status NOT IN closed OR (status IN closed AND closed_at >= hari ini))
   // yang mematikan index range pada closed_at/booking_date.
   if (options.applyDailyFilter !== false) {
-    await applyDailyTicketFilter(where, undefined, isLegacyKpi);
+    await applyDailyTicketFilter(where);
   }
 
   const searchWhere = buildTicketSearchWhere(search, searchType);

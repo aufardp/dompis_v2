@@ -97,6 +97,7 @@ export type TicketFilters = {
   includeValidasi?: boolean;
   includeValidasiTickets?: boolean;
   includeSummary?: boolean;
+  includeFlagging?: boolean;
   includeOptions?: boolean;
   includeClosed?: boolean;
   globalScope?: boolean;
@@ -105,6 +106,7 @@ export type TicketFilters = {
   sortField?: string;
   cursor?: string;
   countOnly?: boolean;
+  summaryOnly?: boolean;
 };
 
 export type TicketTypeOption = {
@@ -496,17 +498,8 @@ export function applyAnomalyBucketFilterWhere(
 
 export function buildDeptSegmentWhere(dept?: string): Record<string, unknown> | null {
   if (!dept || dept === 'all') return null;
-  // dept 3-segmen berbasis jenis_tiket_2 (netral priority), permintaan dinamis via customer_segment
-  // helper di lib/dept.ts sudah handle netral/b2c/b2b
-  // dynamic import hindari circular: inline via require
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { buildDeptJenisWhere } = require('@/lib/dept') as typeof import('@/lib/dept');
-  if (dept === 'b2c' || dept === 'b2b' || dept === 'netral' || dept === 'neutral') {
-    const key = dept === 'neutral' ? 'netral' : dept;
-    return buildDeptJenisWhere(key as 'b2c' | 'b2b' | 'netral');
-  }
-  // legacy fallback (seharusnya tidak terpakai)
-  if (dept === 'b2c') return { customer_segment: { in: ['DCS', 'PL-TSEL'] } };
+  const segment = dept === 'neutral' ? 'netral' : dept;
+  if (segment === 'b2c' || segment === 'b2b' || segment === 'netral') return { kpi_seg: segment };
   return null;
 }
 
@@ -697,6 +690,10 @@ function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
         const operator = value as Record<string, any>;
 
         if (operator.in !== undefined && Array.isArray(operator.in)) {
+          if (operator.in.length === 0) {
+            conditions.push('1=0');
+            continue;
+          }
           const placeholders = operator.in.map(() => '?');
           conditions.push(`\`${key}\` IN (${placeholders.join(',')})`);
           params.push(...operator.in);
@@ -730,15 +727,13 @@ function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
           continue;
         }
 
-        if (operator.gte !== undefined) {
-          conditions.push(`\`${key}\` >= ?`);
-          params.push(operator.gte);
-          continue;
-        }
-
-        if (operator.lte !== undefined) {
-          conditions.push(`\`${key}\` <= ?`);
-          params.push(operator.lte);
+        const rangeOperators = [['gte', '>='], ['lte', '<='], ['gt', '>'], ['lt', '<']] as const;
+        if (rangeOperators.some(([name]) => operator[name] !== undefined)) {
+          for (const [name, sqlOperator] of rangeOperators) {
+            if (operator[name] === undefined) continue;
+            conditions.push(`\`${key}\` ${sqlOperator} ?`);
+            params.push(operator[name]);
+          }
           continue;
         }
 
@@ -755,8 +750,8 @@ function walk(node: any, parentOp: 'AND' | 'OR' = 'AND') {
         }
 
         if (operator.equals !== undefined) {
-          conditions.push(`\`${key}\` = ?`);
-          params.push(operator.equals);
+          conditions.push(operator.equals === null ? `\`${key}\` IS NULL` : `\`${key}\` = ?`);
+          if (operator.equals !== null) params.push(operator.equals);
           continue;
         }
       }

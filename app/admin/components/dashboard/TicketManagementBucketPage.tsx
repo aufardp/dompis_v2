@@ -17,7 +17,6 @@ import { useTicketEvents } from '@/app/hooks/useTicketEvents';
 import { queryKeys } from '@/app/libs/query-keys';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { fetchWithAuth } from '@/app/libs/fetcher';
-import { setBucketCount } from '@/app/libs/bucket-sync-store';
 import type { DateRange } from 'react-day-picker';
 import DateRangePicker from '@/app/admin/semesta/components/filters/DateRangePicker';
 import TicketTable from './TicketTable';
@@ -226,8 +225,6 @@ export default function TicketManagementBucketPage({
     const value = Number(searchParams.get('ticketId') || 0);
     return Number.isFinite(value) && value > 0 ? value : undefined;
   }, [searchParams]);
-  const isFocusedTicketMode = Boolean(focusTicketId);
-  const defaultTicketPageLimit = isFocusedTicketMode ? 10 : 50;
   const effectiveSearchQuery = searchQuery.trim() || routeSearchQuery.trim();
   const normalizedSearchQuery = effectiveSearchQuery.toLowerCase();
 
@@ -329,6 +326,17 @@ export default function TicketManagementBucketPage({
     ? format(dateRange.to, 'yyyy-MM-dd')
     : undefined;
 
+  useEffect(() => {
+    setB2cPage(1);
+    setB2bPage(1);
+    setSemuaPage(1);
+    setClosePage(1);
+    setGamasPage(1);
+    setExtraWorkboardPage(1);
+    setB2cValidasiPage(1);
+    setB2bValidasiPage(1);
+  }, [branch, workzoneFilter, startDateStr, endDateStr]);
+
   const SEMUA_PAGE_SIZE = 15;
 
   const sharedFilters = {
@@ -344,11 +352,7 @@ export default function TicketManagementBucketPage({
     startDate: startDateStr,
     endDate: endDateStr,
   } as const;
-  const fetchDailyOptions = activeTab === 'b2c' || activeTab === 'b2b';
-  const fetchValidasiTickets =
-    fetchDailyOptions ||
-    activeTab === 'validasi' ||
-    Boolean(effectiveSearchQuery);
+  const fetchValidasiTickets = activeTab === 'validasi' || Boolean(effectiveSearchQuery);
 
   const b2cPageData = useDailyTicketPage({
     ...sharedFilters,
@@ -359,11 +363,13 @@ export default function TicketManagementBucketPage({
     ticketStatus: [...ticketStatusFilter, ...b2cTicketStatusFilter],
     flagging: [...flaggingFilter, ...b2cFlaggingFilter],
     page: b2cPage,
-    limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
+    limit: 10,
     validasiPage: b2cValidasiPage,
-    enabled: activeTab !== 'b2b',
-    includeOptions: fetchDailyOptions,
-    includeValidasiTickets: fetchValidasiTickets,
+    enabled: true,
+    summaryOnly: activeTab !== 'b2c' && !effectiveSearchQuery,
+    includeOptions: activeTab === 'b2c',
+    includeFlagging: activeTab === 'b2c',
+    includeValidasiTickets: activeTab === 'b2c' || fetchValidasiTickets,
     sortField: b2cSortField,
     sortOrder: b2cSortOrder,
   });
@@ -377,11 +383,13 @@ export default function TicketManagementBucketPage({
     ticketStatus: [...ticketStatusFilter, ...b2bTicketStatusFilter],
     flagging: [...flaggingFilter, ...b2bFlaggingFilter],
     page: b2bPage,
-    limit: activeTab === 'semua' ? defaultTicketPageLimit : 10,
+    limit: 10,
     validasiPage: b2bValidasiPage,
-    enabled: activeTab !== 'b2c',
-    includeOptions: fetchDailyOptions,
-    includeValidasiTickets: fetchValidasiTickets,
+    enabled: true,
+    summaryOnly: activeTab !== 'b2b' && !effectiveSearchQuery,
+    includeOptions: activeTab === 'b2b',
+    includeFlagging: activeTab === 'b2b',
+    includeValidasiTickets: activeTab === 'b2b' || fetchValidasiTickets,
     sortField: b2bSortField,
     sortOrder: b2bSortOrder,
   });
@@ -433,6 +441,7 @@ export default function TicketManagementBucketPage({
     page: closePage,
     limit: 15,
     enabled: true,
+    countOnly: activeTab !== 'close' && !effectiveSearchQuery,
     sortField: closeSortField,
     sortOrder: closeSortOrder,
   });
@@ -446,7 +455,8 @@ export default function TicketManagementBucketPage({
     flagging: flaggingFilter,
     page: semuaPage,
     limit: SEMUA_PAGE_SIZE,
-    enabled: activeTab === 'semua',
+    enabled: true,
+    summaryOnly: activeTab !== 'semua',
     includeOptions: false,
     includeValidasiTickets: false,
     sortField: semuaSortField,
@@ -465,64 +475,13 @@ export default function TicketManagementBucketPage({
     page: gamasPage,
     limit: 15,
     enabled: true,
-    includeValidasi: false, //tambah ini terakhir
+    countOnly: activeTab !== 'gamas',
+    includeValidasi: false,
     includeOptions: false,
     includeValidasiTickets: false,
     sortField: gamasSortField,
     sortOrder: gamasSortOrder,
   });
-
-  const totals = useMemo(() => {
-    const b2c = b2cPageData.summary;
-    const b2b = b2bPageData.summary;
-    const extra = extraWorkboardPageData.summary;
-    const b2cCust = b2cPageData.customerTypeSummary;
-    const b2bCust = b2bPageData.customerTypeSummary;
-    const extraCust = extraWorkboardPageData.customerTypeSummary;
-    const includeExtra = Boolean(extraWorkboard) && isUnspecBucket;
-    return {
-      total: (b2c.total ?? 0) + (b2b.total ?? 0) + (includeExtra ? extra.total ?? 0 : 0),
-      open: (b2c.open ?? 0) + (b2b.open ?? 0) + (includeExtra ? extra.open ?? 0 : 0),
-      assigned:
-        (b2c.assigned ?? 0) + (b2b.assigned ?? 0) + (includeExtra ? extra.assigned ?? 0 : 0),
-      close: closePageData.pagination.total,
-      ffgCount:
-        (b2c.ffgCount ?? 0) + (b2b.ffgCount ?? 0) + (includeExtra ? extra.ffgCount ?? 0 : 0),
-      gamasCount:
-        (b2c.gamasCount ?? 0) + (b2b.gamasCount ?? 0) + (includeExtra ? extra.gamasCount ?? 0 : 0),
-      p1Count: (b2c.p1Count ?? 0) + (b2b.p1Count ?? 0) + (includeExtra ? extra.p1Count ?? 0 : 0),
-      pPlusCount:
-        (b2c.pPlusCount ?? 0) + (b2b.pPlusCount ?? 0) + (includeExtra ? extra.pPlusCount ?? 0 : 0),
-      customerTypes: {
-        hvcDiamond:
-          (b2cCust?.hvcDiamond ?? 0) +
-          (b2bCust?.hvcDiamond ?? 0) +
-          (includeExtra ? extraCust?.hvcDiamond ?? 0 : 0),
-        hvcPlatinum:
-          (b2cCust?.hvcPlatinum ?? 0) +
-          (b2bCust?.hvcPlatinum ?? 0) +
-          (includeExtra ? extraCust?.hvcPlatinum ?? 0 : 0),
-        hvcGold:
-          (b2cCust?.hvcGold ?? 0) +
-          (b2bCust?.hvcGold ?? 0) +
-          (includeExtra ? extraCust?.hvcGold ?? 0 : 0),
-        reguler:
-          (b2cCust?.reguler ?? 0) +
-          (b2bCust?.reguler ?? 0) +
-          (includeExtra ? extraCust?.reguler ?? 0 : 0),
-      },
-    };
-  }, [
-    b2bPageData.summary,
-    b2cPageData.summary,
-    extraWorkboardPageData.summary,
-    closePageData.pagination.total,
-    b2bPageData.customerTypeSummary,
-    b2cPageData.customerTypeSummary,
-    extraWorkboardPageData.customerTypeSummary,
-    extraWorkboard,
-    isUnspecBucket,
-  ]);
 
   const adjustedTotals = useMemo(() => {
     const b2cTotal = b2cPageData.pagination.total ?? 0;
@@ -531,8 +490,8 @@ export default function TicketManagementBucketPage({
     const b2bValidasi = b2bPageData.validasiCount ?? 0;
 
     return {
-      b2c: Math.max(0, b2cTotal - b2cValidasi),
-      b2b: Math.max(0, b2bTotal - b2bValidasi),
+      b2c: b2cTotal,
+      b2b: b2bTotal,
       validasi: b2cValidasi + b2bValidasi,
     };
   }, [
@@ -782,13 +741,31 @@ export default function TicketManagementBucketPage({
     anomalyBucket,
   ]);
 
+  const lastInvalidationRef = useRef(0);
+  const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (invalidationTimerRef.current) clearTimeout(invalidationTimerRef.current);
+  }, []);
+
   const invalidateQueries = useCallback(() => {
-    queryClient.invalidateQueries({
-      predicate: (query) =>
-        Array.isArray(query.queryKey) &&
-        query.queryKey[0] === queryKeys.tickets.all[0],
-      refetchType: 'active',
-    });
+    if (invalidationTimerRef.current) return;
+    const refresh = () => {
+      invalidationTimerRef.current = null;
+      lastInvalidationRef.current = Date.now();
+      queryClient.invalidateQueries({
+        predicate: query => query.queryKey[0] === queryKeys.tickets.all[0] &&
+          query.queryKey[1] === 'daily' && query.state.fetchStatus !== 'fetching',
+        refetchType: 'active',
+      });
+      queryClient.invalidateQueries({
+        predicate: query => query.queryKey[0] === queryKeys.dashboard.all[0] &&
+          query.queryKey[1] === 'ticket-management-overview' && query.state.fetchStatus !== 'fetching',
+        refetchType: 'active',
+      });
+    };
+    const remaining = 10_000 - (Date.now() - lastInvalidationRef.current);
+    if (remaining > 0) invalidationTimerRef.current = setTimeout(refresh, remaining);
+    else refresh();
   }, [queryClient]);
 
   useTicketEvents({
@@ -853,24 +830,6 @@ export default function TicketManagementBucketPage({
   );
 
   const mergedSummary = semuaPageData.summary;
-
-  const bucketKey = operationalBucket[0];
-  const navKey = bucketKey?.replace(/_/g, '-');
-
-  useEffect(() => {
-    if (bucketKey && mergedSummary.total > 0) {
-      queryClient.setQueryData(
-        ['bucket-count', bucketKey],
-        mergedSummary.total,
-      );
-    }
-  }, [bucketKey, mergedSummary.total, queryClient]);
-
-  useEffect(() => {
-    if (navKey && mergedTotal > 0) {
-      setBucketCount(navKey, mergedTotal);
-    }
-  }, [navKey, mergedTotal]);
 
   const currentTabSearchHit = useMemo(() => {
     if (!normalizedSearchQuery) return false;
@@ -979,12 +938,15 @@ export default function TicketManagementBucketPage({
     normalizedSearchQuery,
   ]);
 
-  const mergedLoading = semuaPageData.loading || semuaPageData.isRefreshing;
-  const initialLoading =
-    b2cPageData.loading ||
-    b2bPageData.loading ||
-    extraWorkboardPageData.loading;
+  const mergedLoading = semuaPageData.loading;
+  const activePage = activeTab === 'b2c' ? b2cPageData : activeTab === 'b2b' ? b2bPageData
+    : activeTab === 'close' ? closePageData : activeTab === 'gamas' ? gamasPageData
+    : activeTab === 'unspecOhi' ? extraWorkboardPageData : semuaPageData;
+  const initialLoading = activeTab === 'validasi'
+    ? b2cPageData.loading || b2bPageData.loading : activePage.loading;
   const searchLoading = Boolean(effectiveSearchQuery) && initialLoading;
+  const activeError = activeTab === 'validasi'
+    ? b2cPageData.error || b2bPageData.error : activePage.error;
 
   useEffect(() => {
     if (!normalizedSearchQuery) return;
@@ -1021,6 +983,15 @@ export default function TicketManagementBucketPage({
         selectedWorkzone={workzoneFilter}
       >
         <div className='space-y-5'>
+          {activeError && (
+            <div role='alert' className='rounded border border-(--border) bg-(--surface) p-3 text-sm text-(--text-primary)'>
+              <p>Data tiket belum berhasil diperbarui. Data yang sudah dimuat tetap ditampilkan.</p>
+              <button type='button' onClick={() => {
+                activePage.refresh();
+                if (activeTab === 'validasi') { b2cPageData.refresh(); b2bPageData.refresh(); }
+              }} className='mt-2 underline focus-visible:outline-2 focus-visible:outline-offset-2'>Coba lagi</button>
+            </div>
+          )}
           {searchLoading ? (
             <div className='flex min-h-72 items-center justify-center rounded-3xl border border-(--border) bg-(--surface) shadow-sm'>
               <div className='flex items-center gap-2 rounded-full border border-(--border) bg-(--surface-2) px-5 py-2.5 text-sm font-semibold text-(--text-secondary)'>
@@ -1149,7 +1120,7 @@ export default function TicketManagementBucketPage({
                           Prioritas harian
                         </span>
                       </div>
-                      <FlaggingSummaryRow counts={totals} />
+                      <FlaggingSummaryRow counts={semuaPageData.summary} />
                     </div>
                     <div className='flex-1 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-sm'>
                       <div className='mb-2.5 flex items-center justify-between gap-2'>
@@ -1160,7 +1131,7 @@ export default function TicketManagementBucketPage({
                           Berdasarkan tipe pelanggan
                         </span>
                       </div>
-                      <CustomerTypeSummaryRow counts={totals.customerTypes} />
+                      <CustomerTypeSummaryRow counts={semuaPageData.customerTypeSummary} />
                     </div>
                   </div>
                   {headerSlot && (
@@ -1301,7 +1272,7 @@ export default function TicketManagementBucketPage({
                   tickets={displayMergedTickets}
                   tableSummary={mergedSummary}
                   loading={mergedLoading}
-                  isRefreshing={mergedLoading}
+                  isRefreshing={semuaPageData.isRefreshing}
                   searching={Boolean(effectiveSearchQuery)}
                   onAssign={onCombinedAssign}
                   showBypassClose={canBypassClose}
@@ -1752,7 +1723,9 @@ export default function TicketManagementBucketPage({
                 {
                   predicate: (query) =>
                     Array.isArray(query.queryKey) &&
-                    query.queryKey[0] === queryKeys.tickets.all[0],
+                    query.queryKey[0] === queryKeys.tickets.all[0] &&
+        query.queryKey[1] === 'daily' &&
+        query.state.fetchStatus !== 'fetching',
                 },
                 (previous) =>
                   patchTicketAssignmentInCache(

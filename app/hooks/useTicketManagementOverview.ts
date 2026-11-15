@@ -58,8 +58,9 @@ export function useTicketManagementOverview({ workzone, branch, enabled = true }
 
   return useQuery({
     queryKey: queryKeys.dashboard.ticketManagementOverview(filters),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
+    retry: false,
     refetchOnWindowFocus: false,
     enabled,
     queryFn: async () => {
@@ -72,7 +73,7 @@ export function useTicketManagementOverview({ workzone, branch, enabled = true }
       );
       if (!res) throw new Error('No response from ticket management overview');
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
         throw new Error(json?.message || 'Failed to fetch ticket management overview');
       }

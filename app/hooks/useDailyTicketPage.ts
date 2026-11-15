@@ -35,9 +35,11 @@ type DailyTicketPageFilters = {
   includeValidasi?: boolean;
   includeValidasiTickets?: boolean;
   includeOptions?: boolean;
+  includeFlagging?: boolean;
   includeClosed?: boolean;
   gamasOnly?: boolean;
   countOnly?: boolean;
+  summaryOnly?: boolean;
 };
 
 type PaginationInfo = {
@@ -83,9 +85,11 @@ export function useDailyTicketPage({
   includeValidasi = true,
   includeValidasiTickets = true,
   includeOptions = true,
+  includeFlagging = true,
   includeClosed = false,
   gamasOnly = false,
   countOnly = false,
+  summaryOnly = false,
   sortField,
   sortOrder,
 }: DailyTicketPageFilters & {
@@ -120,16 +124,30 @@ export function useDailyTicketPage({
     includeValidasi,
     includeValidasiTickets,
     includeOptions,
+    includeFlagging,
     includeClosed,
     gamasOnly,
     countOnly,
+    summaryOnly,
+    sortField,
+    sortOrder,
   });
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
     refetchOnWindowFocus: false,
-    placeholderData: search?.trim() ? undefined : keepPreviousData,
+    retry: false,
+    placeholderData: search?.trim() ? undefined : (previous, previousQuery) => {
+      const prior = previousQuery?.queryKey[2] as Record<string, unknown> | undefined;
+      const filters = queryKey[2] as Record<string, unknown>;
+      const sameScope = prior && Object.entries(filters).every(([key, value]) =>
+        ['page', 'validasiPage', 'sortField', 'sortOrder'].includes(key) ||
+        JSON.stringify(prior[key]) === JSON.stringify(value),
+      );
+      return sameScope ? keepPreviousData(previous) : undefined;
+    },
     enabled,
     queryFn: async () => {
       const normalizedDept = dept === 'neutral' ? 'netral' : dept;
@@ -146,9 +164,11 @@ export function useDailyTicketPage({
       if (!includeValidasiTickets)
         params.set('includeValidasiTickets', 'false');
       if (!includeOptions) params.set('includeOptions', 'false');
+      if (!includeFlagging) params.set('includeFlagging', 'false');
       if (includeClosed) params.set('includeClosed', 'true');
       if (gamasOnly) params.set('gamasOnly', 'true');
       if (countOnly) params.set('countOnly', 'true');
+      if (summaryOnly) params.set('summaryOnly', 'true');
 
       const normalizedSearch = search?.trim();
       if (normalizedSearch) {
@@ -194,9 +214,9 @@ export function useDailyTicketPage({
       );
       if (!res) throw new Error('No response');
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
-        throw new Error(json?.message || 'Failed to fetch daily tickets');
+        throw new Error(json?.message || `Failed to fetch daily tickets (HTTP ${res.status})`);
       }
 
       return json.data as {
@@ -269,6 +289,7 @@ export function useDailyTicketPage({
       statusOptions: data?.statusOptions ?? [],
       ticketTypeOptions: data?.ticketTypeOptions ?? [],
       loading: isLoading,
+      error: error instanceof Error ? error.message : null,
       isRefreshing: isFetching && !isLoading,
       validasiCount: Number(data?.validasiCount ?? 0),
       pagination,
@@ -284,6 +305,7 @@ export function useDailyTicketPage({
     data,
     isLoading,
     isFetching,
+    error,
     page,
     limit,
     validasiPage,

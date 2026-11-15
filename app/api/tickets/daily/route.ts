@@ -6,6 +6,9 @@ import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
 import { getOrSetCache } from '@/lib/cache';
+import { QueryGateTimeoutError } from '@/lib/sql/query-gate';
+import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
+import { logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +24,7 @@ export const dynamic = 'force-dynamic';
  * historical data in the database.
  */
 export async function GET(request: Request) {
+  const startedAt = Date.now();
   try {
     const rateLimited = await enforceApiRateLimit(request, {
       namespace: 'tickets-daily',
@@ -89,16 +93,18 @@ export async function GET(request: Request) {
         searchParams.get('includeValidasiTickets') === 'false' ? false : true,
       includeOptions:
         searchParams.get('includeOptions') === 'false' ? false : true,
+      includeFlagging: searchParams.get('includeFlagging') !== 'false',
       includeClosed: searchParams.get('includeClosed') === 'true',
       gamasOnly: searchParams.get('gamasOnly') === 'true',
       sort: toSortOrder(searchParams.get('sort'), 'desc'),
       sortField: searchParams.get('sortField') || undefined,
       cursor: searchParams.get('cursor') || undefined,
       countOnly: searchParams.get('countOnly') === 'true',
+      summaryOnly: searchParams.get('summaryOnly') === 'true',
     };
 
     // Build cache key identical to service internal cacheKeyBase
-    const cacheKey = `dashboard:daily:${user.role}:${user.id_user}:${JSON.stringify(filters)}`;
+    const cacheKey = `daily_tickets:v2:${user.role}:${user.id_user}:${JSON.stringify(filters)}`;
     const CACHE_TTL_SECONDS = 15;
 
     // Fetch from database with route-level single-flight cache
@@ -118,12 +124,25 @@ export async function GET(request: Request) {
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error: unknown) {
+    const overloaded = error instanceof QueryGateTimeoutError ||
+      getErrorStatus(error, 500) === 503 || isQueryOverloadError(error);
+    const status = overloaded ? 503 : getErrorStatus(error, 500);
+    const context = {
+      durationMs: Date.now() - startedAt,
+      status,
+      error: getErrorMessage(error, 'Unknown error'),
+    };
+    if (overloaded) logger.warn('tickets-daily overloaded', context);
+    else if (status >= 500) logger.error('tickets-daily failed', context);
+
     return NextResponse.json(
       {
         success: false,
-        message: getErrorMessage(error, 'Error fetching daily tickets'),
+        message: overloaded
+          ? 'Layanan tiket sedang sibuk. Coba lagi beberapa saat.'
+          : getErrorMessage(error, 'Error fetching daily tickets'),
       },
-      { status: getErrorStatus(error, 500) },
+      { status, headers: { 'Cache-Control': 'no-store', ...(overloaded ? { 'Retry-After': '30' } : {}) } },
     );
   }
 }

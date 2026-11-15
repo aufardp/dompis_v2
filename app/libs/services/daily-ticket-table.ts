@@ -10,6 +10,7 @@ import { DASHBOARD_CACHE_TTL, getOrSetCacheSwr } from '@/lib/cache';
 import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import { toWibDateString, todayWibDateForDb } from '@/lib/timezone';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
+import { resolveEffectiveFlagging } from '@/app/libs/flagging-manja';
 import {
   type TicketFilters,
   type TicketTypeOption,
@@ -18,7 +19,6 @@ import {
   buildSqlWhereClause,
   splitDailyFilterUnion,
   buildStatusCategorySql,
-  summarizeBucketRows,
   mapTicket,
   hydrateTicketsByIds,
   queryRawWithOptionalIndex,
@@ -57,112 +57,39 @@ async function countValidasiTickets(
   return Number(rows[0]?.total ?? 0);
 }
 
-function normalizeFlaggingSummary(row?: Record<string, unknown>): FlaggingSummary {
-  return {
-    ffgCount: Number(row?.ffg ?? 0),
-    gamasCount: Number(row?.gamas ?? 0),
-    p1Count: Number(row?.p1 ?? 0),
-    pPlusCount: Number(row?.p_plus ?? 0),
-  };
-}
-
-async function countValidasiFlaggingSummary(
-  validasiBaseWhere: Prisma.ticketWhereInput,
-): Promise<Array<Record<string, unknown>>> {
-  const [sql, params] = buildSqlWhereClause(validasiBaseWhere);
-  const sqlWithIndex = `
-    SELECT /*+ MAX_EXECUTION_TIME(30000) */
-      t.id_ticket,
-      t.status,
-      t.status_update,
-      t.guarantee_status,
-      t.ticket_id_gamas,
-      t.flagging_manja,
-      t.booking_date
-    FROM ticket t
-    WHERE ${sql}
-  `;
-  const sqlWithoutIndex = `
-    SELECT
-      t.id_ticket,
-      t.status,
-      t.status_update,
-      t.guarantee_status,
-      t.ticket_id_gamas,
-      t.flagging_manja,
-      t.booking_date
-    FROM ticket t
-    WHERE ${sql}
-  `;
-
-  return queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-    sqlWithIndex,
-    sqlWithoutIndex,
-    params,
-  );
-}
-
 async function countFlaggingSummary(
   mainTableWhere: Prisma.ticketWhereInput,
   validasiBaseWhere?: Prisma.ticketWhereInput | null,
 ): Promise<FlaggingSummary> {
-  const union = splitDailyFilterUnion(mainTableWhere);
-
-  let mainSql: string;
-  let mainParams: any[];
-  if (union) {
-    const [s1, s2] = union.branchSqls;
-    const [p1, p2] = union.params;
-    mainSql = `
-      SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-      FROM ticket WHERE ${s1}
-      UNION ALL
-      SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-      FROM ticket WHERE ${s2}
-    `;
-    mainParams = [...p1, ...p2];
-  } else {
-    const [wc, ps] = buildSqlWhereClause(mainTableWhere);
-    mainSql = `
-      SELECT /*+ MAX_EXECUTION_TIME(30000) */ id_ticket, status, status_update, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
-      FROM ticket
-      WHERE ${wc}
-    `;
-    mainParams = ps;
+  const scopes = [mainTableWhere, ...(validasiBaseWhere ? [validasiBaseWhere] : [])];
+  const params: unknown[] = [];
+  const selects = scopes.map(where => {
+    const [sql, values] = buildSqlWhereClause(where);
+    params.push(...values);
+    return `SELECT id_ticket, guarantee_status, ticket_id_gamas, flagging_manja, booking_date
+      FROM ticket WHERE ${sql}`;
+  });
+  // UNION deduplicates tickets present in both the workboard and validation scope.
+  const sql = withMaxExecutionTime(`
+    SELECT booking_date, flagging_manja, COUNT(*) AS total,
+      SUM(CASE WHEN LOWER(TRIM(COALESCE(guarantee_status, ''))) = 'guarantee' THEN 1 ELSE 0 END) AS ffg,
+      SUM(CASE WHEN LOWER(TRIM(COALESCE(ticket_id_gamas, ''))) NOT IN ('', '-', '--', 'null', 'undefined', 'n/a', 'na') THEN 1 ELSE 0 END) AS gamas
+    FROM (${selects.join(' UNION ')}) AS scoped
+    GROUP BY booking_date, flagging_manja
+  `);
+  const rows = await queryRawWithOptionalIndex<Array<{
+    booking_date: string | null; flagging_manja: string | null;
+    total: bigint | number; ffg: bigint | number; gamas: bigint | number;
+  }>>(sql, sql, params);
+  const summary: FlaggingSummary = { ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 };
+  for (const row of rows) {
+    summary.ffgCount += Number(row.ffg ?? 0);
+    summary.gamasCount += Number(row.gamas ?? 0);
+    const flag = resolveEffectiveFlagging(String(row.flagging_manja ?? '').trim().toUpperCase(), row.booking_date);
+    if (flag === 'P1') summary.p1Count += Number(row.total);
+    if (flag === 'P+') summary.pPlusCount += Number(row.total);
   }
-
-  const mainWithIndex = mainSql;
-  const mainWithoutIndex = mainSql;
-
-  const [mainRows, validasiRows] = await Promise.all([
-    queryRawWithOptionalIndex<Array<Record<string, unknown>>>(
-      mainWithIndex,
-      mainWithoutIndex,
-      mainParams,
-    ),
-    validasiBaseWhere
-      ? countValidasiFlaggingSummary(validasiBaseWhere)
-      : Promise.resolve([] as Array<Record<string, unknown>>),
-  ]);
-
-  const seen = new Set<number>();
-  const allRows: Array<Record<string, unknown>> = [];
-  for (const row of [...mainRows, ...validasiRows]) {
-    const id = Number(row.id_ticket);
-    if (!seen.has(id)) {
-      seen.add(id);
-      allRows.push(row);
-    }
-  }
-
-  return summarizeBucketRows(allRows as Array<{
-    status: string | null;
-    status_update: string | null;
-    guarantee_status: string | null;
-    ticket_id_gamas: string | null;
-    flagging_manja: string | null;
-    booking_date: string | null;
-  }>);
+  return summary;
 }
 
 async function fetchValidasiTicketIds(
@@ -222,7 +149,7 @@ const OPS_SUMMARY_INDEX = 'idx_ticket_ops_summary';
 // ops-summary. Scope yang sudah punya filter workzone dibiarkan memakai
 // idx_ticket_dashboard_main yang lebih selektif.
 function opsSummarySource(branchSql: string): string {
-  return branchSql.includes('workzone')
+  return branchSql.includes('workzone') || branchSql.includes('operational_bucket')
     ? 'ticket'
     : `ticket FORCE INDEX (${OPS_SUMMARY_INDEX})`;
 }
@@ -251,7 +178,7 @@ async function countStatusesAndCustomerTypes(
       SUM(CASE WHEN LOWER(TRIM(COALESCE(customer_type, ''))) IN ('reguler', 'regular') THEN 1 ELSE 0 END) AS reguler
     `;
     sql = `
-      SELECT
+      SELECT /*+ MAX_EXECUTION_TIME(30000) */
         SUM(total) AS total,
         SUM(\`open\`) AS \`open\`,
         SUM(assigned) AS assigned,
@@ -263,10 +190,10 @@ async function countStatusesAndCustomerTypes(
         SUM(hvc_gold) AS hvc_gold,
         SUM(reguler) AS reguler
       FROM (
-        SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
+        SELECT ${aggSelect}
         FROM ${opsSummarySource(s1)} WHERE ${s1}
         UNION ALL
-        SELECT /*+ MAX_EXECUTION_TIME(30000) */ ${aggSelect}
+        SELECT ${aggSelect}
         FROM ticket WHERE ${s2}
       ) AS combined
     `;
@@ -560,21 +487,10 @@ export async function getDailyTicketTable(
   async function limitedPromiseAll<F extends Array<() => Promise<any>>>(
     promises: F
   ): Promise<{ [K in keyof F]: Awaited<ReturnType<F[K]>> }> {
-    const results: any[] = new Array(promises.length);
-    const executing: Promise<void>[] = [];
-    for (let i = 0; i < promises.length; i++) {
-      const promiseFn = promises[i];
-      const p = promiseFn().then((result) => {
-        results[i] = result;
-      });
-      executing.push(p);
-      if (executing.length >= MAX_CONCURRENT) {
-        await Promise.race(executing);
-        const idx = executing.findIndex((ep) => ep === p);
-        if (idx >= 0) executing.splice(idx, 1);
-      }
+    const results: any[] = [];
+    for (let start = 0; start < promises.length; start += MAX_CONCURRENT) {
+      results.push(...await Promise.all(promises.slice(start, start + MAX_CONCURRENT).map(run => run())));
     }
-    await Promise.all(executing);
     return results as { [K in keyof F]: Awaited<ReturnType<F[K]>> };
   }
 
@@ -625,7 +541,7 @@ export async function getDailyTicketTable(
     ? buildValidasiBaseWhere(validasiWhere ?? where)
     : null;
   const countOnly = filters?.countOnly === true;
-  const ticketIdsPromise = countOnly
+  const ticketIdsPromise = countOnly || filters?.summaryOnly
     ? Promise.resolve({ rows: [] as Array<{ id_ticket: number; rank_global: number }>, nextCursor: null })
     : fetchTicketIdsBySql(mainTableWhere, {
         sort,
@@ -645,7 +561,7 @@ export async function getDailyTicketTable(
         })
       : Promise.resolve({ ids: [], nextCursor: null })
   ).catch(() => ({ ids: [] as number[], nextCursor: null }));
-  const cacheKeyBase = `dashboard:summary:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
+  const cacheKeyBase = `daily_tickets:summary:v2:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
   // Promise di bawah dimulai eager tapi baru dikonsumsi di gelombang 2/3 —
   // dan bisa di-skip total bila path snapshot terpakai. Tanpa handler
@@ -703,7 +619,9 @@ export async function getDailyTicketTable(
         const [fs, vc] = await limitedPromiseAll<
           [() => Promise<FlaggingSummary>, () => Promise<number>]
         >([
-          () => countFlaggingSummary(mainTableWhere, validasiBaseWhere),
+          () => filters?.includeFlagging === false
+            ? Promise.resolve({ ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 })
+            : countFlaggingSummary(mainTableWhere, validasiBaseWhere),
           () => validasiCountPromise,
         ]);
         flaggingSummary = fs;
