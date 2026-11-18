@@ -685,6 +685,24 @@ function sortTicketRawRowsByIncident(rows: TicketRawBulkRow[]): TicketRawBulkRow
   );
 }
 
+/**
+ * Hash yang sama berarti tidak ada perubahan bisnis, tapi baris tetap terlihat
+ * di scan terakhir, jadi freshness-nya dicatat terpisah dari `importedAt`.
+ */
+async function refreshTicketRawHeartbeat(
+  rows: TicketRawBulkRow[],
+  now: Date,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const staleBefore = new Date(now.getTime() - 60_000);
+  const incidents = sortTicketRawRowsByIncident(rows).map(row => String(row.incident));
+  for (const chunk of chunkArray(incidents, 500)) {
+    await prisma.$executeRaw`UPDATE ticket_raw SET lastSeenAt = ${now}
+      WHERE incident IN (${Prisma.join(chunk)})
+        AND (lastSeenAt IS NULL OR lastSeenAt < ${staleBefore})`;
+  }
+}
+
 async function bulkUpsertTicketRaw(
   tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
@@ -1075,7 +1093,6 @@ async function processBatch(
     }
 
     const sortedChangedRows = sortTicketRawRowsByIncident(changedRows);
-    const sortedHeartbeatRows = sortTicketRawRowsByIncident(heartbeatRows);
 
     assertNotAborted(writerSignal);
     await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
@@ -1087,14 +1104,8 @@ async function processBatch(
         ${Prisma.join(resourceMoves.map(row => Prisma.sql`WHEN ${row.incident} THEN ${row.resource}`), ' ')}
         ELSE sourceTable END WHERE incident IN (${Prisma.join(resourceMoves.map(row => row.incident))})`;
     }
-    // A matching hash is not a business change, but it proves the incident is
-    // still present in the latest scan. Keep that freshness separately from
-    // importedAt/syncVersion so projection is not needlessly re-run.
-    if (sortedHeartbeatRows.length) {
-      await tx.$executeRaw`UPDATE ticket_raw SET lastSeenAt = ${now}
-        WHERE incident IN (${Prisma.join(sortedHeartbeatRows.map(row => String(row.incident)))})
-          AND (lastSeenAt IS NULL OR lastSeenAt < ${new Date(now.getTime() - 60000)})`;
-    }
+    // Heartbeat di luar transaksi supaya update freshness ini tidak menahan
+    // row lock dan writer lock sampai commit.
     if (quarantined.length > 0) {
       const hashes = quarantined.map(row => row.sourceHash).filter((hash): hash is string => Boolean(hash));
       const known = isRevisionSyncEnabled() && hashes.length
@@ -1136,6 +1147,12 @@ async function processBatch(
     maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
     timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
   }), signal);
+
+  if (heartbeatRows.length) {
+    await refreshTicketRawHeartbeat(heartbeatRows, now).catch(error =>
+      logger.warn('ticket_raw heartbeat update failed', { error: String(error) }),
+    );
+  }
 
   if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 

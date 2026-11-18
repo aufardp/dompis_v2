@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getCache, setCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
@@ -45,36 +45,31 @@ export async function GET(request: Request) {
     ]);
 
     const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
-    const cached = await getCache(cacheKey);
-
-    if (cached) {
-      return NextResponse.json({
-        success: true,
-        data: cached,
-        cached: true,
-      });
-    }
 
     const rawDept = toEnumValue(searchParams.get('dept'), ['all', 'b2b', 'b2c', 'netral', 'neutral']);
-    const result = await TicketService.getSemestaAnalytics(user.role, user.id_user, {
-      search: searchParams.get('search') || undefined,
-      searchType: parseSearchType(searchParams.get('searchType')),
-      statusUpdate:
-        searchParams.get('statusUpdate') ||
-        searchParams.get('status') ||
-        undefined,
-      dept: rawDept === 'neutral' ? 'netral' : rawDept,
-      ticketType:
-        searchParams.get('ticketType') ||
-        searchParams.get('jenisTiket') ||
-        undefined,
-      workzone: searchParams.get('workzone') || undefined,
-      ctype: searchParams.get('ctype') || undefined,
-      startDate: searchParams.get('startDate') || undefined,
-      endDate: searchParams.get('endDate') || undefined,
-    });
-
-    await setCache(cacheKey, result, CACHE_TTL_SECONDS);
+    // SWR + single-flight: cegah stampede groupBy saat cache cold.
+    const result = await getOrSetCacheSwr(
+      cacheKey,
+      () =>
+        TicketService.getSemestaAnalytics(user.role, user.id_user, {
+          search: searchParams.get('search') || undefined,
+          searchType: parseSearchType(searchParams.get('searchType')),
+          statusUpdate:
+            searchParams.get('statusUpdate') ||
+            searchParams.get('status') ||
+            undefined,
+          dept: rawDept === 'neutral' ? 'netral' : rawDept,
+          ticketType:
+            searchParams.get('ticketType') ||
+            searchParams.get('jenisTiket') ||
+            undefined,
+          workzone: searchParams.get('workzone') || undefined,
+          ctype: searchParams.get('ctype') || undefined,
+          startDate: searchParams.get('startDate') || undefined,
+          endDate: searchParams.get('endDate') || undefined,
+        }),
+      CACHE_TTL_SECONDS,
+    );
 
     return NextResponse.json({
       success: true,

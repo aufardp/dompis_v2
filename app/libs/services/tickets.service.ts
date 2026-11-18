@@ -1,7 +1,8 @@
 // app/services/ticket.service.ts
 
-import prisma from '@/app/libs/prisma';
+import prisma, { prismaBulk } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
+import { logger } from '@/lib/observability/logger';
 import { isAdminRole } from '@/app/libs/rolesUtil';
 import {
   getBranchServiceAreaNames,
@@ -989,13 +990,24 @@ export class TicketService {
     });
   }
 
+  /**
+   * Guard batas export di pool bulk. `null` = count gagal/timeout, export
+   * tetap boleh jalan karena iterator sudah dibatasi `maxRows`.
+   */
   static async countExportTickets(
     role: string,
     userId: number,
     filters?: TicketFilters,
-  ): Promise<number> {
+  ): Promise<number | null> {
     const where = await this.buildExportWhere(role, userId, filters);
-    return prisma.ticket.count({ where });
+    try {
+      return await prismaBulk.ticket.count({ where });
+    } catch (error) {
+      logger.warn('[Export] count skipped, database busy', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /**
@@ -1016,7 +1028,7 @@ export class TicketService {
 
     while (emitted < maxRows) {
       const take = Math.min(chunkSize, maxRows - emitted);
-      const rows = await prisma.ticket.findMany({
+      const rows = await prismaBulk.ticket.findMany({
         where: { AND: [where, { id_ticket: { gt: cursorId } }] },
         select: TICKET_EXPORT_SELECT,
         orderBy: { id_ticket: 'asc' },
@@ -1030,6 +1042,19 @@ export class TicketService {
 
       if (rows.length < take) return;
     }
+
+    // `maxRows` habis: kalau count awal null, cek sisa baris daripada memotong
+    // file diam-diam.
+    const extra = await prismaBulk.ticket.findFirst({
+      where: { AND: [where, { id_ticket: { gt: cursorId } }] },
+      select: { id_ticket: true },
+    });
+    if (extra) {
+      throw new ApiError(
+        413,
+        `Export melebihi batas ${maxRows.toLocaleString('id-ID')} row. Persempit filter sebelum export.`,
+      );
+    }
   }
 
   static async getExportTickets(
@@ -1042,22 +1067,22 @@ export class TicketService {
     const safeLimit = Math.min(maxRows, Math.max(1, Math.floor(maxRows)));
     const where = await this.buildExportWhere(role, userId, filters);
 
-    if (maxRows > 0) {
-      const total = await prisma.ticket.count({ where });
-      if (total > safeLimit) {
-        throw new ApiError(
-          413,
-          `Export terlalu besar (${total} row). Persempit filter sebelum export.`,
-        );
-      }
-    }
+    if (safeLimit <= 0) return [];
 
-    const tickets = await prisma.ticket.findMany({
+    // Ambil +1 baris untuk deteksi overflow tanpa `COUNT(*)` yang bisa 60 detik.
+    const tickets = await prismaBulk.ticket.findMany({
       where,
       select: TICKET_EXPORT_SELECT,
       orderBy: [{ reported_date: 'desc' }, { id_ticket: 'asc' }],
-      take: safeLimit,
+      take: safeLimit + 1,
     });
+
+    if (tickets.length > safeLimit) {
+      throw new ApiError(
+        413,
+        `Export terlalu besar (lebih dari ${safeLimit.toLocaleString('id-ID')} row). Persempit filter sebelum export.`,
+      );
+    }
 
     return tickets.map(mapTicket);
   }

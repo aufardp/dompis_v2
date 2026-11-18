@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
 import { TicketService } from '@/app/libs/services/tickets.service';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
-import { getCache, setCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { getDashboardScopePart } from '@/lib/cache/scope-key';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { logger } from '@/lib/observability/logger';
@@ -39,26 +39,21 @@ export async function GET(request: Request) {
     ]);
 
     const cacheKey = await buildCacheKey(searchParams, user.role, user.id_user);
-    const cached = await getCache(cacheKey);
 
-    if (cached) {
-      return NextResponse.json({
-        success: true,
-        data: cached,
-        cached: true,
-      });
-    }
-
-    const result = await TicketService.getSemestaAnalyticsV2(user.role, user.id_user, {
-      startDate: searchParams.get('startDate') || undefined,
-      endDate: searchParams.get('endDate') || undefined,
-      workzone: searchParams.get('workzone') || undefined,
-      branchId: searchParams.get('branch') || searchParams.get('branchId') || undefined,
-      dept: searchParams.get('dept') || undefined,
-      ticketType: searchParams.getAll('ticketType').filter((s) => s !== 'all'),
-    });
-
-    await setCache(cacheKey, result, CACHE_TTL_SECONDS);
+    // SWR: nilai basi dilayani instan, groupBy berat dihitung di background.
+    const result = await getOrSetCacheSwr(
+      cacheKey,
+      () =>
+        TicketService.getSemestaAnalyticsV2(user.role, user.id_user, {
+          startDate: searchParams.get('startDate') || undefined,
+          endDate: searchParams.get('endDate') || undefined,
+          workzone: searchParams.get('workzone') || undefined,
+          branchId: searchParams.get('branch') || searchParams.get('branchId') || undefined,
+          dept: searchParams.get('dept') || undefined,
+          ticketType: searchParams.getAll('ticketType').filter((s) => s !== 'all'),
+        }),
+      CACHE_TTL_SECONDS,
+    );
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {

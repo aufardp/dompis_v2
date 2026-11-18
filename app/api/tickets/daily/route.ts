@@ -5,7 +5,7 @@ import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { parseSearchType } from '@/lib/search-intent';
 import { toEnumValue, toPositiveInt, toSortOrder } from '@/lib/http-query';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr } from '@/lib/cache';
 import { QueryGateTimeoutError } from '@/lib/sql/query-gate';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 import { logger } from '@/lib/observability/logger';
@@ -105,10 +105,11 @@ export async function GET(request: Request) {
 
     // Build cache key identical to service internal cacheKeyBase
     const cacheKey = `daily_tickets:v2:${user.role}:${user.id_user}:${JSON.stringify(filters)}`;
-    const CACHE_TTL_SECONDS = 15;
+    // Satu cache-miss menjalankan 7-9 query berat; SWR + TTL 60 detik menjaga
+    // response tetap instan sambil recompute di background.
+    const CACHE_TTL_SECONDS = 60;
 
-    // Fetch from database with route-level single-flight cache
-    const result = await getOrSetCache(
+    const result = await getOrSetCacheSwr(
       cacheKey,
       () =>
         DailyTicketService.getDailyTicketTable(

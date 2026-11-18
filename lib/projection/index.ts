@@ -239,6 +239,8 @@ export interface RawSelectResult {
 }
 
 export interface ExistingTicket {
+  /** Kolom lain ikut di-select agar update bisa membandingkan nilai lama. */
+  [column: string]: unknown;
   id_ticket: number;
   incident: string;
   teknisi_user_id: number | null;
@@ -275,6 +277,8 @@ interface ProjectionItem {
   projectionLogCurrent?: boolean;
   protected: boolean;
   statusResolution: StatusUpdateResolution | null;
+  /** Baris `ticket` sebelum update, dipakai untuk menghitung kolom yang berubah. */
+  existing?: ExistingTicket;
 }
 
 const PROJECTED_FIELDS: Record<string, string> = {
@@ -357,6 +361,18 @@ const LOG_BULK_COLUMNS: readonly string[] = [
   'action', 'status', 'attempts', 'sourceHash', 'syncVersion', 'projectedAt',
 ];
 
+/**
+ * Semua kolom bulk dibaca supaya update bisa membandingkan nilai lama.
+ */
+const EXISTING_TICKET_SELECT = {
+  id_ticket: true,
+  teknisi_user_id: true,
+  description_solution_dompis: true,
+  pending_dompis: true,
+  is_manual: true,
+  ...Object.fromEntries(TICKET_BULK_COLUMNS.map(column => [column, true])),
+} as unknown as Prisma.ticketSelect;
+
 function sqlIdentifier(identifier: string): Prisma.Sql {
   if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
     throw new Error(`Unsafe SQL identifier: ${identifier}`);
@@ -380,6 +396,41 @@ function getTicketRow(item: ProjectionItem): Record<string, unknown> {
   return Object.fromEntries(
     TICKET_BULK_COLUMNS.map(col => [col, toSqlValue(source[col] ?? null)]),
   );
+}
+
+/**
+ * Hanya kolom yang berbeda dari baris lama yang dikirim ke UPDATE.
+ */
+function getChangedColumns(item: ProjectionItem): string[] {
+  const update = item.upsert.update as Record<string, unknown>;
+  const row = getTicketRow(item);
+  const changed = TICKET_BULK_COLUMNS.filter(
+    column =>
+      column !== 'incident' &&
+      Object.hasOwn(update, column) &&
+      !isUnchangedColumn(row[column], item.existing?.[column]),
+  );
+  // Jangan pernah mengirim ON DUPLICATE KEY UPDATE tanpa assignment.
+  return changed.length > 0
+    ? changed
+    : TICKET_BULK_COLUMNS.filter(column => column !== 'incident');
+}
+
+/**
+ * Konservatif: nilai yang tipenya tidak bisa dipastikan sama dianggap berubah.
+ */
+function isUnchangedColumn(next: unknown, current: unknown): boolean {
+  // `undefined` = kolom tidak di-select di pembanding.
+  if (current === undefined) return false;
+  if (next === current) return true;
+  if (next == null && current == null) return true;
+  if (next instanceof Date && current instanceof Date) {
+    return next.getTime() === current.getTime();
+  }
+  if (typeof next === 'string' && typeof current === 'string') return next === current;
+  if (typeof next === 'number' && typeof current === 'number') return next === current;
+  if (typeof next === 'boolean' && typeof current === 'boolean') return next === current;
+  return false;
 }
 
 function getLogRow(item: ProjectionItem, attempts: number): Record<string, unknown> {
@@ -914,29 +965,8 @@ export async function prepareProjectionItems(
   const incidents = validRawRecords.map((r) => r.incident!) as string[];
   const existingTickets = await client.ticket.findMany({
     where: { incident: { in: incidents } },
-    select: {
-      id_ticket: true,
-      incident: true,
-      teknisi_user_id: true,
-      description_solution_dompis: true,
-      pending_dompis: true,
-      pending_reason: true,
-      synced_at: true,
-      import_batch: true,
-      status: true,
-      status_update: true,
-      closed_at: true,
-      resolve_date: true,
-      technician: true,
-      rca: true,
-      sub_rca: true,
-      status_manja: true,
-      alamat: true,
-      needs_validation: true,
-      validation_reason: true,
-      is_manual: true,
-    },
-  });
+    select: EXISTING_TICKET_SELECT,
+  }) as unknown as ExistingTicket[];
   const existingMap = new Map(existingTickets.map((t) => [t.incident, t]));
   const projectionLogs = await client.ticket_projection_log.findMany({
     where: { ticketRawId: { in: validRawRecords.map((r) => r.id_ticket) } },
@@ -971,6 +1001,7 @@ export async function prepareProjectionItems(
       items.push({
         raw,
         ...projection,
+        existing,
         action: 'skipped',
         projectionLogCurrent,
       });
@@ -979,6 +1010,7 @@ export async function prepareProjectionItems(
     items.push({
       raw,
       ...projection,
+      existing,
       projectionLogCurrent,
       action: !existing
         ? 'inserted'
@@ -1094,21 +1126,38 @@ export async function bulkUpsertTicket(
   items: ProjectionItem[],
 ): Promise<void> {
   if (items.length === 0) return;
-  const updateColumns = TICKET_BULK_COLUMNS.filter(c => c !== 'incident');
-  const rows = items.map(item => getTicketRow(item));
-  const chunks = chunkArray(rows, TICKET_UPSERT_CHUNK_SIZE);
-  for (const chunk of chunks) {
-    await tx.$executeRaw`
-      INSERT INTO ${sqlIdentifier('ticket')}
-        (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
-      VALUES ${Prisma.join(
-        chunk.map(row =>
-          Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
-        ),
-      )}
-      ON DUPLICATE KEY UPDATE
-        ${Prisma.join(updateColumns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
-    `;
+
+  // Satu statement harus menulis kolom yang sama untuk semua baris, jadi
+  // kelompokkan per set kolom yang berubah.
+  const groups = new Map<
+    string,
+    { columns: string[]; rows: Array<Record<string, unknown>> }
+  >();
+  for (const item of items) {
+    const columns = getChangedColumns(item);
+    const signature = columns.join(',');
+    let group = groups.get(signature);
+    if (!group) {
+      group = { columns, rows: [] };
+      groups.set(signature, group);
+    }
+    group.rows.push(getTicketRow(item));
+  }
+
+  for (const { columns, rows } of groups.values()) {
+    for (const chunk of chunkArray(rows, TICKET_UPSERT_CHUNK_SIZE)) {
+      await tx.$executeRaw`
+        INSERT INTO ${sqlIdentifier('ticket')}
+          (${Prisma.join(TICKET_BULK_COLUMNS.map(c => sqlIdentifier(c)))})
+        VALUES ${Prisma.join(
+          chunk.map(row =>
+            Prisma.sql`(${Prisma.join(TICKET_BULK_COLUMNS.map(c => toSqlValue(row[c])))})`,
+          ),
+        )}
+        ON DUPLICATE KEY UPDATE
+          ${Prisma.join(columns.map(c => Prisma.sql`${sqlIdentifier(c)} = VALUES(${sqlIdentifier(c)})`))}
+      `;
+    }
   }
 }
 

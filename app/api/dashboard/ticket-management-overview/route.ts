@@ -3,14 +3,16 @@ import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 import { protectApi } from '@/app/libs/protectApi';
 import { getErrorMessage, getErrorStatus } from '@/app/libs/apiError';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
-import { getOrSetCache } from '@/lib/cache';
+import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
 import { logger } from '@/lib/observability/logger';
 import { normalizeRoleKey } from '@/app/libs/roles';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
-const CACHE_TTL_SECONDS = 15;
+// Agregasi penuh tabel: TTL 15 detik habis sebelum poll UI berikutnya, jadi
+// tiap poll memicu scan baru.
+const CACHE_TTL_SECONDS = Math.max(DASHBOARD_CACHE_TTL, 120);
 
 export async function GET(request: Request) {
   try {
@@ -33,9 +35,11 @@ export async function GET(request: Request) {
 
     const r = normalizeRoleKey(user.role);
     const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${user.id_user}` : `wz:${user.id_user}`;
-    const cacheKey = `daily_tickets:overview:v8:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
+    // Prefix `dashboard:` supaya ikut dirty-refresh SWR, bukan rotasi
+    // `cache:tickets:version` yang menghanguskan cache tiap projection menulis.
+    const cacheKey = `dashboard:ticket-overview:v8:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
-    const data = await getOrSetCache(cacheKey, async () => {
+    const data = await getOrSetCacheSwr(cacheKey, async () => {
       const summary = await DailyTicketService.getTicketManagementOverviewSummary(
         user.role,
         user.id_user,

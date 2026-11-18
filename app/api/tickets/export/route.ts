@@ -39,7 +39,7 @@ const SEMESTA_XLSX_MAX_ROWS = configuredRowLimit(
   50_000,
   50_000,
 );
-const SEMESTA_CSV_CHUNK_SIZE = 5_000;
+const SEMESTA_CSV_CHUNK_SIZE = 1_000;
 
 function toInt(value: string | null, fallback: number) {
   const n = Number(value);
@@ -140,12 +140,14 @@ export async function GET(request: Request) {
     // response, so a 500k-row export never holds more than one chunk in
     // memory. XLSX must materialise the whole sheet at once, hence its lower cap.
     if (isCsv) {
+      // Count hanya untuk guard 413 dan boleh gagal (null); iterator tetap
+      // dibatasi SEMESTA_EXPORT_MAX_ROWS.
       const total = await TicketService.countExportTickets(
         user.role,
         user.id_user,
         filters,
       );
-      if (total > SEMESTA_EXPORT_MAX_ROWS) {
+      if (total !== null && total > SEMESTA_EXPORT_MAX_ROWS) {
         return NextResponse.json(
           {
             success: false,

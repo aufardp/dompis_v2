@@ -28,6 +28,9 @@ module.exports = {
         // komputasi. Batasi dua komputasi cache-miss agar query dashboard
         // berat memakai maksimal sekitar 6 koneksi pada satu waktu.
         CACHE_COMPUTE_CONCURRENCY: '2',
+        // Query agregat bisa 20-40 detik; batas tunggu 10 detik membuat
+        // cache-miss yang mengantre dibalas 503.
+        CACHE_COMPUTE_WAIT_MS: '25000',
         TICKETS_CACHE_TTL: '10',
         // Sebelumnya '90' — dikombinasikan dengan SWR_STALE_FACTOR default
         // (3x), cache widget dashboard benar-benar hangus setelah cuma 4.5
@@ -42,6 +45,9 @@ module.exports = {
         // stampede ini terulang tanpa mengorbankan kesegaran data (dashboard
         // operasional, bukan data real-time).
         DASHBOARD_CACHE_TTL: '300',
+        // Tanpa jeda ini rotasi versi tiap detik membuat TTL cache tiket tidak
+        // pernah terpakai; 30 detik = data daftar tertinggal maksimal 30 detik.
+        CACHE_REVISION_MIN_INTERVAL_MS: '30000',
         CACHE_MAX_BYTES: '4194304',
         DAILY_EXPORT_MAX_ROWS: '100000',
         SEMESTA_EXPORT_MAX_ROWS: '500000',
@@ -287,9 +293,11 @@ INGESTION_CURSOR_STALE_HOURS: '24',
         PROJECTION_INTERVAL_MINUTES: '5',
         PROJECTION_TIMEOUT_MINUTES: '240',
         PROJECTION_LOCK_TTL_SECONDS: '1800',
-        PROJECTION_BATCH_SIZE: '10',
-        PROJECTION_PENDING_BATCH_SIZE: '10',
-        PROJECTION_WRITE_CHUNK_SIZE: '10',
+        // Dengan update parsial, chunk besar lebih murah: overhead commit
+        // turun 5x tanpa menulis ulang kolom yang sama.
+        PROJECTION_BATCH_SIZE: '50',
+        PROJECTION_PENDING_BATCH_SIZE: '50',
+        PROJECTION_WRITE_CHUNK_SIZE: '25',
         PROJECTION_CONCURRENCY: '1',
         PROJECTION_RETRY_MAX: '3',
         PROJECTION_RETRY_BASE_DELAY_MS: '2000',

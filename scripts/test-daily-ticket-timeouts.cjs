@@ -158,7 +158,7 @@ test('daily API returns a logged JSON 503 for queue saturation and database over
     const api = createHarness({
       '@/app/libs/protectApi': { protectApi: async () => ({ role: 'superadmin', id_user: 2 }) },
       '@/lib/api-rate-limit': { enforceApiRateLimit: async () => null },
-      '@/lib/cache': { getOrSetCache: async () => { throw error; } },
+      '@/lib/cache': { getOrSetCacheSwr: async () => { throw error; } },
       '@/app/libs/services/daily-ticket.service': { DailyTicketService: {} },
       '@/lib/observability/logger': { logger: { warn: (...args) => warnings.push(args), error: () => {} } },
     }).load('app/api/tickets/daily/route.ts');

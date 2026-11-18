@@ -17,13 +17,14 @@ test('unchanged legacy ingestion updates freshness without resending the raw pay
   const writes = [];
   let existing;
   let checkpoints = 0;
+  const record = async (parts, ...values) => { writes.push(Prisma.sql(parts, ...values)); return 1; };
   const tx = {
     $queryRawUnsafe: async () => [existing],
-    $executeRaw: async (parts, ...values) => { writes.push(Prisma.sql(parts, ...values)); return 1; },
+    $executeRaw: record,
     ingestion_checkpoint: { upsert: async () => { checkpoints++; } },
   };
   const harness = createHarness({
-    '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx) } },
+    '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx), $executeRaw: record } },
     '@/lib/ingestion/raw-writer-lock': writerStub,
   });
   const payload = { Incident: 'INC90000001', Status: 'OPEN', Workzone: 'PKL', Summary: 'Unchanged payload' };
@@ -46,12 +47,13 @@ test('recent unchanged rows do not issue a heartbeat UPDATE', async t => {
   t.after(() => previous === undefined ? delete process.env.TICKET_SYNC_REVISIONS_ENABLED : process.env.TICKET_SYNC_REVISIONS_ENABLED = previous);
   const writes = [];
   let existing;
+  const record = async (parts, ...values) => { writes.push(Prisma.sql(parts, ...values)); return 1; };
   const tx = {
     $queryRawUnsafe: async () => [existing],
-    $executeRaw: async (parts, ...values) => { writes.push(Prisma.sql(parts, ...values)); return 1; },
+    $executeRaw: record,
     ingestion_checkpoint: { upsert: async () => {} },
   };
-  const harness = createHarness({ '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx) } } });
+  const harness = createHarness({ '@/app/libs/prisma': { prisma: { $transaction: fn => fn(tx), $executeRaw: record } } });
   const payload = { Incident: 'INC90000001', Status: 'OPEN', Summary: 'Unchanged' };
   const { normalizeExternalRow, computeSourceHash } = harness.load('lib/ingestion/normalizer.ts');
   existing = { incident: payload.Incident, sourceHash: computeSourceHash(normalizeExternalRow(payload, 'piloting_tickets')), status: 'OPEN', syncVersion: 1, lastSeenAt: harness.load('lib/timezone.ts').nowWib() };

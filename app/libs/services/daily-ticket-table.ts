@@ -32,6 +32,33 @@ import {
   fetchTicketIdsBySql,
 } from './daily-ticket-where';
 
+// Cache opsi dropdown mengabaikan filter yang tidak mengubah isinya, supaya
+// `DISTINCT status` + `GROUP BY jenis_tiket_2` tidak ikut tiap cache-miss.
+const OPTION_CACHE_IGNORED_FILTER_KEYS = new Set([
+  'page',
+  'limit',
+  'cursor',
+  'validasiPage',
+  'validasiLimit',
+  'sort',
+  'sortField',
+  'countOnly',
+  'summaryOnly',
+  'includeOptions',
+]);
+
+function buildTicketOptionCacheKey(
+  role: string,
+  userId: number,
+  filters?: TicketFilters,
+): string {
+  const normalized = normalizeCacheFilterValue(filters ?? {}) as Record<string, unknown>;
+  const scope = Object.fromEntries(
+    Object.entries(normalized).filter(([key]) => !OPTION_CACHE_IGNORED_FILTER_KEYS.has(key)),
+  );
+  return `dashboard:ticket-options:v1:${role}:${userId}:${JSON.stringify(scope)}`;
+}
+
 function withAdditionalWhere(
   where: Prisma.ticketWhereInput,
   ...clauses: Prisma.ticketWhereInput[]
@@ -573,18 +600,27 @@ export async function getDailyTicketTable(
       ? getOrSetCacheSwr(`${cacheKeyBase}:validasi_count`, () => countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0)
   ).catch(() => 0);
+  const optionsCacheKeyBase = buildTicketOptionCacheKey(role, userId, filters);
   const statusOptionsPromise: Promise<string[]> = (
     includeOptions && !countOnly
-      ? getTicketStatusOptions(statusOptionsWhere ?? where)
+      ? getOrSetCacheSwr(
+          `${optionsCacheKeyBase}:status`,
+          () => getTicketStatusOptions(statusOptionsWhere ?? where),
+          DASHBOARD_CACHE_TTL,
+        )
       : Promise.resolve([] as string[])
   ).catch(() => [] as string[]);
   const ticketTypeOptionsPromise: Promise<TicketTypeOption[]> = (
     includeOptions && !countOnly
-      ? getTicketTypeOptions(
-          buildMainTableWhere(ticketTypeOptionsWhere ?? where),
-          includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
-            ? buildValidasiBaseWhere(ticketTypeOptionsWhere)
-            : null,
+      ? getOrSetCacheSwr(
+          `${optionsCacheKeyBase}:type`,
+          () => getTicketTypeOptions(
+            buildMainTableWhere(ticketTypeOptionsWhere ?? where),
+            includeValidasi && validasiBaseWhere && ticketTypeOptionsWhere
+              ? buildValidasiBaseWhere(ticketTypeOptionsWhere)
+              : null,
+          ),
+          DASHBOARD_CACHE_TTL,
         )
       : Promise.resolve([] as TicketTypeOption[])
   ).catch(() => [] as TicketTypeOption[]);
