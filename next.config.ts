@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ['sharp', '@prisma/client', 'bullmq', 'ioredis', 'firebase-admin', 'mysql2'],
   experimental: {
+    // Penanda upgrade keamanan Next.js (16.4.2 -> 16.4.6) oleh agent.
+    agentUpgrade: 'security',
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@heroui/react', 'recharts', 'leaflet', 'react-leaflet', 'supercluster'],
     // cpus:1 + webpackBuildWorker:false sebelumnya dipasang untuk "menghemat"
     // memori, tapi justru itu penyebab `next build` OOM (RSS naik linear
