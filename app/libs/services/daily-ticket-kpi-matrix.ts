@@ -14,7 +14,11 @@ import {
   buildKpiBucketSummaryCacheKey,
   queryRawWithOptionalIndex,
 } from './daily-ticket-helpers';
-import { buildDailyTicketWhere, buildMainTableWhere } from './daily-ticket-where';
+import {
+  applyCustomerBucketSyncDateFilter,
+  buildDailyTicketWhere,
+  buildMainTableWhere,
+} from './daily-ticket-where';
 
 function emptySummary(): BucketSummary {
   return { total: 0, open: 0, assigned: 0, onProgress: 0, pending: 0, close: 0,
@@ -38,6 +42,7 @@ export async function getKpiBucketSummaryMatrix(
     const where = await buildDailyTicketWhere(role, userId, {
       ...scopedFilters, dept: undefined, operationalBucket: undefined,
     });
+    applyCustomerBucketSyncDateFilter(where);
     const [sql, params] = buildSqlWhereClause(buildMainTableWhere(where, {
       includeClosed: filters?.includeClosed === true,
     }));
@@ -78,10 +83,15 @@ export async function getTicketManagementOverviewSummary(
   workzone?: string,
   branchId?: number | string,
 ): Promise<TicketManagementOverviewSummary> {
-  const [active, closed] = await Promise.all([
-    getKpiBucketSummaryMatrix(role, userId, { workzone, branchId }),
-    getKpiBucketSummaryMatrix(role, userId, { workzone, branchId, includeClosed: true, ticketStatus: CLOSE_STATUS_VALUES }),
-  ]);
+  // Keep the two broad aggregate scans from competing with each other and
+  // with the projection writer on the production database.
+  const active = await getKpiBucketSummaryMatrix(role, userId, { workzone, branchId });
+  const closed = await getKpiBucketSummaryMatrix(role, userId, {
+    workzone,
+    branchId,
+    includeClosed: true,
+    ticketStatus: CLOSE_STATUS_VALUES,
+  });
   const card = (bucket: typeof KPI_SUMMARY_BUCKETS[number]) => {
     const summary = active.all[bucket];
     return { ...summary, assigned: summary.assigned + summary.onProgress + summary.pending, close: closed.all[bucket].close };

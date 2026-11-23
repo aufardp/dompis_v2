@@ -9,11 +9,11 @@ test('all list bucket filters use the generated classification used by summaries
   for (const bucket of buckets) assert.deepEqual(buildOperationalBucketWhere(bucket), { operational_bucket: bucket });
 });
 
-test('active customer tickets are not excluded because their last sync was yesterday', async () => {
+test('customer bucket filters active tickets by today sync date', async () => {
   const harness = createHarness();
   const where = await harness.load('app/libs/services/daily-ticket-where.ts').buildDailyTicketWhere('superadmin', 1, { operationalBucket: ['kpi_customer'] });
   const [sql, params] = harness.load('app/libs/services/daily-ticket-helpers.ts').buildSqlWhereClause(where);
-  assert.ok(!sql.includes('sync_date'));
+  assert.ok(sql.includes('sync_date'));
   assert.ok(sql.includes('operational_bucket'));
   assert.ok(params.includes('kpi_customer'));
 });

@@ -10,8 +10,6 @@ import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 
 export const dynamic = 'force-dynamic';
 
-// Agregasi penuh tabel: TTL 15 detik habis sebelum poll UI berikutnya, jadi
-// tiap poll memicu scan baru.
 const CACHE_TTL_SECONDS = Math.max(DASHBOARD_CACHE_TTL, 120);
 
 export async function GET(request: Request) {
@@ -37,7 +35,7 @@ export async function GET(request: Request) {
     const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${user.id_user}` : `wz:${user.id_user}`;
     // Prefix `dashboard:` supaya ikut dirty-refresh SWR, bukan rotasi
     // `cache:tickets:version` yang menghanguskan cache tiap projection menulis.
-    const cacheKey = `dashboard:ticket-overview:v8:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
+    const cacheKey = `dashboard:ticket-overview:v9:${scope}:${workzone || 'all'}:${branchId ?? 'all'}`;
 
     const data = await getOrSetCacheSwr(cacheKey, async () => {
       const summary = await DailyTicketService.getTicketManagementOverviewSummary(
@@ -47,7 +45,9 @@ export async function GET(request: Request) {
         branchId,
       );
       return { ...summary, generatedAt: new Date().toISOString() };
-    }, CACHE_TTL_SECONDS);
+    }, CACHE_TTL_SECONDS, {
+      dashboardDirtyRevalidateSeconds: CACHE_TTL_SECONDS,
+    });
 
     return NextResponse.json({
       success: true,

@@ -375,6 +375,7 @@ export async function getOrSetCacheSwr<T>(
   key: string,
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
+  options: { dashboardDirtyRevalidateSeconds?: number } = {},
 ): Promise<T> {
   key = await versionTicketCacheKey(key);
   const staleTtl = ttl * SWR_STALE_FACTOR;
@@ -391,7 +392,9 @@ export async function getOrSetCacheSwr<T>(
     if (isRevisionSyncEnabled() && /^dashboard[:_]/.test(key)) {
       const dirtyAt = Number(await redis.get('cache:dashboard:dirtyAt').catch(() => null));
       if (dirtyAt >= cached.storedAt) {
-        const interval = parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30) * 1000;
+        const intervalSeconds = options.dashboardDirtyRevalidateSeconds ??
+          parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30);
+        const interval = intervalSeconds * 1000;
         scheduleDashboardRefresh(key, fn, ttl, Math.max(0, interval - (Date.now() - cached.storedAt)));
       }
     }

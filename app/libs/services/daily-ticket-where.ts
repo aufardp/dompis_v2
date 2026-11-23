@@ -92,6 +92,27 @@ export async function applyDailyTicketFilter(
   ];
 }
 
+// Keep open pending work across sync dates; scope all other customer tickets to today.
+export function applyCustomerBucketSyncDateFilter(where: Record<string, any>) {
+  const today = todayWibDateForDb();
+  where.AND = [
+    ...(where.AND ?? []),
+    {
+      OR: [
+        { operational_bucket: { not: 'kpi_customer' } },
+        { sync_date: today },
+        {
+          AND: [
+            { pending_dompis: { not: null } },
+            { pending_dompis: { not: '' } },
+            { status: { notIn: [...CLOSE_STATUS_VALUES] } },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
 /**
  * Workzone filter
  */
@@ -244,6 +265,11 @@ export async function buildDailyTicketWhere(
   if (options.applyDailyFilter !== false) {
     await applyDailyTicketFilter(where);
   }
+
+  const customerBucketSelected = Array.isArray(operationalBucket)
+    ? operationalBucket.includes('kpi_customer')
+    : operationalBucket === 'kpi_customer';
+  if (customerBucketSelected) applyCustomerBucketSyncDateFilter(where);
 
   const searchWhere = buildTicketSearchWhere(search, searchType);
   if (searchWhere) {

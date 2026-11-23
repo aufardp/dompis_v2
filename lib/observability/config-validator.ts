@@ -31,9 +31,8 @@ const WORKER_CONFIG: Record<string, EnvVarSpec[]> = {
     { name: 'PROJECTION_PENDING_BATCH_SIZE', type: 'int', min: 1, max: 100 },
     { name: 'PROJECTION_TRANSACTION_TIMEOUT_MS', type: 'int', min: 5000, max: 120000 },
     { name: 'PROJECTION_FULL_SCAN_ENABLED', type: 'boolean' },
-    { name: 'FULL_SCAN_CRON', type: 'string' },
-    { name: 'SCHEDULE_OFFSET', type: 'int', min: 0, max: 59 },
-    { name: 'RUN_ON_START', type: 'boolean' },
+    { name: 'PROJECTION_FULL_SCAN_CRON', type: 'string', optional: true },
+    { name: 'PROJECTION_RUN_ON_START', type: 'boolean', optional: true },
     { name: 'PRISMA_CONNECTION_LIMIT', type: 'int', min: 1, max: 20 },
   ],
   'status-refresh-worker': [

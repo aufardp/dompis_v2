@@ -16,9 +16,8 @@ export const dynamic = 'force-dynamic';
  * GET /api/tickets/daily
  *
  * Returns tickets for the daily operational work board.
- * Filter logic:
- * - Tickets synced today (sync_date = TODAY) OR
- * - Tickets with pending_dompis (not null and not empty)
+ * Active tickets appear regardless of sync date. The customer operational
+ * bucket additionally requires today's sync_date, except open pending carry-over.
  *
  * This creates a "working board" for daily operations while keeping
  * historical data in the database.

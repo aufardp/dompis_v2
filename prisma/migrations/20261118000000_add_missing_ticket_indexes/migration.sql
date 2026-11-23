@@ -2,6 +2,10 @@
 -- database baru (shadow DB, staging, DR) tidak akan membuatnya. Guard di bawah
 -- membuat migration tetap aman kalau production sudah punya index-nya.
 --
+-- Harus dijalankan dengan database terpilih (`USE dompis_db` atau
+-- `mysql -u root -p dompis_db < file`). Tanpa itu PREPARE gagal 1046 dan guard
+-- selalu membaca 0, sehingga ALTER dijalankan ulang dan gagal duplicate key.
+--
 -- `ticket` sudah punya 33 index sekunder, jadi cek pemakaian sebelum menambah
 -- yang lain:
 --   SELECT index_name, count_star, count_read

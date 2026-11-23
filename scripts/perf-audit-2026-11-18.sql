@@ -257,3 +257,65 @@ SET @sql := CONCAT(
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+SELECT '=== 13. STATUS PERFORMANCE_SCHEMA (kenapa section 5,6,10,11 kosong) ===' AS section;
+
+SELECT @@performance_schema AS performance_schema_enabled;
+
+SELECT NAME, ENABLED AS consumer_enabled
+FROM performance_schema.setup_consumers
+WHERE NAME IN (
+  'global_instrumentation',
+  'thread_instrumentation',
+  'statements_digest',
+  'events_statements_current'
+);
+
+SELECT NAME, ENABLED, TIMED
+FROM performance_schema.setup_instruments
+WHERE NAME IN (
+  'wait/io/table/sql/handler',
+  'wait/lock/table/sql/handler',
+  'transaction'
+);
+
+-- Hasil yang diharapkan: satu baris per nama di atas dengan ENABLED = YES.
+-- Kalau NO, aktifkan tanpa restart:
+--   UPDATE performance_schema.setup_consumers SET ENABLED='YES'
+--     WHERE NAME='statements_digest';
+--   UPDATE performance_schema.setup_instruments SET ENABLED='YES', TIMED='YES'
+--     WHERE NAME IN ('wait/io/table/sql/handler','transaction');
+-- Lalu ubah variabel yang sama di my.cnf supaya tetap setelah restart.
+
+SELECT '=== 14. UKURAN RATA-RATA PER BARIS (cari tabel gemuk) ===' AS section;
+
+SELECT
+  table_name,
+  table_rows,
+  ROUND(data_length / 1024 / 1024) AS data_mb,
+  ROUND(index_length / 1024 / 1024) AS index_mb,
+  ROUND(data_length / NULLIF(table_rows, 0) / 1024, 1) AS avg_row_kb,
+  index_length = 0 AS pk_only
+FROM information_schema.tables
+WHERE table_schema = @schema
+  AND table_rows > 1000
+ORDER BY avg_row_kb DESC
+LIMIT 15;
+
+SELECT '=== 15. SAMPLING LOCK WAIT (5 detik, tanpa performance_schema) ===' AS section;
+
+-- data_locks kosong kalau instrumen `transaction` mati, sedangkan angka ini
+-- tetap terbaca karena berasal dari counter internal InnoDB.
+SELECT VARIABLE_VALUE AS current_waits_t0
+FROM performance_schema.global_status
+WHERE VARIABLE_NAME = 'Innodb_row_lock_current_waits';
+
+DO SLEEP(5);
+
+SELECT VARIABLE_VALUE AS current_waits_t5
+FROM performance_schema.global_status
+WHERE VARIABLE_NAME = 'Innodb_row_lock_current_waits';
+
+-- Kalau dua angka di atas sama dan jauh di atas 0, nilainya gauge yang macet,
+-- bukan antrean nyata. Sumber otoritatif saat itu: SHOW ENGINE INNODB STATUS,
+-- bagian TRANSACTIONS.
