@@ -55,6 +55,10 @@ const FULL_SCAN_ENABLED = process.env.PROJECTION_FULL_SCAN_ENABLED !== 'false';
 const RUN_ON_START = process.env.PROJECTION_RUN_ON_START !== 'false';
 const SCHEDULE_OFFSET = 30;
 const RUN_BUDGET_MS = parsePositiveInt(process.env.PROJECTION_RUN_BUDGET_MS, 30_000);
+const CONTINUATION_DELAY_MS = parsePositiveInt(
+  process.env.PROJECTION_CONTINUATION_DELAY_MS,
+  10_000,
+);
 
 const state = createTaskState();
 const scheduledTasks: ScheduledTaskHandle[] = [];
@@ -110,7 +114,12 @@ async function drainProjectionQueue(source: string): Promise<void> {
         source,
       });
       await runProjectionTask('incremental');
-      if (pendingProjectionRun) await new Promise(resolve => setTimeout(resolve, 250));
+      if (pendingProjectionRun) {
+        logger.info('Projection continuation delayed', {
+          delayMs: CONTINUATION_DELAY_MS,
+        });
+        await new Promise(resolve => setTimeout(resolve, CONTINUATION_DELAY_MS));
+      }
     }
   } finally {
     projectionPumpActive = false;

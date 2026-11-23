@@ -392,8 +392,11 @@ export async function getOrSetCacheSwr<T>(
     if (isRevisionSyncEnabled() && /^dashboard[:_]/.test(key)) {
       const dirtyAt = Number(await redis.get('cache:dashboard:dirtyAt').catch(() => null));
       if (dirtyAt >= cached.storedAt) {
-        const intervalSeconds = options.dashboardDirtyRevalidateSeconds ??
-          parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30);
+        const intervalSeconds = Math.max(
+          ttl,
+          options.dashboardDirtyRevalidateSeconds ??
+            parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30),
+        );
         const interval = intervalSeconds * 1000;
         scheduleDashboardRefresh(key, fn, ttl, Math.max(0, interval - (Date.now() - cached.storedAt)));
       }

@@ -93,7 +93,7 @@ Nossa menjadi sumber utama. Piloting hanya melengkapi `contact_phone`, `contact_
 
 Ticket closed tetap menerima koreksi dan reopen dari sumber. Reopen manual menyimpan hash sumber saat tindakan dilakukan, sehingga replay snapshot closed yang sama tidak langsung membatalkannya. Snapshot sumber berbeda berikutnya diproses kembali. Ticket manual tetap dilindungi. Nilai preview mengikuti batas panjang kolom; payload sumber penuh tersimpan pada snapshot JSON.
 
-Notifikasi setelah commit memiliki penanda durable. Cache ticket memakai versi unik yang ditangkap sebelum query dimulai. Cache dashboard tetap menggunakan stale-while-revalidate dan pembatas query; data yang berubah memicu refresh background dengan interval minimum `DASHBOARD_SYNC_REVALIDATE_SECONDS` (default 30 detik), lalu SSE memberitahu browser. Angka tersebut adalah interval refresh, bukan SLA sumber-sampai-browser.
+Notifikasi setelah commit memiliki penanda durable. Cache ticket memakai versi unik yang ditangkap sebelum query dimulai. Cache dashboard tetap menggunakan stale-while-revalidate dan pembatas query; perubahan data memicu refresh background, tetapi tidak lebih sering daripada TTL cache endpoint. `DASHBOARD_SYNC_REVALIDATE_SECONDS` (default 30 detik) hanya dapat memperpanjang interval tersebut. SSE memberitahu browser setelah refresh. Interval ini bukan SLA sumber-sampai-browser.
 
 Pengujian lokal:
 

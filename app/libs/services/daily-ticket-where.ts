@@ -93,23 +93,32 @@ export async function applyDailyTicketFilter(
 }
 
 // Keep open pending work across sync dates; scope all other customer tickets to today.
-export function applyCustomerBucketSyncDateFilter(where: Record<string, any>) {
+export function applyCustomerBucketSyncDateFilter(
+  where: Record<string, any>,
+  selectedBuckets?: string | string[],
+) {
   const today = todayWibDateForDb();
-  where.AND = [
-    ...(where.AND ?? []),
+  const selected = Array.isArray(selectedBuckets)
+    ? selectedBuckets
+    : selectedBuckets
+      ? [selectedBuckets]
+      : [];
+  const customerOnly =
+    selected.length === 1 && selected[0] === 'kpi_customer';
+  const conditions = [
+    ...(customerOnly ? [] : [{ operational_bucket: { not: 'kpi_customer' } }]),
+    { sync_date: today },
     {
-      OR: [
-        { operational_bucket: { not: 'kpi_customer' } },
-        { sync_date: today },
-        {
-          AND: [
-            { pending_dompis: { not: null } },
-            { pending_dompis: { not: '' } },
-            { status: { notIn: [...CLOSE_STATUS_VALUES] } },
-          ],
-        },
+      AND: [
+        { pending_dompis: { not: null } },
+        { pending_dompis: { not: '' } },
+        { status: { notIn: [...CLOSE_STATUS_VALUES] } },
       ],
     },
+  ];
+  where.AND = [
+    ...(where.AND ?? []),
+    { OR: conditions },
   ];
 }
 
@@ -269,7 +278,9 @@ export async function buildDailyTicketWhere(
   const customerBucketSelected = Array.isArray(operationalBucket)
     ? operationalBucket.includes('kpi_customer')
     : operationalBucket === 'kpi_customer';
-  if (customerBucketSelected) applyCustomerBucketSyncDateFilter(where);
+  if (customerBucketSelected) {
+    applyCustomerBucketSyncDateFilter(where, operationalBucket);
+  }
 
   const searchWhere = buildTicketSearchWhere(search, searchType);
   if (searchWhere) {
