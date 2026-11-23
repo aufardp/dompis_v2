@@ -152,13 +152,20 @@ test('retry logs preserve the timeout cause and distinguish the writer queue fro
 });
 
 test('fresh batches resume between backlog slices and are acknowledged only after completion', async t => {
-  const previous = { enabled: process.env.PROJECTION_ENABLED, revisions: process.env.TICKET_SYNC_REVISIONS_ENABLED };
+  const previous = {
+    enabled: process.env.PROJECTION_ENABLED,
+    revisions: process.env.TICKET_SYNC_REVISIONS_ENABLED,
+    continuationDelay: process.env.PROJECTION_CONTINUATION_DELAY_MS,
+  };
   process.env.PROJECTION_ENABLED = 'true';
   process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
+  process.env.PROJECTION_CONTINUATION_DELAY_MS = '1';
   t.after(() => {
     for (const [name, value] of [['PROJECTION_ENABLED', previous.enabled], ['TICKET_SYNC_REVISIONS_ENABLED', previous.revisions]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
+    if (previous.continuationDelay === undefined) delete process.env.PROJECTION_CONTINUATION_DELAY_MS;
+    else process.env.PROJECTION_CONTINUATION_DELAY_MS = previous.continuationDelay;
   });
   const calls = [];
   const acknowledgements = [];
@@ -195,6 +202,42 @@ test('fresh batches resume between backlog slices and are acknowledged only afte
   assert.deepEqual(calls[2].after, freshCursor);
   assert.deepEqual(acknowledgements, [{ ids: [2n], at: 2 }, { ids: [1n], at: 3 }]);
   assert.equal(state.consecutiveErrors, 0);
+});
+
+test('projection fresh and backlog phases share one per-task time budget', async t => {
+  const previousBudget = process.env.PROJECTION_RUN_BUDGET_MS;
+  process.env.PROJECTION_RUN_BUDGET_MS = '30000';
+  t.after(() => previousBudget === undefined ? delete process.env.PROJECTION_RUN_BUDGET_MS : process.env.PROJECTION_RUN_BUDGET_MS = previousBudget);
+  const originalNow = Date.now;
+  let now = 100_000;
+  Date.now = () => now;
+  t.after(() => { Date.now = originalNow; });
+  const calls = [];
+  const state = { running: false, consecutiveErrors: 0 };
+  const source = readFileSync(path.resolve(__dirname, '../worker-projection.ts'), 'utf8').replace(/startWorker\(\)\.catch\([\s\S]*$/, '');
+  const { __test } = createHarness({
+    'dotenv/config': {},
+    '@/app/libs/prisma': { prisma: { projection_request: {
+      findMany: async () => [{ id: 1n, syncBatchId: 'fresh' }],
+      updateMany: async () => {},
+    } } },
+    '@/lib/projection': { runProjection: async (_signal, options) => {
+      calls.push(options);
+      if (calls.length === 1) now += 22_000;
+      return { processed: 1, inserted: 1, updated: 0, skipped: 0, failed: 0, retried: 0, checkpoint: {} };
+    } },
+    '@/lib/workers/task-runner': {
+      createTaskState: () => state, parsePositiveInt: (value, fallback) => Number(value) || fallback,
+      shouldRunWithCircuitBreaker: () => true, nowWIB: () => 'test',
+      withCancellableTimeout: () => { const controller = new AbortController(); return { controller, signal: controller.signal, cancel() {} }; },
+      withTaskLock: async (_key, _ttl, fn) => { await fn({ fencingToken: 1 }); return 'acquired'; },
+    },
+    '@/lib/observability/config-validator': {}, '@/lib/observability/slo-tracker': { recordRun: async () => {} },
+  }, { 'worker-projection.ts': ['runProjectionTask'] }, { 'worker-projection.ts': source }).load('worker-projection.ts');
+  await __test.runProjectionTask('incremental');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].maxDurationMs, 30_000);
+  assert.equal(calls[1].maxDurationMs, 8_000);
 });
 
 test('a failed fresh batch remains unacknowledged and does not stop backlog projection', async t => {

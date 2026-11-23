@@ -19,7 +19,7 @@ function gateHarness(t, concurrency = 2, waitMs = 100) {
     else process.env[name] = previous[i];
   }));
   return createHarness({
-    '@/lib/redis': { ensureRedisReady: async () => false },
+    '@/lib/redis': { ensureRedisReady: async () => false, isRedisReady: () => false },
     '@/lib/ingestion/sync-state': { isRevisionSyncEnabled: () => false },
   });
 }
@@ -40,13 +40,50 @@ test('parallel daily cache misses complete their nested validation caches and qu
   assert.deepEqual(await Promise.all([...requests, badge]), ['b2c', 'b2b', 42]);
 });
 
+test('daily table defers optional validation and dropdown queries until after primary pagination', async () => {
+  const pagination = deferred();
+  const enteredPagination = deferred();
+  let optionalQueries = 0;
+  const harness = createHarness({
+    '@/app/libs/prisma': { $queryRawUnsafe: async () => [], ticket: {
+      findMany: async () => { optionalQueries++; return []; },
+      groupBy: async () => { optionalQueries++; return []; },
+    } },
+    '@prisma/client': { Prisma: {} },
+    '@/lib/cache': { DASHBOARD_CACHE_TTL: 1, getOrSetCacheSwr: async (_key, compute) => compute() },
+    '@/lib/sql/max-execution-time': { withMaxExecutionTime: sql => sql },
+    '@/lib/timezone': { toWibDateString: () => '2026-11-23', todayWibDateForDb: () => new Date('2026-11-23') },
+    '@/app/libs/ticket-utils': { CLOSE_STATUS_VALUES: [] },
+    '@/app/libs/flagging-manja': { resolveEffectiveFlagging: () => null },
+    '@/app/libs/services/daily-ticket-helpers': {
+      buildSqlWhereClause: () => ['1=1', []], splitDailyFilterUnion: () => null,
+      buildStatusCategorySql: () => "'open'", mapTicket: value => value,
+      hydrateTicketsByIds: async () => [], queryRawWithOptionalIndex: async () => [],
+      normalizeCacheFilterValue: value => value, parseCountValue: value => Number(value),
+    },
+    '@/app/libs/services/daily-ticket-where': {
+      buildDailyTicketWhere: async () => ({}), buildMainTableWhere: value => value,
+      buildValidasiBaseWhere: value => value,
+      fetchTicketIdsBySql: async () => { enteredPagination.resolve(); return pagination.promise; },
+    },
+  });
+  const { getDailyTicketTable } = harness.load('app/libs/services/daily-ticket-table.ts');
+  const request = getDailyTicketTable('admin', 1, { includeSummary: false });
+  await enteredPagination.promise;
+  await Promise.resolve();
+  assert.equal(optionalQueries, 0, 'optional database work must wait for primary pagination');
+  pagination.resolve({ rows: [], nextCursor: null });
+  await request;
+  assert.ok(optionalQueries > 0, 'optional queries still run after pagination');
+});
+
 test('daily route and table service return ticket lists during parallel cold-cache requests', { timeout: 2000 }, async t => {
   gateHarness(t);
   const bothEntered = deferred();
   let entered = 0;
   const service = {};
   const harness = createHarness({
-    '@/lib/redis': { ensureRedisReady: async () => false },
+    '@/lib/redis': { ensureRedisReady: async () => false, isRedisReady: () => false },
     '@/lib/ingestion/sync-state': { isRevisionSyncEnabled: () => false },
     '@/app/libs/protectApi': { protectApi: async () => ({ role: 'superadmin', id_user: 2 }) },
     '@/lib/api-rate-limit': { enforceApiRateLimit: async () => null },
@@ -113,6 +150,49 @@ test('independent computations stay within the concurrency limit and release slo
   assert.equal(peak, 2);
   assert.equal(results.filter(result => result.status === 'rejected').length, 1);
   assert.equal(await withQueryGate(async () => 'recovered'), 'recovered');
+});
+
+test('shared query gate limits work across independent application processes', { timeout: 1500 }, async t => {
+  const previous = {
+    concurrency: process.env.DATABASE_HEAVY_QUERY_CONCURRENCY,
+    wait: process.env.DATABASE_QUERY_GATE_WAIT_MS,
+  };
+  process.env.DATABASE_HEAVY_QUERY_CONCURRENCY = '1';
+  process.env.DATABASE_QUERY_GATE_WAIT_MS = '500';
+  t.after(() => {
+    if (previous.concurrency === undefined) delete process.env.DATABASE_HEAVY_QUERY_CONCURRENCY;
+    else process.env.DATABASE_HEAVY_QUERY_CONCURRENCY = previous.concurrency;
+    if (previous.wait === undefined) delete process.env.DATABASE_QUERY_GATE_WAIT_MS;
+    else process.env.DATABASE_QUERY_GATE_WAIT_MS = previous.wait;
+  });
+  const slots = new Map();
+  const redis = {
+    set: async (key, token, _px, ttl, _nx) => {
+      if (slots.has(key)) return null;
+      slots.set(key, { token, ttl });
+      return 'OK';
+    },
+    eval: async (_script, keyCount, key, token) => {
+      assert.equal(keyCount, 1);
+      if (slots.get(key)?.token !== token) return 0;
+      slots.delete(key);
+      return 1;
+    },
+  };
+  const overrides = { '@/lib/redis': { redis, isRedisReady: () => true } };
+  const first = createHarness(overrides).load('lib/sql/query-gate.ts').withQueryGate;
+  const second = createHarness(overrides).load('lib/sql/query-gate.ts').withQueryGate;
+  const entered = deferred();
+  const release = deferred();
+  let secondRan = false;
+  const firstTask = first(async () => { entered.resolve(); await release.promise; });
+  await entered.promise;
+  const secondTask = second(async () => { secondRan = true; });
+  await delay(40);
+  assert.equal(secondRan, false);
+  release.resolve();
+  await Promise.all([firstTask, secondTask]);
+  assert.equal(secondRan, true);
 });
 
 test('expired waiters fail with 503 and never execute after a slot is released', { timeout: 1000 }, async t => {

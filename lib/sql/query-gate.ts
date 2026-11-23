@@ -7,27 +7,39 @@
  * bersamaan, masing-masing 30-60 detik, pool 35 koneksi habis, bahkan
  * `SELECT 1` ikut timeout.
  *
- * Semaphore sederhana proses-lokal (bukan lintas-proses/Redis) — cukup
- * karena tiap app PM2 (dompis-server dkk) berjalan single-instance
- * (`instances: 1`), jadi gate ini memang mewakili seluruh proses.
+ * Semaphore FIFO lokal membatasi antrean di satu proses. Saat Redis siap,
+ * slot Redis tambahan menerapkan batas yang sama lintas proses web dan worker.
+ * Jika Redis tidak siap, operasi memakai batas lokal sebagai mode degradasi.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { redis, isRedisReady } from '@/lib/redis';
 
 const MAX_CONCURRENT = Math.max(
   1,
-  parseInt(process.env.CACHE_COMPUTE_CONCURRENCY || '6', 10) || 6,
+  parseInt(
+    process.env.DATABASE_HEAVY_QUERY_CONCURRENCY ||
+      process.env.CACHE_COMPUTE_CONCURRENCY || '6',
+    10,
+  ) || 6,
 );
 const MAX_WAIT_MS = Math.max(
   1,
-  parseInt(process.env.CACHE_COMPUTE_WAIT_MS || '10000', 10) || 10000,
+  parseInt(
+    process.env.DATABASE_QUERY_GATE_WAIT_MS ||
+      process.env.CACHE_COMPUTE_WAIT_MS || '10000',
+    10,
+  ) || 10000,
 );
+const SHARED_SLOT_PREFIX = 'dompis:database-heavy-query-slot';
+const SHARED_SLOT_TTL_MS = 90_000;
+const SHARED_SLOT_RENEW_MS = 25_000;
 
 export class QueryGateTimeoutError extends Error {
   readonly status = 503;
 
   constructor() {
-    super(`Cache computation queue wait exceeded ${MAX_WAIT_MS}ms`);
+    super(`Database query gate wait exceeded ${MAX_WAIT_MS}ms`);
     this.name = 'QueryGateTimeoutError';
   }
 }
@@ -62,6 +74,55 @@ function release(): void {
   if (next) next();
 }
 
+async function acquireSharedSlot(): Promise<(() => Promise<void>) | null> {
+  // Redis is an admission-control enhancement. Keep the existing local gate
+  // available when Redis is down so dashboard reads can still serve.
+  if (!isRedisReady()) return null;
+
+  const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+  const deadline = Date.now() + MAX_WAIT_MS;
+  let slotKey: string | null = null;
+
+  while (Date.now() < deadline && !slotKey) {
+    try {
+      for (let slot = 0; slot < MAX_CONCURRENT; slot++) {
+        const key = `${SHARED_SLOT_PREFIX}:${slot}`;
+        const acquired = await redis.set(key, token, 'PX', SHARED_SLOT_TTL_MS, 'NX');
+        if (acquired === 'OK') {
+          slotKey = key;
+          break;
+        }
+      }
+    } catch {
+      return null;
+    }
+    if (!slotKey) await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+  }
+
+  if (!slotKey) throw new QueryGateTimeoutError();
+
+  const ownedKey = slotKey;
+  const renew = () => redis.eval(
+    'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end',
+    1,
+    ownedKey,
+    token,
+    SHARED_SLOT_TTL_MS,
+  ).then(() => undefined).catch(() => undefined);
+  const renewTimer = setInterval(() => { void renew(); }, SHARED_SLOT_RENEW_MS);
+  renewTimer.unref?.();
+
+  return async () => {
+    clearInterval(renewTimer);
+    await redis.eval(
+      'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end',
+      1,
+      ownedKey,
+      token,
+    ).catch(() => undefined);
+  };
+}
+
 /**
  * Jalankan `fn` di bawah gate konkurensi global. Kalau slot penuh, `fn`
  * menunggu antrean (FIFO) — bukan langsung menembak DB bersamaan dengan
@@ -73,10 +134,13 @@ export async function withQueryGate<T>(fn: () => Promise<T>): Promise<T> {
 
   await acquire();
   const owner = { active: true };
+  let releaseShared: (() => Promise<void>) | null = null;
   try {
+    releaseShared = await acquireSharedSlot();
     return await ownership.run(owner, fn);
   } finally {
     owner.active = false;
+    await releaseShared?.();
     release();
   }
 }

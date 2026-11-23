@@ -578,7 +578,7 @@ export async function getDailyTicketTable(
         priorityToday: toWibDateString(todayWibDateForDb()),
         cursor,
       });
-  const validasiTicketIdsPromise: Promise<{ ids: number[]; nextCursor: string | null }> = (
+  const fetchValidasiTicketIdsForPage = (): Promise<{ ids: number[]; nextCursor: string | null }> => (
     !countOnly && includeValidasi && includeValidasiTickets && validasiBaseWhere
       ? fetchValidasiTicketIds(validasiBaseWhere, {
           sort,
@@ -590,18 +590,16 @@ export async function getDailyTicketTable(
   ).catch(() => ({ ids: [] as number[], nextCursor: null }));
   const cacheKeyBase = `daily_tickets:summary:v2:${role}:${userId}:${JSON.stringify(normalizeCacheFilterValue(filters ?? {}))}`;
 
-  // Promise di bawah dimulai eager tapi baru dikonsumsi di gelombang 2/3 —
-  // dan bisa di-skip total bila path snapshot terpakai. Tanpa handler
-  // seketika, kegagalan (mis. DB overload → P2010) menjadi unhandledRejection
-  // yang bisa menjatuhkan proses web. `.catch` di sini menjadikannya
-  // best-effort dengan fallback aman (kode konsumen memang menganggapnya opsional).
-  const validasiCountPromise: Promise<number> = (
+  // Panggil query opsional hanya saat gelombang pembatasnya berjalan. Selain
+  // mengendalikan lonjakan koneksi, ini mencegah query dropdown berjalan saat
+  // jalur snapshot atau pagination utama masih diproses.
+  const fetchValidasiCount = (): Promise<number> => (
     !countOnly && includeValidasi && validasiBaseWhere
       ? getOrSetCacheSwr(`${cacheKeyBase}:validasi_count`, () => countValidasiTickets(validasiBaseWhere), DASHBOARD_CACHE_TTL)
       : Promise.resolve(0)
   ).catch(() => 0);
   const optionsCacheKeyBase = buildTicketOptionCacheKey(role, userId, filters);
-  const statusOptionsPromise: Promise<string[]> = (
+  const fetchStatusOptions = (): Promise<string[]> => (
     includeOptions && !countOnly
       ? getOrSetCacheSwr(
           `${optionsCacheKeyBase}:status`,
@@ -610,7 +608,7 @@ export async function getDailyTicketTable(
         )
       : Promise.resolve([] as string[])
   ).catch(() => [] as string[]);
-  const ticketTypeOptionsPromise: Promise<TicketTypeOption[]> = (
+  const fetchTicketTypeOptions = (): Promise<TicketTypeOption[]> => (
     includeOptions && !countOnly
       ? getOrSetCacheSwr(
           `${optionsCacheKeyBase}:type`,
@@ -658,7 +656,7 @@ export async function getDailyTicketTable(
           () => filters?.includeFlagging === false
             ? Promise.resolve({ ffgCount: 0, gamasCount: 0, p1Count: 0, pPlusCount: 0 })
             : countFlaggingSummary(mainTableWhere, validasiBaseWhere),
-          () => validasiCountPromise,
+          () => fetchValidasiCount(),
         ]);
         flaggingSummary = fs;
         validasiCount = vc;
@@ -675,9 +673,9 @@ export async function getDailyTicketTable(
   const [validasiTicketIdsResult, statusOptions, ticketTypeOptions] = await limitedPromiseAll<
     [() => Promise<{ ids: number[]; nextCursor: string | null }>, () => Promise<string[]>, () => Promise<TicketTypeOption[]>]
   >([
-    () => validasiTicketIdsPromise,
-    () => statusOptionsPromise,
-    () => ticketTypeOptionsPromise,
+    () => fetchValidasiTicketIdsForPage(),
+    () => fetchStatusOptions(),
+    () => fetchTicketTypeOptions(),
   ]);
   const validasiTicketIds = validasiTicketIdsResult.ids;
   const validasiNextCursor = validasiTicketIdsResult.nextCursor;

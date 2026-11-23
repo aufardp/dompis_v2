@@ -187,6 +187,8 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
     const lockResult = await withProjectionLock(
       async ({ fencingToken }) => {
         if (signal.aborted) return;
+        const runDeadline = Date.now() + RUN_BUDGET_MS;
+        let backlogDeferredForBudget = false;
         let freshSummary: { processed: number; inserted: number; updated: number; skipped: number; failed: number } | undefined;
 
         if (!isRevisionSyncEnabled() && mode === 'incremental') {
@@ -201,7 +203,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
               const freshResult = await runProjection(signal, {
                 mode: 'batch', syncBatchId: batchId, preserveCheckpointCursor: true,
                 onlyUnprojected: true,
-                skipAutoRepair: true, maxDurationMs: RUN_BUDGET_MS, after: freshBatches.get(batchId),
+                skipAutoRepair: true, maxDurationMs: Math.max(1, runDeadline - Date.now()), after: freshBatches.get(batchId),
               });
               freshSummary = { processed: freshResult.processed, inserted: freshResult.inserted, updated: freshResult.updated, skipped: freshResult.skipped, failed: freshResult.failed };
               freshBatches.delete(batchId);
@@ -223,10 +225,25 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           }
         }
 
-        const result =
-          mode === 'full'
-            ? await runFullScanProjection(signal)
-            : await runProjection(signal, { mode: 'incremental', maxDurationMs: RUN_BUDGET_MS });
+        let result: Awaited<ReturnType<typeof runProjection>>;
+        if (mode === 'full') {
+          result = await runFullScanProjection(signal);
+        } else {
+          const remainingBudgetMs = runDeadline - Date.now();
+          if (remainingBudgetMs > 0) {
+            result = await runProjection(signal, { mode: 'incremental', maxDurationMs: remainingBudgetMs });
+          } else {
+            backlogDeferredForBudget = true;
+            result = {
+              processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0,
+              retried: 0, protected: 0,
+              checkpoint: { lastProjectedImportedAt: null, lastProjectedTicketRawId: null, syncBatchId: null },
+            };
+            logger.info('Projection backlog phase deferred to next task after fresh batch used the run budget', {
+              runBudgetMs: RUN_BUDGET_MS,
+            });
+          }
+        }
         const duration = Date.now() - startTime;
 
         if (signal.aborted) {
@@ -257,7 +274,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
             .map(request => request.id));
           if (isRevisionSyncEnabled()) freshBatches.clear();
         }
-        if (result.continuation || freshBatches.size > 0) pendingProjectionRun = true;
+        if (result.continuation || freshBatches.size > 0 || backlogDeferredForBudget) pendingProjectionRun = true;
         await recordRun(WORKER_NAME, duration, result.failed === 0, {
           processed: result.processed + (freshSummary?.processed ?? 0),
         });

@@ -76,13 +76,19 @@ test('legacy replay preserves business data and does not rewrite a recent heartb
 });
 
 test('legacy projection yields after commit and fresh batch slices preserve the backlog cursor', async t => {
-  const previousEnabled = process.env.PROJECTION_ENABLED;
+  const previousEnabled = {
+    enabled: process.env.PROJECTION_ENABLED,
+    writeChunkSize: process.env.PROJECTION_WRITE_CHUNK_SIZE,
+  };
   process.env.TICKET_SYNC_REVISIONS_ENABLED = 'false';
   process.env.PROJECTION_ENABLED = 'true';
+  process.env.PROJECTION_WRITE_CHUNK_SIZE = '1';
   t.after(() => {
     process.env.TICKET_SYNC_REVISIONS_ENABLED = 'true';
-    if (previousEnabled === undefined) delete process.env.PROJECTION_ENABLED;
-    else process.env.PROJECTION_ENABLED = previousEnabled;
+    if (previousEnabled.enabled === undefined) delete process.env.PROJECTION_ENABLED;
+    else process.env.PROJECTION_ENABLED = previousEnabled.enabled;
+    if (previousEnabled.writeChunkSize === undefined) delete process.env.PROJECTION_WRITE_CHUNK_SIZE;
+    else process.env.PROJECTION_WRITE_CHUNK_SIZE = previousEnabled.writeChunkSize;
   });
   const rows = [1, 2, 3, 4].map(i => ({
     incident: `INC9000000${i}`, sourceTable: 'piloting_tickets', status: 'OPEN',
@@ -92,8 +98,9 @@ test('legacy projection yields after commit and fresh batch slices preserve the 
   await prisma.ticket_raw.createMany({ data: rows });
   const harness = app();
   const { runProjection } = harness.load('lib/projection/index.ts');
-  const first = await runProjection(undefined, { batchSize: 1, maxDurationMs: 1, skipAutoRepair: true });
+  const first = await runProjection(undefined, { batchSize: 4, maxDurationMs: 1, skipAutoRepair: true });
   assert.ok(first.continuation);
+  assert.equal(first.checkpoint.lastProjectedTicketRawId, first.continuation.ticketRawId);
   const checkpoint = await prisma.ticket_projection_checkpoint.findFirst();
   let after;
   do {

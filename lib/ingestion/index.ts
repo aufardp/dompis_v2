@@ -29,6 +29,7 @@ import { recordSyncMetric, setSyncStatus } from '@/lib/sync-metrics/metrics';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
 import { logger } from '@/lib/observability/logger';
 import { withTicketRawWriterLock } from '@/lib/ingestion/raw-writer-lock';
+import { withQueryGate } from '@/lib/sql/query-gate';
 import { isRedisReady, redis } from '@/lib/redis';
 import {
   incrIngestionQuarantine,
@@ -986,7 +987,8 @@ async function processBatch(
     inserted,
     updated,
     skipped,
-  } = await withTicketRawWriterLock((writerSignal) => prisma.$transaction(async (tx) => {
+  } = await withTicketRawWriterLock(async (writerSignal) => {
+    const batchOutcome = await withQueryGate(() => prisma.$transaction(async (tx) => {
     const syncStates = await lockTicketSyncState(tx, identities);
     const existingMap = await fetchExistingIdentities(tx, identities);
     const existingExt = isRevisionSyncEnabled() && identities.length
@@ -1142,17 +1144,21 @@ async function processBatch(
     });
 
     return { changedRows, heartbeatRows, inserted, updated, skipped };
-  }, {
-    isolationLevel: 'ReadCommitted',
-    maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
-    timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
-  }), signal);
+    }, {
+      isolationLevel: 'ReadCommitted',
+      maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
+      timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
+    }));
 
-  if (heartbeatRows.length) {
-    await refreshTicketRawHeartbeat(heartbeatRows, now).catch(error =>
-      logger.warn('ticket_raw heartbeat update failed', { error: String(error) }),
-    );
-  }
+    // Keep heartbeat writes serialized with ticket_raw upserts, while running
+    // after the transaction so they do not extend its row-lock lifetime.
+    if (batchOutcome.heartbeatRows.length) {
+      await refreshTicketRawHeartbeat(batchOutcome.heartbeatRows, now).catch(error =>
+        logger.warn('ticket_raw heartbeat update failed', { error: String(error) }),
+      );
+    }
+    return batchOutcome;
+  }, signal);
 
   if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 

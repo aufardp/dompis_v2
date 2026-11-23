@@ -1,4 +1,5 @@
 import { prisma } from '@/app/libs/prisma';
+import { withQueryGate } from '@/lib/sql/query-gate';
 import { Prisma } from '@prisma/client';
 import { format, toZonedTime } from 'date-fns-tz';
 import { nowWib, todayWibDateForDb } from '@/lib/timezone';
@@ -1416,9 +1417,11 @@ async function projectRecords(
     assertNotAborted(signal);
 
     const lastRecord = rawRecords[rawRecords.length - 1]!;
+    let yieldedForBudget = false;
     try {
     const itemChunks = chunkArray(items, writeChunkSize);
-    for (const itemChunk of itemChunks) {
+    for (let chunkIndex = 0; chunkIndex < itemChunks.length; chunkIndex++) {
+      const itemChunk = itemChunks[chunkIndex]!;
       const chunkLastRecord = itemChunk[itemChunk.length - 1]!.raw;
       const chunkStartMs = Date.now();
       const nextResult: ProjectionResult = {
@@ -1505,6 +1508,28 @@ async function projectRecords(
         result.setToClose = nextResult.setToClose;
         result.retried = nextResult.retried;
         result.checkpoint = nextResult.checkpoint;
+
+        const hasUncommittedRecords = chunkIndex < itemChunks.length - 1 || rawRecords.length === batchSize;
+        if (
+          hasUncommittedRecords &&
+          options.maxDurationMs &&
+          Date.now() - started >= options.maxDurationMs
+        ) {
+          activeCheckpoint = {
+            lastProjectedImportedAt: chunkLastRecord.importedAt,
+            lastProjectedTicketRawId: chunkLastRecord.id_ticket,
+            lastSyncBatchId: options.preserveCheckpointCursor
+              ? checkpoint.lastSyncBatchId
+              : options.syncBatchId ?? chunkLastRecord.syncBatchId,
+            neverProjectedCount: 0,
+          };
+          result.continuation = {
+            importedAt: chunkLastRecord.importedAt!,
+            ticketRawId: chunkLastRecord.id_ticket,
+          };
+          yieldedForBudget = true;
+          break;
+        }
       }
     } catch (error) {
       if (isTransientProjectionError(error)) {
@@ -1546,6 +1571,15 @@ async function projectRecords(
       throw new Error(
         `Projection batch failed with ${failedItems.length} failed record(s); checkpoint advanced only for successful sub-batches`,
       );
+    }
+
+    if (yieldedForBudget) {
+      assertNotAborted(signal);
+      logger.info('[Projection] Yielding at committed sub-batch boundary', {
+        checkpoint: `${activeCheckpoint.lastProjectedImportedAt?.toISOString() ?? '-'}:${activeCheckpoint.lastProjectedTicketRawId ?? '-'}`,
+        processed: result.processed,
+      });
+      break;
     }
 
     assertNotAborted(signal);
@@ -1712,9 +1746,9 @@ export async function runProjection(
       }
       lastRevisionReconcileAt = Date.now();
     }
-    const result = isRevisionSyncEnabled()
-      ? await (await import('./pending')).runPendingProjection(signal, options)
-      : await projectRecords(signal, options);
+    const result = await withQueryGate(() => isRevisionSyncEnabled()
+      ? import('./pending').then(({ runPendingProjection }) => runPendingProjection(signal, options))
+      : projectRecords(signal, options));
     if (isRevisionSyncEnabled()) {
       const checkpointData = {
         status: result.failed ? 'failed' : 'success', processed: result.processed,

@@ -393,7 +393,7 @@ export async function getOrSetCacheSwr<T>(
       const dirtyAt = Number(await redis.get('cache:dashboard:dirtyAt').catch(() => null));
       if (dirtyAt >= cached.storedAt) {
         const intervalSeconds = Math.max(
-          ttl,
+          1,
           options.dashboardDirtyRevalidateSeconds ??
             parsePositiveIntEnv('DASHBOARD_SYNC_REVALIDATE_SECONDS', 30),
         );
