@@ -253,7 +253,7 @@ export async function GET(request: Request) {
         limit,
         totalPages,
       };
-    }, CACHE_TTL_SECONDS);
+    }, CACHE_TTL_SECONDS, { priority: 'interactive' });
 
     return NextResponse.json({
       success: true,
@@ -265,9 +265,15 @@ export async function GET(request: Request) {
       totalPages: result.totalPages,
     });
   } catch (error: unknown) {
+    const status = getErrorStatus(error, 500);
     return NextResponse.json(
-      { success: false, message: getErrorMessage(error, 'Gagal memuat data') },
-      { status: getErrorStatus(error, 500) },
+      {
+        success: false,
+        message: status === 503
+          ? 'Database sedang sibuk. Tunggu sebentar lalu coba lagi.'
+          : getErrorMessage(error, 'Gagal memuat data'),
+      },
+      { status },
     );
   }
 }

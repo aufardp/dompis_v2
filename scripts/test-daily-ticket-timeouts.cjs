@@ -25,7 +25,7 @@ function gateHarness(t, concurrency = 2, waitMs = 100) {
 }
 
 test('parallel daily cache misses complete their nested validation caches and queued badges', { timeout: 1500 }, async t => {
-  const harness = gateHarness(t);
+  const harness = gateHarness(t, 3);
   const { getOrSetCache, getOrSetCacheSwr } = harness.load('lib/cache.ts');
   const bothEntered = deferred();
   let entered = 0;
@@ -78,7 +78,7 @@ test('daily table defers optional validation and dropdown queries until after pr
 });
 
 test('daily route and table service return ticket lists during parallel cold-cache requests', { timeout: 2000 }, async t => {
-  gateHarness(t);
+  gateHarness(t, 3);
   const bothEntered = deferred();
   let entered = 0;
   const service = {};
@@ -145,11 +145,34 @@ test('independent computations stay within the concurrency limit and release slo
     } finally {
       active--;
     }
-  }));
+  }, 'interactive'));
   const results = await Promise.allSettled(jobs);
   assert.equal(peak, 2);
   assert.equal(results.filter(result => result.status === 'rejected').length, 1);
   assert.equal(await withQueryGate(async () => 'recovered'), 'recovered');
+});
+
+test('interactive work keeps the reserved local slot while background work is saturated', { timeout: 1000 }, async t => {
+  const { withQueryGate } = gateHarness(t, 2).load('lib/sql/query-gate.ts');
+  const releaseBackground = deferred();
+  const backgroundEntered = deferred();
+  const interactiveEntered = deferred();
+  let backgroundRuns = 0;
+  const background = withQueryGate(async () => {
+    backgroundRuns++;
+    backgroundEntered.resolve();
+    await releaseBackground.promise;
+  });
+  await backgroundEntered.promise;
+
+  const queuedBackground = withQueryGate(async () => { backgroundRuns++; });
+  const interactive = withQueryGate(async () => { interactiveEntered.resolve(); }, 'interactive');
+  await interactiveEntered.promise;
+  assert.equal(backgroundRuns, 1, 'second background computation must wait for the non-reserved slot');
+
+  releaseBackground.resolve();
+  await Promise.all([background, queuedBackground, interactive]);
+  assert.equal(backgroundRuns, 2);
 });
 
 test('shared query gate limits work across independent application processes', { timeout: 1500 }, async t => {

@@ -31,6 +31,10 @@ const MAX_WAIT_MS = Math.max(
     10,
   ) || 10000,
 );
+const INTERACTIVE_WAIT_MS = Math.max(
+  1,
+  parseInt(process.env.DATABASE_INTERACTIVE_QUERY_GATE_WAIT_MS || '8000', 10) || 8000,
+);
 const SHARED_SLOT_PREFIX = 'dompis:database-heavy-query-slot';
 const SHARED_SLOT_TTL_MS = 90_000;
 const SHARED_SLOT_RENEW_MS = 25_000;
@@ -38,54 +42,75 @@ const SHARED_SLOT_RENEW_MS = 25_000;
 export class QueryGateTimeoutError extends Error {
   readonly status = 503;
 
-  constructor() {
-    super(`Database query gate wait exceeded ${MAX_WAIT_MS}ms`);
+  constructor(waitMs: number) {
+    super(`Database query gate wait exceeded ${waitMs}ms`);
     this.name = 'QueryGateTimeoutError';
   }
 }
 
+type QueryPriority = 'interactive' | 'background';
 let active = 0;
-const queue: Array<() => void> = [];
-const ownership = new AsyncLocalStorage<{ active: boolean }>();
+let activeBackground = 0;
+const queues: Record<QueryPriority, Array<() => void>> = { interactive: [], background: [] };
+const ownership = new AsyncLocalStorage<{ active: boolean; priority: QueryPriority }>();
 
-function acquire(): Promise<void> {
-  if (active < MAX_CONCURRENT) {
-    active++;
+function canAcquire(priority: QueryPriority): boolean {
+  const backgroundLimit = Math.max(1, MAX_CONCURRENT - 1);
+  return active < MAX_CONCURRENT && (priority === 'interactive' || activeBackground < backgroundLimit);
+}
+
+function markAcquired(priority: QueryPriority): void {
+  active++;
+  if (priority === 'background') activeBackground++;
+}
+
+function acquire(priority: QueryPriority): Promise<void> {
+  if (canAcquire(priority)) {
+    markAcquired(priority);
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
     const grant = () => {
       clearTimeout(timer);
-      active++;
+      markAcquired(priority);
       resolve();
     };
     const timer = setTimeout(() => {
-      const index = queue.indexOf(grant);
-      if (index >= 0) queue.splice(index, 1);
-      reject(new QueryGateTimeoutError());
-    }, MAX_WAIT_MS);
-    queue.push(grant);
+      const index = queues[priority].indexOf(grant);
+      if (index >= 0) queues[priority].splice(index, 1);
+      reject(new QueryGateTimeoutError(priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS));
+    }, priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS);
+    queues[priority].push(grant);
   });
 }
 
-function release(): void {
+function release(priority: QueryPriority): void {
   active--;
-  const next = queue.shift();
-  if (next) next();
+  if (priority === 'background') activeBackground--;
+  const nextPriority: QueryPriority | null = queues.interactive.length > 0
+    ? 'interactive'
+    : canAcquire('background') && queues.background.length > 0
+      ? 'background'
+      : null;
+  if (nextPriority) queues[nextPriority].shift()?.();
 }
 
-async function acquireSharedSlot(): Promise<(() => Promise<void>) | null> {
+async function acquireSharedSlot(priority: QueryPriority): Promise<(() => Promise<void>) | null> {
   // Redis is an admission-control enhancement. Keep the existing local gate
   // available when Redis is down so dashboard reads can still serve.
   if (!isRedisReady()) return null;
 
   const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
-  const deadline = Date.now() + MAX_WAIT_MS;
+  const waitMs = priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS;
+  const deadline = Date.now() + waitMs;
   let slotKey: string | null = null;
 
   while (Date.now() < deadline && !slotKey) {
     try {
-      for (let slot = 0; slot < MAX_CONCURRENT; slot++) {
+      // Keep one shared slot available to user-facing requests while background
+      // jobs (projection/ingestion/cache refresh) are running.
+      const slotLimit = priority === 'background' ? Math.max(1, MAX_CONCURRENT - 1) : MAX_CONCURRENT;
+      for (let slot = 0; slot < slotLimit; slot++) {
         const key = `${SHARED_SLOT_PREFIX}:${slot}`;
         const acquired = await redis.set(key, token, 'PX', SHARED_SLOT_TTL_MS, 'NX');
         if (acquired === 'OK') {
@@ -99,7 +124,7 @@ async function acquireSharedSlot(): Promise<(() => Promise<void>) | null> {
     if (!slotKey) await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
   }
 
-  if (!slotKey) throw new QueryGateTimeoutError();
+  if (!slotKey) throw new QueryGateTimeoutError(waitMs);
 
   const ownedKey = slotKey;
   const renew = () => redis.eval(
@@ -128,19 +153,19 @@ async function acquireSharedSlot(): Promise<(() => Promise<void>) | null> {
  * menunggu antrean (FIFO) — bukan langsung menembak DB bersamaan dengan
  * komputasi lain yang sedang berjalan.
  */
-export async function withQueryGate<T>(fn: () => Promise<T>): Promise<T> {
+export async function withQueryGate<T>(fn: () => Promise<T>, priority: QueryPriority = 'background'): Promise<T> {
   // A cached request can call another cache; its parent already owns a slot.
   if (ownership.getStore()?.active) return fn();
 
-  await acquire();
-  const owner = { active: true };
+  await acquire(priority);
+  const owner = { active: true, priority };
   let releaseShared: (() => Promise<void>) | null = null;
   try {
-    releaseShared = await acquireSharedSlot();
+    releaseShared = await acquireSharedSlot(priority);
     return await ownership.run(owner, fn);
   } finally {
     owner.active = false;
     await releaseShared?.();
-    release();
+    release(priority);
   }
 }

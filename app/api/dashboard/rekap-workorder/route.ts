@@ -29,6 +29,11 @@ import {
   getRekapExpectedServiceAreas,
 } from './queries';
 
+function isServiceUnavailable(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'status' in error &&
+    Number((error as { status?: unknown }).status) === 503;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const rateLimited = await enforceApiRateLimit(request, {
@@ -266,22 +271,13 @@ export async function GET(request: NextRequest) {
           getRekapTeknisiRows(today, decoded.id_user, teknisiWorkzones),
           getRekapTeknisiRegistered(decoded.id_user, teknisiWorkzones),
           bucket === 'kpi_customer'
-            ? Promise.all([
-                getLegacyCustomerBucketRows(
-                  decoded.role,
-                  decoded.id_user,
-                  selectedWorkzone,
-                  branchParam ? Number(branchParam) : undefined,
-                  'b2c',
-                ),
-                getLegacyCustomerBucketRows(
-                  decoded.role,
-                  decoded.id_user,
-                  selectedWorkzone,
-                  branchParam ? Number(branchParam) : undefined,
-                  'b2b',
-                ),
-              ]).then(([b2cRows, b2bRows]) => [...b2cRows, ...b2bRows])
+            ? getLegacyCustomerBucketRows(
+                decoded.role,
+                decoded.id_user,
+                selectedWorkzone,
+                branchParam ? Number(branchParam) : undefined,
+                'all',
+              )
             : Promise.resolve([] as LegacyCustomerBucketRow[]),
           bucket === 'kpi_customer'
             ? getCustomerSqmOverlayTickets(
@@ -291,6 +287,7 @@ export async function GET(request: NextRequest) {
                 selectedWorkzone,
                 branchParam ? Number(branchParam) : undefined,
               ).catch((error) => {
+                if (isQueryOverloadError(error) || isServiceUnavailable(error)) throw error;
                 logger.warn('Customer sqm overlay failed', {
                   role: decoded.role,
                   userId: decoded.id_user,
@@ -314,6 +311,7 @@ export async function GET(request: NextRequest) {
                 selectedWorkzone,
                 branchParam ? Number(branchParam) : undefined,
               ).catch((error) => {
+                if (isQueryOverloadError(error) || isServiceUnavailable(error)) throw error;
                 logger.warn('Customer gamas overlay failed', {
                   role: decoded.role,
                   userId: decoded.id_user,
@@ -394,6 +392,7 @@ export async function GET(request: NextRequest) {
         );
       },
       Math.max(DASHBOARD_CACHE_TTL, 120),
+      { priority: 'interactive' },
     );
 
     return NextResponse.json(data);

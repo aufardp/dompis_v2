@@ -987,8 +987,8 @@ async function processBatch(
     inserted,
     updated,
     skipped,
-  } = await withTicketRawWriterLock(async (writerSignal) => {
-    const batchOutcome = await withQueryGate(() => prisma.$transaction(async (tx) => {
+  } = await withQueryGate(() => withTicketRawWriterLock(async (writerSignal) => {
+    const batchOutcome = await prisma.$transaction(async (tx) => {
     const syncStates = await lockTicketSyncState(tx, identities);
     const existingMap = await fetchExistingIdentities(tx, identities);
     const existingExt = isRevisionSyncEnabled() && identities.length
@@ -1148,7 +1148,7 @@ async function processBatch(
       isolationLevel: 'ReadCommitted',
       maxWait: DEFAULT_TRANSACTION_TIMEOUT_MS,
       timeout: DEFAULT_TRANSACTION_TIMEOUT_MS,
-    }));
+    });
 
     // Keep heartbeat writes serialized with ticket_raw upserts, while running
     // after the transaction so they do not extend its row-lock lifetime.
@@ -1158,7 +1158,7 @@ async function processBatch(
       );
     }
     return batchOutcome;
-  }, signal);
+  }, signal));
 
   if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 
@@ -1498,7 +1498,12 @@ async function processTable(
             }
             const jobStillExists = await ingestionQueue.getJob(jobName);
             if (!jobStillExists) {
-              await ingestionQueue.add(jobName, { table: tableName, correlationId: batchId }, { jobId: jobName });
+              try {
+                await ingestionQueue.add(jobName, { table: tableName, correlationId: batchId }, { jobId: jobName });
+              } catch (error) {
+                await redis.del(cooldownKey).catch(() => {});
+                throw error;
+              }
             }
           }
         } else {
@@ -1522,11 +1527,16 @@ async function processTable(
           }
           const jobStillExists = await ingestionQueue.getJob(jobName);
           if (!jobStillExists) {
-            await ingestionQueue.add(
-              jobName,
-              { table: tableName, correlationId: batchId },
-              { jobId: jobName },
-            );
+            try {
+              await ingestionQueue.add(
+                jobName,
+                { table: tableName, correlationId: batchId },
+                { jobId: jobName },
+              );
+            } catch (error) {
+              await redis.del(cooldownKey).catch(() => {});
+              throw error;
+            }
           }
         }
       }

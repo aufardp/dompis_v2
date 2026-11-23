@@ -149,11 +149,12 @@ export default function DashboardDurasiClient({
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/durasi?${queryParams}`);
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to fetch');
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || err.error || `Gagal memuat monitoring durasi (${res.status})`);
       }
       return res.json();
     },
+    retry: false,
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -179,12 +180,12 @@ export default function DashboardDurasiClient({
 
   if (isError || data?.error) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-12">
+      <div role="alert" className="flex flex-col items-center justify-center gap-4 py-12">
         <p className="text-sm text-(--text-secondary)">
-          {data?.error || 'Gagal memuat data. Klik refresh untuk mencoba lagi.'}
+          {data?.error || 'Data monitoring durasi gagal dimuat.'}
         </p>
-        <button onClick={() => refetch()} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-          Refresh
+        <button onClick={() => void refetch()} disabled={isFetching} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60">
+          {isFetching ? 'Memuat ulang…' : 'Coba lagi'}
         </button>
       </div>
     );

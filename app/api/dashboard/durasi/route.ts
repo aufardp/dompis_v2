@@ -500,7 +500,7 @@ export async function GET(request: NextRequest) {
         kpiSummary,
         selectedBucket: bucket,
       };
-    }, 60);
+    }, 60, { priority: 'interactive' });
 
     return NextResponse.json(data, {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },

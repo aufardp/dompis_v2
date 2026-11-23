@@ -169,12 +169,16 @@ test('fresh batches resume between backlog slices and are acknowledged only afte
   });
   const calls = [];
   const acknowledgements = [];
+  const projectionSummaries = [];
   const acknowledgedIds = new Set();
   const freshCursor = { importedAt: new Date('2026-11-11T01:00:00Z'), ticketRawId: 'fresh-1' };
   const state = { running: false, consecutiveErrors: 0 };
   const filename = path.resolve(__dirname, '../worker-projection.ts');
   const source = readFileSync(filename, 'utf8').replace(/startWorker\(\)\.catch\([\s\S]*$/, '') + '\nasync function runTestPump() { pendingProjectionRun = true; await drainProjectionQueue("test"); }';
   const { __test } = createHarness({
+    '@/lib/observability/logger': { logger: { info: (message, context) => {
+      if (message === 'Projection task complete') projectionSummaries.push(context);
+    }, warn() {}, error() {} } },
     'dotenv/config': {},
     '@/app/libs/prisma': { prisma: { projection_request: {
       findMany: async () => [{ id: 1n, syncBatchId: 'fresh-batch' }, { id: 2n, syncBatchId: null }].filter(request => !acknowledgedIds.has(request.id)),
@@ -201,6 +205,8 @@ test('fresh batches resume between backlog slices and are acknowledged only afte
   assert.equal(calls[0].preserveCheckpointCursor, true);
   assert.deepEqual(calls[2].after, freshCursor);
   assert.deepEqual(acknowledgements, [{ ids: [2n], at: 2 }, { ids: [1n], at: 3 }]);
+  assert.equal(projectionSummaries[0].hasMore, true, 'fresh batch continuation is reflected in task summary');
+  assert.equal(projectionSummaries[0].continuationPending, true);
   assert.equal(state.consecutiveErrors, 0);
 });
 

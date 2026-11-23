@@ -110,7 +110,9 @@ export const ingestionQueue = new Queue('bridge-ingestion', {
   connection: CONNECTION,
   defaultJobOptions: {
     attempts: 3,
-    backoff: { type: 'exponential', delay: 2000 },
+    // Give MySQL and the shared QOSMIC budget time to recover before replaying
+    // a partially completed scan. Ingestion writes are idempotent by incident.
+    backoff: { type: 'exponential', delay: 30_000 },
     // Ingestion uses one stable jobId per resource. Remove it immediately on
     // completion so the following scheduled scan can be enqueued.
     removeOnComplete: true,
@@ -320,12 +322,38 @@ function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
   });
 
   worker.on('failed', (job, err) => {
+    const attemptsMade = Number(job?.attemptsMade ?? 0);
+    const maxAttempts = Math.max(1, Number(job?.opts?.attempts ?? 1));
+    const willRetry = attemptsMade < maxAttempts;
     logger.error('[Bridge] Job failed', err, {
       jobId: job?.id,
       name: job?.name,
-      attempts: job?.attemptsMade,
+      attemptsMade,
+      maxAttempts,
+      willRetry,
       incident: job?.data?.incident,
     });
+
+    // A terminal failed scan must not leave the table cooldown suppressing the
+    // next scheduled enqueue (especially Nossa closed's longer cooldown).
+    if (!willRetry && (job?.name === 'ingest-nossa' || job?.name === 'ingest-nossa_closed')) {
+      const table = job?.data?.table;
+      if (table === 'nossa' || table === 'nossa_closed') {
+        void redis.del(`ingestion:bridge:${table}:cooldown`).then((deleted) => {
+          logger.info('[Bridge] Released ingestion cooldown after terminal failure', {
+            jobId: job.id,
+            table,
+            deleted,
+          });
+        }).catch((releaseError) => {
+          logger.warn('[Bridge] Failed to release ingestion cooldown after terminal failure', {
+            jobId: job.id,
+            table,
+            error: String(releaseError),
+          });
+        });
+      }
+    }
 
     if (isTransientBridgeError(err)) {
       circuit.consecutiveErrors++;

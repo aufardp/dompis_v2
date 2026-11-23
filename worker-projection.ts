@@ -188,7 +188,9 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
       async ({ fencingToken }) => {
         if (signal.aborted) return;
         const runDeadline = Date.now() + RUN_BUDGET_MS;
+        const runBudgetStartedAt = Date.now();
         let backlogDeferredForBudget = false;
+        let runBudgetElapsedMs = 0;
         let freshSummary: { processed: number; inserted: number; updated: number; skipped: number; failed: number } | undefined;
 
         if (!isRevisionSyncEnabled() && mode === 'incremental') {
@@ -245,6 +247,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
             });
           }
         }
+        runBudgetElapsedMs = Date.now() - runBudgetStartedAt;
         const duration = Date.now() - startTime;
 
         if (signal.aborted) {
@@ -252,6 +255,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           return;
         }
 
+        const continuationPending = Boolean(result.continuation) || freshBatches.size > 0 || backlogDeferredForBudget;
         logger.info('Projection task complete', {
           task: mode,
           fencingToken,
@@ -266,7 +270,12 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
           fresh: freshSummary,
           totalProcessed: result.processed + (freshSummary?.processed ?? 0),
           checkpoint: result.checkpoint,
-          hasMore: Boolean(result.continuation),
+          hasMore: continuationPending,
+          continuationPending,
+          backlogDeferredForBudget,
+          runBudgetMs: RUN_BUDGET_MS,
+          runBudgetElapsedMs,
+          runBudgetExceeded: runBudgetElapsedMs > RUN_BUDGET_MS,
           time: nowWIB(),
         });
         if (!result.continuation && result.failed === 0) {
@@ -275,7 +284,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
             .map(request => request.id));
           if (isRevisionSyncEnabled()) freshBatches.clear();
         }
-        if (result.continuation || freshBatches.size > 0 || backlogDeferredForBudget) pendingProjectionRun = true;
+        if (continuationPending) pendingProjectionRun = true;
         await recordRun(WORKER_NAME, duration, result.failed === 0, {
           processed: result.processed + (freshSummary?.processed ?? 0),
         });

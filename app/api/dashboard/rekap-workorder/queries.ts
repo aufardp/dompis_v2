@@ -9,7 +9,7 @@ import { getOrSetCacheSwr } from '@/lib/cache';
 import { getTodayWibRange } from '@/lib/timezone';
 import { format, toZonedTime } from 'date-fns-tz';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
-import { withMaxExecutionTime } from '@/lib/sql/max-execution-time';
+import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
 import {
   buildKpiBucketFilterSql,
   type KpiBucketKey,
@@ -326,6 +326,7 @@ export async function getLegacyCustomerBucketRows(
     JOIN service_area sa ON sa.nama_sa = t.workzone
     JOIN area a ON a.id_area = sa.area_id
     WHERE ${whereClause}
+      ${normalizedDept === 'all' ? "AND t.kpi_seg IN ('b2c', 'b2b')" : ''}
     GROUP BY area, sa_name, workzone, status, status_update
     ORDER BY area, sa_name, workzone
   `;
@@ -402,6 +403,11 @@ export async function getCustomerRekapTicketsSafe(
     ]);
     return [...b2cRows, ...b2bRows];
   } catch (error) {
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status?: unknown }).status)
+      : null;
+    if (isQueryOverloadError(error) || status === 503) throw error;
+
     logger.warn(
       'Legacy customer rekap failed, falling back to standard customer rekap',
       {
@@ -448,7 +454,7 @@ export async function getRekapTeknisiRows(
   return getOrSetCacheSwr(
     cacheKey,
     async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
-      SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
+      SELECT /*+ MAX_EXECUTION_TIME(30000) */ sa.nama_sa AS sa_name, COUNT(DISTINCT a.technician_id) AS cnt
       FROM technician_attendance a
       JOIN service_area sa ON sa.id_sa = a.workzone_id
       JOIN users u ON u.id_user = a.technician_id
@@ -473,7 +479,7 @@ export async function getRekapTeknisiRegistered(
   return getOrSetCacheSwr(
     cacheKey,
     async () => prisma.$queryRaw<{ sa_name: string; cnt: bigint }[]>`
-      SELECT sa.nama_sa AS sa_name, COUNT(DISTINCT u.id_user) AS cnt
+      SELECT /*+ MAX_EXECUTION_TIME(30000) */ sa.nama_sa AS sa_name, COUNT(DISTINCT u.id_user) AS cnt
       FROM user_sa usa
       JOIN service_area sa ON sa.id_sa = usa.sa_id
       JOIN users u ON u.id_user = usa.user_id

@@ -9,6 +9,8 @@ export interface CacheOptions {
   ttl?: number;
 }
 
+type CacheQueryPriority = 'interactive' | 'background';
+
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const v = parseInt(process.env[name] ?? '', 10);
   return Number.isFinite(v) && v > 0 ? v : fallback;
@@ -248,6 +250,7 @@ export async function getOrSetCache<T>(
   key: string,
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
+  options: { priority?: CacheQueryPriority } = {},
 ): Promise<T> {
   key = await versionTicketCacheKey(key);
   // Try cache first
@@ -260,7 +263,7 @@ export async function getOrSetCache<T>(
 
   const computation = (async () => {
     try {
-      const data = await withQueryGate(fn);
+      const data = await withQueryGate(fn, options.priority ?? 'background');
       // Simpan nilai MENTAH — konsumen getOrSetCache tidak mengenal envelope.
       await setCache(key, data, ttl);
       return data;
@@ -301,10 +304,11 @@ async function computeAndStoreSwr<T>(
   fn: () => Promise<T>,
   ttl: number,
   storeTtl: number,
+  priority: CacheQueryPriority,
 ): Promise<T> {
   const startedAt = Date.now();
   try {
-    const data = await withQueryGate(fn);
+    const data = await withQueryGate(fn, priority);
     await setCache(
       key,
       { __swr: true, storedAt: startedAt, data } satisfies SwrEnvelope<T>,
@@ -375,7 +379,7 @@ export async function getOrSetCacheSwr<T>(
   key: string,
   fn: () => Promise<T>,
   ttl: number = DEFAULT_TTL,
-  options: { dashboardDirtyRevalidateSeconds?: number } = {},
+  options: { dashboardDirtyRevalidateSeconds?: number; priority?: CacheQueryPriority } = {},
 ): Promise<T> {
   key = await versionTicketCacheKey(key);
   const staleTtl = ttl * SWR_STALE_FACTOR;
@@ -416,7 +420,7 @@ export async function getOrSetCacheSwr<T>(
     // komputasi sinkron di bawah.
   }
 
-  return computeAndStoreSwr(key, fn, ttl, staleTtl);
+  return computeAndStoreSwr(key, fn, ttl, staleTtl, options.priority ?? 'background');
 }
 
 function revalidateInBackgroundIfNeeded<T>(

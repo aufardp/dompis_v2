@@ -287,6 +287,7 @@ export default function DetailWoHiClient({
 
         return res.json();
       },
+      retry: false,
       staleTime: 30000,
     });
 
@@ -607,7 +608,7 @@ export default function DetailWoHiClient({
 
       {/* ═══ Error ═══ */}
       {isError && !isLoading && (
-        <div className='flex flex-col items-center justify-center gap-4 py-24'>
+        <div role='alert' className='flex flex-col items-center justify-center gap-4 py-24'>
           <div className='rounded bg-red-500/10 p-4'>
             <AlertCircle className='h-8 w-8 text-red-500' />
           </div>
@@ -617,10 +618,11 @@ export default function DetailWoHiClient({
           </p>
 
           <button
-            onClick={() => refetch()}
-            className='rounded border bg-blue-600 px-5 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 active:scale-95'
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className='rounded border bg-blue-600 px-5 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-wait disabled:opacity-60'
           >
-            Coba Lagi
+            {isFetching ? 'Memuat ulang…' : 'Coba lagi'}
           </button>
         </div>
       )}
