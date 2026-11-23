@@ -236,8 +236,9 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
             backlogDeferredForBudget = true;
             result = {
               processed: 0, inserted: 0, updated: 0, skipped: 0, failed: 0,
-              retried: 0, protected: 0,
+              retried: 0, setToOpen: 0, setToClose: 0, protected: 0,
               checkpoint: { lastProjectedImportedAt: null, lastProjectedTicketRawId: null, syncBatchId: null },
+              errors: [],
             };
             logger.info('Projection backlog phase deferred to next task after fresh batch used the run budget', {
               runBudgetMs: RUN_BUDGET_MS,
