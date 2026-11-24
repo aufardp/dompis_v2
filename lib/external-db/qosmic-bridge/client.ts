@@ -183,8 +183,17 @@ async function waitForRateLimitSlot(label: string, key: string = RATE_LIMIT_KEY)
   throw new QosmicBridgeRateLimitedError(Math.ceil(Date.now() / 1000) + 60);
 }
 
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504 || status === 524;
+// 52x/530 are proxy/CDN origin errors (Cloudflare) — an upstream outage behaves
+// like 502/503/504 and must be retried with backoff before the job is failed.
+const RETRYABLE_STATUSES = new Set([
+  429,
+  502, 503, 504,
+  520, 521, 522, 523, 524, 525, 526, 527,
+  530,
+]);
+
+export function isRetryableStatus(status: number): boolean {
+  return RETRYABLE_STATUSES.has(status);
 }
 
 export interface QosmicBridgeRequestOptions {

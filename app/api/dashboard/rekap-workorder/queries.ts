@@ -2,11 +2,14 @@
 // route.ts semata untuk memecah unit kompilasi jadi lebih kecil. Tidak ada
 // perubahan logic, murni pemindahan kode.
 
-import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
+import { DailyTicketService, buildSqlWhereClause } from '@/app/libs/services/daily-ticket.service';
+import {
+  getBranchServiceAreaNames,
+  getWorkzonesForUser,
+} from '@/app/helpers/ticket.helpers';
 import { prisma } from '@/app/libs/prisma';
 import { Prisma } from '@prisma/client';
 import { getOrSetCacheSwr } from '@/lib/cache';
-import { getTodayWibRange } from '@/lib/timezone';
 import { format, toZonedTime } from 'date-fns-tz';
 import { CLOSE_STATUS_VALUES } from '@/app/libs/ticket-utils';
 import { isQueryOverloadError, withMaxExecutionTime } from '@/lib/sql/max-execution-time';
@@ -16,6 +19,8 @@ import {
 } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
 import { buildRekapBucketFilterSql } from '@/lib/rekap/rekap-cell-filter';
+import { splitDailyFilterUnion } from '@/app/libs/services/daily-ticket-helpers';
+import { buildDailyTicketWhere } from '@/app/libs/services/daily-ticket-where';
 import { isSqmUpdateReasonSql } from '@/lib/sqm-update';
 import { normalizeRoleKey } from '@/app/libs/roles';
 import { getDashboardScopePart } from '@/lib/cache/scope-key';
@@ -32,6 +37,23 @@ import { buildTicketManagementBucketSummary } from './aggregate';
 export const REKAP_WORKORDER_CACHE_VERSION = 'v29';
 export const REKAP_TEKNISI_CACHE_VERSION = 'v2';
 
+async function getBranchCacheScopeKey(
+  branchId?: number | string,
+): Promise<string> {
+  const id = Number(branchId);
+  if (!Number.isFinite(id) || id <= 0) return 'all';
+  const serviceAreas = await getBranchServiceAreaNames(id);
+  return `branch:${encodeURIComponent([...serviceAreas].sort().join(','))}`;
+}
+
+async function getRekapAccessScopeKey(role: string, userId: number): Promise<string> {
+  const normalizedRole = normalizeRoleKey(role);
+  if (normalizedRole === 'superadmin') return 'sa';
+  if (normalizedRole === 'teknisi') return `tek:${userId}`;
+  const workzones = await getWorkzonesForUser(userId);
+  return `wz:${encodeURIComponent([...workzones].sort().join(','))}`;
+}
+
 export function buildRekapTicketsCacheKey(
   role: string,
   userId: number,
@@ -40,11 +62,13 @@ export function buildRekapTicketsCacheKey(
   workzone?: string,
   branchId?: number | string,
   dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
+  branchScopeKey = 'all',
+  accessScopeKey?: string,
 ): string {
   const normalizedDept = dept === 'neutral' ? 'netral' : dept;
   const r = normalizeRoleKey(role);
-  const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`;
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${scope}:${bucket}:${normalizedDept}:${workzone || 'all'}:${branchId ?? ''}`;
+  const scope = accessScopeKey ?? (r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`);
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:raw:${syncDate}:${scope}:${bucket}:${normalizedDept}:${workzone || 'all'}:${branchId ?? ''}:${branchScopeKey}`;
 }
 
 export function buildRekapTeknisiCacheKey(
@@ -68,10 +92,12 @@ export function buildRekapAgingCacheKey(
   bucket: string,
   workzone: string | undefined,
   branchId?: number | string,
+  branchScopeKey = 'all',
+  accessScopeKey?: string,
 ): string {
   const r = normalizeRoleKey(role);
-  const scope = r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`;
-  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:aging:${scope}:${bucket}:${workzone || 'all'}:${branchId ?? ''}`;
+  const scope = accessScopeKey ?? (r === 'superadmin' ? 'sa' : r === 'teknisi' ? `tek:${userId}` : `wz:${userId}`);
+  return `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:aging:${scope}:${bucket}:${workzone || 'all'}:${branchId ?? ''}:${branchScopeKey}`;
 }
 
 export async function getFilteredRekapTickets(
@@ -84,6 +110,10 @@ export async function getFilteredRekapTickets(
   dept: 'all' | 'b2c' | 'b2b' | 'netral' | 'neutral' = 'all',
 ): Promise<RekapTicketRow[]> {
   const normalizedDept = dept === 'neutral' ? 'netral' : dept;
+  const [branchScopeKey, accessScopeKey] = await Promise.all([
+    getBranchCacheScopeKey(branchId),
+    getRekapAccessScopeKey(role, userId),
+  ]);
   const cacheKey = buildRekapTicketsCacheKey(
     role,
     userId,
@@ -92,20 +122,24 @@ export async function getFilteredRekapTickets(
     workzone,
     branchId,
     normalizedDept,
+    branchScopeKey,
+    accessScopeKey,
   );
   return getOrSetCacheSwr(
     cacheKey,
     async () => {
-      const { start: todayStart } = getTodayWibRange();
-      const [whereClause, params] =
-        await DailyTicketService.buildDailyTicketSqlParams(role, userId, {
-          dept: normalizedDept,
-          includeClosed: true,
-          workzone,
-          branchId,
-        });
+      const dailyWhere = await buildDailyTicketWhere(role, userId, {
+        dept: normalizedDept,
+        includeClosed: true,
+        workzone,
+        branchId,
+      });
+      const dailyUnion = splitDailyFilterUnion(dailyWhere);
+      const [whereClause, params] = dailyUnion
+        ? ['', []]
+        : buildSqlWhereClause(dailyWhere);
       const bucketWhere = buildRekapBucketFilterSql(bucket);
-      const fullSql = `
+      const selectGroupedRows = (filter: string) => `
     SELECT
       a.nama_area                     AS area,
       sa.nama_sa                      AS sa_name,
@@ -128,18 +162,28 @@ export async function getFilteredRekapTickets(
     FROM ticket t
     JOIN service_area sa ON sa.nama_sa = t.workzone
     JOIN area a          ON a.id_area = sa.area_id
-    WHERE ${whereClause}
+    WHERE ${filter}
       AND (${bucketWhere})
     GROUP BY area, sa_name, workzone, customer_type, customer_segment,
              jenis_tiket, status, status_update,
              source_ticket, classification_flag, classification_path,
              is_sqm_update, jenis_tiket_1, jenis_tiket_2, operational_bucket,
              kpi_seg
-    ORDER BY area, sa_name, workzone
   `;
+      const groupedSql = dailyUnion
+        ? dailyUnion.branchSqls
+            .map((branch) => selectGroupedRows(`(${branch})`))
+            .join('\nUNION ALL\n')
+        : selectGroupedRows(whereClause);
+      const fullSql = dailyUnion
+        ? `SELECT * FROM (${groupedSql}) AS rekap_rows ORDER BY area, sa_name, workzone`
+        : `${groupedSql} ORDER BY area, sa_name, workzone`;
+      const queryParams = dailyUnion
+        ? dailyUnion.params.flat()
+        : params;
       return prisma.$queryRawUnsafe<RekapTicketRow[]>(
         withMaxExecutionTime(fullSql),
-        ...params,
+        ...queryParams,
       );
     },
     60,
@@ -153,6 +197,10 @@ export async function getCustomerSqmOverlayTickets(
   workzone?: string,
   branchId?: number | string,
 ): Promise<{ proactive: RekapTicketRow[]; sqmUpdate: RekapTicketRow[] }> {
+  const [branchScopeKey, accessScopeKey] = await Promise.all([
+    getBranchCacheScopeKey(branchId),
+    getRekapAccessScopeKey(role, userId),
+  ]);
   const cacheKey = buildRekapTicketsCacheKey(
     role,
     userId,
@@ -160,6 +208,9 @@ export async function getCustomerSqmOverlayTickets(
     'customer_sqm' as KpiBucketKey,
     workzone,
     branchId,
+    'all',
+    branchScopeKey,
+    accessScopeKey,
   );
   return getOrSetCacheSwr(
     cacheKey,
@@ -239,6 +290,10 @@ export async function getCustomerGamasOverlayTickets(
   workzone?: string,
   branchId?: number | string,
 ): Promise<RekapTicketRow[]> {
+  const [branchScopeKey, accessScopeKey] = await Promise.all([
+    getBranchCacheScopeKey(branchId),
+    getRekapAccessScopeKey(role, userId),
+  ]);
   const cacheKey = buildRekapTicketsCacheKey(
     role,
     userId,
@@ -246,6 +301,9 @@ export async function getCustomerGamasOverlayTickets(
     'customer_gamas' as KpiBucketKey,
     workzone,
     branchId,
+    'all',
+    branchScopeKey,
+    accessScopeKey,
   );
   return getOrSetCacheSwr(
     cacheKey,
@@ -498,12 +556,18 @@ export async function getRekapAging(
   workzone?: string,
   branchId?: number | string,
 ): Promise<AgingRow[]> {
+  const [branchScopeKey, accessScopeKey] = await Promise.all([
+    getBranchCacheScopeKey(branchId),
+    getRekapAccessScopeKey(role, userId),
+  ]);
   const cacheKey = buildRekapAgingCacheKey(
     role,
     userId,
     bucket,
     workzone,
     branchId,
+    branchScopeKey,
+    accessScopeKey,
   );
   return getOrSetCacheSwr(
     cacheKey,

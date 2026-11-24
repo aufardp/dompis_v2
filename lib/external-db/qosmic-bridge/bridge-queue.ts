@@ -4,7 +4,14 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 import { WorkerTaskState, shouldRunWithCircuitBreaker, nowWIB, runWithCorrelationContext } from '@/lib/workers/task-runner';
 import { iterateNossaOpen, iterateNossaClosedIncremental, iterateNossaClosedWindow, fetchByIncident } from './nossa';
-import { RATE_LIMIT_KEY_BACKFILL, RATE_LIMIT_KEY, isQosmicBridgeDown, probeBridgeHealth } from './client';
+import {
+  RATE_LIMIT_KEY_BACKFILL,
+  RATE_LIMIT_KEY,
+  QosmicBridgeError,
+  isQosmicBridgeDown,
+  isRetryableStatus,
+  probeBridgeHealth,
+} from './client';
 import { processRawRows, ChunkResult } from '@/lib/ingestion';
 import type { ExternalCursorDefinition } from '@/lib/external-db/connection';
 import { QosmicResource, QosmicRawRow } from './types';
@@ -69,10 +76,23 @@ function isTransientBridgeError(err: unknown): boolean {
   if (err instanceof Error) {
     const status = (err as any).status;
     if (status === 401 || status === 422) return false;
-    if (status === 429 || status === 502 || status === 503 || status === 504) return true;
+    if (typeof status === 'number' && isRetryableStatus(status)) return true;
     if (err.message.includes('timeout') || err.message.includes('ETIMEDOUT')) return true;
   }
   return true; // default to transient for unknown errors
+}
+
+/**
+ * Upstream is unavailable (not our payload): 52x/530, timeout, network, or the
+ * shared rate limiter. These are the same failures the health-probe path
+ * pauses ingestion for, so they must not count toward the circuit breaker.
+ */
+function isBridgeUnavailableError(err: unknown): err is QosmicBridgeError {
+  if (!(err instanceof QosmicBridgeError)) return false;
+  if (err.code === 'TIMEOUT' || err.code === 'NETWORK_ERROR' || err.code === 'RATE_LIMITER_UNAVAILABLE') {
+    return true;
+  }
+  return err.status !== null && isRetryableStatus(err.status);
 }
 
 export function getBridgeCircuitState(): {
@@ -174,8 +194,23 @@ async function handleIngestNossa(job: any): Promise<{ processed: number; status:
     });
   } catch (error) {
     errorMessage = String(error);
-    status = 'failed';
-    throw error;
+    if (isBridgeUnavailableError(error)) {
+      // Exhausted retries against a down/rate-limited upstream. Report the scan
+      // as paused and let the next scheduled cycle probe again — failing the
+      // job would fill the DLQ and trip the circuit breaker for an outage that
+      // is not caused by our payload (e.g. Cloudflare 530 on /nossa-closed).
+      status = 'paused';
+      logger.warn('[Bridge] Ingestion paused — upstream tidak tersedia', {
+        tableName,
+        batchId,
+        status: error.status,
+        errorCode: error.code,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } else {
+      status = 'failed';
+      throw error;
+    }
   } finally {
     await prisma.ingestion_run_log.update({ where: { id: run.id }, data: {
       status, processed: totals.processed, inserted: totals.inserted, updated: totals.updated,
@@ -357,7 +392,9 @@ function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
 
     // BullMQ emits `failed` for every attempt. Count only terminal failures,
     // otherwise one retriable outage opens the breaker before backoff can work.
-    if (!willRetry && isTransientBridgeError(err)) {
+    // Upstream outages (52x/530, timeout, network, rate limit) are excluded:
+    // they are handled by the health-probe/pause path, not by our breaker.
+    if (!willRetry && isTransientBridgeError(err) && !isBridgeUnavailableError(err)) {
       circuit.consecutiveErrors++;
       circuit.lastError = err.message;
       circuitState.consecutiveErrors = Math.max(circuitState.consecutiveErrors, circuit.consecutiveErrors);

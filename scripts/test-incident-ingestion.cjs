@@ -3,11 +3,11 @@ const { test } = require('node:test');
 const { createHarness } = require('./helpers/sync-test-harness.cjs');
 
 function bridge(t) {
-  const previous = { fetch: global.fetch, url: process.env.QOSMIC_BRIDGE_BASE_URL, token: process.env.QOSMIC_BRIDGE_TOKEN, timeout: process.env.QOSMIC_BRIDGE_TIMEOUT_MS };
-  Object.assign(process.env, { QOSMIC_BRIDGE_BASE_URL: 'https://bridge.invalid', QOSMIC_BRIDGE_TOKEN: 'test', QOSMIC_BRIDGE_TIMEOUT_MS: '10' });
+  const previous = { fetch: global.fetch, url: process.env.QOSMIC_BRIDGE_BASE_URL, token: process.env.QOSMIC_BRIDGE_TOKEN, timeout: process.env.QOSMIC_BRIDGE_TIMEOUT_MS, retryBase: process.env.QOSMIC_BRIDGE_RETRY_BASE_MS };
+  Object.assign(process.env, { QOSMIC_BRIDGE_BASE_URL: 'https://bridge.invalid', QOSMIC_BRIDGE_TOKEN: 'test', QOSMIC_BRIDGE_TIMEOUT_MS: '10', QOSMIC_BRIDGE_RETRY_BASE_MS: '1' });
   t.after(() => {
     global.fetch = previous.fetch;
-    for (const [key, value] of [['QOSMIC_BRIDGE_BASE_URL', previous.url], ['QOSMIC_BRIDGE_TOKEN', previous.token], ['QOSMIC_BRIDGE_TIMEOUT_MS', previous.timeout]]) {
+    for (const [key, value] of [['QOSMIC_BRIDGE_BASE_URL', previous.url], ['QOSMIC_BRIDGE_TOKEN', previous.token], ['QOSMIC_BRIDGE_TIMEOUT_MS', previous.timeout], ['QOSMIC_BRIDGE_RETRY_BASE_MS', previous.retryBase]]) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   });
@@ -37,6 +37,47 @@ test('permanent Bridge failures remain non-retryable', async t => {
   global.fetch = async () => { calls++; return new Response('{}', { status: 401 }); };
   await assert.rejects(qosmicBridgeGet('/nossa', { label: 'incident', retryMax: 0 }), error => error.status === 401 && !error.retryable);
   assert.equal(calls, 1);
+});
+
+test('Cloudflare origin errors such as 530 are retried before failing', async t => {
+  const { qosmicBridgeGet, isRetryableStatus } = bridge(t);
+  assert.equal(isRetryableStatus(530), true);
+  assert.equal(isRetryableStatus(520), true);
+  assert.equal(isRetryableStatus(500), false);
+  let calls = 0;
+  global.fetch = async () => { calls++; return new Response('origin unreachable', { status: 530 }); };
+  await assert.rejects(
+    qosmicBridgeGet('/nossa-closed', { label: 'nossa_closed.window', retryMax: 2 }),
+    error => error.status === 530 && error.retryable,
+  );
+  assert.equal(calls, 3);
+});
+
+test('upstream 52x/530 failures do not trip the bridge worker circuit', () => {
+  class FakeWorker { on(event, handler) { (this.handlers ||= {})[event] = handler; } }
+  const client = createHarness().load('lib/external-db/qosmic-bridge/client.ts');
+  const harness = createHarness({
+    bullmq: { Queue: class {}, Worker: FakeWorker, QueueEvents: class {} },
+    '@/lib/redis': { isRedisReady: () => true, redis: { del: async () => 1, set: async () => 'OK' } },
+    '@/lib/external-db/qosmic-bridge/client': client,
+    '@/lib/ingestion': { processRawRows: async () => {} },
+    '@/lib/external-db/qosmic-bridge/nossa': {},
+    '@/lib/ingestion/single-incident-ingestion': {},
+    '@/lib/ingestion/single-incident-queue': { SINGLE_INCIDENT_QUEUE_NAME: 'fixture' },
+  }, {
+    'lib/external-db/qosmic-bridge/bridge-queue.ts': ['setupWorkerHooks', 'circuitStateIngestion'],
+  });
+  const mod = harness.load('lib/external-db/qosmic-bridge/bridge-queue.ts');
+  const worker = new FakeWorker();
+  mod.__test.setupWorkerHooks(worker, mod.__test.circuitStateIngestion);
+  const terminalJob = { attemptsMade: 1, opts: { attempts: 1 }, name: 'ingest-nossa_closed', data: { table: 'nossa_closed' } };
+
+  worker.handlers.failed(terminalJob, new client.QosmicBridgeError('QOSMIC Bridge error 530 pada /nossa-closed', 530, null, true));
+  worker.handlers.failed(terminalJob, new client.QosmicBridgeError('QOSMIC Bridge error 503 pada /nossa-closed', 503, null, true));
+  assert.equal(mod.__test.circuitStateIngestion.consecutiveErrors, 0);
+
+  worker.handlers.failed(terminalJob, new client.QosmicBridgeError('QOSMIC Bridge error 500 pada /nossa-closed', 500, null, false));
+  assert.equal(mod.__test.circuitStateIngestion.consecutiveErrors, 1);
 });
 
 test('mass incident input normalizes and deduplicates without silently dropping invalid entries', () => {

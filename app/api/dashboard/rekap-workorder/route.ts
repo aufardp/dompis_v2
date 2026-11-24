@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectApi } from '@/app/libs/protectApi';
-import { getOrSetCacheSwr, DASHBOARD_CACHE_TTL } from '@/lib/cache';
+import {
+  getOrSetCacheSwr,
+  getCache,
+  setCache,
+  DASHBOARD_CACHE_TTL,
+} from '@/lib/cache';
 import { enforceApiRateLimit } from '@/lib/api-rate-limit';
 import { getWorkzonesForUser, resolveBranchScope } from '@/app/helpers/ticket.helpers';
 import { buildScopeKeyWithWorkzones } from '@/lib/cache/scope-key';
@@ -8,7 +13,7 @@ import { toWibDateString } from '@/lib/timezone';
 import { isQueryOverloadError } from '@/lib/sql/max-execution-time';
 import { type KpiBucketKey } from '@/app/libs/services/kpi-bucket-sql';
 import { logger } from '@/lib/observability/logger';
-import type { LegacyCustomerBucketRow, RekapTicketRow } from './types';
+import type { LegacyCustomerBucketRow, RekapResponse, RekapTicketRow } from './types';
 import {
   buildBucketBreakdownFromRekapRows,
   buildBucketSummaryFromRows,
@@ -29,12 +34,41 @@ import {
   getRekapExpectedServiceAreas,
 } from './queries';
 
+const REKAP_LAST_GOOD_TTL_SECONDS = 24 * 60 * 60;
+
+type RekapLastGoodCache = {
+  generatedAt: number;
+  syncDate: string;
+  data: RekapResponse;
+};
+
+async function storeLastGoodRekap(
+  key: string,
+  data: RekapResponse,
+  syncDate: string,
+): Promise<void> {
+  if (data.syncDate !== syncDate || typeof data.timestamp !== 'string') return;
+  const generatedAt = Date.parse(data.timestamp);
+  if (!Number.isFinite(generatedAt) || Date.now() - generatedAt > DASHBOARD_CACHE_TTL * 1000) return;
+
+  const ttlSeconds = Math.floor(
+    (generatedAt + REKAP_LAST_GOOD_TTL_SECONDS * 1000 - Date.now()) / 1000,
+  );
+  if (ttlSeconds <= 0) return;
+
+  const previous = await getCache<RekapLastGoodCache>(key);
+  if (previous && previous.generatedAt >= generatedAt) return;
+  await setCache(key, { generatedAt, syncDate, data }, ttlSeconds);
+}
+
 function isServiceUnavailable(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'status' in error &&
     Number((error as { status?: unknown }).status) === 503;
 }
 
 export async function GET(request: NextRequest) {
+  let lastGoodCacheKey: string | undefined;
+  let requestSyncDate: string | undefined;
   try {
     const rateLimited = await enforceApiRateLimit(request, {
       namespace: 'rekap-workorder',
@@ -53,6 +87,7 @@ export async function GET(request: NextRequest) {
       ? null
       : await getWorkzonesForUser(decoded.id_user);
     const today = toWibDateString(new Date())!;
+    requestSyncDate = today;
     const requestedBucket = request.nextUrl.searchParams.get('bucket') ?? 'all';
     const bucket: KpiBucketKey =
       requestedBucket === 'kpi_customer' ||
@@ -76,8 +111,7 @@ export async function GET(request: NextRequest) {
     if (
       branchParam &&
       branchSas &&
-      branchSas.length === 0 &&
-      !isSuperAdmin
+      branchSas.length === 0
     ) {
       return NextResponse.json({
         rows: [],
@@ -173,26 +207,6 @@ export async function GET(request: NextRequest) {
     }
 
     const scopeWorkzones = selectedWorkzone ? [selectedWorkzone] : workzones;
-    const teknisiWorkzones = branchSas
-      ? isSuperAdmin
-        ? branchSas
-        : branchSas.filter((w) => (workzones ?? []).includes(w))
-      : scopeWorkzones;
-
-    const expectedSAs = await (async () => {
-      if (branchSas && branchSas.length > 0) {
-        const all = await getRekapExpectedServiceAreas(branchParam ?? undefined);
-        return isSuperAdmin
-          ? all
-          : all.filter((s) => (workzones ?? []).includes(s.saName));
-      }
-      if (selectedWorkzone) {
-        return getRekapExpectedServiceAreas(undefined, selectedWorkzone);
-      }
-      const all = await getRekapExpectedServiceAreas();
-      return isSuperAdmin ? all : all.filter((s) => (workzones ?? []).includes(s.saName));
-    })();
-
     if (!isSuperAdmin && (!workzones || workzones.length === 0)) {
       return NextResponse.json({
         rows: [],
@@ -238,7 +252,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${buildScopeKeyWithWorkzones(isSuperAdmin, decoded.role, decoded.id_user, scopeWorkzones)}:${bucket}:${branchParam ?? ''}`;
+    const resolvedBranchSas = branchSas
+      ? branchSas.filter((sa) => isSuperAdmin || (workzones ?? []).includes(sa))
+      : null;
+    const teknisiWorkzones = branchSas
+      ? isSuperAdmin
+        ? branchSas
+        : branchSas.filter((w) => (workzones ?? []).includes(w))
+      : scopeWorkzones;
+
+    const branchScopeKey = resolvedBranchSas
+      ? encodeURIComponent([...resolvedBranchSas].sort().join(','))
+      : 'all';
+    const cacheKey = `dashboard:rekap:${REKAP_WORKORDER_CACHE_VERSION}:${today}:${buildScopeKeyWithWorkzones(isSuperAdmin, decoded.role, decoded.id_user, scopeWorkzones)}:${bucket}:${branchParam ?? ''}:${branchScopeKey}`;
+    lastGoodCacheKey = `${cacheKey}:last-good:v1`;
+
+    const expectedSAs = await (async () => {
+      if (branchSas && branchSas.length > 0) {
+        const all = await getRekapExpectedServiceAreas(branchParam ?? undefined);
+        return isSuperAdmin
+          ? all
+          : all.filter((s) => (workzones ?? []).includes(s.saName));
+      }
+      if (selectedWorkzone) {
+        return getRekapExpectedServiceAreas(undefined, selectedWorkzone);
+      }
+      const all = await getRekapExpectedServiceAreas();
+      return isSuperAdmin ? all : all.filter((s) => (workzones ?? []).includes(s.saName));
+    })();
 
     const data = await getOrSetCacheSwr(
       cacheKey,
@@ -395,9 +436,34 @@ export async function GET(request: NextRequest) {
       { priority: 'interactive' },
     );
 
+    await storeLastGoodRekap(lastGoodCacheKey, data, today);
+
     return NextResponse.json(data);
   } catch (error: unknown) {
-    if (isQueryOverloadError(error)) {
+    if (isQueryOverloadError(error) || isServiceUnavailable(error)) {
+      if (lastGoodCacheKey && requestSyncDate) {
+        const cached = await getCache<RekapLastGoodCache>(lastGoodCacheKey);
+        const generatedAt = cached?.generatedAt ?? 0;
+        if (
+          cached &&
+          cached.syncDate === requestSyncDate &&
+          cached.data.syncDate === requestSyncDate &&
+          Date.now() - generatedAt < REKAP_LAST_GOOD_TTL_SECONDS * 1000
+        ) {
+          const ageSeconds = Math.max(0, Math.floor((Date.now() - generatedAt) / 1000));
+          logger.warn('rekap-workorder serving last good scoped cache', {
+            syncDate: requestSyncDate,
+            ageSeconds,
+            error: String((error as Error)?.message ?? error),
+          });
+          return NextResponse.json(cached.data, {
+            headers: {
+              'X-Data-Stale': 'true',
+              'X-Data-Age-Seconds': String(ageSeconds),
+            },
+          });
+        }
+      }
       logger.warn('rekap-workorder overloaded', { error: String((error as Error)?.message ?? error) });
       return NextResponse.json({ success: false, message: 'Data sedang disiapkan, coba lagi sesaat lagi.' }, { status: 503 });
     }
