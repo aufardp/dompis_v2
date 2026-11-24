@@ -244,14 +244,10 @@ export async function GET(request: NextRequest) {
       cacheKey,
       async () => {
         const startedAt = Date.now();
-        const [
-          ticketRowsAll,
-          teknisiRows,
-          teknisiRegisteredRows,
-          customerLegacyRows,
-          customerSqmOverlayRows,
-          customerGamasOverlayRows,
-        ] = await Promise.all([
+        // Keep cold-cache report work bounded. These cache helpers inherit the
+        // outer query-gate slot, so Promise.all across all six would otherwise
+        // fan out six database queries while consuming only one gate slot.
+        const [ticketRowsAll, teknisiRows] = await Promise.all([
           bucket === 'kpi_customer'
             ? getCustomerRekapTicketsSafe(
                 decoded.role,
@@ -269,6 +265,8 @@ export async function GET(request: NextRequest) {
                 branchParam ? Number(branchParam) : undefined,
               ),
           getRekapTeknisiRows(today, decoded.id_user, teknisiWorkzones),
+        ]);
+        const [teknisiRegisteredRows, customerLegacyRows] = await Promise.all([
           getRekapTeknisiRegistered(decoded.id_user, teknisiWorkzones),
           bucket === 'kpi_customer'
             ? getLegacyCustomerBucketRows(
@@ -279,6 +277,8 @@ export async function GET(request: NextRequest) {
                 'all',
               )
             : Promise.resolve([] as LegacyCustomerBucketRow[]),
+        ]);
+        const [customerSqmOverlayRows, customerGamasOverlayRows] = await Promise.all([
           bucket === 'kpi_customer'
             ? getCustomerSqmOverlayTickets(
                 decoded.role,
@@ -321,7 +321,7 @@ export async function GET(request: NextRequest) {
                 return [] as RekapTicketRow[];
               })
             : Promise.resolve([] as RekapTicketRow[]),
-          ]);
+        ]);
         const fetchedAt = Date.now();
         const effectiveCustomerLegacyRows =
           bucket === 'all'

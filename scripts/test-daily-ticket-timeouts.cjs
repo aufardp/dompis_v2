@@ -257,11 +257,16 @@ test('query gate honors a caller budget shorter than the default queue timeout',
 test('stale cache recompute backs off after failure instead of retrying on every request', async () => {
   let calls = 0;
   let warnings = 0;
+  let retainedTtl;
   const staleValue = JSON.stringify({ __swr: true, storedAt: Date.now() - 5_000, data: { ok: true } });
   const harness = createHarness({
     '@/lib/redis': {
       __esModule: true,
-      default: { get: async () => staleValue, publish: async () => {} },
+      default: {
+        get: async () => staleValue,
+        setex: async (_key, ttl) => { retainedTtl = ttl; },
+        publish: async () => {},
+      },
       ensureRedisReady: async () => true,
       isRedisReady: () => true,
     },
@@ -277,6 +282,7 @@ test('stale cache recompute backs off after failure instead of retrying on every
   await delay(10);
   assert.equal(calls, 1);
   assert.equal(warnings, 1);
+  assert.ok(retainedTtl >= 3_600, 'failed refresh should extend stale data availability for one hour');
 });
 
 test('a detached descendant reacquires a slot after its parent has completed', { timeout: 1000 }, async t => {

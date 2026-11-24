@@ -53,6 +53,7 @@ export async function GET(request: Request) {
           ticketType: searchParams.getAll('ticketType').filter((s) => s !== 'all'),
         }),
       CACHE_TTL_SECONDS,
+      { priority: 'interactive' },
     );
 
     return NextResponse.json({ success: true, data: result });

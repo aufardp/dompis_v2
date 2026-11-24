@@ -287,6 +287,7 @@ const swrRetryState = new Map<string, { attempts: number; retryAt: number }>();
 const SWR_RETRY_BASE_MS = 15_000;
 const SWR_RETRY_MAX_MS = 5 * 60_000;
 const SWR_RETRY_STATE_MAX_KEYS = 2_000;
+const SWR_ERROR_STALE_TTL_SECONDS = parsePositiveIntEnv('SWR_ERROR_STALE_TTL_SECONDS', 3_600);
 
 interface SwrEnvelope<T> {
   __swr: true;
@@ -354,6 +355,13 @@ function revalidateInBackground<T>(
         if (oldestKey) swrRetryState.delete(oldestKey);
       }
       swrRetryState.set(key, { attempts, retryAt: Date.now() + delayMs });
+      // Keep the last good payload available through a database outage. The
+      // original storedAt is preserved, so this never presents stale data as
+      // newly computed; normal refresh resumes after the retry backoff.
+      const staleValue = await getCache<SwrEnvelope<T> | T>(key);
+      if (staleValue !== null) {
+        await setCache(key, staleValue, Math.max(ttl * SWR_STALE_FACTOR, SWR_ERROR_STALE_TTL_SECONDS));
+      }
       logger.warn('[Cache] SWR background recompute failed:', {
         key,
         error: String(error),
