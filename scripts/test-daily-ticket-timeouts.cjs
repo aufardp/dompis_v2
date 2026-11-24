@@ -235,6 +235,50 @@ test('expired waiters fail with 503 and never execute after a slot is released',
   assert.equal(ran, false);
 });
 
+test('query gate honors a caller budget shorter than the default queue timeout', { timeout: 1000 }, async t => {
+  const { withQueryGate } = gateHarness(t, 1, 500).load('lib/sql/query-gate.ts');
+  const entered = deferred();
+  const release = deferred();
+  const holder = withQueryGate(async () => { entered.resolve(); await release.promise; });
+  await entered.promise;
+  const startedAt = Date.now();
+  try {
+    await assert.rejects(
+      withQueryGate(async () => assert.fail('timed out work must not run'), 'background', { waitTimeoutMs: 30 }),
+      error => error.status === 503 && error.name === 'QueryGateTimeoutError',
+    );
+    assert.ok(Date.now() - startedAt < 250, 'custom budget should replace the larger default wait');
+  } finally {
+    release.resolve();
+    await holder;
+  }
+});
+
+test('stale cache recompute backs off after failure instead of retrying on every request', async () => {
+  let calls = 0;
+  let warnings = 0;
+  const staleValue = JSON.stringify({ __swr: true, storedAt: Date.now() - 5_000, data: { ok: true } });
+  const harness = createHarness({
+    '@/lib/redis': {
+      __esModule: true,
+      default: { get: async () => staleValue, publish: async () => {} },
+      ensureRedisReady: async () => true,
+      isRedisReady: () => true,
+    },
+    '@/lib/ingestion/sync-state': { isRevisionSyncEnabled: () => false },
+    '@/lib/observability/logger': { logger: { warn: () => { warnings++; }, error: () => {} } },
+  });
+  const { getOrSetCacheSwr } = harness.load('lib/cache.ts');
+  const compute = async () => { calls++; throw new Error('database overloaded'); };
+
+  assert.deepEqual(await getOrSetCacheSwr('test:stale', compute, 1), { ok: true });
+  await delay(10);
+  assert.deepEqual(await getOrSetCacheSwr('test:stale', compute, 1), { ok: true });
+  await delay(10);
+  assert.equal(calls, 1);
+  assert.equal(warnings, 1);
+});
+
 test('a detached descendant reacquires a slot after its parent has completed', { timeout: 1000 }, async t => {
   const { withQueryGate } = gateHarness(t, 1, 20).load('lib/sql/query-gate.ts');
   const startChild = deferred();

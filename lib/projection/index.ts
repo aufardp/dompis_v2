@@ -1723,6 +1723,9 @@ export async function runProjection(
 ): Promise<ProjectionResult> {
   await setProjectionStatus('running', {});
   const start = Date.now();
+  const deadline = Number.isFinite(options.maxDurationMs)
+    ? start + Math.max(1, options.maxDurationMs!)
+    : null;
 
   if (process.env.PROJECTION_ENABLED !== 'true') {
     logger.info('[Projection] Disabled');
@@ -1746,9 +1749,13 @@ export async function runProjection(
       }
       lastRevisionReconcileAt = Date.now();
     }
-    const result = await withQueryGate(() => isRevisionSyncEnabled()
-      ? import('./pending').then(({ runPendingProjection }) => runPendingProjection(signal, options))
-      : projectRecords(signal, options));
+    const result = await withQueryGate(async () => {
+      const remainingMs = deadline === null ? undefined : deadline - Date.now();
+      const runOptions = remainingMs === undefined ? options : { ...options, maxDurationMs: Math.max(1, remainingMs) };
+      return isRevisionSyncEnabled()
+        ? import('./pending').then(({ runPendingProjection }) => runPendingProjection(signal, runOptions))
+        : projectRecords(signal, runOptions);
+    }, 'background', deadline === null ? {} : { waitTimeoutMs: Math.max(1, deadline - Date.now()) });
     if (isRevisionSyncEnabled()) {
       const checkpointData = {
         status: result.failed ? 'failed' : 'success', processed: result.processed,

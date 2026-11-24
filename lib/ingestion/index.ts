@@ -1899,7 +1899,13 @@ async function runIngestionMode(
       batchId,
     });
     if (result.failed > 0) {
-      throw new Error(`Ingestion completed with ${result.failed} failure(s)`);
+      const failureDetails = result.errors.slice(0, 5).map((item) => {
+        const table = 'table' in item ? `${item.table}: ` : '';
+        return `${table}${item.error}`.slice(0, 240);
+      }).join(' | ');
+      throw new Error(
+        `Ingestion completed with ${result.failed} failure(s)${failureDetails ? ` — ${failureDetails}` : ''}`,
+      );
     }
     return result;
   } catch (error) {

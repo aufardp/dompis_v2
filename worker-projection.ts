@@ -219,7 +219,9 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
               });
             } catch (error) {
               if (signal.aborted) throw error;
-              freshBatches.delete(batchId);
+              // Keep the last committed cursor (or the initial batch marker)
+              // so a gate timeout resumes this batch instead of forgetting it.
+              pendingProjectionRun = true;
               logger.warn('Projection fresh batch deferred to a later run', {
                 batchId, error: error instanceof Error ? error.message : String(error),
               });
@@ -301,6 +303,16 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof Error && error.name === 'QueryGateTimeoutError') {
+      pendingProjectionRun = true;
+      logger.warn('Projection deferred because database capacity is saturated', {
+        task: mode,
+        durationMs: Date.now() - startTime,
+        error: message,
+        continuationPending: freshBatches.size > 0,
+      });
+      return;
+    }
     logger.error('Projection task failed', error, {
       task: mode,
       durationMs: Date.now() - startTime,

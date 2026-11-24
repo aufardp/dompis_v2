@@ -355,7 +355,9 @@ function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
       }
     }
 
-    if (isTransientBridgeError(err)) {
+    // BullMQ emits `failed` for every attempt. Count only terminal failures,
+    // otherwise one retriable outage opens the breaker before backoff can work.
+    if (!willRetry && isTransientBridgeError(err)) {
       circuit.consecutiveErrors++;
       circuit.lastError = err.message;
       circuitState.consecutiveErrors = Math.max(circuitState.consecutiveErrors, circuit.consecutiveErrors);
@@ -413,7 +415,17 @@ export async function startBridgeWorkers(): Promise<void> {
       if (!BRIDGE_JOB_INGESTION_ENABLED) return { skipped: true, reason: 'disabled' };
 
       if (!shouldRunWithCircuitBreaker(circuitStateIngestion, MAX_CONSECUTIVE_ERRORS, CIRCUIT_RESET_MS, 'bridge-worker')) {
-        logger.warn('[Bridge] Circuit open, skipping job', { jobId: job.id, name: job.name });
+        const table = job.data?.table;
+        const openedAt = circuitStateIngestion.circuitOpenedAt?.getTime() ?? Date.now();
+        const retryInMs = Math.max(5_000, CIRCUIT_RESET_MS - (Date.now() - openedAt));
+        if (table === 'nossa' || table === 'nossa_closed') {
+          const envKey = table === 'nossa'
+            ? 'INGESTION_NOSSA_MIN_INTERVAL_MINUTES'
+            : 'INGESTION_NOSSA_CLOSED_MIN_INTERVAL_MINUTES';
+          const intervalMinutes = Math.max(1, Number.parseInt(process.env[envKey] ?? '', 10) || (table === 'nossa' ? 1 : 10));
+          await redis.set(`ingestion:bridge:${table}:cooldown`, '1', 'PX', Math.max(retryInMs, intervalMinutes * 60_000)).catch(() => {});
+        }
+        logger.warn('[Bridge] Circuit open, deferring ingestion scan', { jobId: job.id, name: job.name, table, retryInMs });
         return { skipped: true, reason: 'circuit_open' };
       }
 

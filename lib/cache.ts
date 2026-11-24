@@ -283,6 +283,10 @@ export async function getOrSetCache<T>(
  */
 const SWR_STALE_FACTOR = parsePositiveIntEnv('SWR_STALE_FACTOR', 3);
 const dashboardRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const swrRetryState = new Map<string, { attempts: number; retryAt: number }>();
+const SWR_RETRY_BASE_MS = 15_000;
+const SWR_RETRY_MAX_MS = 5 * 60_000;
+const SWR_RETRY_STATE_MAX_KEYS = 2_000;
 
 interface SwrEnvelope<T> {
   __swr: true;
@@ -326,6 +330,7 @@ function revalidateInBackground<T>(
   ttl: number,
 ): void {
   if (inFlight.has(key)) return;
+  if ((swrRetryState.get(key)?.retryAt ?? 0) > Date.now()) return;
 
   const computation = (async () => {
     const startedAt = Date.now();
@@ -339,10 +344,21 @@ function revalidateInBackground<T>(
       if (isRevisionSyncEnabled() && /^dashboard[:_]/.test(key)) {
         await redis.publish('sse:tickets', JSON.stringify({ type: 'invalidate', reason: 'dashboard-refresh', ts: Date.now() }));
       }
+      swrRetryState.delete(key);
     } catch (error) {
+      const previous = swrRetryState.get(key);
+      const attempts = Math.min(8, (previous?.attempts ?? 0) + 1);
+      const delayMs = Math.min(SWR_RETRY_MAX_MS, SWR_RETRY_BASE_MS * (2 ** (attempts - 1)));
+      if (swrRetryState.size >= SWR_RETRY_STATE_MAX_KEYS && !swrRetryState.has(key)) {
+        const oldestKey = swrRetryState.keys().next().value;
+        if (oldestKey) swrRetryState.delete(oldestKey);
+      }
+      swrRetryState.set(key, { attempts, retryAt: Date.now() + delayMs });
       logger.warn('[Cache] SWR background recompute failed:', {
         key,
         error: String(error),
+        retryInMs: delayMs,
+        attempts,
       });
     } finally {
       inFlight.delete(key);

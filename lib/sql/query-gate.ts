@@ -64,7 +64,8 @@ function markAcquired(priority: QueryPriority): void {
   if (priority === 'background') activeBackground++;
 }
 
-function acquire(priority: QueryPriority): Promise<void> {
+function acquire(priority: QueryPriority, requestedWaitMs?: number): Promise<void> {
+  const waitMs = Math.max(1, requestedWaitMs ?? (priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS));
   if (canAcquire(priority)) {
     markAcquired(priority);
     return Promise.resolve();
@@ -78,8 +79,8 @@ function acquire(priority: QueryPriority): Promise<void> {
     const timer = setTimeout(() => {
       const index = queues[priority].indexOf(grant);
       if (index >= 0) queues[priority].splice(index, 1);
-      reject(new QueryGateTimeoutError(priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS));
-    }, priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS);
+      reject(new QueryGateTimeoutError(waitMs));
+    }, waitMs);
     queues[priority].push(grant);
   });
 }
@@ -95,13 +96,13 @@ function release(priority: QueryPriority): void {
   if (nextPriority) queues[nextPriority].shift()?.();
 }
 
-async function acquireSharedSlot(priority: QueryPriority): Promise<(() => Promise<void>) | null> {
+async function acquireSharedSlot(priority: QueryPriority, requestedWaitMs?: number): Promise<(() => Promise<void>) | null> {
   // Redis is an admission-control enhancement. Keep the existing local gate
   // available when Redis is down so dashboard reads can still serve.
   if (!isRedisReady()) return null;
 
   const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
-  const waitMs = priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS;
+  const waitMs = Math.max(1, requestedWaitMs ?? (priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS));
   const deadline = Date.now() + waitMs;
   let slotKey: string | null = null;
 
@@ -153,15 +154,22 @@ async function acquireSharedSlot(priority: QueryPriority): Promise<(() => Promis
  * menunggu antrean (FIFO) — bukan langsung menembak DB bersamaan dengan
  * komputasi lain yang sedang berjalan.
  */
-export async function withQueryGate<T>(fn: () => Promise<T>, priority: QueryPriority = 'background'): Promise<T> {
+export async function withQueryGate<T>(
+  fn: () => Promise<T>,
+  priority: QueryPriority = 'background',
+  options: { waitTimeoutMs?: number } = {},
+): Promise<T> {
   // A cached request can call another cache; its parent already owns a slot.
   if (ownership.getStore()?.active) return fn();
 
-  await acquire(priority);
+  const waitMs = Math.max(1, options.waitTimeoutMs ?? (priority === 'interactive' ? INTERACTIVE_WAIT_MS : MAX_WAIT_MS));
+  const waitDeadline = Date.now() + waitMs;
+  await acquire(priority, waitMs);
   const owner = { active: true, priority };
   let releaseShared: (() => Promise<void>) | null = null;
   try {
-    releaseShared = await acquireSharedSlot(priority);
+    const sharedWaitMs = Math.max(1, waitDeadline - Date.now());
+    releaseShared = await acquireSharedSlot(priority, sharedWaitMs);
     return await ownership.run(owner, fn);
   } finally {
     owner.active = false;
