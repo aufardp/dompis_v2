@@ -28,6 +28,7 @@ import {
 import { logger } from '@/lib/observability/logger';
 import { logConfigWarnings } from '@/lib/observability/config-validator';
 import { recordRun } from '@/lib/observability/slo-tracker';
+import { isDatabaseSaturationError } from '@/lib/sql/db-saturation';
 
 const WORKER_NAME = 'projection-worker';
 const MAX_CONSECUTIVE_ERRORS = parsePositiveInt(
@@ -59,6 +60,19 @@ const CONTINUATION_DELAY_MS = parsePositiveInt(
   process.env.PROJECTION_CONTINUATION_DELAY_MS,
   10_000,
 );
+// Saat MySQL sesak, retry tetap 10 detik hanya menambah beban: setiap attempt
+// memegang slot write + satu koneksi pool lalu timeout lagi. Backoff naik
+// eksponensial sampai 5 menit dan baru direset setelah ada progres nyata.
+const SATURATION_BACKOFF_BASE_MS = parsePositiveInt(
+  process.env.PROJECTION_SATURATION_BACKOFF_MS,
+  15_000,
+);
+const SATURATION_BACKOFF_MAX_MS = parsePositiveInt(
+  process.env.PROJECTION_SATURATION_BACKOFF_MAX_MS,
+  5 * 60_000,
+);
+let saturationBackoffMs = 0;
+let lastSaturationNoteAt = 0;
 
 const state = createTaskState();
 const scheduledTasks: ScheduledTaskHandle[] = [];
@@ -103,6 +117,29 @@ function queueIncrementalProjectionRun(source: string): void {
   void drainProjectionQueue(source);
 }
 
+function noteDatabaseSaturation(error: unknown): void {
+  // Satu run bisa gagal dua kali (fresh batch lalu backlog). Hitung sekali
+  // saja agar circuit breaker tidak terbuka karena satu run yang sama.
+  const now = Date.now();
+  if (now - lastSaturationNoteAt < 5_000) return;
+  lastSaturationNoteAt = now;
+  saturationBackoffMs = saturationBackoffMs === 0
+    ? SATURATION_BACKOFF_BASE_MS
+    : Math.min(SATURATION_BACKOFF_MAX_MS, saturationBackoffMs * 2);
+  state.consecutiveErrors++;
+  state.lastError = error instanceof Error ? error.message : String(error);
+  logger.warn('Projection database saturation — backing off', {
+    backoffMs: saturationBackoffMs,
+    consecutiveErrors: state.consecutiveErrors,
+    error: state.lastError,
+  });
+}
+
+function noteProjectionProgress(): void {
+  saturationBackoffMs = 0;
+  lastSaturationNoteAt = 0;
+}
+
 async function drainProjectionQueue(source: string): Promise<void> {
   if (projectionPumpActive) return;
   projectionPumpActive = true;
@@ -115,10 +152,12 @@ async function drainProjectionQueue(source: string): Promise<void> {
       });
       await runProjectionTask('incremental');
       if (pendingProjectionRun) {
+        const delayMs = Math.max(CONTINUATION_DELAY_MS, saturationBackoffMs);
         logger.info('Projection continuation delayed', {
-          delayMs: CONTINUATION_DELAY_MS,
+          delayMs,
+          saturated: saturationBackoffMs > 0,
         });
-        await new Promise(resolve => setTimeout(resolve, CONTINUATION_DELAY_MS));
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       }
     }
   } finally {
@@ -222,6 +261,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
               // Keep the last committed cursor (or the initial batch marker)
               // so a gate timeout resumes this batch instead of forgetting it.
               pendingProjectionRun = true;
+              if (isDatabaseSaturationError(error)) noteDatabaseSaturation(error);
               logger.warn('Projection fresh batch deferred to a later run', {
                 batchId, error: error instanceof Error ? error.message : String(error),
               });
@@ -294,6 +334,7 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
         state.consecutiveErrors = 0;
         state.circuitOpenedAt = null;
         state.lastError = null;
+        noteProjectionProgress();
       },
       controller,
     );
@@ -303,13 +344,15 @@ async function runProjectionTask(mode: 'incremental' | 'full'): Promise<void> {
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (error instanceof Error && error.name === 'QueryGateTimeoutError') {
+    if (isDatabaseSaturationError(error)) {
       pendingProjectionRun = true;
+      noteDatabaseSaturation(error);
       logger.warn('Projection deferred because database capacity is saturated', {
         task: mode,
         durationMs: Date.now() - startTime,
         error: message,
         continuationPending: freshBatches.size > 0,
+        backoffMs: saturationBackoffMs,
       });
       return;
     }

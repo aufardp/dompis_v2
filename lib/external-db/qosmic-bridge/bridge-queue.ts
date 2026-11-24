@@ -18,6 +18,7 @@ import { QosmicResource, QosmicRawRow } from './types';
 import { nowWib } from '@/lib/timezone';
 import { ingestSingleIncident } from '@/lib/ingestion/single-incident-ingestion';
 import { SINGLE_INCIDENT_QUEUE_NAME } from '@/lib/ingestion/single-incident-queue';
+import { isDatabaseSaturationError } from '@/lib/sql/db-saturation';
 
 // ── Constants ───────────────────────────────────────────────────────
 const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS ?? 10000);
@@ -194,7 +195,17 @@ async function handleIngestNossa(job: any): Promise<{ processed: number; status:
     });
   } catch (error) {
     errorMessage = String(error);
-    if (isBridgeUnavailableError(error)) {
+    if (isDatabaseSaturationError(error)) {
+      // MySQL/gate sedang penuh — bukan payload buruk dan bukan upstream down.
+      // Tandai paused lalu biarkan siklus terjadwal berikutnya mencoba lagi;
+      // retry BullMQ (30 detik) hanya menambah beban saat DB sudah sesak.
+      status = 'paused';
+      logger.warn('[Bridge] Ingestion ditunda — database sesak', {
+        tableName,
+        batchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } else if (isBridgeUnavailableError(error)) {
       // Exhausted retries against a down/rate-limited upstream. Report the scan
       // as paused and let the next scheduled cycle probe again — failing the
       // job would fill the DLQ and trip the circuit breaker for an outage that
@@ -394,7 +405,7 @@ function setupWorkerHooks(worker: Worker, circuit: WorkerTaskState): void {
     // otherwise one retriable outage opens the breaker before backoff can work.
     // Upstream outages (52x/530, timeout, network, rate limit) are excluded:
     // they are handled by the health-probe/pause path, not by our breaker.
-    if (!willRetry && isTransientBridgeError(err) && !isBridgeUnavailableError(err)) {
+    if (!willRetry && isTransientBridgeError(err) && !isBridgeUnavailableError(err) && !isDatabaseSaturationError(err)) {
       circuit.consecutiveErrors++;
       circuit.lastError = err.message;
       circuitState.consecutiveErrors = Math.max(circuitState.consecutiveErrors, circuit.consecutiveErrors);

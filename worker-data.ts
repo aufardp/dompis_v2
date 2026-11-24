@@ -28,6 +28,7 @@ import { logger } from '@/lib/observability/logger';
 import { logConfigWarnings } from '@/lib/observability/config-validator';
 import { recordRun } from '@/lib/observability/slo-tracker';
 import { testExternalConnection } from '@/lib/external-db/connection';
+import { isDatabaseSaturationError } from '@/lib/sql/db-saturation';
 import { DailyTicketService } from '@/app/libs/services/daily-ticket.service';
 
 const WORKER_NAME = 'data-worker';
@@ -271,12 +272,18 @@ async function runAllTasks(signal: AbortSignal): Promise<void> {
         const message = error instanceof Error ? error.message : (() => {
           try { return JSON.stringify(error); } catch { return String(error); }
         })();
-        logger.error('Ingestion task failed', error, { errorMessage: message });
-        await recordRun('ingestion', 0, false, { error: message });
-        ingestionState.lastError = message;
-        ingestionState.consecutiveErrors++;
-        if (ingestionState.consecutiveErrors >= ingestionMaxErrors) {
-          ingestionState.circuitOpenedAt = new Date();
+        if (isDatabaseSaturationError(error)) {
+          // DB/gate sesak bukan kegagalan data: jangan tambah retry dan jangan
+          // buka circuit breaker. Cukup defer ke run berikutnya.
+          logger.warn('Ingestion deferred — database saturated', { errorMessage: message });
+        } else {
+          logger.error('Ingestion task failed', error, { errorMessage: message });
+          await recordRun('ingestion', 0, false, { error: message });
+          ingestionState.lastError = message;
+          ingestionState.consecutiveErrors++;
+          if (ingestionState.consecutiveErrors >= ingestionMaxErrors) {
+            ingestionState.circuitOpenedAt = new Date();
+          }
         }
       } finally {
         cancel();

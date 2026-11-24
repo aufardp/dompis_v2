@@ -1755,7 +1755,11 @@ export async function runProjection(
       return isRevisionSyncEnabled()
         ? import('./pending').then(({ runPendingProjection }) => runPendingProjection(signal, runOptions))
         : projectRecords(signal, runOptions);
-    }, 'background', deadline === null ? {} : { waitTimeoutMs: Math.max(1, deadline - Date.now()) });
+    }, 'background', {
+      kind: 'write',
+      label: options.mode === 'full' ? 'projection:full' : 'projection:incremental',
+      ...(deadline === null ? {} : { waitTimeoutMs: Math.max(1, deadline - Date.now()) }),
+    });
     if (isRevisionSyncEnabled()) {
       const checkpointData = {
         status: result.failed ? 'failed' : 'success', processed: result.processed,

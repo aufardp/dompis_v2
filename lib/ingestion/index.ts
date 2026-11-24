@@ -49,7 +49,10 @@ const DEFAULT_CHUNK_SIZE = parsePositiveIntEnv('INGESTION_CHUNK_SIZE', 1000);
 const DEFAULT_BATCH_SIZE = parsePositiveIntEnv('INGESTION_BATCH_SIZE', 500);
 const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
   'INGESTION_WRITE_CHUNK_SIZE',
-  Math.min(DEFAULT_CHUNK_SIZE, 1000),
+  // Transaksi tulis lebih pendek dari satu halaman bridge (1000 baris):
+  // di bawah saturasi, transaksi 1000 baris menahan row lock + satu koneksi
+  // pool selama puluhan detik dan memblokir writer lain.
+  Math.min(DEFAULT_CHUNK_SIZE, 250),
 );
 const DEFAULT_CONCURRENCY = parsePositiveIntEnv('INGESTION_CONCURRENCY', 1);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv(
@@ -704,6 +707,66 @@ async function refreshTicketRawHeartbeat(
   }
 }
 
+const ALWAYS_UPDATED_COLUMNS = new Set<string>([
+  'sourceTable',
+  'sourceHash',
+  'lastSeenAt',
+  'syncBatchId',
+  'syncVersion',
+  'isActive',
+  'importedAt',
+  'sourceUpdatedAt',
+  'sync_date',
+  'synced_at',
+  'import_batch',
+]);
+
+function comparableValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (value instanceof Date) return `date:${value.getTime()}`;
+  if (typeof value === 'object') {
+    try {
+      return `json:${JSON.stringify(value)}`;
+    } catch {
+      return `object:${String(value)}`;
+    }
+  }
+  return `${typeof value}:${String(value)}`;
+}
+
+/**
+ * Union kolom yang berubah di seluruh chunk. Kolom yang tidak berubah sama
+ * sekali dilewati dari klausa `ON DUPLICATE KEY UPDATE`, sehingga InnoDB tidak
+ * perlu memperbarui entri index-nya (ticket_raw punya 8 secondary index).
+ * Perbandingan sengaja konservatif: apa pun yang gagal dibandingkan dianggap
+ * berubah, jadi hasilnya paling buruk kembali ke perilaku lama (tulis semua).
+ */
+function computeUpdateColumns(
+  rows: TicketRawBulkRow[],
+  existing: Map<string, ExistingTicketRawRow>,
+): TicketRawBulkColumn[] {
+  const changed = new Set<string>(ALWAYS_UPDATED_COLUMNS);
+  let needsAllColumns = false;
+
+  for (const row of rows) {
+    const previous = existing.get(String(row.incident));
+    if (!previous) {
+      needsAllColumns = true;
+      continue;
+    }
+    for (const column of TICKET_RAW_BULK_COLUMNS) {
+      if (column === 'incident' || changed.has(column)) continue;
+      if (comparableValue(row[column]) !== comparableValue(previous[column])) {
+        changed.add(column);
+      }
+    }
+    if (changed.size >= TICKET_RAW_BULK_COLUMNS.length) break;
+  }
+
+  if (needsAllColumns) return [...TICKET_RAW_BULK_COLUMNS];
+  return TICKET_RAW_BULK_COLUMNS.filter(column => changed.has(column));
+}
+
 async function bulkUpsertTicketRaw(
   tx: Prisma.TransactionClient,
   rows: TicketRawBulkRow[],
@@ -838,35 +901,51 @@ async function bulkUpsertTicketRawExt(tx: Prisma.TransactionClient, rows: Array<
   }
 }
 
+type ExistingTicketRawRow = {
+  incident: string | null;
+  sourceHash: string | null;
+  status: string | null;
+  syncVersion: number;
+  sourceUpdatedAt: Date | null;
+  sourceTable: string | null;
+  lastSeenAt: Date | null;
+  [field: string]: unknown;
+};
+
 async function fetchExistingIdentities(
   tx: Prisma.TransactionClient,
   identities: string[],
-): Promise<Map<string, { sourceHash: string | null; status: string | null; syncVersion: number; sourceUpdatedAt: Date | null; sourceTable: string | null; [field: string]: unknown }>> {
+): Promise<Map<string, ExistingTicketRawRow>> {
   if (identities.length === 0) return new Map();
   const CHUNK_SIZE = 500;
+  // Snapshot penuh dipakai untuk dua hal: resolusi konflik dan menghitung
+  // kolom yang benar-benar berubah (agar upsert tidak menulis ulang semua
+  // kolom). Tidak perlu `FOR UPDATE`: semua penulis ticket_raw sudah
+  // diserialkan oleh withTicketRawWriterLock (lock global Redis).
+  const rows = await Promise.all(
+    chunkArray(identities, CHUNK_SIZE).map(chunk =>
+      tx.$queryRawUnsafe<
+        Array<{
+          incident: string | null;
+          sourceHash: string | null;
+          status: string | null;
+          syncVersion: number;
+          sourceUpdatedAt: Date | null;
+          sourceTable: string | null;
+          lastSeenAt: Date | null;
+        }>
+      >(
+        `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt, sourceTable, lastSeenAt
+         FROM ticket_raw
+         WHERE incident IN (${chunk.map(() => '?').join(',')})`,
+        ...chunk,
+      ),
+    ),
+  );
   return new Map(
-    (
-      await Promise.all(
-        chunkArray(identities, CHUNK_SIZE).map(chunk =>
-          tx.$queryRawUnsafe<
-            Array<{
-              incident: string | null;
-              sourceHash: string | null;
-              status: string | null;
-              syncVersion: number;
-              sourceUpdatedAt: Date | null;
-              sourceTable: string | null;
-              lastSeenAt: Date | null;
-            }>
-          >(
-            `SELECT incident, sourceHash, status, syncVersion, sourceUpdatedAt, sourceTable, lastSeenAt
-             FROM ticket_raw
-             WHERE incident IN (${chunk.map(() => '?').join(',')}) FOR UPDATE`,
-            ...chunk,
-          ),
-        ),
-      )
-    ).flat().filter(row => row.incident !== null).map(row => [row.incident as string, row]),
+    rows.flat()
+      .filter(row => row.incident !== null)
+      .map(row => [row.incident as string, row as ExistingTicketRawRow]),
   );
 }
 
@@ -1097,7 +1176,12 @@ async function processBatch(
     const sortedChangedRows = sortTicketRawRowsByIncident(changedRows);
 
     assertNotAborted(writerSignal);
-    await bulkUpsertTicketRaw(tx, sortedChangedRows, TICKET_RAW_BULK_COLUMNS, nossaDown);
+    await bulkUpsertTicketRaw(
+      tx,
+      sortedChangedRows,
+      computeUpdateColumns(sortedChangedRows, existingMap),
+      nossaDown,
+    );
     await bulkUpsertTicketRawExt(tx, extRows);
     await markProjectionPending(tx, sortedChangedRows.map(row => String(row.incident)));
     await markProjectionPending(tx, unchangedIncidents.filter(incident => syncStates.get(incident) === 0n));
@@ -1158,7 +1242,7 @@ async function processBatch(
       );
     }
     return batchOutcome;
-  }, signal));
+  }, signal), 'background', { kind: 'write', label: `ingest:${sourceTable}` });
 
   if (newlyQuarantined) await incrIngestionQuarantine(newlyQuarantined).catch(error => logger.warn('Quarantine gauge update failed', { error: String(error) }));
 
@@ -1458,7 +1542,7 @@ async function processTable(
         // longer cooldown so it doesn't compete for budget every cycle.
         const cooldownMinutes =
           tableName === 'nossa'
-            ? parsePositiveIntEnv('INGESTION_NOSSA_MIN_INTERVAL_MINUTES', 1)
+            ? parsePositiveIntEnv('INGESTION_NOSSA_MIN_INTERVAL_MINUTES', 3)
             : parsePositiveIntEnv('INGESTION_NOSSA_CLOSED_MIN_INTERVAL_MINUTES', 10);
         const cooldownMs = cooldownMinutes * 60_000;
         const acquired = !isRedisReady()

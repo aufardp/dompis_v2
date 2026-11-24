@@ -263,7 +263,7 @@ export async function getOrSetCache<T>(
 
   const computation = (async () => {
     try {
-      const data = await withQueryGate(fn, options.priority ?? 'background');
+      const data = await withQueryGate(fn, options.priority ?? 'interactive', { label: key });
       // Simpan nilai MENTAH — konsumen getOrSetCache tidak mengenal envelope.
       await setCache(key, data, ttl);
       return data;
@@ -313,7 +313,7 @@ async function computeAndStoreSwr<T>(
 ): Promise<T> {
   const startedAt = Date.now();
   try {
-    const data = await withQueryGate(fn, priority);
+    const data = await withQueryGate(fn, priority, { label: key });
     await setCache(
       key,
       { __swr: true, storedAt: startedAt, data } satisfies SwrEnvelope<T>,
@@ -336,7 +336,7 @@ function revalidateInBackground<T>(
   const computation = (async () => {
     const startedAt = Date.now();
     try {
-      const data = await withQueryGate(fn);
+      const data = await withQueryGate(fn, 'background', { label: key });
       await setCache(
         key,
         { __swr: true, storedAt: startedAt, data } satisfies SwrEnvelope<T>,
@@ -444,7 +444,7 @@ export async function getOrSetCacheSwr<T>(
     // komputasi sinkron di bawah.
   }
 
-  return computeAndStoreSwr(key, fn, ttl, staleTtl, options.priority ?? 'background');
+  return computeAndStoreSwr(key, fn, ttl, staleTtl, options.priority ?? 'interactive');
 }
 
 function revalidateInBackgroundIfNeeded<T>(

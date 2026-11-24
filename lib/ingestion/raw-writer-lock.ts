@@ -4,13 +4,17 @@ import { isRedisReady, redis } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 
 const LOCK_KEY = 'ticket_raw_writer';
-const LOCK_TTL_SECONDS = parsePositiveInt(
+const DEFAULT_LOCK_TTL_SECONDS = parsePositiveInt(
   process.env.TICKET_RAW_WRITER_LOCK_TTL,
   300,
 );
 const MAX_WAIT_MS = parsePositiveInt(
   process.env.TICKET_RAW_WRITER_WAIT_MS,
   120_000,
+);
+const MIN_WAIT_MS = parsePositiveInt(
+  process.env.TICKET_RAW_WRITER_MIN_WAIT_MS,
+  2000,
 );
 const NEVER_ABORTED = new AbortController().signal;
 const QUEUE_KEY = `lock:${LOCK_KEY}:queue`;
@@ -126,7 +130,7 @@ export async function withTicketRawWriterLock<T>(
       try {
         const result = await withTaskLock(
           LOCK_KEY,
-          LOCK_TTL_SECONDS,
+          DEFAULT_LOCK_TTL_SECONDS,
           async () => {
             controller.signal.throwIfAborted();
             const waitMs = Date.now() - started;
