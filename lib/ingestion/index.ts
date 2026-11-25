@@ -52,7 +52,7 @@ const DEFAULT_WRITE_CHUNK_SIZE = parsePositiveIntEnv(
   // Transaksi tulis lebih pendek dari satu halaman bridge (1000 baris):
   // di bawah saturasi, transaksi 1000 baris menahan row lock + satu koneksi
   // pool selama puluhan detik dan memblokir writer lain.
-  Math.min(DEFAULT_CHUNK_SIZE, 250),
+  Math.min(DEFAULT_CHUNK_SIZE, 100),
 );
 const DEFAULT_CONCURRENCY = parsePositiveIntEnv('INGESTION_CONCURRENCY', 1);
 const DEFAULT_RETRY_MAX = parsePositiveIntEnv(
